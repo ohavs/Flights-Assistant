@@ -57,3 +57,9 @@ Flights-Assistant uses a custom-tailored dark glassmorphic design system to crea
 ### 3. `PlanningTab.jsx` & `ChecklistTab.jsx`
 - Interactive timeline planning for cafes, attractions, and hotels.
 - Real-time checkboxes and list management for travel packing lists and pre-trip preparation.
+
+### 4. `App.jsx`
+- Serves as the central state controller and shell wrapper for the application.
+- Orchestrates Google Authentication, fetching and managing active trips, and handling multi-user sharing configurations via Firestore.
+- Implements the global checklist template manager that seeds checklists for newly created trips.
+

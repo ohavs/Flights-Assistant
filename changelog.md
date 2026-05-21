@@ -1,5 +1,12 @@
 # Changelog — Flights-Assistant
 
+## [6.0.1] - 2026-05-21
+
+### Fixed
+- **App.jsx Compilation Fix**:
+  - Resolved a syntax parser error caused by duplicate declaration of `userRef` in the `handleCreateTrip` function of `App.jsx`.
+  - Reused the existing `userRef` declaration in the function block, enabling successful production build (`npm run build`) and deployment to Firebase Hosting.
+
 ## [6.0.0] - 2026-05-21
 
 ### Added
