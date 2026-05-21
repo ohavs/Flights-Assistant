@@ -3,24 +3,40 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Users:
-    //   - any signed-in user can READ user docs (needed for sharing
-    //     trips — we look users up by email)
+    //   - any signed-in user can READ user docs (needed for sharing trips
+    //     — we look up users by email)
     //   - only the user themselves can WRITE their own profile
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Trips: only members can read/write. memberIds is an array kept in
-    // parallel with the members map so we can query trips by membership
-    // without needing per-user tripIds arrays.
+    // Trips: only members can read / write.
+    // memberIds (array) is the canonical membership field; the members
+    // map is kept for backwards compatibility. We check both so a list
+    // query that filters on `memberIds array-contains uid` is allowed
+    // by Firestore (the filter aligns with the first clause of the OR).
     match /trips/{tripId} {
-      allow read, write: if request.auth != null
-        && (resource == null || resource.data.members[request.auth.uid] != null);
+      allow read, update, delete: if request.auth != null
+        && (
+          (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)
+          || (resource.data.members != null && resource.data.members[request.auth.uid] != null)
+        );
+
+      allow create: if request.auth != null
+        && (
+          (request.resource.data.memberIds != null && request.auth.uid in request.resource.data.memberIds)
+          || (request.resource.data.members != null && request.resource.data.members[request.auth.uid] != null)
+        );
 
       match /{subcollection}/{docId} {
         allow read, write: if request.auth != null
-          && get(/databases/$(database)/documents/trips/$(tripId)).data.members[request.auth.uid] != null;
+          && (
+            (get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds != null
+              && request.auth.uid in get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds)
+            || (get(/databases/$(database)/documents/trips/$(tripId)).data.members != null
+              && get(/databases/$(database)/documents/trips/$(tripId)).data.members[request.auth.uid] != null)
+          );
       }
     }
   }
