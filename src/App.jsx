@@ -9,6 +9,7 @@ import {
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
 import FlightTab, { defaultTrip } from './components/FlightTab';
+import { CustomDropdown } from './components/CustomDatePicker';
 import PlanningTab from './components/PlanningTab';
 import ChecklistTab from './components/ChecklistTab';
 import {
@@ -429,19 +430,12 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
                 style={{ padding: '8px 12px', fontSize: 14, minHeight: 38 }}
               />
             </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 11 }}>קטגוריה</label>
-              <select
-                className="category-select"
-                value={newItemCategory}
-                onChange={(e) => setNewItemCategory(e.target.value)}
-                style={{ minHeight: 38, fontSize: 14 }}
-              >
-                {categories.map((cat, idx) => (
-                  <option key={idx} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            <CustomDropdown
+              label="קטגוריה"
+              value={newItemCategory}
+              onChange={setNewItemCategory}
+              options={categories}
+            />
           </div>
 
           {editingItemId ? (

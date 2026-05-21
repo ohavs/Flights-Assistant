@@ -10,6 +10,7 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
+import { CustomDropdown } from './CustomDatePicker';
 
 export const defaultChecklist = [
   // Category 1: Documents & Core
@@ -220,18 +221,12 @@ export default function ChecklistTab({ tripId }) {
               required
             />
           </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>קטגוריה</label>
-            <select
-              className="category-select"
-              value={newItemCategory}
-              onChange={(e) => setNewItemCategory(e.target.value)}
-            >
-              {categories.map((cat, idx) => (
-                <option key={idx} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
+          <CustomDropdown
+            label="קטגוריה"
+            value={newItemCategory}
+            onChange={setNewItemCategory}
+            options={categories}
+          />
         </div>
 
         {editingItemId ? (

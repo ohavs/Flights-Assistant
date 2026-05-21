@@ -3,7 +3,14 @@ import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { lookupFlight, getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
 import MapComponent from './MapComponent';
-import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker } from './CustomDatePicker';
+import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
+
+const FLIGHT_STATUS_OPTIONS = [
+  { value: 'בזמן', label: 'בזמן' },
+  { value: 'באיחור קל', label: 'באיחור קל' },
+  { value: 'באיחור רציני', label: 'באיחור רציני' },
+  { value: 'בוטלה', label: 'בוטלה' },
+];
 import {
   MapPin,
   Calendar,
@@ -109,6 +116,9 @@ export default function FlightTab({ tripId }) {
   const [formTripName, setFormTripName] = useState('');
   const [lookupBusyOut, setLookupBusyOut] = useState(false);
   const [lookupBusyRet, setLookupBusyRet] = useState(false);
+  // After a search: { kind: 'found'|'generated'|'empty', flightNumber, airline, route }
+  const [lookupResultOut, setLookupResultOut] = useState(null);
+  const [lookupResultRet, setLookupResultRet] = useState(null);
 
   // Outbound Flight Form States — only user-editable fields
   const [formOutFlightNum, setFormOutFlightNum] = useState('');
@@ -154,20 +164,68 @@ export default function FlightTab({ tripId }) {
   const [formHotelRoom, setFormHotelRoom] = useState('');
   const [formHotelNotes, setFormHotelNotes] = useState('');
 
+  const renderLookupFeedback = (result) => {
+    if (!result) return null;
+    if (result.kind === 'empty') {
+      return (
+        <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'rgb(190, 18, 60)' }}>
+          ⚠️ הזן מספר טיסה לפני החיפוש.
+        </div>
+      );
+    }
+    if (result.kind === 'found') {
+      return (
+        <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.08)', border: '1px solid rgba(5, 150, 105, 0.25)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'var(--text-success)' }}>
+          ✅ נמצא: {result.flightNumber} · {result.airline} · {result.route}
+        </div>
+      );
+    }
+    // generated
+    return (
+      <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'rgb(146, 64, 14)' }}>
+        ⓘ הטיסה {result.flightNumber} לא נמצאה במאגר. נוצרו נתונים משוערים — אנא בדוק וערוך ידנית.
+      </div>
+    );
+  };
+
   const runLookup = (which) => {
     if (which === 'out') {
       const num = (formOutFlightNum || '').trim().toUpperCase();
-      if (!num) return;
+      if (!num) {
+        setLookupResultOut({ kind: 'empty' });
+        return;
+      }
       setLookupBusyOut(true);
+      setLookupResultOut(null);
       Promise.resolve(lookupFlight(num, formOutDate))
-        .then(res => applyLookup('out', res))
+        .then(res => {
+          applyLookup('out', res);
+          setLookupResultOut({
+            kind: res?.matched ? 'found' : 'generated',
+            flightNumber: res?.flightNumber,
+            airline: res?.airline,
+            route: res ? `${res.depAirport?.code} → ${res.arrAirport?.code}` : ''
+          });
+        })
         .finally(() => setLookupBusyOut(false));
     } else {
       const num = (formRetFlightNum || '').trim().toUpperCase();
-      if (!num) return;
+      if (!num) {
+        setLookupResultRet({ kind: 'empty' });
+        return;
+      }
       setLookupBusyRet(true);
+      setLookupResultRet(null);
       Promise.resolve(lookupFlight(num, formRetDate))
-        .then(res => applyLookup('ret', res))
+        .then(res => {
+          applyLookup('ret', res);
+          setLookupResultRet({
+            kind: res?.matched ? 'found' : 'generated',
+            flightNumber: res?.flightNumber,
+            airline: res?.airline,
+            route: res ? `${res.depAirport?.code} → ${res.arrAirport?.code}` : ''
+          });
+        })
         .finally(() => setLookupBusyRet(false));
     }
   };
@@ -614,6 +672,7 @@ export default function FlightTab({ tripId }) {
                   <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
                     לחץ "חפש" כדי למלא אוטומטית את שאר הפרטים.
                   </small>
+                  {renderLookupFeedback(lookupResultOut)}
                 </div>
 
                 <CustomDatePicker value={formOutDate} onChange={setFormOutDate} label="תאריך טיסה" required />
@@ -649,15 +708,12 @@ export default function FlightTab({ tripId }) {
                   <CustomTimePicker value={formOutEstArr} onChange={setFormOutEstArr} label="נחיתה משוערת" />
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>סטטוס טיסה</label>
-                  <select className="category-select" value={formOutStatus} onChange={(e) => setFormOutStatus(e.target.value)}>
-                    <option value="בזמן">בזמן</option>
-                    <option value="באיחור קל">באיחור קל</option>
-                    <option value="באיחור רציני">באיחור רציני</option>
-                    <option value="בוטלה">בוטלה</option>
-                  </select>
-                </div>
+                <CustomDropdown
+                  label="סטטוס טיסה"
+                  value={formOutStatus}
+                  onChange={setFormOutStatus}
+                  options={FLIGHT_STATUS_OPTIONS}
+                />
               </div>
 
               {/* === RETURN FLIGHT === */}
@@ -690,6 +746,7 @@ export default function FlightTab({ tripId }) {
                       <span>חפש</span>
                     </button>
                   </div>
+                  {renderLookupFeedback(lookupResultRet)}
                 </div>
 
                 <CustomDatePicker value={formRetDate} onChange={setFormRetDate} label="תאריך טיסה" required />
@@ -725,15 +782,12 @@ export default function FlightTab({ tripId }) {
                   <CustomTimePicker value={formRetEstArr} onChange={setFormRetEstArr} label="נחיתה משוערת" />
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>סטטוס טיסה</label>
-                  <select className="category-select" value={formRetStatus} onChange={(e) => setFormRetStatus(e.target.value)}>
-                    <option value="בזמן">בזמן</option>
-                    <option value="באיחור קל">באיחור קל</option>
-                    <option value="באיחור רציני">באיחור רציני</option>
-                    <option value="בוטלה">בוטלה</option>
-                  </select>
-                </div>
+                <CustomDropdown
+                  label="סטטוס טיסה"
+                  value={formRetStatus}
+                  onChange={setFormRetStatus}
+                  options={FLIGHT_STATUS_OPTIONS}
+                />
               </div>
 
               {/* === HOTEL === */}

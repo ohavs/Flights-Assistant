@@ -157,7 +157,34 @@ const flightPresetDatabase = {
     registration: 'G-EZWM',
     serialNumber: '6161',
     country: 'בריטניה',
-  }
+  },
+  // El Al common flights from TLV
+  LY1:  { flightNumber: 'LY1',  airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.JFK, scheduledDep: '12:20 AM', actualDep: '12:25 AM', scheduledArr: '06:10 AM', estimatedArr: '06:00 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDA', serialNumber: '42112', country: 'ישראל' },
+  LY2:  { flightNumber: 'LY2',  airline: 'אל על', depAirport: airportDatabase.JFK, arrAirport: airportDatabase.TLV, scheduledDep: '04:30 PM', actualDep: '04:45 PM', scheduledArr: '10:30 AM', estimatedArr: '10:25 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDA', serialNumber: '42112', country: 'ישראל' },
+  LY15: { flightNumber: 'LY15', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.EWR, scheduledDep: '11:00 PM', actualDep: '11:05 PM', scheduledArr: '04:30 AM', estimatedArr: '04:25 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDB', serialNumber: '42113', country: 'ישראל' },
+  LY16: { flightNumber: 'LY16', airline: 'אל על', depAirport: airportDatabase.EWR, arrAirport: airportDatabase.TLV, scheduledDep: '11:30 PM', actualDep: '11:35 PM', scheduledArr: '04:45 PM', estimatedArr: '04:40 PM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDB', serialNumber: '42113', country: 'ישראל' },
+  LY315: { flightNumber: 'LY315', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.CDG, scheduledDep: '07:45 AM', actualDep: '07:50 AM', scheduledArr: '11:10 AM', estimatedArr: '11:05 AM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHC', serialNumber: '41554', country: 'ישראל' },
+  LY316: { flightNumber: 'LY316', airline: 'אל על', depAirport: airportDatabase.CDG, arrAirport: airportDatabase.TLV, scheduledDep: '01:15 PM', actualDep: '01:20 PM', scheduledArr: '06:30 PM', estimatedArr: '06:25 PM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHC', serialNumber: '41554', country: 'ישראל' },
+  LY335: { flightNumber: 'LY335', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.LHR, scheduledDep: '06:30 AM', actualDep: '06:35 AM', scheduledArr: '10:25 AM', estimatedArr: '10:20 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDC', serialNumber: '42114', country: 'ישראל' },
+  LY336: { flightNumber: 'LY336', airline: 'אל על', depAirport: airportDatabase.LHR, arrAirport: airportDatabase.TLV, scheduledDep: '12:30 PM', actualDep: '12:35 PM', scheduledArr: '07:35 PM', estimatedArr: '07:30 PM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDC', serialNumber: '42114', country: 'ישראל' },
+  LY385: { flightNumber: 'LY385', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.BCN, scheduledDep: '07:00 AM', actualDep: '07:05 AM', scheduledArr: '10:50 AM', estimatedArr: '10:45 AM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKO', serialNumber: '36433', country: 'ישראל' },
+  LY386: { flightNumber: 'LY386', airline: 'אל על', depAirport: airportDatabase.BCN, arrAirport: airportDatabase.TLV, scheduledDep: '12:45 PM', actualDep: '12:50 PM', scheduledArr: '06:20 PM', estimatedArr: '06:15 PM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKO', serialNumber: '36433', country: 'ישראל' },
+  LY395: { flightNumber: 'LY395', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.AMS, scheduledDep: '07:25 AM', actualDep: '07:30 AM', scheduledArr: '11:25 AM', estimatedArr: '11:20 AM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHE', serialNumber: '41556', country: 'ישראל' },
+  LY396: { flightNumber: 'LY396', airline: 'אל על', depAirport: airportDatabase.AMS, arrAirport: airportDatabase.TLV, scheduledDep: '01:00 PM', actualDep: '01:05 PM', scheduledArr: '06:55 PM', estimatedArr: '06:50 PM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHE', serialNumber: '41556', country: 'ישראל' },
+  LY551: { flightNumber: 'LY551', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.PRG, scheduledDep: '07:50 AM', actualDep: '07:55 AM', scheduledArr: '10:55 AM', estimatedArr: '10:50 AM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKB', serialNumber: '29959', country: 'ישראל' },
+  LY552: { flightNumber: 'LY552', airline: 'אל על', depAirport: airportDatabase.PRG, arrAirport: airportDatabase.TLV, scheduledDep: '12:15 PM', actualDep: '12:20 PM', scheduledArr: '05:00 PM', estimatedArr: '04:55 PM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKB', serialNumber: '29959', country: 'ישראל' },
+  // Lufthansa TLV
+  LH685: { flightNumber: 'LH685', airline: 'Lufthansa', depAirport: airportDatabase.FRA, arrAirport: airportDatabase.TLV, scheduledDep: '10:25 AM', actualDep: '10:35 AM', scheduledArr: '03:30 PM', estimatedArr: '03:35 PM', status: 'בזמן', aircraftType: 'Airbus A321', registration: 'D-AIDX', serialNumber: '5256', country: 'גרמניה' },
+  LH690: { flightNumber: 'LH690', airline: 'Lufthansa', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.MUC, scheduledDep: '04:30 PM', actualDep: '04:35 PM', scheduledArr: '07:50 PM', estimatedArr: '07:45 PM', status: 'בזמן', aircraftType: 'Airbus A321neo', registration: 'D-AIEH', serialNumber: '11020', country: 'גרמניה' },
+  // Czech Airlines (defaultTrip uses OK983/OK984)
+  OK983: { flightNumber: 'OK983', airline: 'Czech Airlines', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.PRG, scheduledDep: '07:30 AM', actualDep: '07:35 AM', scheduledArr: '10:45 AM', estimatedArr: '10:40 AM', status: 'בזמן', aircraftType: 'Airbus A320-214', registration: 'OK-HEU', serialNumber: '5421', country: "צ'כיה" },
+  OK984: { flightNumber: 'OK984', airline: 'Czech Airlines', depAirport: airportDatabase.PRG, arrAirport: airportDatabase.TLV, scheduledDep: '11:55 AM', actualDep: '12:00 PM', scheduledArr: '04:50 PM', estimatedArr: '04:45 PM', status: 'בזמן', aircraftType: 'Airbus A320-214', registration: 'OK-HEU', serialNumber: '5421', country: "צ'כיה" },
+  // Turkish Airlines
+  TK787: { flightNumber: 'TK787', airline: 'Turkish Airlines', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.IST, scheduledDep: '06:30 PM', actualDep: '06:35 PM', scheduledArr: '09:00 PM', estimatedArr: '08:55 PM', status: 'בזמן', aircraftType: 'Airbus A321', registration: 'TC-JTP', serialNumber: '7124', country: 'טורקיה' },
+  TK788: { flightNumber: 'TK788', airline: 'Turkish Airlines', depAirport: airportDatabase.IST, arrAirport: airportDatabase.TLV, scheduledDep: '02:10 PM', actualDep: '02:15 PM', scheduledArr: '03:55 PM', estimatedArr: '03:50 PM', status: 'בזמן', aircraftType: 'Airbus A321', registration: 'TC-JTP', serialNumber: '7124', country: 'טורקיה' },
+  // Wizz Air
+  W61783: { flightNumber: 'W61783', airline: 'Wizz Air', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.BUD, scheduledDep: '03:50 AM', actualDep: '03:55 AM', scheduledArr: '06:40 AM', estimatedArr: '06:35 AM', status: 'בזמן', aircraftType: 'Airbus A321neo', registration: 'HA-LVH', serialNumber: '8941', country: 'הונגריה' },
+  W61784: { flightNumber: 'W61784', airline: 'Wizz Air', depAirport: airportDatabase.BUD, arrAirport: airportDatabase.TLV, scheduledDep: '10:30 PM', actualDep: '10:35 PM', scheduledArr: '02:50 AM', estimatedArr: '02:45 AM', status: 'בזמן', aircraftType: 'Airbus A321neo', registration: 'HA-LVH', serialNumber: '8941', country: 'הונגריה' },
 };
 
 const airlinePrefixes = [
@@ -262,6 +289,7 @@ export function lookupFlight(flightNumInput, dateInput) {
     if (!preset.gate) {
       preset.gate = generateGate(flightNumber);
     }
+    preset.matched = true; // true = real preset, false = generated
     return preset;
   }
 
@@ -329,6 +357,7 @@ export function lookupFlight(flightNumInput, dateInput) {
     serialNumber,
     country: ac.country,
     gate: generateGate(flightNumber),
+    matched: false,
   };
 }
 

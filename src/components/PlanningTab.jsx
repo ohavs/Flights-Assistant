@@ -9,6 +9,7 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
+import { CustomDropdown } from './CustomDatePicker';
 import {
   Search,
   Plus,
@@ -581,14 +582,12 @@ export default function PlanningTab({ tripId }) {
                     />
                   </div>
 
-                  <div className="form-group">
-                    <label>קטגוריה</label>
-                    <select className="category-select" value={category} onChange={(e) => setCategory(e.target.value)}>
-                      {categories.map((cat, idx) => (
-                        <option key={idx} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <CustomDropdown
+                    label="קטגוריה"
+                    value={category}
+                    onChange={setCategory}
+                    options={categories}
+                  />
 
                   <div className="form-group">
                     <label>עלות/תקציב</label>
@@ -1202,31 +1201,27 @@ export default function PlanningTab({ tripId }) {
             <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>
               
               {/* Linked Places Selector */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>בחר מקום שמור מתוך האטרקציות (אופציונלי)</label>
-                <select
-                  className="category-select"
-                  value={placeId}
-                  onChange={(e) => {
-                    const pid = e.target.value;
-                    setPlaceId(pid);
-                    if (pid) {
-                      const found = plans.find(p => p.id === pid);
-                      if (found) {
-                        setActivityTitle(found.title);
-                        setActivityAddress(found.address || '');
-                        setActivityDescription(found.description || '');
-                        setActivityCategory(found.category || 'אטרקציות ודברים לעשות');
-                      }
+              <CustomDropdown
+                label="בחר מקום שמור מתוך האטרקציות (אופציונלי)"
+                value={placeId}
+                onChange={(pid) => {
+                  setPlaceId(pid);
+                  if (pid) {
+                    const found = plans.find(p => p.id === pid);
+                    if (found) {
+                      setActivityTitle(found.title);
+                      setActivityAddress(found.address || '');
+                      setActivityDescription(found.description || '');
+                      setActivityCategory(found.category || 'אטרקציות ודברים לעשות');
                     }
-                  }}
-                >
-                  <option value="">-- הזנה ידנית (לא מקושר למקום שמור) --</option>
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
-                  ))}
-                </select>
-              </div>
+                  }
+                }}
+                placeholder="-- הזנה ידנית (לא מקושר למקום שמור) --"
+                options={[
+                  { value: '', label: '-- הזנה ידנית (לא מקושר למקום שמור) --' },
+                  ...plans.map(p => ({ value: p.id, label: `${p.title} (${p.category})` }))
+                ]}
+              />
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>שם הפעילות *</label>
@@ -1241,18 +1236,12 @@ export default function PlanningTab({ tripId }) {
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>קטגוריה</label>
-                <select
-                  className="category-select"
-                  value={activityCategory}
-                  onChange={(e) => setActivityCategory(e.target.value)}
-                >
-                  {categories.map((cat, idx) => (
-                    <option key={idx} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+              <CustomDropdown
+                label="קטגוריה"
+                value={activityCategory}
+                onChange={setActivityCategory}
+                options={categories}
+              />
 
               {/* Time Label Tagging */}
               <div className="form-group" style={{ marginBottom: 0 }}>

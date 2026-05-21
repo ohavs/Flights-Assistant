@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, X, Check } from 'lucide-react';
 
 const MONTHS_HE = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -799,6 +799,102 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   CUSTOM DROPDOWN — fully styled select replacement
+   ══════════════════════════════════════════════════════════ */
+export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const popupRef = useRef(null);
+
+  // Normalize options: string[] OR {value,label,icon}[]
+  const normalized = (options || []).map(o => (
+    typeof o === 'string' ? { value: o, label: o } : o
+  ));
+  const current = normalized.find(o => o.value === value);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onDocClick = (e) => {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        popupRef.current && !popupRef.current.contains(e.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [isOpen]);
+
+  const handleSelect = (val) => {
+    onChange(val);
+    setIsOpen(false);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', position: 'relative' }}>
+      {label && <label style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(o => !o)}
+        className="custom-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span style={{
+          flex: 1,
+          textAlign: 'right',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: current ? 'var(--primary)' : 'var(--text-muted)',
+          fontWeight: current ? 700 : 600
+        }}>
+          {current ? current.label : placeholder}
+        </span>
+        <ChevronDown
+          size={18}
+          style={{
+            color: 'var(--accent)',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          ref={popupRef}
+          role="listbox"
+          className="custom-dropdown-popup"
+        >
+          {normalized.map((opt) => {
+            const isActive = opt.value === value;
+            return (
+              <button
+                key={String(opt.value)}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                onClick={() => handleSelect(opt.value)}
+                className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
+              >
+                {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
+                <span style={{ flex: 1, textAlign: 'right' }}>{opt.label}</span>
+                {isActive && <Check size={16} style={{ color: 'var(--accent)' }} />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
