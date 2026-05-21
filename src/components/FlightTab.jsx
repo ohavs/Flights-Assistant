@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
-import { lookupFlightLive, hasApiKey } from '../services/flightApi';
+import { lookupFlightLive } from '../services/flightApi';
 import MapComponent from './MapComponent';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
@@ -14,8 +14,7 @@ import {
   Search,
   PlaneTakeoff,
   PlaneLanding,
-  RefreshCw,
-  Key
+  RefreshCw
 } from 'lucide-react';
 
 const FLIGHT_STATUS_OPTIONS = [
@@ -186,12 +185,7 @@ export default function FlightTab({ tripId }) {
       case 'live':
         return <Banner color="var(--text-success)" bg="rgba(5, 150, 105, 0.1)" border="rgba(5, 150, 105, 0.3)">✅ נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}</Banner>;
       case 'no-key':
-        return (
-          <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">
-            🔑 כדי לחפש בזמן אמת צריך מפתח API. לחץ על מפתח <Key size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> שבכותרת.
-            {result.route && <> בינתיים נטענו נתונים מקומיים: {result.route}.</>}
-          </Banner>
-        );
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">⚠️ חיפוש חי אינו זמין (חסר מפתח API מובנה). נטענו נתונים מקומיים.</Banner>;
       case 'no-results':
         return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">⚠️ AeroDataBox לא מצא את הטיסה בתאריך שצוין. נסה תאריך מדויק לטיסה (התאריך שמופיע בכרטיס שלך).</Banner>;
       case 'http-error':
@@ -291,9 +285,9 @@ export default function FlightTab({ tripId }) {
     }
   };
 
-  // Auto-refresh every 5 minutes when an API key is configured
+  // Auto-refresh every 5 minutes (always on — API key is baked in)
   useEffect(() => {
-    if (!tripId || !hasApiKey()) return;
+    if (!tripId) return;
     const interval = setInterval(() => {
       refreshFlight('outbound');
       refreshFlight('return');
