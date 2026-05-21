@@ -740,7 +740,6 @@ export default function App() {
     await batch.commit();
 
     // Add to user's tripIds
-    const userRef = doc(db, 'users', user.uid);
     await updateDoc(userRef, {
       tripIds: arrayUnion(tripId)
     }).catch(() => {
