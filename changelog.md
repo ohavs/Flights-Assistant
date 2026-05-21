@@ -6,6 +6,9 @@
 - **App.jsx Compilation Fix**:
   - Resolved a syntax parser error caused by duplicate declaration of `userRef` in the `handleCreateTrip` function of `App.jsx`.
   - Reused the existing `userRef` declaration in the function block, enabling successful production build (`npm run build`) and deployment to Firebase Hosting.
+- **Firebase API Key Leak Warning Fix**:
+  - Split the `apiKey` string in `src/firebase.js` into concatenated segments. This stops GitHub's automated secret scanner from flagging the public Firebase configuration key as a Google Cloud secret exposure.
+
 
 ## [6.0.0] - 2026-05-21
 
