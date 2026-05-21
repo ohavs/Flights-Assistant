@@ -2,41 +2,89 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users:
-    //   - any signed-in user can READ user docs (needed for sharing trips
-    //     — we look up users by email)
-    //   - only the user themselves can WRITE their own profile
+    // Users: any signed-in user can READ profile data (for sharing
+    // lookups + showing the owner's name on a shared trip). Only the
+    // user themselves can WRITE their profile.
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Trips: only members can read / write.
-    // memberIds (array) is the canonical membership field; the members
-    // map is kept for backwards compatibility. We check both so a list
-    // query that filters on `memberIds array-contains uid` is allowed
-    // by Firestore (the filter aligns with the first clause of the OR).
+    // Trips: role-based access.
+    //   owner  — full control: edit content, change member roles, delete
+    //   editor — edit content (cannot change membership)
+    //   viewer — read-only
+    // memberIds is the canonical array used by the trip-list query.
+    // members is a map {uid: role}.
+    // Any member may "leave" the trip (remove themselves from both
+    // members + memberIds); only an owner can delete the doc.
     match /trips/{tripId} {
-      allow read, update, delete: if request.auth != null
+
+      function trip() { return resource.data; }
+      function role(uid) {
+        return trip().members[uid] is string ? trip().members[uid] : null;
+      }
+      function isMember(uid) {
+        return uid in trip().memberIds || role(uid) != null;
+      }
+      function canEdit(uid) {
+        // 'member' kept for legacy data — treated as editor.
+        return role(uid) == 'owner' || role(uid) == 'editor' || role(uid) == 'member';
+      }
+      function isOwner(uid) {
+        return role(uid) == 'owner';
+      }
+
+      // List/get: any member
+      allow read: if request.auth != null
         && (
           (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)
           || (resource.data.members != null && resource.data.members[request.auth.uid] != null)
         );
 
+      // Create: creator must include themselves with 'owner' role
       allow create: if request.auth != null
-        && (
-          (request.resource.data.memberIds != null && request.auth.uid in request.resource.data.memberIds)
-          || (request.resource.data.members != null && request.resource.data.members[request.auth.uid] != null)
-        );
+        && request.resource.data.members[request.auth.uid] == 'owner'
+        && request.auth.uid in request.resource.data.memberIds;
 
+      // Update: owner can change anything. Editor can change everything
+      // EXCEPT members + memberIds. Any member may leave (remove self).
+      allow update: if request.auth != null && (
+        isOwner(request.auth.uid)
+        || (
+          canEdit(request.auth.uid)
+          && request.resource.data.members == resource.data.members
+          && request.resource.data.memberIds == resource.data.memberIds
+        )
+        || (
+          // Self-leave: must currently be a member, must NOT appear in
+          // the new doc's members/memberIds.
+          isMember(request.auth.uid)
+          && !(request.auth.uid in request.resource.data.memberIds)
+          && !(request.resource.data.members.keys().hasAny([request.auth.uid]))
+        )
+      );
+
+      // Delete: only owner
+      allow delete: if request.auth != null && isOwner(request.auth.uid);
+
+      // Subcollections — read for any member, write for editors+owners.
       match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null
+        function parent() { return get(/databases/$(database)/documents/trips/$(tripId)).data; }
+        function pRole(uid) {
+          return parent().members[uid] is string ? parent().members[uid] : null;
+        }
+
+        allow read: if request.auth != null
           && (
-            (get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds != null
-              && request.auth.uid in get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds)
-            || (get(/databases/$(database)/documents/trips/$(tripId)).data.members != null
-              && get(/databases/$(database)/documents/trips/$(tripId)).data.members[request.auth.uid] != null)
+            (parent().memberIds != null && request.auth.uid in parent().memberIds)
+            || (parent().members != null && parent().members[request.auth.uid] != null)
           );
+
+        allow write: if request.auth != null
+          && (pRole(request.auth.uid) == 'owner'
+              || pRole(request.auth.uid) == 'editor'
+              || pRole(request.auth.uid) == 'member');
       }
     }
   }

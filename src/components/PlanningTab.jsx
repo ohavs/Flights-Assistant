@@ -10,6 +10,7 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { CustomDropdown } from './CustomDatePicker';
+import { useTrip } from '../TripContext';
 import {
   Search,
   Plus,
@@ -138,6 +139,7 @@ export const defaultPraguePlans = [
 ];
 
 export default function PlanningTab({ tripId }) {
+  const { canEdit } = useTrip();
   const [plans, setPlans] = useState([]);
   const [days, setDays] = useState([]);
   const [subTab, setSubTab] = useState('pool'); // 'pool' | 'daily'
@@ -549,13 +551,15 @@ export default function PlanningTab({ tripId }) {
               <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             </div>
 
-            <button
-              onClick={handleOpenAdd}
-              className="btn-add-circle"
-              aria-label="הוסף יעד חדש"
-            >
-              <Plus size={20} />
-            </button>
+            {canEdit && (
+              <button
+                onClick={handleOpenAdd}
+                className="btn-add-circle"
+                aria-label="הוסף יעד חדש"
+              >
+                <Plus size={20} />
+              </button>
+            )}
           </div>
 
           {/* Add/Edit Plan Slide-Up Modal */}
@@ -835,6 +839,7 @@ export default function PlanningTab({ tripId }) {
                     {/* Expanded body */}
                     {isOpen && (
                       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {canEdit && (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           <button
                             onClick={() => handleToggleVisited(plan)}
@@ -879,6 +884,7 @@ export default function PlanningTab({ tripId }) {
                             <Trash2 size={15} />
                           </button>
                         </div>
+                        )}
 
                         {plan.description && (
                           <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
@@ -942,14 +948,16 @@ export default function PlanningTab({ tripId }) {
         <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
-            <button
-              onClick={handleAddDay}
-              className="btn-primary"
-              style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
-            >
-              <Plus size={15} />
-              <span>הוסף יום</span>
-            </button>
+            {canEdit && (
+              <button
+                onClick={handleAddDay}
+                className="btn-primary"
+                style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
+              >
+                <Plus size={15} />
+                <span>הוסף יום</span>
+              </button>
+            )}
           </div>
 
           {days.length === 0 ? (
@@ -990,22 +998,24 @@ export default function PlanningTab({ tripId }) {
                     ) : (
                       <>
                         <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
+                        {canEdit && (
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button 
-                            onClick={() => { setEditingDayId(day.id); setEditingDayTitle(day.title); }} 
+                          <button
+                            onClick={() => { setEditingDayId(day.id); setEditingDayTitle(day.title); }}
                             style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                             title="ערוך כותרת יום"
                           >
                             <Pencil size={15} />
                           </button>
-                          <button 
-                            onClick={() => handleDeleteDay(day.id)} 
+                          <button
+                            onClick={() => handleDeleteDay(day.id)}
                             style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
                             title="מחק יום"
                           >
                             <Trash2 size={15} />
                           </button>
                         </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1090,34 +1100,36 @@ export default function PlanningTab({ tripId }) {
                               </div>
 
                               {/* Controls */}
+                              {canEdit && (
                               <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                                <button 
-                                  onClick={() => moveActivity(day.id, act.id, -1)} 
-                                  disabled={isFirst} 
+                                <button
+                                  onClick={() => moveActivity(day.id, act.id, -1)}
+                                  disabled={isFirst}
                                   style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <ArrowUp size={14} />
                                 </button>
-                                <button 
-                                  onClick={() => moveActivity(day.id, act.id, 1)} 
-                                  disabled={isLast} 
+                                <button
+                                  onClick={() => moveActivity(day.id, act.id, 1)}
+                                  disabled={isLast}
                                   style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <ArrowDown size={14} />
                                 </button>
-                                <button 
-                                  onClick={() => handleStartEditActivity(day.id, act)} 
+                                <button
+                                  onClick={() => handleStartEditActivity(day.id, act)}
                                   style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <Pencil size={13} />
                                 </button>
-                                <button 
-                                  onClick={() => handleDeleteActivity(day.id, act.id)} 
+                                <button
+                                  onClick={() => handleDeleteActivity(day.id, act.id)}
                                   style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <Trash2 size={13} />
                                 </button>
                               </div>
+                              )}
                             </div>
 
                             {act.description && (
@@ -1160,6 +1172,7 @@ export default function PlanningTab({ tripId }) {
                   </div>
 
                   {/* Add Activity Button */}
+                  {canEdit && (
                   <button
                     onClick={() => handleOpenAddActivity(day.id)}
                     className="btn-secondary"
@@ -1181,6 +1194,7 @@ export default function PlanningTab({ tripId }) {
                     <Plus size={14} />
                     <span>הוסף פעילות</span>
                   </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
 import { lookupFlightLive } from '../services/flightApi';
+import { useTrip } from '../TripContext';
 import MapComponent from './MapComponent';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
@@ -115,6 +116,7 @@ function formatDateRange(out, ret) {
 }
 
 export default function FlightTab({ tripId }) {
+  const { canEdit, ownerProfile } = useTrip();
   const [tripData, setTripData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -370,6 +372,7 @@ export default function FlightTab({ tripId }) {
   }, [tripData]);
 
   const openEditModal = (scope = 'all') => {
+    if (!canEdit) return;
     setEditScope(scope);
     if (!tripData) return;
     const out = tripData.outboundFlightDetails || emptyFlightDetails;
@@ -523,6 +526,7 @@ export default function FlightTab({ tripId }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {canEdit && (
             <button
               onClick={() => openEditModal(kind)}
               title={`ערוך ${label}`}
@@ -535,6 +539,7 @@ export default function FlightTab({ tripId }) {
             >
               <Edit2 size={14} />
             </button>
+            )}
             <button
               onClick={() => refreshFlight(kind)}
               disabled={isRefreshing || !flight.flightNumber}
@@ -565,11 +570,17 @@ export default function FlightTab({ tripId }) {
           <Calendar size={16} style={{ color: 'var(--primary-color)' }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>תאריך טיסה</div>
-            <CustomDatePicker
-              value={flight.date || (kind === 'outbound' ? '2026-06-15' : '2026-06-22')}
-              onChange={(val) => handleUpdateFlightDate(kind, val)}
-              variant="compact"
-            />
+            {canEdit ? (
+              <CustomDatePicker
+                value={flight.date || (kind === 'outbound' ? '2026-06-15' : '2026-06-22')}
+                onChange={(val) => handleUpdateFlightDate(kind, val)}
+                variant="compact"
+              />
+            ) : (
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-color)' }}>
+                {flight.date ? new Date(flight.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
+              </div>
+            )}
           </div>
         </div>
 
@@ -631,6 +642,32 @@ export default function FlightTab({ tripId }) {
 
   return (
     <div className="animate-fade dashboard-grid">
+      {ownerProfile && (
+        <div className="owner-banner">
+          {ownerProfile.photoURL ? (
+            <img src={ownerProfile.photoURL} alt="" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="owner-banner-avatar">
+              {(ownerProfile.displayName || ownerProfile.email || '?')[0]}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>טיול משותף של</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {ownerProfile.displayName || ownerProfile.email}
+            </div>
+          </div>
+          <span style={{
+            fontSize: 11, fontWeight: 800,
+            padding: '4px 10px', borderRadius: 999,
+            background: canEdit ? 'rgba(5,150,105,0.12)' : 'rgba(11,11,48,0.06)',
+            color: canEdit ? 'var(--text-success)' : 'var(--text-muted)'
+          }}>
+            {canEdit ? 'הרשאה: עריכה' : 'הרשאה: צפייה בלבד'}
+          </span>
+        </div>
+      )}
+
       {/* Map at the very top — no header, no toggle buttons */}
       <MapComponent
         depCoords={mapFlight.depAirport}
@@ -651,6 +688,7 @@ export default function FlightTab({ tripId }) {
           <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)', flex: 1 }}>
             פרטי המלון ביעד
           </h4>
+          {canEdit && (
           <button
             onClick={() => openEditModal('hotel')}
             title="ערוך פרטי מלון"
@@ -663,6 +701,7 @@ export default function FlightTab({ tripId }) {
           >
             <Edit2 size={14} />
           </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>

@@ -7,6 +7,7 @@ import {
   getDoc, writeBatch
 } from 'firebase/firestore';
 import ConfirmModal from './components/ConfirmModal';
+import { TripProvider } from './TripContext';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
 import FlightTab, { defaultTrip } from './components/FlightTab';
@@ -97,7 +98,7 @@ function LoadingScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
+function Homepage({ trips, currentUid, ownerProfiles, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -186,7 +187,12 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
         </div>
       )}
 
-      {trips.map(trip => (
+      {trips.map(trip => {
+        const myRole = trip.members?.[currentUid];
+        const isOwner = myRole === 'owner';
+        const ownerUid = Object.keys(trip.members || {}).find(uid => trip.members[uid] === 'owner');
+        const ownerProfile = ownerUid ? ownerProfiles?.[ownerUid] : null;
+        return (
         <div className="trip-card" key={trip.id} onClick={() => onOpenTrip(trip.id)}>
           <div className="trip-card-header">
             <div className="trip-card-icon">
@@ -197,6 +203,26 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
               <p>{trip.destination || ''}</p>
             </div>
           </div>
+
+          {!isOwner && ownerProfile && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '6px 10px', background: 'rgba(79,70,229,0.08)',
+              border: '1px solid rgba(79,70,229,0.18)', borderRadius: 999,
+              alignSelf: 'flex-start'
+            }}>
+              {ownerProfile.photoURL ? (
+                <img src={ownerProfile.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+              ) : (
+                <Users size={14} style={{ color: 'var(--accent)' }} />
+              )}
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
+                טיול של {ownerProfile.displayName || ownerProfile.email || ''}
+                {' · '}
+                {myRole === 'viewer' ? 'צפייה' : 'עריכה'}
+              </span>
+            </div>
+          )}
 
           {trip.dates && (
             <div className="trip-card-meta">
@@ -213,32 +239,64 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
               <button
                 onClick={() => onShareTrip(trip.id)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
-                title="שתף טיול"
+                title={isOwner ? 'שתף וניהול חברים' : 'הצג חברי טיול'}
               >
                 <UserPlus size={15} />
               </button>
               <button
-                onClick={() => onDeleteTrip(trip.id)}
+                onClick={() => onDeleteTrip(trip.id, isOwner)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(220,38,38,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' }}
-                title="מחק טיול"
+                title={isOwner ? 'מחק טיול' : 'צא מהטיול'}
               >
                 <Trash2 size={15} />
               </button>
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════
-   SHARE MODAL — Invite user by email
+   SHARE MODAL — Invite + manage trip members
    ══════════════════════════════════════════════════════════ */
-function ShareModal({ tripId, onClose }) {
+function ShareModal({ tripId, currentUid, onClose }) {
+  const [trip, setTrip] = useState(null);
+  const [members, setMembers] = useState([]); // [{ uid, role, profile? }]
   const [email, setEmail] = useState('');
+  const [newRole, setNewRole] = useState('viewer'); // viewer | editor
   const [status, setStatus] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Live-listen to the trip so members list refreshes when roles change
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(doc(db, 'trips', tripId), (snap) => {
+      if (!snap.exists()) { setTrip(null); setMembers([]); return; }
+      setTrip(snap.data());
+    });
+  }, [tripId]);
+
+  // Load each member's profile (displayName/email)
+  useEffect(() => {
+    if (!trip?.members) { setMembers([]); return; }
+    const entries = Object.entries(trip.members).filter(([, role]) => role);
+    let cancelled = false;
+    (async () => {
+      const enriched = await Promise.all(entries.map(async ([uid, role]) => {
+        try {
+          const u = await getDoc(doc(db, 'users', uid));
+          return { uid, role, profile: u.exists() ? u.data() : null };
+        } catch {
+          return { uid, role, profile: null };
+        }
+      }));
+      if (!cancelled) setMembers(enriched);
+    })();
+    return () => { cancelled = true; };
+  }, [trip]);
 
   const handleInvite = async (e) => {
     e.preventDefault();
@@ -247,7 +305,6 @@ function ShareModal({ tripId, onClose }) {
     setErrorMsg('');
 
     try {
-      // Find user by email
       const q = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()));
       const snap = await getDocs(q);
 
@@ -257,14 +314,18 @@ function ShareModal({ tripId, onClose }) {
       }
 
       const targetUid = snap.docs[0].id;
+      if (targetUid === currentUid) {
+        setStatus('self');
+        return;
+      }
+      if (trip?.members?.[targetUid]) {
+        setStatus('already');
+        return;
+      }
 
-      // Add target to the trip's members map AND memberIds array.
-      // We deliberately do NOT write to the invited user's profile —
-      // Firestore rules prevent that, and the trip-listing query on
-      // the homepage uses memberIds (array-contains) to discover trips.
       const tripRef = doc(db, 'trips', tripId);
       await updateDoc(tripRef, {
-        [`members.${targetUid}`]: 'member',
+        [`members.${targetUid}`]: newRole,
         memberIds: arrayUnion(targetUid),
       });
 
@@ -277,42 +338,180 @@ function ShareModal({ tripId, onClose }) {
     }
   };
 
+  const changeRole = async (uid, role) => {
+    try {
+      await updateDoc(doc(db, 'trips', tripId), {
+        [`members.${uid}`]: role,
+      });
+    } catch (err) {
+      console.error('Change role failed:', err);
+      setStatus('error');
+      setErrorMsg(err?.message || 'Unknown error');
+    }
+  };
+
+  const removeMember = async (uid) => {
+    try {
+      // Build the new members map without that uid
+      const newMembers = { ...(trip?.members || {}) };
+      delete newMembers[uid];
+      await updateDoc(doc(db, 'trips', tripId), {
+        members: newMembers,
+        memberIds: arrayRemove(uid),
+      });
+    } catch (err) {
+      console.error('Remove member failed:', err);
+      setStatus('error');
+      setErrorMsg(err?.message || 'Unknown error');
+    }
+  };
+
+  const currentRole = trip?.members?.[currentUid];
+  const isOwner = currentRole === 'owner';
+
+  // For non-owners: this modal only shows members + leave button (no controls)
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ height: 'auto', maxHeight: '50%' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-content" style={{ height: 'auto', maxHeight: '90%' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>שתף טיול</h2>
+          <h2>שיתוף וניהול חברי הטיול</h2>
           <button className="btn-close" onClick={onClose}>✕</button>
         </div>
 
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
-          הזן את כתובת האימייל של משתמש רשום כדי לשתף אותו בטיול. הוא יוכל לצפות ולערוך את כל הנתונים.
-        </p>
+        {isOwner && (
+          <>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.55 }}>
+              הזן אימייל של משתמש רשום, בחר הרשאה, והוא יראה את הטיול אצלו באפליקציה.
+              {' '}אתה תמיד נשאר הבעלים ויכול לשנות הרשאות או להוריד גישה בכל זמן.
+            </p>
 
-        <form onSubmit={handleInvite} style={{ display: 'flex', gap: 8 }}>
-          <input
-            className="form-control"
-            type="email"
-            placeholder="example@gmail.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-            dir="ltr"
-            style={{ flex: 1 }}
-          />
-          <button type="submit" className="btn-primary" style={{ padding: '12px 20px', flexShrink: 0 }} disabled={status === 'searching'}>
-            <UserPlus size={16} />
-          </button>
-        </form>
+            <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input
+                className="form-control"
+                type="email"
+                placeholder="example@gmail.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                dir="ltr"
+              />
 
-        {status === 'searching' && <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 14 }}>מחפש משתמש...</p>}
-        {status === 'success' && <p style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: 14 }}>✅ המשתמש נוסף בהצלחה! הטיול יופיע אצלו באפליקציה.</p>}
-        {status === 'not-found' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 14 }}>❌ לא נמצא משתמש עם האימייל הזה. ודא שהוא רשום לאפליקציה.</p>}
-        {status === 'error' && (
-          <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
-            ❌ שגיאה בשיתוף.{errorMsg && <><br /><span style={{ fontWeight: 600, fontSize: 12 }} dir="ltr">{errorMsg}</span></>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'rgba(11,11,48,0.04)', padding: 4, borderRadius: 12 }}>
+                {[
+                  { val: 'viewer', label: 'צפייה בלבד', desc: 'יראה את הטיול אבל לא יוכל לערוך' },
+                  { val: 'editor', label: 'עריכה', desc: 'יוכל לערוך טיסות, מלון, תכנון וצ\'קליסט' },
+                ].map(opt => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setNewRole(opt.val)}
+                    style={{
+                      border: 'none', borderRadius: 8, padding: '10px 12px',
+                      fontFamily: 'var(--font-hebrew)',
+                      background: newRole === opt.val ? '#fff' : 'transparent',
+                      color: newRole === opt.val ? 'var(--primary)' : 'var(--text-muted)',
+                      boxShadow: newRole === opt.val ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                      cursor: 'pointer', textAlign: 'right'
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 900 }}>{opt.label}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600 }}>{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <button type="submit" className="btn-primary" disabled={status === 'searching'}>
+                <UserPlus size={16} />
+                <span>{status === 'searching' ? 'מחפש...' : 'שתף'}</span>
+              </button>
+            </form>
+
+            {status === 'success' && <p style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: 13 }}>✅ נוסף בהצלחה.</p>}
+            {status === 'not-found' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13 }}>❌ אין משתמש רשום עם האימייל הזה.</p>}
+            {status === 'self' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13 }}>❌ אי אפשר לשתף את עצמך.</p>}
+            {status === 'already' && <p style={{ color: 'rgb(146, 64, 14)', fontWeight: 700, fontSize: 13 }}>ⓘ המשתמש כבר חבר בטיול.</p>}
+            {status === 'error' && (
+              <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
+                ❌ שגיאה.{errorMsg && <><br /><span style={{ fontWeight: 600, fontSize: 11 }} dir="ltr">{errorMsg}</span></>}
+              </p>
+            )}
+          </>
+        )}
+
+        {!isOwner && (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.55 }}>
+            רק הבעלים של הטיול יכול להוסיף או להסיר חברים.
           </p>
         )}
+
+        <h4 style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary)', marginTop: 4 }}>חברי הטיול ({members.length})</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {members.map(({ uid, role, profile }) => {
+            const isSelf = uid === currentUid;
+            const isOwnerRow = role === 'owner';
+            return (
+              <div
+                key={uid}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px',
+                  background: 'rgba(11,11,48,0.03)',
+                  border: '1px solid rgba(11,11,48,0.06)',
+                  borderRadius: 12,
+                }}
+              >
+                {profile?.photoURL ? (
+                  <img src={profile.photoURL} alt="" style={{ width: 34, height: 34, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                ) : (
+                  <div style={{
+                    width: 34, height: 34, borderRadius: '50%',
+                    background: 'var(--accent)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontWeight: 800
+                  }}>
+                    {(profile?.displayName || profile?.email || '?')[0]}
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {profile?.displayName || profile?.email || uid}
+                    {isSelf && <span style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>(אתה)</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                    {isOwnerRow ? 'בעלים' : (role === 'editor' || role === 'member') ? 'עריכה' : 'צפייה'}
+                  </div>
+                </div>
+
+                {isOwner && !isOwnerRow && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => changeRole(uid, (role === 'editor' || role === 'member') ? 'viewer' : 'editor')}
+                      className="btn-secondary"
+                      style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
+                      title={(role === 'editor' || role === 'member') ? 'הפוך לצפייה בלבד' : 'אפשר עריכה'}
+                    >
+                      {(role === 'editor' || role === 'member') ? 'הפוך לצופה' : 'אפשר עריכה'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeMember(uid)}
+                      style={{
+                        background: 'rgba(220,38,38,0.08)', border: 'none',
+                        color: '#dc2626', borderRadius: 8, width: 32, height: 32,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer'
+                      }}
+                      title="הסר מהטיול"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -537,6 +736,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('flight');
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [trips, setTrips] = useState([]);
+  const [ownerProfiles, setOwnerProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
@@ -672,6 +872,35 @@ export default function App() {
     });
   }, [user]);
 
+  // Pre-load profile docs for every trip owner so the homepage card can
+  // show "טיול של ..." badges without lazy-loading per card.
+  useEffect(() => {
+    if (!user || trips.length === 0) return;
+    const ownerUids = new Set();
+    for (const t of trips) {
+      const members = t.members || {};
+      for (const [uid, role] of Object.entries(members)) {
+        if (role === 'owner' && uid !== user.uid) ownerUids.add(uid);
+      }
+    }
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      await Promise.all([...ownerUids].map(async (uid) => {
+        if (ownerProfiles[uid]) return;
+        try {
+          const u = await getDoc(doc(db, 'users', uid));
+          if (u.exists()) updates[uid] = u.data();
+        } catch { /* ignore */ }
+      }));
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setOwnerProfiles(prev => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips, user]);
+
   // Create a new trip
   const handleCreateTrip = async (name, destination) => {
     if (!user) return;
@@ -777,13 +1006,31 @@ export default function App() {
     }
   };
 
-  const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name } | null
+  const leaveTrip = async (tripId) => {
+    if (!user) return;
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    const newMembers = { ...(trip.members || {}) };
+    delete newMembers[user.uid];
+    await updateDoc(doc(db, 'trips', tripId), {
+      members: newMembers,
+      memberIds: arrayRemove(user.uid),
+    });
+    // Best-effort legacy cleanup
+    updateDoc(doc(db, 'users', user.uid), { tripIds: arrayRemove(tripId) }).catch(() => {});
+  };
+
+  const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  const requestDeleteTrip = (tripId) => {
+  const requestDeleteTrip = (tripId, isOwner) => {
     const t = trips.find(x => x.id === tripId);
-    setConfirmDelete({ tripId, name: t?.name || 'הטיול הזה' });
+    setConfirmDelete({
+      tripId,
+      name: t?.name || 'הטיול הזה',
+      mode: isOwner ? 'delete' : 'leave',
+    });
     setDeleteError('');
   };
 
@@ -792,7 +1039,11 @@ export default function App() {
     setDeleteBusy(true);
     setDeleteError('');
     try {
-      await deleteTripFully(confirmDelete.tripId);
+      if (confirmDelete.mode === 'delete') {
+        await deleteTripFully(confirmDelete.tripId);
+      } else {
+        await leaveTrip(confirmDelete.tripId);
+      }
       if (selectedTripId === confirmDelete.tripId) {
         setScreen('home');
         setSelectedTripId(null);
@@ -855,6 +1106,8 @@ export default function App() {
         <main className="app-content">
           <Homepage
             trips={trips}
+            currentUid={user.uid}
+            ownerProfiles={ownerProfiles}
             onOpenTrip={(id) => { setSelectedTripId(id); setActiveTab('flight'); setScreen('trip'); }}
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={requestDeleteTrip}
@@ -865,7 +1118,7 @@ export default function App() {
         </main>
 
         {sharingTripId && (
-          <ShareModal tripId={sharingTripId} onClose={() => setSharingTripId(null)} />
+          <ShareModal tripId={sharingTripId} currentUid={user.uid} onClose={() => setSharingTripId(null)} />
         )}
 
         <GlobalChecklistModal
@@ -877,18 +1130,29 @@ export default function App() {
 
         <ConfirmModal
           isOpen={!!confirmDelete}
-          title="מחיקת טיול"
+          title={confirmDelete?.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
           message={
-            <>
-              האם למחוק את <strong>{confirmDelete?.name}</strong> לצמיתות?
-              <br />
-              כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.
-              {deleteError && (
-                <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
-              )}
-            </>
+            confirmDelete?.mode === 'leave' ? (
+              <>
+                האם לצאת מ-<strong>{confirmDelete?.name}</strong>?
+                <br />
+                הטיול לא יימחק — הוא פשוט יוסר מהרשימה שלך. רק הבעלים של הטיול יכול למחוק אותו לכולם.
+                {deleteError && (
+                  <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
+                )}
+              </>
+            ) : (
+              <>
+                האם למחוק את <strong>{confirmDelete?.name}</strong> לצמיתות?
+                <br />
+                כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.
+                {deleteError && (
+                  <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
+                )}
+              </>
+            )
           }
-          confirmText="מחק לצמיתות"
+          confirmText={confirmDelete?.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות'}
           cancelText="בטל"
           onConfirm={handleConfirmDelete}
           onClose={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); } }}
@@ -926,21 +1190,19 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {activeTab === 'flight' && (
-            <>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
-                title="ערוך פרטי טיסה ומלון"
-                style={{
-                  width: 34, height: 34, borderRadius: '50%',
-                  background: 'rgba(79,70,229,0.1)', border: 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', color: 'var(--accent)'
-                }}
-              >
-                <Pencil size={15} />
-              </button>
-            </>
+          {activeTab === 'flight' && ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]) && (
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
+              title="ערוך פרטי טיסה ומלון"
+              style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: 'rgba(79,70,229,0.1)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--accent)'
+              }}
+            >
+              <Pencil size={15} />
+            </button>
           )}
           <div style={{
             width: 34, height: 34, borderRadius: '50%',
@@ -954,9 +1216,20 @@ export default function App() {
       </header>
 
       <main className="app-content" key={activeTab}>
-        {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
-        {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
-        {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+        <TripProvider value={{
+          tripId: selectedTripId,
+          role: selectedTrip?.members?.[user.uid] || null,
+          canEdit: ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]),
+          isOwner: selectedTrip?.members?.[user.uid] === 'owner',
+          ownerProfile: (() => {
+            const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
+            return ownerUid && ownerUid !== user.uid ? ownerProfiles[ownerUid] : null;
+          })(),
+        }}>
+          {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
+          {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
+          {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+        </TripProvider>
       </main>
 
       <nav className="bottom-nav">

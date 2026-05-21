@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
+import { useTrip } from '../TripContext';
 
 export const defaultChecklist = [
   // Category 1: Documents & Core
@@ -47,6 +48,7 @@ export const defaultChecklist = [
 ];
 
 export default function ChecklistTab({ tripId }) {
+  const { canEdit } = useTrip();
   const [items, setItems] = useState([]);
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
@@ -203,7 +205,8 @@ export default function ChecklistTab({ tripId }) {
         </div>
       </div>
 
-      {/* Add New Item form */}
+      {/* Add New Item form — owner/editor only */}
+      {canEdit && (
       <form onSubmit={handleAdd} className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <h4 style={{ fontSize: '15px', fontWeight: '800', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
           {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
@@ -241,6 +244,7 @@ export default function ChecklistTab({ tripId }) {
           </button>
         )}
       </form>
+      )}
 
       {/* Checklist categories — collapsible by default */}
       {categories.map((category, catIdx) => {
@@ -290,10 +294,10 @@ export default function ChecklistTab({ tripId }) {
                   <div
                     key={item.id}
                     className="glass-card checklist-item-row"
-                    onClick={() => handleToggle(item)}
+                    onClick={canEdit ? () => handleToggle(item) : undefined}
                     style={{
                       padding: '12px 14px',
-                      cursor: 'pointer',
+                      cursor: canEdit ? 'pointer' : 'default',
                       background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
                       border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
                     }}
@@ -326,22 +330,24 @@ export default function ChecklistTab({ tripId }) {
                       {item.text}
                     </span>
 
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="ערוך"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
-                        style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="מחק"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
+                    {canEdit ? (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="ערוך"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                          style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="מחק"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ) : <div />}
                   </div>
                 ))}
               </div>
@@ -350,17 +356,19 @@ export default function ChecklistTab({ tripId }) {
         );
       })}
 
-      {/* Reset button */}
+      {/* Reset button — owner/editor only */}
+      {canEdit && (
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-        <button 
-          onClick={handleReset} 
-          className="btn-secondary" 
+        <button
+          onClick={handleReset}
+          className="btn-secondary"
           style={{ fontSize: '13px', padding: '10px 16px', gap: '6px', color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
         >
           <RotateCcw size={14} />
           <span>איפוס לרשימת ברירת המחדל</span>
         </button>
       </div>
+      )}
 
     </div>
   );
