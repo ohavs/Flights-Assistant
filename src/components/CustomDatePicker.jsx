@@ -438,6 +438,168 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
 }
 
 /* ══════════════════════════════════════════════════════════
+   CUSTOM TIME PICKER — outputs "HH:MM AM/PM" (12-hour)
+   ══════════════════════════════════════════════════════════ */
+function parse12hString(str) {
+  const m = String(str || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return { h12: '12', mm: '00', period: 'PM' };
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  let period = (m[3] || '').toUpperCase();
+  if (!period) {
+    period = h >= 12 ? 'PM' : 'AM';
+    h = ((h + 11) % 12) + 1;
+  }
+  return { h12: String(h).padStart(2, '0'), mm: String(min).padStart(2, '0'), period };
+}
+
+export function formatHebrewTime(timeStr) {
+  if (!timeStr) return 'בחר שעה';
+  return timeStr;
+}
+
+export function CustomTimePicker({ value, onChange, label, required }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const parsed = parse12hString(value);
+  const [tempH, setTempH] = useState(parsed.h12);
+  const [tempM, setTempM] = useState(parsed.mm);
+  const [tempPeriod, setTempPeriod] = useState(parsed.period);
+
+  useEffect(() => {
+    const p = parse12hString(value);
+    setTempH(p.h12);
+    setTempM(p.mm);
+    setTempPeriod(p.period);
+  }, [value]);
+
+  const hRef = useRef(null);
+  const mRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    requestAnimationFrame(() => {
+      const scrollActive = (ref, cls) => {
+        if (!ref.current) return;
+        const el = ref.current.querySelector('.' + cls);
+        if (el) ref.current.scrollTop = el.offsetTop - ref.current.clientHeight / 2 + el.clientHeight / 2;
+      };
+      scrollActive(hRef, 'active-h');
+      scrollActive(mRef, 'active-m');
+    });
+  }, [isOpen, tempH, tempM]);
+
+  const hours12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
+  const handleSave = () => {
+    onChange(`${tempH}:${tempM} ${tempPeriod}`);
+    setIsOpen(false);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+      {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+
+      <div
+        onClick={() => setIsOpen(true)}
+        className="form-control"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fff' }}
+      >
+        <span style={{ fontSize: '15px', fontWeight: '700', color: value ? 'var(--primary)' : 'var(--text-muted)' }}>
+          {value || 'בחר שעה...'}
+        </span>
+        <Clock size={18} style={{ color: 'var(--text-muted)' }} />
+      </div>
+
+      {isOpen && (
+        <div
+          onClick={() => setIsOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(11,11,48,0.4)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '360px', background: '#fff', borderRadius: '24px', boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)', border: '1px solid rgba(11, 11, 48, 0.08)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
+              <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
+              <button type="button" onClick={() => setIsOpen(false)} style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* AM/PM toggle */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'rgba(11,11,48,0.04)', padding: 4, borderRadius: 12 }}>
+              {['AM', 'PM'].map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setTempPeriod(p)}
+                  style={{
+                    border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 14, fontWeight: 800, cursor: 'pointer',
+                    background: tempPeriod === p ? '#fff' : 'transparent',
+                    color: tempPeriod === p ? 'var(--primary)' : 'var(--text-muted)',
+                    boxShadow: tempPeriod === p ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {p === 'AM' ? 'לפני הצהריים (AM)' : 'אחר הצהריים (PM)'}
+                </button>
+              ))}
+            </div>
+
+            {/* Hour + Minute columns */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, direction: 'rtl' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
+                <div ref={hRef} style={{ flex: 1, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {hours12.map(h => {
+                    const isActive = h === tempH;
+                    return (
+                      <button
+                        key={h} type="button"
+                        className={isActive ? 'active-h' : ''}
+                        onClick={() => setTempH(h)}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}
+                      >{h}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
+                <div ref={mRef} style={{ flex: 1, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {minutes.map(m => {
+                    const isActive = m === tempM;
+                    return (
+                      <button
+                        key={m} type="button"
+                        className={isActive ? 'active-m' : ''}
+                        onClick={() => setTempM(m)}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}
+                      >{m}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: 12, padding: '10px 14px', fontSize: '13.5px', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
+              {tempH}:{tempM} {tempPeriod}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={handleSave} className="btn-primary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>בחירה</button>
+              <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>ביטול</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
    CUSTOM DATE TIME PICKER
    ══════════════════════════════════════════════════════════ */
 export function CustomDateTimePicker({ value, onChange, label }) {

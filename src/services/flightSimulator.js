@@ -1,14 +1,40 @@
 // Flight status simulator and coordinate generator
 const airportDatabase = {
-  NUE: { code: 'NUE', city: 'נירנברג', name: 'Nuremberg Airport', lat: 49.4987, lng: 11.0780, timezone: 'UTC +02:00' },
-  GRO: { code: 'GRO', city: 'ז\'ירונה', name: 'Girona-Costa Brava Airport', lat: 41.9010, lng: 2.7606, timezone: 'UTC +02:00' },
+  // Israel
   TLV: { code: 'TLV', city: 'תל אביב', name: 'נמל התעופה בן גוריון', lat: 32.0055, lng: 34.8854, timezone: 'UTC +03:00' },
+  // Europe
+  NUE: { code: 'NUE', city: 'נירנברג', name: 'Nuremberg Airport', lat: 49.4987, lng: 11.0780, timezone: 'UTC +02:00' },
+  GRO: { code: 'GRO', city: "ז'ירונה", name: 'Girona-Costa Brava Airport', lat: 41.9010, lng: 2.7606, timezone: 'UTC +02:00' },
   FCO: { code: 'FCO', city: 'רומא', name: 'Leonardo da Vinci-Fiumicino Airport', lat: 41.7999, lng: 12.2462, timezone: 'UTC +02:00' },
+  MXP: { code: 'MXP', city: 'מילאנו', name: 'Milan Malpensa', lat: 45.6306, lng: 8.7281, timezone: 'UTC +02:00' },
   FRA: { code: 'FRA', city: 'פרנקפורט', name: 'Frankfurt Airport', lat: 50.0379, lng: 8.5622, timezone: 'UTC +02:00' },
+  MUC: { code: 'MUC', city: 'מינכן', name: 'Munich Airport', lat: 48.3538, lng: 11.7861, timezone: 'UTC +02:00' },
+  BER: { code: 'BER', city: 'ברלין', name: 'Berlin Brandenburg', lat: 52.3667, lng: 13.5033, timezone: 'UTC +02:00' },
   LTN: { code: 'LTN', city: 'לונדון לוטון', name: 'London Luton Airport', lat: 51.8763, lng: -0.3717, timezone: 'UTC +01:00' },
+  LHR: { code: 'LHR', city: 'לונדון הית\'רו', name: 'London Heathrow', lat: 51.4700, lng: -0.4543, timezone: 'UTC +01:00' },
+  LGW: { code: 'LGW', city: 'לונדון גטוויק', name: 'London Gatwick', lat: 51.1481, lng: -0.1903, timezone: 'UTC +01:00' },
   CDG: { code: 'CDG', city: 'פריז', name: 'Charles de Gaulle Airport', lat: 49.0097, lng: 2.5479, timezone: 'UTC +02:00' },
-  JFK: { code: 'JFK', city: 'ניו יורק', name: 'John F. Kennedy International Airport', lat: 40.6413, lng: -73.7781, timezone: 'UTC -04:00' },
+  ORY: { code: 'ORY', city: 'פריז אורלי', name: 'Paris Orly', lat: 48.7233, lng: 2.3795, timezone: 'UTC +02:00' },
+  AMS: { code: 'AMS', city: 'אמסטרדם', name: 'Amsterdam Schiphol', lat: 52.3105, lng: 4.7683, timezone: 'UTC +02:00' },
+  BCN: { code: 'BCN', city: 'ברצלונה', name: 'Barcelona-El Prat', lat: 41.2974, lng: 2.0833, timezone: 'UTC +02:00' },
+  MAD: { code: 'MAD', city: 'מדריד', name: 'Madrid Barajas', lat: 40.4936, lng: -3.5668, timezone: 'UTC +02:00' },
   ATH: { code: 'ATH', city: 'אתונה', name: 'Athens International Airport', lat: 37.9356, lng: 23.9484, timezone: 'UTC +03:00' },
+  PRG: { code: 'PRG', city: 'פראג', name: 'Václav Havel Airport Prague', lat: 50.1008, lng: 14.2600, timezone: 'UTC +02:00' },
+  VIE: { code: 'VIE', city: 'וינה', name: 'Vienna International', lat: 48.1102, lng: 16.5697, timezone: 'UTC +02:00' },
+  BUD: { code: 'BUD', city: 'בודפשט', name: 'Budapest Ferenc Liszt', lat: 47.4369, lng: 19.2556, timezone: 'UTC +02:00' },
+  WAW: { code: 'WAW', city: 'ורשה', name: 'Warsaw Chopin', lat: 52.1657, lng: 20.9671, timezone: 'UTC +02:00' },
+  IST: { code: 'IST', city: 'איסטנבול', name: 'Istanbul Airport', lat: 41.2753, lng: 28.7519, timezone: 'UTC +03:00' },
+  // Americas
+  JFK: { code: 'JFK', city: 'ניו יורק JFK', name: 'John F. Kennedy International', lat: 40.6413, lng: -73.7781, timezone: 'UTC -04:00' },
+  EWR: { code: 'EWR', city: 'ניוארק', name: 'Newark Liberty', lat: 40.6895, lng: -74.1745, timezone: 'UTC -04:00' },
+  LAX: { code: 'LAX', city: 'לוס אנג\'לס', name: 'Los Angeles International', lat: 33.9416, lng: -118.4085, timezone: 'UTC -07:00' },
+  MIA: { code: 'MIA', city: 'מיאמי', name: 'Miami International', lat: 25.7959, lng: -80.2870, timezone: 'UTC -04:00' },
+  YYZ: { code: 'YYZ', city: 'טורונטו', name: 'Toronto Pearson', lat: 43.6777, lng: -79.6248, timezone: 'UTC -04:00' },
+  // Asia / other
+  DXB: { code: 'DXB', city: 'דובאי', name: 'Dubai International', lat: 25.2532, lng: 55.3657, timezone: 'UTC +04:00' },
+  BKK: { code: 'BKK', city: 'בנגקוק', name: 'Suvarnabhumi', lat: 13.6900, lng: 100.7501, timezone: 'UTC +07:00' },
+  HKG: { code: 'HKG', city: 'הונג קונג', name: 'Hong Kong International', lat: 22.3080, lng: 113.9185, timezone: 'UTC +08:00' },
+  NRT: { code: 'NRT', city: 'טוקיו נריטה', name: 'Narita International', lat: 35.7720, lng: 140.3929, timezone: 'UTC +09:00' },
 };
 
 const flightPresetDatabase = {
@@ -202,10 +228,28 @@ export function getIntermediatePoint(lat1, lon1, lat2, lon2, fraction) {
   return [lat, lng];
 }
 
-// Main lookup function
-export function lookupFlight(flightNumInput) {
-  const flightNumber = flightNumInput.trim().toUpperCase();
-  
+// Main lookup function. Deterministic: same flightNumber + date will always return
+// the same data so the UI stops "changing its mind" between renders.
+export function lookupFlight(flightNumInput, dateInput) {
+  const flightNumber = String(flightNumInput || '').trim().toUpperCase();
+  const dateStr = String(dateInput || '').trim();
+  if (!flightNumber) return null;
+
+  // Simple string hash → 32-bit unsigned integer. Stable across calls/runs.
+  const hash = (s) => {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h = (h ^ s.charCodeAt(i)) >>> 0;
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h;
+  };
+  const seed = hash(flightNumber + '|' + dateStr);
+  // Deterministic pseudo-random helpers using the seed
+  let s = seed || 1;
+  const next = () => { s = (Math.imul(s, 48271) ^ (s >>> 0)) >>> 0; return s; };
+  const intIn = (min, max) => min + (next() % (max - min + 1));
+
   const generateGate = (numStr) => {
     const gates = ['A', 'B', 'C', 'D', 'E'];
     const gateLetter = gates[numStr.charCodeAt(0) % gates.length];
@@ -221,8 +265,7 @@ export function lookupFlight(flightNumInput) {
     return preset;
   }
 
-  // If not found, generate dynamically
-  // Find airline
+  // Generate deterministically from seeded RNG
   let airline = 'חברת תעופה גלובלית';
   for (const item of airlinePrefixes) {
     if (flightNumber.startsWith(item.prefix)) {
@@ -231,20 +274,9 @@ export function lookupFlight(flightNumInput) {
     }
   }
 
-  // Select departure and arrival
   const keys = Object.keys(airportDatabase);
-  let depKey = 'TLV';
-  let arrKey = 'CDG';
-
-  // Make sure dep != arr
-  if (flightNumber.charCodeAt(0) % 2 === 0) {
-    depKey = keys[flightNumber.charCodeAt(0) % keys.length];
-    arrKey = keys[(flightNumber.charCodeAt(1) || 0) % keys.length];
-  } else {
-    depKey = keys[(flightNumber.charCodeAt(1) || 0) % keys.length];
-    arrKey = keys[flightNumber.charCodeAt(0) % keys.length];
-  }
-
+  let depKey = keys[intIn(0, keys.length - 1)];
+  let arrKey = keys[intIn(0, keys.length - 1)];
   if (depKey === arrKey) {
     arrKey = keys[(keys.indexOf(depKey) + 1) % keys.length];
   }
@@ -252,36 +284,35 @@ export function lookupFlight(flightNumInput) {
   const depAirport = airportDatabase[depKey];
   const arrAirport = airportDatabase[arrKey];
 
-  // Select aircraft
+  // Aircraft picked deterministically from the flight number
   const acIdx = (flightNumber.charCodeAt(flightNumber.length - 1) || 0) % aircraftTypes.length;
   const ac = aircraftTypes[acIdx];
-  const randNum = Math.floor(100 + Math.random() * 900);
-  const registration = `${ac.regPrefix}${String.fromCharCode(65 + (randNum % 26))}${String.fromCharCode(65 + ((randNum + 3) % 26))}`;
-  const serialNumber = String(10000 + Math.floor(Math.random() * 40000));
+  const regSeed = intIn(100, 999);
+  const registration = `${ac.regPrefix}${String.fromCharCode(65 + (regSeed % 26))}${String.fromCharCode(65 + ((regSeed + 3) % 26))}`;
+  const serialNumber = String(10000 + intIn(0, 39999));
 
-  // Generate times
-  const scheduledDepHours = 6 + Math.floor(Math.random() * 14);
-  const scheduledDepMins = Math.floor(Math.random() * 4) * 15;
-  const scheduledDepStr = `${String(scheduledDepHours % 12 || 12).padStart(2, '0')}:${String(scheduledDepMins).padStart(2, '0')} ${scheduledDepHours >= 12 ? 'PM' : 'AM'}`;
+  // Times
+  const scheduledDepHours = intIn(6, 19);
+  const scheduledDepMins = intIn(0, 3) * 15;
+  const fmt = (hours, mins) => {
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const h12 = ((hours + 11) % 12) + 1; // 0→12, 13→1, etc.
+    return `${String(h12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
+  };
 
-  const actualDelay = Math.random() > 0.5 ? Math.floor(Math.random() * 15) : 0;
-  const actualDepMinsTotal = scheduledDepHours * 60 + scheduledDepMins + actualDelay;
-  const actualDepHours = Math.floor(actualDepMinsTotal / 60);
-  const actualDepMins = actualDepMinsTotal % 60;
-  const actualDepStr = `${String(actualDepHours % 12 || 12).padStart(2, '0')}:${String(actualDepMins).padStart(2, '0')} ${actualDepHours >= 12 ? 'PM' : 'AM'}`;
+  const actualDelay = next() % 2 === 0 ? intIn(0, 14) : 0;
+  const scheduledDepTotal = scheduledDepHours * 60 + scheduledDepMins;
+  const actualDepTotal = scheduledDepTotal + actualDelay;
+  const durationMins = intIn(90, 270);
+  const scheduledArrTotal = scheduledDepTotal + durationMins;
+  const estimatedArrTotal = actualDepTotal + durationMins - (next() % 3 === 0 ? 5 : 0);
 
-  const durationMins = 90 + Math.floor(Math.random() * 180);
-  const scheduledArrMinsTotal = scheduledDepHours * 60 + scheduledDepMins + durationMins;
-  const scheduledArrHours = Math.floor(scheduledArrMinsTotal / 60);
-  const scheduledArrMins = scheduledArrMinsTotal % 60;
-  const scheduledArrStr = `${String(scheduledArrHours % 12 || 12).padStart(2, '0')}:${String(scheduledArrMins).padStart(2, '0')} ${scheduledArrHours >= 12 ? 'PM' : 'AM'}`;
+  const toHM = (t) => [Math.floor(t / 60) % 24, t % 60];
 
-  const estimatedArrMinsTotal = actualDepMinsTotal + durationMins - (Math.random() > 0.6 ? 5 : 0);
-  const estimatedArrHours = Math.floor(estimatedArrMinsTotal / 60);
-  const estimatedArrMins = estimatedArrMinsTotal % 60;
-  const estimatedArrStr = `${String(estimatedArrHours % 12 || 12).padStart(2, '0')}:${String(estimatedArrMins).padStart(2, '0')} ${estimatedArrHours >= 12 ? 'PM' : 'AM'}`;
-
-  const gate = generateGate(flightNumber);
+  const scheduledDepStr = fmt(...toHM(scheduledDepTotal));
+  const actualDepStr = fmt(...toHM(actualDepTotal));
+  const scheduledArrStr = fmt(...toHM(scheduledArrTotal));
+  const estimatedArrStr = fmt(...toHM(estimatedArrTotal));
 
   return {
     flightNumber,
@@ -297,7 +328,7 @@ export function lookupFlight(flightNumInput) {
     registration,
     serialNumber,
     country: ac.country,
-    gate,
+    gate: generateGate(flightNumber),
   };
 }
 

@@ -681,46 +681,42 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Category Horizontal Filter Chips — sticky so they're never covered by cards */}
+          {/* Category Horizontal Filter Chips — sticky, larger touch targets */}
           <div
-            className="horizontal-scroll"
+            className="horizontal-scroll filter-chips-row"
             style={{
               marginRight: '-10px',
               marginLeft: '-10px',
               paddingRight: '10px',
               paddingLeft: '10px',
-              paddingTop: '4px',
-              paddingBottom: '4px',
+              paddingTop: '8px',
+              paddingBottom: '10px',
               position: 'sticky',
               top: 0,
               zIndex: 5,
-              background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.85) 80%, rgba(245,243,255,0) 100%)',
-              backdropFilter: 'blur(4px)',
-              WebkitBackdropFilter: 'blur(4px)'
+              gap: 10,
+              background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)'
             }}
           >
-            {['הכל', ...categories].map((filter, idx) => (
-              <button
-                key={idx}
-                onClick={() => setSelectedFilter(filter)}
-                style={{
-                  whiteSpace: 'nowrap',
-                  padding: '8px 16px',
-                  borderRadius: '50px',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  border: filter === selectedFilter ? 'none' : '1px solid rgba(11, 11, 48, 0.08)',
-                  background: filter === selectedFilter ? 'var(--primary-color)' : 'rgba(255,255,255,0.85)',
-                  color: filter === selectedFilter ? '#ffffff' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: filter === selectedFilter ? '0 2px 8px rgba(11,11,48,0.15)' : 'none',
-                  flexShrink: 0
-                }}
-              >
-                {filter}
-              </button>
-            ))}
+            {['הכל', ...categories].map((filter, idx) => {
+              const active = filter === selectedFilter;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedFilter(filter)}
+                  className={`filter-chip ${active ? 'active' : ''}`}
+                >
+                  {filter !== 'הכל' && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      {getCategoryIcon(filter)}
+                    </span>
+                  )}
+                  <span>{filter}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Planning Cards List */}
@@ -1209,7 +1205,7 @@ export default function PlanningTab({ tripId }) {
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>בחר מקום שמור מתוך האטרקציות (אופציונלי)</label>
                 <select
-                  className="form-control"
+                  className="category-select"
                   value={placeId}
                   onChange={(e) => {
                     const pid = e.target.value;
@@ -1224,7 +1220,6 @@ export default function PlanningTab({ tripId }) {
                       }
                     }
                   }}
-                  style={{ minHeight: 40, fontSize: 14 }}
                 >
                   <option value="">-- הזנה ידנית (לא מקושר למקום שמור) --</option>
                   {plans.map(p => (

@@ -3,14 +3,15 @@ import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { lookupFlight, getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
 import MapComponent from './MapComponent';
-import { CustomDatePicker, CustomDateTimePicker } from './CustomDatePicker';
+import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker } from './CustomDatePicker';
 import {
   MapPin,
   Calendar,
   Edit2,
   Share2,
   Building,
-  Loader2
+  Loader2,
+  Search
 } from 'lucide-react';
 
 export const defaultTrip = {
@@ -153,9 +154,23 @@ export default function FlightTab({ tripId }) {
   const [formHotelRoom, setFormHotelRoom] = useState('');
   const [formHotelNotes, setFormHotelNotes] = useState('');
 
-  // Automatic Lookup Trackers
-  const lastOutLookupRef = useRef({ flightNum: '', date: '' });
-  const lastRetLookupRef = useRef({ flightNum: '', date: '' });
+  const runLookup = (which) => {
+    if (which === 'out') {
+      const num = (formOutFlightNum || '').trim().toUpperCase();
+      if (!num) return;
+      setLookupBusyOut(true);
+      Promise.resolve(lookupFlight(num, formOutDate))
+        .then(res => applyLookup('out', res))
+        .finally(() => setLookupBusyOut(false));
+    } else {
+      const num = (formRetFlightNum || '').trim().toUpperCase();
+      if (!num) return;
+      setLookupBusyRet(true);
+      Promise.resolve(lookupFlight(num, formRetDate))
+        .then(res => applyLookup('ret', res))
+        .finally(() => setLookupBusyRet(false));
+    }
+  };
 
   // Listen to Firestore
   useEffect(() => {
@@ -220,32 +235,8 @@ export default function FlightTab({ tripId }) {
     }
   };
 
-  // Debounced auto-fetch for outbound flight (flightNumber + date → fill everything)
-  useEffect(() => {
-    if (!showEditModal) return;
-    const flightNum = (formOutFlightNum || '').trim().toUpperCase();
-    const date = (formOutDate || '').trim();
-    if (flightNum.length >= 3 && date) {
-      if (lastOutLookupRef.current.flightNum !== flightNum || lastOutLookupRef.current.date !== date) {
-        lastOutLookupRef.current = { flightNum, date };
-        setLookupBusyOut(true);
-        Promise.resolve(lookupFlight(flightNum, date)).then(res => applyLookup('out', res)).finally(() => setLookupBusyOut(false));
-      }
-    }
-  }, [formOutFlightNum, formOutDate, showEditModal]);
-
-  useEffect(() => {
-    if (!showEditModal) return;
-    const flightNum = (formRetFlightNum || '').trim().toUpperCase();
-    const date = (formRetDate || '').trim();
-    if (flightNum.length >= 3 && date) {
-      if (lastRetLookupRef.current.flightNum !== flightNum || lastRetLookupRef.current.date !== date) {
-        lastRetLookupRef.current = { flightNum, date };
-        setLookupBusyRet(true);
-        Promise.resolve(lookupFlight(flightNum, date)).then(res => applyLookup('ret', res)).finally(() => setLookupBusyRet(false));
-      }
-    }
-  }, [formRetFlightNum, formRetDate, showEditModal]);
+  // Lookup is triggered explicitly by the "חפש" button — no noisy auto-lookup
+  // on every keystroke (which previously made the form flicker between flights).
 
   const openEditModal = () => {
     if (!tripData) return;
@@ -599,16 +590,29 @@ export default function FlightTab({ tripId }) {
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>מספר טיסה</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={formOutFlightNum}
-                    onChange={(e) => setFormOutFlightNum(e.target.value)}
-                    placeholder="למשל: LY381, FR3891"
-                    required
-                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={formOutFlightNum}
+                      onChange={(e) => setFormOutFlightNum(e.target.value)}
+                      placeholder="למשל: LY381, FR3891"
+                      required
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => runLookup('out')}
+                      className="btn-primary"
+                      style={{ minHeight: 48, padding: '0 18px', gap: 6, flexShrink: 0 }}
+                      aria-label="חיפוש טיסה"
+                    >
+                      {lookupBusyOut ? <Loader2 size={16} className="spinning" /> : <Search size={16} />}
+                      <span>חפש</span>
+                    </button>
+                  </div>
                   <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
-                    הכנס מספר טיסה ותאריך — שאר השדות ימולאו אוטומטית.
+                    לחץ "חפש" כדי למלא אוטומטית את שאר הפרטים.
                   </small>
                 </div>
 
@@ -637,17 +641,17 @@ export default function FlightTab({ tripId }) {
                 </div>
 
                 <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה מתוכננת</label><input type="text" className="form-control" value={formOutSchedDep} onChange={(e) => setFormOutSchedDep(e.target.value)} /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה בפועל</label><input type="text" className="form-control" value={formOutActDep} onChange={(e) => setFormOutActDep(e.target.value)} /></div>
+                  <CustomTimePicker value={formOutSchedDep} onChange={setFormOutSchedDep} label="המראה מתוכננת" />
+                  <CustomTimePicker value={formOutActDep} onChange={setFormOutActDep} label="המראה בפועל" />
                 </div>
                 <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה מתוכננת</label><input type="text" className="form-control" value={formOutSchedArr} onChange={(e) => setFormOutSchedArr(e.target.value)} /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה משוערת</label><input type="text" className="form-control" value={formOutEstArr} onChange={(e) => setFormOutEstArr(e.target.value)} /></div>
+                  <CustomTimePicker value={formOutSchedArr} onChange={setFormOutSchedArr} label="נחיתה מתוכננת" />
+                  <CustomTimePicker value={formOutEstArr} onChange={setFormOutEstArr} label="נחיתה משוערת" />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>סטטוס טיסה</label>
-                  <select className="form-control" value={formOutStatus} onChange={(e) => setFormOutStatus(e.target.value)}>
+                  <select className="category-select" value={formOutStatus} onChange={(e) => setFormOutStatus(e.target.value)}>
                     <option value="בזמן">בזמן</option>
                     <option value="באיחור קל">באיחור קל</option>
                     <option value="באיחור רציני">באיחור רציני</option>
@@ -665,14 +669,27 @@ export default function FlightTab({ tripId }) {
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>מספר טיסה</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={formRetFlightNum}
-                    onChange={(e) => setFormRetFlightNum(e.target.value)}
-                    placeholder="למשל: LY382, FR3892"
-                    required
-                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={formRetFlightNum}
+                      onChange={(e) => setFormRetFlightNum(e.target.value)}
+                      placeholder="למשל: LY382, FR3892"
+                      required
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => runLookup('ret')}
+                      className="btn-primary"
+                      style={{ minHeight: 48, padding: '0 18px', gap: 6, flexShrink: 0 }}
+                      aria-label="חיפוש טיסה"
+                    >
+                      {lookupBusyRet ? <Loader2 size={16} className="spinning" /> : <Search size={16} />}
+                      <span>חפש</span>
+                    </button>
+                  </div>
                 </div>
 
                 <CustomDatePicker value={formRetDate} onChange={setFormRetDate} label="תאריך טיסה" required />
@@ -700,17 +717,17 @@ export default function FlightTab({ tripId }) {
                 </div>
 
                 <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה מתוכננת</label><input type="text" className="form-control" value={formRetSchedDep} onChange={(e) => setFormRetSchedDep(e.target.value)} /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה בפועל</label><input type="text" className="form-control" value={formRetActDep} onChange={(e) => setFormRetActDep(e.target.value)} /></div>
+                  <CustomTimePicker value={formRetSchedDep} onChange={setFormRetSchedDep} label="המראה מתוכננת" />
+                  <CustomTimePicker value={formRetActDep} onChange={setFormRetActDep} label="המראה בפועל" />
                 </div>
                 <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה מתוכננת</label><input type="text" className="form-control" value={formRetSchedArr} onChange={(e) => setFormRetSchedArr(e.target.value)} /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה משוערת</label><input type="text" className="form-control" value={formRetEstArr} onChange={(e) => setFormRetEstArr(e.target.value)} /></div>
+                  <CustomTimePicker value={formRetSchedArr} onChange={setFormRetSchedArr} label="נחיתה מתוכננת" />
+                  <CustomTimePicker value={formRetEstArr} onChange={setFormRetEstArr} label="נחיתה משוערת" />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>סטטוס טיסה</label>
-                  <select className="form-control" value={formRetStatus} onChange={(e) => setFormRetStatus(e.target.value)}>
+                  <select className="category-select" value={formRetStatus} onChange={(e) => setFormRetStatus(e.target.value)}>
                     <option value="בזמן">בזמן</option>
                     <option value="באיחור קל">באיחור קל</option>
                     <option value="באיחור רציני">באיחור רציני</option>
