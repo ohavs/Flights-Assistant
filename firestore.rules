@@ -1,18 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read/write their own profile
+
+    // Users:
+    //   - any signed-in user can READ user docs (needed for sharing
+    //     trips — we look users up by email)
+    //   - only the user themselves can WRITE their own profile
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
     }
-    
-    // Trips: only members can read/write
+
+    // Trips: only members can read/write. memberIds is an array kept in
+    // parallel with the members map so we can query trips by membership
+    // without needing per-user tripIds arrays.
     match /trips/{tripId} {
-      allow read, write: if request.auth != null 
+      allow read, write: if request.auth != null
         && (resource == null || resource.data.members[request.auth.uid] != null);
-      
+
       match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null 
+        allow read, write: if request.auth != null
           && get(/databases/$(database)/documents/trips/$(tripId)).data.members[request.auth.uid] != null;
       }
     }

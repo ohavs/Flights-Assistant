@@ -6,6 +6,7 @@ import {
   query, where, getDocs, updateDoc, arrayUnion, arrayRemove,
   getDoc, writeBatch
 } from 'firebase/firestore';
+import ConfirmModal from './components/ConfirmModal';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
 import FlightTab, { defaultTrip } from './components/FlightTab';
@@ -217,7 +218,7 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
                 <UserPlus size={15} />
               </button>
               <button
-                onClick={() => { if (window.confirm('למחוק את הטיול?')) onDeleteTrip(trip.id); }}
+                onClick={() => onDeleteTrip(trip.id)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(220,38,38,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' }}
                 title="מחק טיול"
               >
@@ -236,15 +237,17 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
    ══════════════════════════════════════════════════════════ */
 function ShareModal({ tripId, onClose }) {
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState(''); // '', 'searching', 'success', 'not-found', 'already', 'error'
+  const [status, setStatus] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!email.trim()) return;
     setStatus('searching');
+    setErrorMsg('');
 
     try {
-      // Find user by email in users collection
+      // Find user by email
       const q = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()));
       const snap = await getDocs(q);
 
@@ -253,23 +256,16 @@ function ShareModal({ tripId, onClose }) {
         return;
       }
 
-      const targetDoc = snap.docs[0];
-      const targetUid = targetDoc.id;
+      const targetUid = snap.docs[0].id;
 
-      // Check if already member
-      const tripDoc = await getDocs(query(collection(db, 'trips')));
-      // Simpler: just add them directly
+      // Add target to the trip's members map AND memberIds array.
+      // We deliberately do NOT write to the invited user's profile —
+      // Firestore rules prevent that, and the trip-listing query on
+      // the homepage uses memberIds (array-contains) to discover trips.
       const tripRef = doc(db, 'trips', tripId);
-
-      // Add user to trip members
       await updateDoc(tripRef, {
-        [`members.${targetUid}`]: 'member'
-      });
-
-      // Add tripId to user's tripIds array
-      const userRef = doc(db, 'users', targetUid);
-      await updateDoc(userRef, {
-        tripIds: arrayUnion(tripId)
+        [`members.${targetUid}`]: 'member',
+        memberIds: arrayUnion(targetUid),
       });
 
       setStatus('success');
@@ -277,6 +273,7 @@ function ShareModal({ tripId, onClose }) {
     } catch (err) {
       console.error('Share error:', err);
       setStatus('error');
+      setErrorMsg(err?.message || 'Unknown error');
     }
   };
 
@@ -311,7 +308,11 @@ function ShareModal({ tripId, onClose }) {
         {status === 'searching' && <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 14 }}>מחפש משתמש...</p>}
         {status === 'success' && <p style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: 14 }}>✅ המשתמש נוסף בהצלחה! הטיול יופיע אצלו באפליקציה.</p>}
         {status === 'not-found' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 14 }}>❌ לא נמצא משתמש עם האימייל הזה. ודא שהוא רשום לאפליקציה.</p>}
-        {status === 'error' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 14 }}>שגיאה בשיתוף. נסה שוב.</p>}
+        {status === 'error' && (
+          <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
+            ❌ שגיאה בשיתוף.{errorMsg && <><br /><span style={{ fontWeight: 600, fontSize: 12 }} dir="ltr">{errorMsg}</span></>}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -559,6 +560,7 @@ export default function App() {
           destination: defaultTrip?.destination || 'פראג, צ\'כיה',
           dates: defaultTrip?.dates || '15.06.2026 - 22.06.2026',
           members: { [user.uid]: 'owner' },
+          memberIds: [user.uid],
           createdAt: new Date().toISOString(),
           outboundFlightDetails: defaultTrip?.outboundFlightDetails || {},
           returnFlightDetails: defaultTrip?.returnFlightDetails || {},
@@ -624,48 +626,50 @@ export default function App() {
             photoURL: user.photoURL || ''
           }, { merge: true });
         }
+
+        // One-shot migration: trips listed in user.tripIds need to have
+        // memberIds populated so the new array-contains query finds them.
+        const legacyTripIds = userData?.tripIds || [];
+        for (const tid of legacyTripIds) {
+          try {
+            const tref = doc(db, 'trips', tid);
+            const tsnap = await getDoc(tref);
+            if (!tsnap.exists()) continue;
+            const td = tsnap.data();
+            if (!Array.isArray(td.memberIds)) {
+              const memberIds = td.members ? Object.keys(td.members) : [user.uid];
+              await updateDoc(tref, { memberIds });
+            }
+          } catch (err) {
+            console.warn('memberIds migration failed for', tid, err);
+          }
+        }
       }
     };
 
     checkAndSeed().catch(err => console.error("Error in checkAndSeed:", err));
   }, [user]);
 
-  // Listen to user's trips
+  // Listen for the user's globalChecklist
+  useEffect(() => {
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    return onSnapshot(userRef, (snap) => {
+      setGlobalChecklist(snap.data()?.globalChecklist || []);
+    });
+  }, [user]);
+
+  // Listen for trips where this user is a member. We use the memberIds array
+  // (parallel to the members map) so shared trips show up without writing
+  // to the invited user's profile.
   useEffect(() => {
     if (!user) { setTrips([]); return; }
-
-    // Listen to the user doc to get tripIds
-    const userRef = doc(db, 'users', user.uid);
-    const unsubUser = onSnapshot(userRef, (snap) => {
-      const data = snap.data();
-      const tripIds = data?.tripIds || [];
-      setGlobalChecklist(data?.globalChecklist || []);
-
-      if (tripIds.length === 0) {
-        setTrips([]);
-        return;
-      }
-
-      // Listen to each trip doc
-      const unsubs = tripIds.map(tripId => {
-        const tripRef = doc(db, 'trips', tripId);
-        return onSnapshot(tripRef, (tripSnap) => {
-          if (tripSnap.exists()) {
-            setTrips(prev => {
-              const filtered = prev.filter(t => t.id !== tripId);
-              return [...filtered, { id: tripId, ...tripSnap.data() }];
-            });
-          } else {
-            // Trip deleted — remove from list
-            setTrips(prev => prev.filter(t => t.id !== tripId));
-          }
-        });
-      });
-
-      return () => unsubs.forEach(u => u());
+    const q = query(collection(db, 'trips'), where('memberIds', 'array-contains', user.uid));
+    return onSnapshot(q, (snap) => {
+      setTrips(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.error('Trips listener error:', err);
     });
-
-    return () => unsubUser();
   }, [user]);
 
   // Create a new trip
@@ -707,6 +711,7 @@ export default function App() {
       destination,
       dates: '',
       members: { [user.uid]: 'owner' },
+      memberIds: [user.uid],
       createdAt: new Date().toISOString(),
       outboundFlightDetails: emptyFlightDetails,
       returnFlightDetails: emptyFlightDetails,
@@ -743,25 +748,61 @@ export default function App() {
     });
   };
 
-  // Delete a trip
-  const handleDeleteTrip = async (tripId) => {
-    if (!user) return;
-    // Remove from user's tripIds
-    const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, {
-      tripIds: arrayRemove(tripId)
-    });
-
-    // Remove user from trip members (don't delete trip entirely — others might still be in it)
+  // Full delete: remove the trip doc *and* all its subcollection docs.
+  // Also removes it from any legacy user.tripIds (best-effort).
+  const deleteTripFully = async (tripId) => {
     const tripRef = doc(db, 'trips', tripId);
-    await updateDoc(tripRef, {
-      [`members.${user.uid}`]: null
-    }).catch(() => {});
 
-    // If we were viewing this trip, go back home
-    if (selectedTripId === tripId) {
-      setScreen('home');
-      setSelectedTripId(null);
+    // Delete all docs in the known subcollections, batched.
+    const subcollections = ['planning', 'days', 'checklist'];
+    for (const name of subcollections) {
+      try {
+        const snap = await getDocs(collection(db, 'trips', tripId, name));
+        if (snap.size === 0) continue;
+        const batch = writeBatch(db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      } catch (err) {
+        console.warn(`Failed to clear subcollection "${name}":`, err);
+      }
+    }
+
+    // Delete the trip document itself. Hosts are members → rules allow it.
+    await deleteDoc(tripRef);
+
+    // Best-effort: clean up our own user.tripIds legacy field
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      updateDoc(userRef, { tripIds: arrayRemove(tripId) }).catch(() => {});
+    }
+  };
+
+  const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name } | null
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const requestDeleteTrip = (tripId) => {
+    const t = trips.find(x => x.id === tripId);
+    setConfirmDelete({ tripId, name: t?.name || 'הטיול הזה' });
+    setDeleteError('');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!user || !confirmDelete?.tripId) return;
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      await deleteTripFully(confirmDelete.tripId);
+      if (selectedTripId === confirmDelete.tripId) {
+        setScreen('home');
+        setSelectedTripId(null);
+      }
+      setConfirmDelete(null);
+    } catch (err) {
+      console.error('Trip delete failed:', err);
+      setDeleteError(err?.message || 'מחיקה נכשלה');
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -816,7 +857,7 @@ export default function App() {
             trips={trips}
             onOpenTrip={(id) => { setSelectedTripId(id); setActiveTab('flight'); setScreen('trip'); }}
             onCreateTrip={handleCreateTrip}
-            onDeleteTrip={handleDeleteTrip}
+            onDeleteTrip={requestDeleteTrip}
             onShareTrip={(id) => setSharingTripId(id)}
             userName={user.displayName}
             onOpenGlobalChecklist={() => setShowGlobalChecklistModal(true)}
@@ -832,6 +873,27 @@ export default function App() {
           onClose={() => setShowGlobalChecklistModal(false)}
           globalChecklist={globalChecklist}
           userId={user.uid}
+        />
+
+        <ConfirmModal
+          isOpen={!!confirmDelete}
+          title="מחיקת טיול"
+          message={
+            <>
+              האם למחוק את <strong>{confirmDelete?.name}</strong> לצמיתות?
+              <br />
+              כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.
+              {deleteError && (
+                <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
+              )}
+            </>
+          }
+          confirmText="מחק לצמיתות"
+          cancelText="בטל"
+          onConfirm={handleConfirmDelete}
+          onClose={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); } }}
+          danger
+          busy={deleteBusy}
         />
       </div>
     );

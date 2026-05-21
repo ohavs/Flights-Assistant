@@ -204,17 +204,18 @@ function TimeBody({ hour, minute, onChangeTime }) {
   }, []);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', direction: 'rtl' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', maxHeight: '240px', direction: 'rtl' }}>
       {/* Hours Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>שעה</span>
-        <div 
+        <div
           ref={hourRef}
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            border: '1px solid rgba(11,11,48,0.08)', 
-            borderRadius: '12px', 
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            border: '1px solid rgba(11,11,48,0.08)',
+            borderRadius: '12px',
             background: 'rgba(11,11,48,0.02)',
             padding: '6px',
             display: 'flex',
@@ -250,15 +251,16 @@ function TimeBody({ hour, minute, onChangeTime }) {
       </div>
 
       {/* Minutes Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>דקה</span>
-        <div 
+        <div
           ref={minRef}
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            border: '1px solid rgba(11,11,48,0.08)', 
-            borderRadius: '12px', 
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            border: '1px solid rgba(11,11,48,0.08)',
+            borderRadius: '12px',
             background: 'rgba(11,11,48,0.02)',
             padding: '6px',
             display: 'flex',
@@ -767,7 +769,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
 
             {/* Tab content */}
-            <div style={{ minHeight: '240px' }}>
+            <div style={{ height: 280, display: 'flex', flexDirection: 'column' }}>
               {activeTab === 'date' ? (
                 <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
               ) : (

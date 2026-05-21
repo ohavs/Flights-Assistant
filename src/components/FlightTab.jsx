@@ -72,7 +72,6 @@ export const defaultTrip = {
     address: 'Politických vězňů 913/12, 110 00 Nové Město, Prague, Czech Republic',
     checkIn: '2026-06-15T14:00',
     checkOut: '2026-06-22T12:00',
-    bookingRef: 'PRG-400192-GP',
     roomNumber: '308',
     notes: 'מלון 5 כוכבים במרכז העיר, קרוב לכיכר ואצלב. ארוחת בוקר כלולה.'
   }
@@ -97,7 +96,6 @@ const emptyHotelDetails = {
   address: '',
   checkIn: '',
   checkOut: '',
-  bookingRef: '',
   roomNumber: '',
   notes: ''
 };
@@ -120,6 +118,8 @@ export default function FlightTab({ tripId }) {
   const [tripData, setTripData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
+  // 'all' | 'trip' | 'outbound' | 'return' | 'hotel'
+  const [editScope, setEditScope] = useState('all');
   const [formTripName, setFormTripName] = useState('');
   const [lookupBusyOut, setLookupBusyOut] = useState(false);
   const [lookupBusyRet, setLookupBusyRet] = useState(false);
@@ -167,7 +167,6 @@ export default function FlightTab({ tripId }) {
   const [formHotelAddress, setFormHotelAddress] = useState('');
   const [formHotelCheckIn, setFormHotelCheckIn] = useState('');
   const [formHotelCheckOut, setFormHotelCheckOut] = useState('');
-  const [formHotelRef, setFormHotelRef] = useState('');
   const [formHotelRoom, setFormHotelRoom] = useState('');
   const [formHotelNotes, setFormHotelNotes] = useState('');
 
@@ -364,13 +363,14 @@ export default function FlightTab({ tripId }) {
 
   // Listen for "open edit" events dispatched by the App header pencil button
   useEffect(() => {
-    const handler = () => openEditModal();
+    const handler = (e) => openEditModal(e?.detail?.scope || 'all');
     window.addEventListener('flight:openEdit', handler);
     return () => window.removeEventListener('flight:openEdit', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripData]);
 
-  const openEditModal = () => {
+  const openEditModal = (scope = 'all') => {
+    setEditScope(scope);
     if (!tripData) return;
     const out = tripData.outboundFlightDetails || emptyFlightDetails;
     const ret = tripData.returnFlightDetails || emptyFlightDetails;
@@ -414,7 +414,6 @@ export default function FlightTab({ tripId }) {
     setFormHotelAddress(htl.address || '');
     setFormHotelCheckIn(htl.checkIn || '');
     setFormHotelCheckOut(htl.checkOut || '');
-    setFormHotelRef(htl.bookingRef || '');
     setFormHotelRoom(htl.roomNumber || '');
     setFormHotelNotes(htl.notes || '');
 
@@ -460,7 +459,6 @@ export default function FlightTab({ tripId }) {
         address: formHotelAddress,
         checkIn: formHotelCheckIn,
         checkOut: formHotelCheckOut,
-        bookingRef: formHotelRef,
         roomNumber: formHotelRoom,
         notes: formHotelNotes
       }
@@ -524,28 +522,42 @@ export default function FlightTab({ tripId }) {
             <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '6px' }}>{flight.airline}</span>
           </div>
 
-          <button
-            onClick={() => refreshFlight(kind)}
-            disabled={isRefreshing || !flight.flightNumber}
-            title={lastRefreshed ? `עודכן לאחרונה: ${lastRefreshed}` : 'רענן מידע טיסה'}
-            style={{
-              background: 'rgba(79, 70, 229, 0.08)',
-              border: 'none',
-              padding: '6px 10px',
-              borderRadius: 8,
-              cursor: isRefreshing ? 'default' : 'pointer',
-              color: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              fontSize: 11,
-              fontWeight: 800,
-              opacity: !flight.flightNumber ? 0.4 : 1
-            }}
-          >
-            <RefreshCw size={13} className={isRefreshing ? 'spinning' : ''} />
-            <span>רענן</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={() => openEditModal(kind)}
+              title={`ערוך ${label}`}
+              style={{
+                background: 'rgba(79, 70, 229, 0.06)',
+                border: 'none', padding: '6px', borderRadius: 8, cursor: 'pointer',
+                color: 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}
+            >
+              <Edit2 size={14} />
+            </button>
+            <button
+              onClick={() => refreshFlight(kind)}
+              disabled={isRefreshing || !flight.flightNumber}
+              title={lastRefreshed ? `עודכן לאחרונה: ${lastRefreshed}` : 'רענן מידע טיסה'}
+              style={{
+                background: 'rgba(79, 70, 229, 0.08)',
+                border: 'none',
+                padding: '6px 10px',
+                borderRadius: 8,
+                cursor: isRefreshing ? 'default' : 'pointer',
+                color: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 800,
+                opacity: !flight.flightNumber ? 0.4 : 1
+              }}
+            >
+              <RefreshCw size={13} className={isRefreshing ? 'spinning' : ''} />
+              <span>רענן</span>
+            </button>
+          </div>
         </div>
 
         {/* Date Picker Section */}
@@ -639,7 +651,18 @@ export default function FlightTab({ tripId }) {
           <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)', flex: 1 }}>
             פרטי המלון ביעד
           </h4>
-          <span className="badge-success" style={{ background: 'rgba(16, 185, 129, 0.08)', color: 'var(--text-success)' }}>מאושר</span>
+          <button
+            onClick={() => openEditModal('hotel')}
+            title="ערוך פרטי מלון"
+            style={{
+              background: 'rgba(79, 70, 229, 0.06)', border: 'none',
+              padding: '6px', borderRadius: 8, cursor: 'pointer',
+              color: 'var(--accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            <Edit2 size={14} />
+          </button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
@@ -662,12 +685,6 @@ export default function FlightTab({ tripId }) {
               <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>עזיבת המלון (Check-out)</div>
               <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{formatDateTime(hotel.checkOut)}</div>
             </div>
-            {hotel.bookingRef && (
-              <div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>מספר הזמנה במלון</div>
-                <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{hotel.bookingRef}</div>
-              </div>
-            )}
             {hotel.roomNumber && (
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>סוג חדר / מספר חדר</div>
@@ -694,13 +711,20 @@ export default function FlightTab({ tripId }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
 
             <div className="modal-header">
-              <h2>עריכת כל פרטי הנסיעה</h2>
+              <h2>{
+                editScope === 'outbound' ? 'עריכת טיסת הלוך' :
+                editScope === 'return' ? 'עריכת טיסת חזור' :
+                editScope === 'hotel' ? 'עריכת פרטי המלון' :
+                editScope === 'trip' ? 'עריכת פרטי הטיול' :
+                'עריכת כל פרטי הנסיעה'
+              }</h2>
               <button className="btn-close" onClick={() => setShowEditModal(false)}>✕</button>
             </div>
 
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
               {/* === TRIP HEADER: name + 2 decisive date pickers === */}
+              {(editScope === 'all' || editScope === 'trip') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(79, 70, 229, 0.03)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>פרטי כותרת ותאריכי הטיול</span>
@@ -724,8 +748,10 @@ export default function FlightTab({ tripId }) {
                   <CustomDatePicker value={formRetDate} onChange={setFormRetDate} label="תאריך טיסת חזור" required />
                 </div>
               </div>
+              )}
 
               {/* === OUTBOUND FLIGHT === */}
+              {(editScope === 'all' || editScope === 'outbound') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>1. פרטי טיסת הלוך</span>
@@ -801,8 +827,10 @@ export default function FlightTab({ tripId }) {
                   options={FLIGHT_STATUS_OPTIONS}
                 />
               </div>
+              )}
 
               {/* === RETURN FLIGHT === */}
+              {(editScope === 'all' || editScope === 'return') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'rgb(239, 68, 68)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>2. פרטי טיסת חזור</span>
@@ -875,8 +903,10 @@ export default function FlightTab({ tripId }) {
                   options={FLIGHT_STATUS_OPTIONS}
                 />
               </div>
+              )}
 
               {/* === HOTEL === */}
+              {(editScope === 'all' || editScope === 'hotel') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>3. פרטי מלון</span>
@@ -897,15 +927,9 @@ export default function FlightTab({ tripId }) {
                   <CustomDateTimePicker value={formHotelCheckOut} onChange={setFormHotelCheckOut} label="עזיבה (Check-out)" />
                 </div>
 
-                <div className="row-2">
-                  <div className="form-group">
-                    <label>סימוכין הזמנה</label>
-                    <input type="text" className="form-control" value={formHotelRef} onChange={(e) => setFormHotelRef(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>חדר</label>
-                    <input type="text" className="form-control" value={formHotelRoom} onChange={(e) => setFormHotelRoom(e.target.value)} />
-                  </div>
+                <div className="form-group">
+                  <label>חדר</label>
+                  <input type="text" className="form-control" value={formHotelRoom} onChange={(e) => setFormHotelRoom(e.target.value)} />
                 </div>
 
                 <div className="form-group">
@@ -913,9 +937,10 @@ export default function FlightTab({ tripId }) {
                   <textarea className="form-control" rows="3" value={formHotelNotes} onChange={(e) => setFormHotelNotes(e.target.value)} style={{ resize: 'none', fontFamily: 'inherit' }} />
                 </div>
               </div>
+              )}
 
               <div style={{ display: 'flex', gap: '12px', paddingBottom: '20px' }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור את כל השינויים</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
                 <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">ביטול</button>
               </div>
 
