@@ -9,7 +9,7 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, RotateCcw, ShieldCheck, Pencil } from 'lucide-react';
+import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
 
 export const defaultChecklist = [
   // Category 1: Documents & Core
@@ -51,6 +51,12 @@ export default function ChecklistTab({ tripId }) {
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Collapsed by default to save space
+  const [collapsedCategories, setCollapsedCategories] = useState({});
+
+  const toggleCategory = (cat) => {
+    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
 
   const categories = [
     'מסמכים וסידורים',
@@ -216,8 +222,8 @@ export default function ChecklistTab({ tripId }) {
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>קטגוריה</label>
-            <select 
-              className="form-control" 
+            <select
+              className="category-select"
               value={newItemCategory}
               onChange={(e) => setNewItemCategory(e.target.value)}
             >
@@ -241,39 +247,68 @@ export default function ChecklistTab({ tripId }) {
         )}
       </form>
 
-      {/* Checklist categories */}
+      {/* Checklist categories — collapsible by default */}
       {categories.map((category, catIdx) => {
         const categoryItems = items.filter(item => item.category === category);
         if (categoryItems.length === 0) return null;
+        const isCollapsed = !!collapsedCategories[category];
+        const doneCount = categoryItems.filter(i => i.completed).length;
 
         return (
-          <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)', paddingRight: '4px', letterSpacing: '-0.2px' }}>
-              {category}
-            </h3>
+          <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Category header — click to toggle */}
+            <button
+              type="button"
+              onClick={() => toggleCategory(category)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '4px 4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                width: '100%',
+                fontFamily: 'var(--font-hebrew)'
+              }}
+            >
+              <ChevronDown
+                size={16}
+                style={{
+                  color: 'var(--text-muted)',
+                  transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                  flexShrink: 0
+                }}
+              />
+              <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1 }}>
+                {category}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                {doneCount}/{categoryItems.length}
+              </span>
+            </button>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {categoryItems.map((item) => (
-                <div 
-                  key={item.id} 
-                  className="glass-card" 
-                  onClick={() => handleToggle(item)}
-                  style={{ 
-                    padding: '14px 16px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
-                    border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                    <div style={{ 
-                      width: '22px', 
-                      height: '22px', 
-                      borderRadius: '6px', 
-                      border: item.completed ? 'none' : '2px solid rgba(11, 11, 48, 0.18)', 
+            {!isCollapsed && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {categoryItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="glass-card checklist-item-row"
+                    onClick={() => handleToggle(item)}
+                    style={{
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                      background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
+                      border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
+                    }}
+                  >
+                    {/* RTL grid: checkbox(right, first in DOM) | text(center) | actions(left, last in DOM) */}
+                    <div style={{
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '6px',
+                      border: item.completed ? 'none' : '2px solid rgba(11, 11, 48, 0.18)',
                       background: item.completed ? 'var(--primary-color)' : 'transparent',
                       display: 'flex',
                       alignItems: 'center',
@@ -284,63 +319,38 @@ export default function ChecklistTab({ tripId }) {
                       {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
                     </div>
 
-                    <span style={{ 
-                      fontSize: '15px', 
+                    <span style={{
+                      fontSize: '15px',
                       fontWeight: item.completed ? '500' : '600',
                       textDecoration: item.completed ? 'line-through' : 'none',
                       color: item.completed ? 'var(--text-muted)' : 'var(--text-main)',
-                      transition: 'all 0.2s ease'
+                      transition: 'all 0.2s ease',
+                      textAlign: 'right',
+                      wordBreak: 'break-word'
                     }}>
                       {item.text}
                     </span>
-                  </div>
 
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartEdit(item);
-                      }}
-                      style={{ 
-                        background: 'transparent', 
-                        border: 'none', 
-                        color: 'var(--text-muted)', 
-                        cursor: 'pointer',
-                        padding: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <Pencil size={15} />
-                    </button>
-
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(item.id);
-                      }}
-                      style={{ 
-                        background: 'transparent', 
-                        border: 'none', 
-                        color: 'rgba(239, 68, 68, 0.5)', 
-                        cursor: 'pointer',
-                        padding: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = 'rgb(239, 68, 68)'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(239, 68, 68, 0.5)'}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="ערוך"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                        style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="מחק"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}

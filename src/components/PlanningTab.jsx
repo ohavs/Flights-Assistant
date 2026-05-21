@@ -9,26 +9,25 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
-import { 
-  Search, 
-  Plus, 
-  Trash2, 
-  Star, 
-  MapPin, 
-  ExternalLink, 
-  DollarSign, 
-  Compass, 
-  UtensilsCrossed, 
-  Train, 
-  Info, 
+import {
+  Search,
+  Plus,
+  Trash2,
+  MapPin,
+  ExternalLink,
+  DollarSign,
+  Compass,
+  UtensilsCrossed,
+  Train,
+  Info,
   CheckCircle2,
   Pencil,
   ArrowUp,
   ArrowDown,
   Calendar,
-  Clock,
-  ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Link2,
+  X
 } from 'lucide-react';
 
 export const defaultGironaPlans = [
@@ -153,8 +152,13 @@ export default function PlanningTab({ tripId }) {
   const [category, setCategory] = useState('אטרקציות ודברים לעשות');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
-  const [rating, setRating] = useState(5);
   const [price, setPrice] = useState('');
+  const [links, setLinks] = useState([]); // [{ label, url }]
+  const [newLinkLabel, setNewLinkLabel] = useState('');
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+
+  // Expanded plan cards (default: collapsed)
+  const [expandedPlanIds, setExpandedPlanIds] = useState({});
 
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -219,8 +223,10 @@ export default function PlanningTab({ tripId }) {
     setCategory('אטרקציות ודברים לעשות');
     setDescription('');
     setAddress('');
-    setRating(5);
     setPrice('');
+    setLinks([]);
+    setNewLinkLabel('');
+    setNewLinkUrl('');
     setShowAddForm(true);
   };
 
@@ -230,9 +236,28 @@ export default function PlanningTab({ tripId }) {
     setCategory(plan.category);
     setDescription(plan.description || '');
     setAddress(plan.address || '');
-    setRating(plan.rating || 5);
     setPrice(plan.price || '');
+    setLinks(Array.isArray(plan.links) ? plan.links : []);
+    setNewLinkLabel('');
+    setNewLinkUrl('');
     setShowAddForm(true);
+  };
+
+  const handleAddLinkRow = () => {
+    const url = newLinkUrl.trim();
+    if (!url) return;
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    setLinks(prev => [...prev, { label: newLinkLabel.trim() || normalized, url: normalized }]);
+    setNewLinkLabel('');
+    setNewLinkUrl('');
+  };
+
+  const handleRemoveLinkRow = (idx) => {
+    setLinks(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const togglePlanExpanded = (id) => {
+    setExpandedPlanIds(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const handleToggleVisited = async (plan) => {
@@ -262,8 +287,8 @@ export default function PlanningTab({ tripId }) {
         category,
         description: description.trim(),
         address: address.trim(),
-        rating: Number(rating) || 5,
-        price: price.trim() || 'חינם'
+        price: price.trim() || 'חינם',
+        links: links
       });
     } else {
       const id = 'plan-' + Date.now();
@@ -273,8 +298,8 @@ export default function PlanningTab({ tripId }) {
         category,
         description: description.trim(),
         address: address.trim(),
-        rating: Number(rating) || 5,
         price: price.trim() || 'חינם',
+        links: links,
         visited: false
       });
     }
@@ -283,8 +308,8 @@ export default function PlanningTab({ tripId }) {
     setTitle('');
     setDescription('');
     setAddress('');
-    setRating(5);
     setPrice('');
+    setLinks([]);
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -512,21 +537,21 @@ export default function PlanningTab({ tripId }) {
           {/* Search and Toggle Form */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <div style={{ position: 'relative', flex: 1 }}>
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="חיפוש אטרקציות, מסעדות..." 
+              <input
+                type="text"
+                className="form-control"
+                placeholder="חיפוש אטרקציות, מסעדות..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ paddingRight: '40px' }}
               />
               <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             </div>
-            
-            <button 
-              onClick={handleOpenAdd} 
-              className="btn-primary" 
-              style={{ padding: '12px', borderRadius: '50%' }}
+
+            <button
+              onClick={handleOpenAdd}
+              className="btn-add-circle"
+              aria-label="הוסף יעד חדש"
             >
               <Plus size={20} />
             </button>
@@ -558,56 +583,89 @@ export default function PlanningTab({ tripId }) {
 
                   <div className="form-group">
                     <label>קטגוריה</label>
-                    <select className="form-control" value={category} onChange={(e) => setCategory(e.target.value)}>
+                    <select className="category-select" value={category} onChange={(e) => setCategory(e.target.value)}>
                       {categories.map((cat, idx) => (
                         <option key={idx} value={cat}>{cat}</option>
                       ))}
                     </select>
                   </div>
 
-                  <div className="row-2">
-                    <div className="form-group">
-                      <label>דירוג (1-5)</label>
-                      <input 
-                        type="number" 
-                        min="1" 
-                        max="5" 
-                        step="0.1" 
-                        className="form-control" 
-                        value={rating} 
-                        onChange={(e) => setRating(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>עלות/תקציב</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        placeholder="למשל: 10 €, חינם" 
-                        value={price} 
-                        onChange={(e) => setPrice(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
                   <div className="form-group">
-                    <label>כתובת / מיקום</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      placeholder="כתובת או קישור למפה" 
-                      value={address} 
-                      onChange={(e) => setAddress(e.target.value)}
+                    <label>עלות/תקציב</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="למשל: 10 €, חינם"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
                     />
                   </div>
 
                   <div className="form-group">
+                    <label>כתובת / מיקום</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="כתובת או קישור למפה"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Free-form links */}
+                  <div className="form-group">
+                    <label>קישורים נוספים</label>
+                    {links.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                        {links.map((link, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.06)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(79,70,229,0.12)' }}>
+                            <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.label}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">{link.url}</div>
+                            </div>
+                            <button type="button" onClick={() => handleRemoveLinkRow(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex' }}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="row-2" style={{ gap: 8 }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="שם הקישור (אופציונלי)"
+                        value={newLinkLabel}
+                        onChange={(e) => setNewLinkLabel(e.target.value)}
+                      />
+                      <input
+                        type="url"
+                        className="form-control"
+                        placeholder="https://..."
+                        value={newLinkUrl}
+                        onChange={(e) => setNewLinkUrl(e.target.value)}
+                        dir="ltr"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddLinkRow}
+                      className="btn-secondary"
+                      style={{ marginTop: 8, width: '100%', minHeight: 40, fontSize: 13, padding: '8px' }}
+                    >
+                      <Plus size={14} />
+                      <span>הוסף קישור</span>
+                    </button>
+                  </div>
+
+                  <div className="form-group">
                     <label>הערות / מידע חשוב</label>
-                    <textarea 
-                      className="form-control" 
-                      rows="4" 
-                      placeholder="פרטים נוספים, שעות פתיחה, טיפים..." 
-                      value={description} 
+                    <textarea
+                      className="form-control"
+                      rows="4"
+                      placeholder="פרטים נוספים, שעות פתיחה, טיפים..."
+                      value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       style={{ resize: 'none', fontFamily: 'inherit' }}
                     />
@@ -623,29 +681,41 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Category Horizontal Filter Chips */}
-          <div className="horizontal-scroll" style={{ 
-            marginRight: '-10px',
-            marginLeft: '-10px',
-            paddingRight: '10px',
-            paddingLeft: '10px',
-          }}>
+          {/* Category Horizontal Filter Chips — sticky so they're never covered by cards */}
+          <div
+            className="horizontal-scroll"
+            style={{
+              marginRight: '-10px',
+              marginLeft: '-10px',
+              paddingRight: '10px',
+              paddingLeft: '10px',
+              paddingTop: '4px',
+              paddingBottom: '4px',
+              position: 'sticky',
+              top: 0,
+              zIndex: 5,
+              background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.85) 80%, rgba(245,243,255,0) 100%)',
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)'
+            }}
+          >
             {['הכל', ...categories].map((filter, idx) => (
-              <button 
+              <button
                 key={idx}
                 onClick={() => setSelectedFilter(filter)}
-                style={{ 
+                style={{
                   whiteSpace: 'nowrap',
                   padding: '8px 16px',
                   borderRadius: '50px',
                   fontSize: '13px',
                   fontWeight: '700',
                   border: filter === selectedFilter ? 'none' : '1px solid rgba(11, 11, 48, 0.08)',
-                  background: filter === selectedFilter ? 'var(--primary-color)' : 'rgba(255,255,255,0.6)',
+                  background: filter === selectedFilter ? 'var(--primary-color)' : 'rgba(255,255,255,0.85)',
                   color: filter === selectedFilter ? '#ffffff' : 'var(--text-muted)',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
-                  boxShadow: filter === selectedFilter ? '0 2px 8px rgba(11,11,48,0.15)' : 'none'
+                  boxShadow: filter === selectedFilter ? '0 2px 8px rgba(11,11,48,0.15)' : 'none',
+                  flexShrink: 0
                 }}
               >
                 {filter}
@@ -661,11 +731,13 @@ export default function PlanningTab({ tripId }) {
               </div>
             ) : (
               filteredPlans.map((plan) => {
+                const isOpen = !!expandedPlanIds[plan.id];
+
                 const renderChip = (icon, text, isLink = false) => {
                   if (!text) return null;
-                  const isUrl = text.startsWith('http');
+                  const isUrl = /^https?:\/\//i.test(text);
                   const targetUrl = isUrl ? text : `https://maps.google.com/?q=${encodeURIComponent(text)}`;
-                  
+
                   const content = (
                     <div style={{
                       display: 'inline-flex',
@@ -682,12 +754,7 @@ export default function PlanningTab({ tripId }) {
                       boxSizing: 'border-box'
                     }}>
                       {icon}
-                      <span style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap',
-                        maxWidth: '140px'
-                      }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
                         {text}
                       </span>
                       {isLink && <ExternalLink size={10} style={{ marginRight: '2px', opacity: 0.7 }} />}
@@ -696,11 +763,12 @@ export default function PlanningTab({ tripId }) {
 
                   if (isLink) {
                     return (
-                      <a 
-                        href={targetUrl} 
-                        target="_blank" 
-                        rel="noreferrer" 
+                      <a
+                        href={targetUrl}
+                        target="_blank"
+                        rel="noreferrer"
                         key={text}
+                        onClick={(e) => e.stopPropagation()}
                         style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
                       >
                         {content}
@@ -711,27 +779,29 @@ export default function PlanningTab({ tripId }) {
                 };
 
                 return (
-                  <div 
-                    key={plan.id} 
-                    className="glass-card" 
-                    style={{ 
-                      padding: '16px', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      gap: '12px',
+                  <div
+                    key={plan.id}
+                    className="glass-card"
+                    onClick={() => togglePlanExpanded(plan.id)}
+                    style={{
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: isOpen ? '12px' : '0',
                       borderRight: plan.visited ? '5px solid var(--text-success)' : '1px solid rgba(255,255,255,0.6)',
                       opacity: plan.visited ? 0.8 : 1,
-                      transition: 'all 0.3s ease'
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
                     }}
                   >
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    {/* Header — always visible */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                        <span style={{ 
-                          width: '36px', 
-                          height: '36px', 
-                          borderRadius: '10px', 
-                          background: 'rgba(11, 11, 48, 0.05)', 
+                        <span style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '10px',
+                          background: 'rgba(11, 11, 48, 0.05)',
                           color: 'var(--primary-color)',
                           display: 'flex',
                           alignItems: 'center',
@@ -740,14 +810,14 @@ export default function PlanningTab({ tripId }) {
                         }}>
                           {getCategoryIcon(plan.category)}
                         </span>
-                        
-                        <div style={{ minWidth: 0 }}>
-                          <h3 style={{ 
-                            fontSize: '15px', 
-                            fontWeight: '800', 
+
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <h3 style={{
+                            fontSize: '14px',
+                            fontWeight: '800',
                             color: 'var(--primary-color)',
                             textDecoration: plan.visited ? 'line-through' : 'none',
-                            lineHeight: 1.3,
+                            lineHeight: 1.25,
                             wordBreak: 'break-word'
                           }}>
                             {plan.title}
@@ -756,90 +826,115 @@ export default function PlanningTab({ tripId }) {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                        {/* Visited Toggle */}
-                        <button 
-                          onClick={() => handleToggleVisited(plan)} 
-                          style={{ 
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: plan.visited ? 'rgba(34, 197, 94, 0.1)' : 'rgba(11, 11, 48, 0.04)',
-                            border: 'none',
-                            color: plan.visited ? 'var(--text-success)' : 'var(--text-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                            boxShadow: plan.visited ? '0 2px 6px rgba(34,197,94,0.15)' : 'none'
-                          }}
-                        >
-                          <CheckCircle2 size={18} />
-                        </button>
+                      <ChevronDown
+                        size={18}
+                        style={{
+                          color: 'var(--text-muted)',
+                          transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
+                          transition: 'transform 0.2s ease',
+                          flexShrink: 0
+                        }}
+                      />
+                    </div>
 
-                        {/* Edit button */}
-                        <button 
-                          onClick={() => handleStartEdit(plan)} 
-                          style={{ 
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: 'rgba(11, 11, 48, 0.04)',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        
-                        {/* Delete button */}
-                        <button 
-                          onClick={() => handleDelete(plan.id)}
-                          style={{ 
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: 'rgba(239, 68, 68, 0.06)',
-                            border: 'none',
-                            color: 'rgb(239, 68, 68)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                    {/* Expanded body */}
+                    {isOpen && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => handleToggleVisited(plan)}
+                            style={{
+                              width: '40px', height: '40px', borderRadius: '50%',
+                              background: plan.visited ? 'rgba(34, 197, 94, 0.1)' : 'rgba(11, 11, 48, 0.04)',
+                              border: 'none',
+                              color: plan.visited ? 'var(--text-success)' : 'var(--text-muted)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer'
+                            }}
+                            title="סמן שביקרתי"
+                          >
+                            <CheckCircle2 size={18} />
+                          </button>
+
+                          <button
+                            onClick={() => handleStartEdit(plan)}
+                            style={{
+                              width: '40px', height: '40px', borderRadius: '50%',
+                              background: 'rgba(11, 11, 48, 0.04)', border: 'none',
+                              color: 'var(--text-muted)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer'
+                            }}
+                            title="ערוך"
+                          >
+                            <Pencil size={15} />
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(plan.id)}
+                            style={{
+                              width: '40px', height: '40px', borderRadius: '50%',
+                              background: 'rgba(239, 68, 68, 0.06)', border: 'none',
+                              color: 'rgb(239, 68, 68)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer'
+                            }}
+                            title="מחק"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+
+                        {plan.description && (
+                          <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
+                            {plan.description}
+                          </p>
+                        )}
+
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                          alignItems: 'center',
+                          borderTop: '1px solid rgba(0,0,0,0.04)',
+                          paddingTop: '10px'
+                        }}>
+                          {renderChip(<DollarSign size={12} />, plan.price)}
+                          {renderChip(<MapPin size={12} />, plan.address, true)}
+                          {Array.isArray(plan.links) && plan.links.map((link, idx) => (
+                            <a
+                              key={`lnk-${idx}`}
+                              href={link.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
+                            >
+                              <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: 'rgba(79, 70, 229, 0.08)',
+                                padding: '5px 10px',
+                                borderRadius: 10,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: 'var(--accent)',
+                                border: '1px solid rgba(79, 70, 229, 0.15)',
+                                maxWidth: '100%',
+                                boxSizing: 'border-box'
+                              }}>
+                                <Link2 size={12} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                                  {link.label || link.url}
+                                </span>
+                                <ExternalLink size={10} style={{ marginRight: 2, opacity: 0.7 }} />
+                              </div>
+                            </a>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Description */}
-                    {plan.description && (
-                      <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
-                        {plan.description}
-                      </p>
                     )}
-
-                    {/* Details footer (Rating, Price, Location) */}
-                    <div style={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap', 
-                      gap: '8px', 
-                      alignItems: 'center', 
-                      borderTop: '1px solid rgba(0,0,0,0.04)', 
-                      paddingTop: '10px'
-                    }}>
-                      {renderChip(<Star size={12} fill="#eab308" style={{ color: '#eab308' }} />, plan.rating > 0 ? plan.rating.toString() : null)}
-                      {renderChip(<DollarSign size={12} />, plan.price)}
-                      {renderChip(<MapPin size={12} />, plan.address, true)}
-                    </div>
 
                   </div>
                 );
@@ -1153,11 +1248,10 @@ export default function PlanningTab({ tripId }) {
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>קטגוריה</label>
-                <select 
-                  className="form-control" 
-                  value={activityCategory} 
+                <select
+                  className="category-select"
+                  value={activityCategory}
                   onChange={(e) => setActivityCategory(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
                 >
                   {categories.map((cat, idx) => (
                     <option key={idx} value={cat}>{cat}</option>

@@ -155,6 +155,31 @@ const aircraftTypes = [
   { type: 'Airbus A321neo', regPrefix: 'G-NE', country: 'בריטניה' },
 ];
 
+// Parse a "UTC +03:00" / "UTC -04:00" string into a numeric offset in hours.
+export function parseUtcOffset(tzStr) {
+  if (!tzStr) return 0;
+  const m = String(tzStr).match(/UTC\s*([+-])\s*(\d{1,2}):(\d{2})/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  return sign * (parseInt(m[2], 10) + parseInt(m[3], 10) / 60);
+}
+
+// Israel is UTC+3 year-round (IST is UTC+2, IDT is UTC+3). Using +3 as the user's reference.
+const ISRAEL_UTC_OFFSET = 3;
+
+// Format the time-zone difference vs. Israel — e.g. "−1 שעה מישראל", "אותה שעה".
+export function formatOffsetFromIsrael(tzStr) {
+  if (!tzStr) return '';
+  const diff = parseUtcOffset(tzStr) - ISRAEL_UTC_OFFSET;
+  if (diff === 0) return 'אותה שעה כמו בישראל';
+  const abs = Math.abs(diff);
+  const sign = diff > 0 ? '+' : '−';
+  const noun = abs === 1 ? 'שעה' : 'שעות';
+  // Show .5 only if non-integer
+  const num = Number.isInteger(abs) ? abs : abs.toFixed(1);
+  return `${sign}${num} ${noun} מישראל`;
+}
+
 // Helper to calculate distance in km between two lat/lng points (Haversine formula)
 export function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the earth in km

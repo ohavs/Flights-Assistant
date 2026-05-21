@@ -431,11 +431,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label style={{ fontSize: 11 }}>קטגוריה</label>
-              <select 
-                className="form-control" 
+              <select
+                className="category-select"
                 value={newItemCategory}
                 onChange={(e) => setNewItemCategory(e.target.value)}
-                style={{ padding: '8px 12px', fontSize: 14, minHeight: 38 }}
+                style={{ minHeight: 38, fontSize: 14 }}
               >
                 {categories.map((cat, idx) => (
                   <option key={idx} value={cat}>{cat}</option>

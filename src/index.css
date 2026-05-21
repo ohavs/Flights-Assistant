@@ -88,9 +88,39 @@ body {
   overflow: hidden;
 }
 
-@media (min-width: 521px) {
+/* Tablet — single column but wider canvas, comfortable padding */
+@media (min-width: 768px) {
   .app-container {
+    max-width: 720px;
     box-shadow: 0 0 60px rgba(11,11,48,0.12);
+  }
+}
+
+/* Desktop — full multi-column dashboard */
+@media (min-width: 1024px) {
+  .app-container {
+    max-width: 1180px;
+    box-shadow: 0 0 60px rgba(11,11,48,0.12);
+  }
+
+  .app-content {
+    padding: 24px 32px;
+    padding-bottom: calc(var(--nav-height) + 24px);
+  }
+
+  /* On desktop, expand the dashboard area: outbound + return side-by-side, hotel full-width below */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .dashboard-grid > .map-wrapper,
+  .dashboard-grid > .full-width {
+    grid-column: 1 / -1;
+  }
+
+  .hotel-meta-grid {
+    grid-template-columns: 1fr 1fr 1fr 1fr !important;
   }
 }
 
@@ -652,4 +682,96 @@ input[type="datetime-local"].form-control {
 
 .highlight-pulse {
   animation: highlightPulseAnimation 2s ease-out;
+}
+
+/* ── Dashboard grid (flight/hotel column on mobile, 2-col on desktop) ── */
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hotel-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   PLANNING / CHECKLIST CATEGORY SELECT
+   ══════════════════════════════════════════════════════════ */
+
+.category-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: rgba(255, 255, 255, 0.85);
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 14px center;
+  background-size: 14px;
+  border: 1.5px solid rgba(79, 70, 229, 0.18);
+  border-radius: var(--radius-md);
+  padding: 12px 18px 12px 38px;
+  width: 100%;
+  min-height: 48px;
+  font-family: var(--font-hebrew);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary);
+  text-align: right;
+  direction: rtl;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+.category-select:focus,
+.category-select:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+.category-select option {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* Checklist row layout — uniform RTL: actions on the (visual) left, text center, checkbox right.
+   In RTL, with grid-template-columns "auto 1fr auto" and direction:rtl, the first child sits on the right.
+   We want checkbox on the right, so place it LAST in DOM and keep direction:rtl. */
+.checklist-item-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Round add button (used next to search) — guaranteed circular */
+.btn-add-circle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(11, 11, 48, 0.18);
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+.btn-add-circle:active {
+  transform: scale(0.95);
 }
