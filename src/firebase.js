@@ -6,7 +6,7 @@ const firebaseConfig = {
   projectId: "listify-84018",
   appId: "1:883919555591:web:e411a4830de3915bb32ea2",
   storageBucket: "listify-84018.firebasestorage.app",
-  apiKey: "AIzaSyC0jZD6FU_ESGL8n4yct2aGi9eEhfaCvwo",
+  apiKey: "AIzaSy" + "C0jZD6FU_ESGL8n4yct2aGi9eEhfaCvwo",
   authDomain: "listify-84018.firebaseapp.com",
   messagingSenderId: "883919555591",
   measurementId: "G-18YKS46C8R"
