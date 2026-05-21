@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, X, Check } from 'lucide-react';
 
 const MONTHS_HE = [
@@ -810,14 +811,38 @@ export function CustomDateTimePicker({ value, onChange, label }) {
    ══════════════════════════════════════════════════════════ */
 export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [popupRect, setPopupRect] = useState(null);
   const triggerRef = useRef(null);
   const popupRef = useRef(null);
 
-  // Normalize options: string[] OR {value,label,icon}[]
   const normalized = (options || []).map(o => (
     typeof o === 'string' ? { value: o, label: o } : o
   ));
   const current = normalized.find(o => o.value === value);
+
+  // Compute popup position relative to viewport (so it escapes overflow:auto parents)
+  useEffect(() => {
+    if (!isOpen) return;
+    const update = () => {
+      if (!triggerRef.current) return;
+      const r = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom;
+      const openAbove = spaceBelow < 220 && r.top > 220;
+      setPopupRect({
+        top: openAbove ? null : r.bottom + 6,
+        bottom: openAbove ? (window.innerHeight - r.top + 6) : null,
+        left: r.left,
+        width: r.width
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -829,8 +854,13 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
         setIsOpen(false);
       }
     };
+    const onEsc = (e) => { if (e.key === 'Escape') setIsOpen(false); };
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onEsc);
+    };
   }, [isOpen]);
 
   const handleSelect = (val) => {
@@ -839,7 +869,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', position: 'relative' }}>
+    <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
       {label && <label style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
 
       <button
@@ -872,11 +902,18 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
         />
       </button>
 
-      {isOpen && (
+      {isOpen && popupRect && createPortal(
         <div
           ref={popupRef}
           role="listbox"
           className="custom-dropdown-popup"
+          style={{
+            position: 'fixed',
+            top: popupRect.top,
+            bottom: popupRect.bottom,
+            left: popupRect.left,
+            width: popupRect.width
+          }}
         >
           {normalized.map((opt) => {
             const isActive = opt.value === value;
@@ -895,7 +932,8 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -1,25 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { lookupFlight, getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
+import { getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
+import { lookupFlightLive, hasApiKey } from '../services/flightApi';
 import MapComponent from './MapComponent';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
+import {
+  MapPin,
+  Calendar,
+  Edit2,
+  Building,
+  Loader2,
+  Search,
+  PlaneTakeoff,
+  PlaneLanding,
+  RefreshCw,
+  Key
+} from 'lucide-react';
 
 const FLIGHT_STATUS_OPTIONS = [
   { value: 'בזמן', label: 'בזמן' },
   { value: 'באיחור קל', label: 'באיחור קל' },
   { value: 'באיחור רציני', label: 'באיחור רציני' },
   { value: 'בוטלה', label: 'בוטלה' },
+  { value: 'נחתה', label: 'נחתה' },
+  { value: 'בטיסה', label: 'בטיסה' },
 ];
-import {
-  MapPin,
-  Calendar,
-  Edit2,
-  Share2,
-  Building,
-  Loader2,
-  Search
-} from 'lucide-react';
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
 
 export const defaultTrip = {
   id: 'prague',
@@ -173,6 +181,13 @@ export default function FlightTab({ tripId }) {
         </div>
       );
     }
+    if (result.kind === 'live') {
+      return (
+        <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.1)', border: '1px solid rgba(5, 150, 105, 0.3)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'var(--text-success)' }}>
+          ✅ נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}
+        </div>
+      );
+    }
     if (result.kind === 'found') {
       return (
         <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.08)', border: '1px solid rgba(5, 150, 105, 0.25)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'var(--text-success)' }}>
@@ -180,10 +195,12 @@ export default function FlightTab({ tripId }) {
         </div>
       );
     }
-    // generated
+    // generated — no API key configured or API miss
     return (
       <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'rgb(146, 64, 14)' }}>
-        ⓘ הטיסה {result.flightNumber} לא נמצאה במאגר. נוצרו נתונים משוערים — אנא בדוק וערוך ידנית.
+        ⓘ הטיסה {result.flightNumber} לא נמצאה ב-API.
+        {!hasApiKey() && <> חיפוש בזמן אמת דורש מפתח API — לחץ על <Key size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> בכותרת.</>}
+        {hasApiKey() && <> נוצרו נתונים משוערים מהמאגר המקומי.</>}
       </div>
     );
   };
@@ -197,11 +214,12 @@ export default function FlightTab({ tripId }) {
       }
       setLookupBusyOut(true);
       setLookupResultOut(null);
-      Promise.resolve(lookupFlight(num, formOutDate))
+      lookupFlightLive(num, formOutDate)
         .then(res => {
           applyLookup('out', res);
+          const fromApi = res?.source === 'api';
           setLookupResultOut({
-            kind: res?.matched ? 'found' : 'generated',
+            kind: fromApi ? 'live' : (res?.matched ? 'found' : 'generated'),
             flightNumber: res?.flightNumber,
             airline: res?.airline,
             route: res ? `${res.depAirport?.code} → ${res.arrAirport?.code}` : ''
@@ -216,11 +234,12 @@ export default function FlightTab({ tripId }) {
       }
       setLookupBusyRet(true);
       setLookupResultRet(null);
-      Promise.resolve(lookupFlight(num, formRetDate))
+      lookupFlightLive(num, formRetDate)
         .then(res => {
           applyLookup('ret', res);
+          const fromApi = res?.source === 'api';
           setLookupResultRet({
-            kind: res?.matched ? 'found' : 'generated',
+            kind: fromApi ? 'live' : (res?.matched ? 'found' : 'generated'),
             flightNumber: res?.flightNumber,
             airline: res?.airline,
             route: res ? `${res.depAirport?.code} → ${res.arrAirport?.code}` : ''
@@ -229,6 +248,53 @@ export default function FlightTab({ tripId }) {
         .finally(() => setLookupBusyRet(false));
     }
   };
+
+  // Refresh a saved flight's live data (called from card refresh button + auto-refresh)
+  const [refreshingOut, setRefreshingOut] = useState(false);
+  const [refreshingRet, setRefreshingRet] = useState(false);
+  const refreshFlight = async (kind) => {
+    if (!tripId || !tripData) return;
+    const flight = kind === 'outbound' ? tripData.outboundFlightDetails : tripData.returnFlightDetails;
+    if (!flight?.flightNumber) return;
+    if (kind === 'outbound') setRefreshingOut(true);
+    else setRefreshingRet(true);
+    try {
+      const res = await lookupFlightLive(flight.flightNumber, flight.date);
+      if (!res) return;
+      const docRef = doc(db, 'trips', tripId);
+      const newData = { ...tripData };
+      const merged = {
+        ...flight,
+        airline: res.airline || flight.airline,
+        depAirport: { ...(flight.depAirport || {}), ...(res.depAirport || {}) },
+        arrAirport: { ...(flight.arrAirport || {}), ...(res.arrAirport || {}) },
+        scheduledDep: res.scheduledDep || flight.scheduledDep,
+        actualDep: res.actualDep || flight.actualDep,
+        scheduledArr: res.scheduledArr || flight.scheduledArr,
+        estimatedArr: res.estimatedArr || flight.estimatedArr,
+        status: res.status || flight.status,
+        gate: res.gate || flight.gate,
+        lastRefreshed: new Date().toISOString(),
+      };
+      if (kind === 'outbound') newData.outboundFlightDetails = merged;
+      else newData.returnFlightDetails = merged;
+      await setDoc(docRef, newData, { merge: true });
+    } finally {
+      if (kind === 'outbound') setRefreshingOut(false);
+      else setRefreshingRet(false);
+    }
+  };
+
+  // Auto-refresh every 5 minutes when an API key is configured
+  useEffect(() => {
+    if (!tripId || !hasApiKey()) return;
+    const interval = setInterval(() => {
+      refreshFlight('outbound');
+      refreshFlight('return');
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripId, tripData?.outboundFlightDetails?.flightNumber, tripData?.returnFlightDetails?.flightNumber]);
 
   // Listen to Firestore
   useEffect(() => {
@@ -295,6 +361,14 @@ export default function FlightTab({ tripId }) {
 
   // Lookup is triggered explicitly by the "חפש" button — no noisy auto-lookup
   // on every keystroke (which previously made the form flicker between flights).
+
+  // Listen for "open edit" events dispatched by the App header pencil button
+  useEffect(() => {
+    const handler = () => openEditModal();
+    window.addEventListener('flight:openEdit', handler);
+    return () => window.removeEventListener('flight:openEdit', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripData]);
 
   const openEditModal = () => {
     if (!tripData) return;
@@ -435,6 +509,10 @@ export default function FlightTab({ tripId }) {
     const label = kind === 'outbound' ? 'טיסת הלוך' : 'טיסת חזור';
     const badgeColor = kind === 'outbound' ? 'rgba(79, 70, 229, 0.1)' : 'rgba(239, 68, 68, 0.1)';
     const badgeText = kind === 'outbound' ? 'var(--secondary-color)' : 'rgb(239, 68, 68)';
+    const isRefreshing = kind === 'outbound' ? refreshingOut : refreshingRet;
+    const lastRefreshed = flight.lastRefreshed
+      ? new Date(flight.lastRefreshed).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+      : null;
 
     return (
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
@@ -446,8 +524,27 @@ export default function FlightTab({ tripId }) {
             <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '6px' }}>{flight.airline}</span>
           </div>
 
-          <button onClick={openEditModal} style={{ background: 'transparent', border: 'none', padding: '6px', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Edit2 size={16} />
+          <button
+            onClick={() => refreshFlight(kind)}
+            disabled={isRefreshing || !flight.flightNumber}
+            title={lastRefreshed ? `עודכן לאחרונה: ${lastRefreshed}` : 'רענן מידע טיסה'}
+            style={{
+              background: 'rgba(79, 70, 229, 0.08)',
+              border: 'none',
+              padding: '6px 10px',
+              borderRadius: 8,
+              cursor: isRefreshing ? 'default' : 'pointer',
+              color: 'var(--accent)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 11,
+              fontWeight: 800,
+              opacity: !flight.flightNumber ? 0.4 : 1
+            }}
+          >
+            <RefreshCw size={13} className={isRefreshing ? 'spinning' : ''} />
+            <span>רענן</span>
           </button>
         </div>
 
@@ -485,12 +582,18 @@ export default function FlightTab({ tripId }) {
 
         {/* Times / status / gate */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>המראה מתוכננת / מעודכנת:</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: '700' }}>
+              <PlaneTakeoff size={15} style={{ color: 'var(--accent)' }} />
+              המראה מתוכננת / מעודכנת:
+            </span>
             <span style={{ fontWeight: '800' }}>{flight.scheduledDep || '—'} ◄ {flight.actualDep || '—'}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>נחיתה מתוכננת / משוערת:</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: '700' }}>
+              <PlaneLanding size={15} style={{ color: 'var(--accent)' }} />
+              נחיתה מתוכננת / משוערת:
+            </span>
             <span style={{ fontWeight: '800' }}>{flight.scheduledArr || '—'} ◄ {flight.estimatedArr || '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -582,23 +685,6 @@ export default function FlightTab({ tripId }) {
               </div>
             </>
           )}
-        </div>
-      </div>
-
-      {/* Action Panel */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
-        <h4 style={{ fontSize: '17px', fontWeight: '800', color: 'var(--primary-color)' }}>ניהול ועריכת הנסיעה</h4>
-        <p style={{ fontSize: '13.5px', color: 'var(--text-muted)', lineHeight: '1.5', fontWeight: '600' }}>
-          הזן את מספר הטיסה והתאריך, ושאר הפרטים יתעדכנו אוטומטית.
-        </p>
-        <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '360px' }}>
-          <button onClick={openEditModal} className="btn-primary" style={{ flex: 1, padding: '14px 0' }}>
-            <Edit2 size={16} />
-            <span>ערוך את כל פרטי הנסיעה</span>
-          </button>
-          <button className="btn-secondary" style={{ padding: '14px' }}>
-            <Share2 size={16} />
-          </button>
         </div>
       </div>
 

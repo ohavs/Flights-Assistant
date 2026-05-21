@@ -15,8 +15,9 @@ import ChecklistTab from './components/ChecklistTab';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw
+  Check, RotateCcw, Key, ExternalLink
 } from 'lucide-react';
+import { getApiKey, setApiKey, hasApiKey } from './services/flightApi';
 import './index.css';
 
 /* ══════════════════════════════════════════════════════════
@@ -527,6 +528,83 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 }
 
 /* ══════════════════════════════════════════════════════════
+   API KEY MODAL — for live flight lookup (AeroDataBox / RapidAPI)
+   ══════════════════════════════════════════════════════════ */
+function ApiKeyModal({ isOpen, onClose }) {
+  const [val, setVal] = useState('');
+  useEffect(() => {
+    if (isOpen) setVal(getApiKey());
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSave = () => {
+    setApiKey(val);
+    onClose();
+  };
+  const handleClear = () => {
+    setApiKey('');
+    setVal('');
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{ height: 'auto', maxHeight: '80%' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>חיפוש טיסות בזמן אמת</h2>
+          <button className="btn-close" onClick={onClose}>✕</button>
+        </div>
+
+        <p style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.6 }}>
+          חיפוש טיסות בזמן אמת מתבצע דרך AeroDataBox ב-RapidAPI.
+          הרשמה חינמית מקבלת 500 חיפושים בחודש.
+        </p>
+
+        <a
+          href="https://rapidapi.com/aedbx-aedbx/api/aerodatabox"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 13, fontWeight: 700, color: 'var(--accent)',
+            textDecoration: 'none', padding: '8px 0'
+          }}
+        >
+          <ExternalLink size={14} />
+          <span>פתח עמוד RapidAPI כדי לקבל מפתח חינמי</span>
+        </a>
+
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>מפתח API של RapidAPI</label>
+          <input
+            type="text"
+            className="form-control"
+            placeholder="הדבק כאן את ה-X-RapidAPI-Key"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            dir="ltr"
+            autoComplete="off"
+          />
+          <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
+            המפתח נשמר רק בדפדפן שלך (localStorage). הוא לא נשלח לשרת חיצוני מלבד RapidAPI.
+          </small>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button onClick={handleSave} className="btn-primary" style={{ flex: 1 }}>שמור</button>
+          {hasApiKey() && (
+            <button onClick={handleClear} className="btn-secondary" style={{ background: 'rgba(239,68,68,0.06)', color: 'rgb(190, 18, 60)', borderColor: 'rgba(239,68,68,0.2)' }}>
+              <Trash2 size={14} />
+              <span>מחק מפתח</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
    MAIN APP
    ══════════════════════════════════════════════════════════ */
 export default function App() {
@@ -538,6 +616,7 @@ export default function App() {
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   // Save user profile to Firestore on first login
   useEffect(() => {
@@ -862,13 +941,45 @@ export default function App() {
             </p>
           </div>
         </div>
-        <div style={{
-          width: 34, height: 34, borderRadius: '50%',
-          background: 'rgba(11,11,48,0.05)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--primary)', flexShrink: 0
-        }}>
-          <Plane size={14} style={{ transform: 'rotate(-45deg)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {activeTab === 'flight' && (
+            <>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
+                title="ערוך פרטי טיסה ומלון"
+                style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  background: 'rgba(79,70,229,0.1)', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--accent)'
+                }}
+              >
+                <Pencil size={15} />
+              </button>
+              <button
+                onClick={() => setShowApiKeyModal(true)}
+                title={hasApiKey() ? 'מפתח API מוגדר — לחץ לעריכה' : 'הגדר מפתח API לחיפוש בזמן אמת'}
+                style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  background: hasApiKey() ? 'rgba(5, 150, 105, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                  border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: hasApiKey() ? 'var(--text-success)' : 'rgb(146, 64, 14)'
+                }}
+              >
+                <Key size={15} />
+              </button>
+            </>
+          )}
+          <div style={{
+            width: 34, height: 34, borderRadius: '50%',
+            background: 'rgba(11,11,48,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--primary)'
+          }}>
+            <Plane size={14} style={{ transform: 'rotate(-45deg)' }} />
+          </div>
         </div>
       </header>
 
@@ -889,6 +1000,8 @@ export default function App() {
           <ClipboardList /><span className="nav-label">צ'קליסט</span>
         </button>
       </nav>
+
+      <ApiKeyModal isOpen={showApiKeyModal} onClose={() => setShowApiKeyModal(false)} />
     </div>
   );
 }
