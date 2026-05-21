@@ -172,37 +172,54 @@ export default function FlightTab({ tripId }) {
   const [formHotelRoom, setFormHotelRoom] = useState('');
   const [formHotelNotes, setFormHotelNotes] = useState('');
 
+  const Banner = ({ color, bg, border, children }) => (
+    <div style={{ marginTop: 8, padding: '10px 12px', background: bg, border: `1px solid ${border}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color, lineHeight: 1.5 }}>
+      {children}
+    </div>
+  );
+
   const renderLookupFeedback = (result) => {
     if (!result) return null;
-    if (result.kind === 'empty') {
-      return (
-        <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'rgb(190, 18, 60)' }}>
-          ⚠️ הזן מספר טיסה לפני החיפוש.
-        </div>
-      );
+    switch (result.kind) {
+      case 'empty':
+        return <Banner color="rgb(190, 18, 60)" bg="rgba(239, 68, 68, 0.08)" border="rgba(239, 68, 68, 0.2)">⚠️ הזן מספר טיסה לפני החיפוש.</Banner>;
+      case 'live':
+        return <Banner color="var(--text-success)" bg="rgba(5, 150, 105, 0.1)" border="rgba(5, 150, 105, 0.3)">✅ נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}</Banner>;
+      case 'no-key':
+        return (
+          <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">
+            🔑 כדי לחפש בזמן אמת צריך מפתח API. לחץ על מפתח <Key size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> שבכותרת.
+            {result.route && <> בינתיים נטענו נתונים מקומיים: {result.route}.</>}
+          </Banner>
+        );
+      case 'no-results':
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">⚠️ AeroDataBox לא מצא את הטיסה בתאריך שצוין. נסה תאריך מדויק לטיסה (התאריך שמופיע בכרטיס שלך).</Banner>;
+      case 'http-error':
+        return <Banner color="rgb(190, 18, 60)" bg="rgba(239, 68, 68, 0.08)" border="rgba(239, 68, 68, 0.2)">❌ {result.message}</Banner>;
+      case 'network-error':
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.08)" border="rgba(245, 158, 11, 0.25)">📡 {result.message}</Banner>;
+      default:
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.08)" border="rgba(245, 158, 11, 0.25)">ⓘ נטענו נתונים משוערים מהמאגר המקומי.</Banner>;
     }
-    if (result.kind === 'live') {
-      return (
-        <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.1)', border: '1px solid rgba(5, 150, 105, 0.3)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'var(--text-success)' }}>
-          ✅ נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}
-        </div>
-      );
+  };
+
+  const resultFromWrapper = (wrapper) => {
+    const flight = wrapper?.flight || null;
+    const route = flight ? `${flight.depAirport?.code} → ${flight.arrAirport?.code}` : '';
+    switch (wrapper?.status) {
+      case 'api':
+        return { kind: 'live', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
+      case 'no-key':
+        return { kind: 'no-key', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
+      case 'no-results':
+        return { kind: 'no-results', message: wrapper.message };
+      case 'http-error':
+        return { kind: 'http-error', message: wrapper.message, code: wrapper.code };
+      case 'network-error':
+        return { kind: 'network-error', message: wrapper.message };
+      default:
+        return { kind: 'generated', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
     }
-    if (result.kind === 'found') {
-      return (
-        <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.08)', border: '1px solid rgba(5, 150, 105, 0.25)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'var(--text-success)' }}>
-          ✅ נמצא: {result.flightNumber} · {result.airline} · {result.route}
-        </div>
-      );
-    }
-    // generated — no API key configured or API miss
-    return (
-      <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 10, fontSize: 12, fontWeight: 700, color: 'rgb(146, 64, 14)' }}>
-        ⓘ הטיסה {result.flightNumber} לא נמצאה ב-API.
-        {!hasApiKey() && <> חיפוש בזמן אמת דורש מפתח API — לחץ על <Key size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> בכותרת.</>}
-        {hasApiKey() && <> נוצרו נתונים משוערים מהמאגר המקומי.</>}
-      </div>
-    );
   };
 
   const runLookup = (which) => {
@@ -215,15 +232,9 @@ export default function FlightTab({ tripId }) {
       setLookupBusyOut(true);
       setLookupResultOut(null);
       lookupFlightLive(num, formOutDate)
-        .then(res => {
-          applyLookup('out', res);
-          const fromApi = res?.source === 'api';
-          setLookupResultOut({
-            kind: fromApi ? 'live' : (res?.matched ? 'found' : 'generated'),
-            flightNumber: res?.flightNumber,
-            airline: res?.airline,
-            route: res ? `${res.depAirport?.code} → ${res.arrAirport?.code}` : ''
-          });
+        .then(wrap => {
+          if (wrap?.flight) applyLookup('out', wrap.flight);
+          setLookupResultOut(resultFromWrapper(wrap));
         })
         .finally(() => setLookupBusyOut(false));
     } else {
@@ -235,15 +246,9 @@ export default function FlightTab({ tripId }) {
       setLookupBusyRet(true);
       setLookupResultRet(null);
       lookupFlightLive(num, formRetDate)
-        .then(res => {
-          applyLookup('ret', res);
-          const fromApi = res?.source === 'api';
-          setLookupResultRet({
-            kind: fromApi ? 'live' : (res?.matched ? 'found' : 'generated'),
-            flightNumber: res?.flightNumber,
-            airline: res?.airline,
-            route: res ? `${res.depAirport?.code} → ${res.arrAirport?.code}` : ''
-          });
+        .then(wrap => {
+          if (wrap?.flight) applyLookup('ret', wrap.flight);
+          setLookupResultRet(resultFromWrapper(wrap));
         })
         .finally(() => setLookupBusyRet(false));
     }
@@ -259,7 +264,8 @@ export default function FlightTab({ tripId }) {
     if (kind === 'outbound') setRefreshingOut(true);
     else setRefreshingRet(true);
     try {
-      const res = await lookupFlightLive(flight.flightNumber, flight.date);
+      const wrap = await lookupFlightLive(flight.flightNumber, flight.date);
+      const res = wrap?.flight;
       if (!res) return;
       const docRef = doc(db, 'trips', tripId);
       const newData = { ...tripData };

@@ -117,24 +117,27 @@ function adaptFlight(api) {
   };
 }
 
+// Result wraps the flight + diagnostics so the UI can show real errors.
+// shape: { flight: <flight-or-null>, status: 'api'|'local-fallback'|'no-key'|'http-error'|'no-results'|'network-error', code?: number, message?: string }
 export async function lookupFlightLive(flightNumber, dateStr) {
   const num = String(flightNumber || '').trim().toUpperCase();
-  if (!num) return null;
+  if (!num) return { flight: null, status: 'no-key', message: 'מספר טיסה חסר' };
 
   const key = getApiKey();
-  const fallback = () => {
+  const localFallback = () => {
     const r = localLookup(num, dateStr);
     if (r) r.source = 'local';
     return r;
   };
 
-  if (!key) return fallback();
+  if (!key) {
+    return { flight: localFallback(), status: 'no-key' };
+  }
+
+  const date = (dateStr || '').match(/^\d{4}-\d{2}-\d{2}/) ? dateStr.slice(0, 10) : '';
+  const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}` + (date ? `/${date}` : '');
 
   try {
-    // AeroDataBox flight-by-number endpoint:
-    // GET /flights/number/{number}/{YYYY-MM-DD}
-    const date = (dateStr || '').match(/^\d{4}-\d{2}-\d{2}/) ? dateStr.slice(0, 10) : '';
-    const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}` + (date ? `/${date}` : '');
     const res = await fetch(url + '?dateLocalRole=Both&withAircraftImage=false&withLocation=true', {
       headers: {
         'X-RapidAPI-Key': key,
@@ -142,16 +145,54 @@ export async function lookupFlightLive(flightNumber, dateStr) {
       },
     });
     if (!res.ok) {
-      console.warn('AeroDataBox response not ok:', res.status);
-      return fallback();
+      const text = await res.text().catch(() => '');
+      return {
+        flight: localFallback(),
+        status: 'http-error',
+        code: res.status,
+        message: humaniseHttp(res.status, text),
+      };
     }
     const data = await res.json();
     const list = Array.isArray(data) ? data : (data && data.flights) || [];
-    if (list.length === 0) return fallback();
-    // Pick the first flight (could be multiple operating dates)
-    return adaptFlight(list[0]);
+    if (list.length === 0) {
+      return { flight: localFallback(), status: 'no-results', message: 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין.' };
+    }
+    return { flight: adaptFlight(list[0]), status: 'api' };
   } catch (e) {
-    console.warn('Live flight lookup failed:', e);
-    return fallback();
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    return {
+      flight: localFallback(),
+      status: 'network-error',
+      message: offline ? 'אין חיבור לאינטרנט — מציג נתונים שמורים.' : (e?.message || 'שגיאת רשת'),
+    };
+  }
+}
+
+function humaniseHttp(status, body) {
+  const snippet = (body || '').slice(0, 140);
+  if (status === 401 || status === 403) return `מפתח ה-API לא מאושר (HTTP ${status}). ודא שאתה רשום למנוי AeroDataBox ב-RapidAPI. ${snippet}`;
+  if (status === 429) return `חרגת ממכסת חיפושים בחודש (HTTP 429).`;
+  if (status === 404) return `הטיסה לא נמצאה (HTTP 404).`;
+  return `שגיאת API (HTTP ${status}). ${snippet}`;
+}
+
+// Lightweight "is the key valid?" check for the settings modal.
+export async function testApiKey(key) {
+  if (!key) return { ok: false, message: 'הזן מפתח לבדיקה.' };
+  try {
+    // Probe a well-known route on a recent date.
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await fetch(`https://${API_HOST}/flights/number/LY381/${today}?dateLocalRole=Both`, {
+      headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': API_HOST },
+    });
+    if (res.ok) return { ok: true, message: 'המפתח אומת בהצלחה.' };
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, message: 'המפתח שגוי או שלא נרשמת למנוי AeroDataBox ב-RapidAPI.' };
+    }
+    if (res.status === 429) return { ok: false, message: 'חרגת ממכסת החיפושים החודשית.' };
+    return { ok: false, message: `המפתח לא עבד (HTTP ${res.status}).` };
+  } catch (e) {
+    return { ok: false, message: `שגיאת רשת בעת בדיקת המפתח: ${e?.message || ''}` };
   }
 }
