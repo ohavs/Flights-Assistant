@@ -160,9 +160,20 @@ function formatDelta(mins) {
 // One slot for an event time: shows the most up-to-date time,
 // highlighted red on delay, green on "earlier than scheduled",
 // strike-through if cancelled.
-function TimeSlot({ scheduled, updated, label, icon, cancelled }) {
+function TimeSlot({ scheduled, updated, label, icon, cancelled, flightDate }) {
   const effective = updated || scheduled;
-  const delta = deltaMinutes(scheduled, updated);
+  // Suppress delay/early chip for flights more than 18h in the future.
+  // Real airlines virtually never announce schedule changes that far
+  // out; any divergence at that range is almost certainly stale data
+  // (either from a previous fake-delay generator or from before the
+  // current refresh fixed it). For "imminent" flights, deltas are real.
+  let suppressDelta = false;
+  if (flightDate) {
+    const dep = new Date(flightDate + 'T00:00:00').getTime();
+    const hours = (dep - Date.now()) / 3600000;
+    if (hours > 18) suppressDelta = true;
+  }
+  const delta = suppressDelta ? null : deltaMinutes(scheduled, updated);
   const delayed = delta != null && delta > 0;
   const early = delta != null && delta < 0;
 
@@ -172,6 +183,11 @@ function TimeSlot({ scheduled, updated, label, icon, cancelled }) {
   if (cancelled) color = 'rgb(220, 38, 38)';
   else if (delayed) { color = 'rgb(220, 38, 38)'; bgChip = 'rgba(220, 38, 38, 0.1)'; chipColor = 'rgb(220, 38, 38)'; }
   else if (early)   { bgChip = 'rgba(5, 150, 105, 0.1)'; chipColor = 'var(--text-success)'; }
+
+  // When the chip is suppressed, also show the *scheduled* time rather
+  // than a stale "updated" value (otherwise the row would silently
+  // display fake numbers without explanation).
+  const displayValue = cancelled ? '—' : (suppressDelta ? (scheduled || effective || '—') : (effective || '—'));
 
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -195,7 +211,7 @@ function TimeSlot({ scheduled, updated, label, icon, cancelled }) {
           textDecoration: cancelled ? 'line-through' : 'none',
           fontVariantNumeric: 'tabular-nums',
         }}>
-          {cancelled ? '—' : (effective || '—')}
+          {displayValue}
         </span>
         {delayed && !cancelled && (
           <span style={{
@@ -829,6 +845,7 @@ export default function FlightTab({ tripId }) {
             scheduled={toTime24(flight.scheduledDep)}
             updated={toTime24(flight.actualDep)}
             cancelled={flight.status === 'בוטלה'}
+            flightDate={flight.date}
           />
           <TimeSlot
             label="נחיתה"
@@ -836,6 +853,7 @@ export default function FlightTab({ tripId }) {
             scheduled={toTime24(flight.scheduledArr)}
             updated={toTime24(flight.estimatedArr)}
             cancelled={flight.status === 'בוטלה'}
+            flightDate={flight.date}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה (בזמן אמת):</span>
