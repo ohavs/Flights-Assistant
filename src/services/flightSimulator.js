@@ -316,10 +316,15 @@ export function lookupFlight(flightNumInput, dateInput) {
     }
     // Convert any legacy 12-hour preset times to 24-hour
     preset.scheduledDep = toTime24(preset.scheduledDep);
-    preset.actualDep = toTime24(preset.actualDep);
     preset.scheduledArr = toTime24(preset.scheduledArr);
-    preset.estimatedArr = toTime24(preset.estimatedArr);
-    preset.matched = true; // true = real preset, false = generated
+    // Presets are demo data — never invent delays. The live API path
+    // is the only source allowed to produce a different actualDep /
+    // estimatedArr than the scheduled times. Without this, future
+    // flights show fake "+X דק'" chips for no reason.
+    preset.actualDep = preset.scheduledDep;
+    preset.estimatedArr = preset.scheduledArr;
+    preset.status = 'בזמן';
+    preset.matched = true;
     return preset;
   }
 
@@ -349,21 +354,20 @@ export function lookupFlight(flightNumInput, dateInput) {
   const registration = `${ac.regPrefix}${String.fromCharCode(65 + (regSeed % 26))}${String.fromCharCode(65 + ((regSeed + 3) % 26))}`;
   const serialNumber = String(10000 + intIn(0, 39999));
 
-  // Times
+  // Times. For locally-generated data we set actual = scheduled and
+  // estimated = scheduled — we have no real info, so we should not
+  // fabricate delays. The UI compares scheduled vs actual/estimated to
+  // show "+X דק'" chips; with them equal, nothing extra is rendered.
   const scheduledDepHours = intIn(6, 19);
   const scheduledDepMins = intIn(0, 3) * 15;
-
-  const actualDelay = next() % 2 === 0 ? intIn(0, 14) : 0;
   const scheduledDepTotal = scheduledDepHours * 60 + scheduledDepMins;
-  const actualDepTotal = scheduledDepTotal + actualDelay;
   const durationMins = intIn(90, 270);
   const scheduledArrTotal = scheduledDepTotal + durationMins;
-  const estimatedArrTotal = actualDepTotal + durationMins - (next() % 3 === 0 ? 5 : 0);
 
   const scheduledDepStr = fmt24(scheduledDepTotal);
-  const actualDepStr = fmt24(actualDepTotal);
+  const actualDepStr = scheduledDepStr;
   const scheduledArrStr = fmt24(scheduledArrTotal);
-  const estimatedArrStr = fmt24(estimatedArrTotal);
+  const estimatedArrStr = scheduledArrStr;
 
   return {
     flightNumber,
@@ -374,7 +378,7 @@ export function lookupFlight(flightNumInput, dateInput) {
     actualDep: actualDepStr,
     scheduledArr: scheduledArrStr,
     estimatedArr: estimatedArrStr,
-    status: actualDelay > 10 ? 'באיחור קל' : 'בזמן',
+    status: 'בזמן',
     aircraftType: ac.type,
     registration,
     serialNumber,
