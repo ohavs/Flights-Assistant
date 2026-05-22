@@ -17,8 +17,9 @@ import ChecklistTab from './components/ChecklistTab';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw
+  Check, RotateCcw, ChevronDown
 } from 'lucide-react';
+import { useConfirm } from './ConfirmContext';
 import './index.css';
 
 /* ══════════════════════════════════════════════════════════
@@ -565,19 +566,49 @@ function ShareModal({ tripId, currentUid, onClose }) {
    GLOBAL CHECKLIST MODAL
    ══════════════════════════════════════════════════════════ */
 function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
+  const confirm = useConfirm();
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  if (!isOpen) return null;
-
-  const categories = [
+  const defaultCategoryNames = [
     'מסמכים וסידורים',
     'בגדים',
     'אלקטרוניקה',
     'תרופות ועזרה ראשונה',
     'סידורים אחרונים בארץ'
   ];
+  // Categories shown in the dropdown = defaults + any used by existing items.
+  const categories = Array.from(new Set([
+    ...defaultCategoryNames,
+    ...(globalChecklist || []).map(i => i.category).filter(Boolean),
+  ]));
+
+  if (!isOpen) return null;
+
+  const toggleCategory = (cat) => {
+    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const isDirty = !!newItemText.trim();
+
+  const attemptClose = async () => {
+    if (isDirty || editingItemId) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת טקסט בטופס שלא נשמר. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setEditingItemId(null);
+    setNewItemText('');
+    setNewItemCategory('מסמכים וסידורים');
+    onClose();
+  };
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -612,10 +643,18 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 
   const handleDelete = async (id) => {
     if (!userId) return;
+    const item = globalChecklist.find(i => i.id === id);
+    const ok = await confirm({
+      title: 'מחיקת פריט קבוע',
+      message: item?.text ? <>האם למחוק את <strong>{item.text}</strong> מהרשימה הקבועה?</> : 'האם למחוק את הפריט הזה?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     const updatedList = globalChecklist.filter(item => item.id !== id);
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: updatedList });
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
     } catch (err) {
       console.error('Error deleting from global checklist:', err);
     }
@@ -627,51 +666,66 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     setNewItemCategory(item.category);
   };
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת טקסט שלא נשמר. האם לבטל את העריכה?',
+        confirmText: 'בטל עריכה',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setEditingItemId(null);
     setNewItemText('');
     setNewItemCategory('מסמכים וסידורים');
   };
 
   const handleReset = async () => {
-    if (!window.confirm('האם אתה בטוח שברצונך לאפס את רשימת הציוד הקבועה לרשימת ברירת המחדל?')) return;
+    const ok = await confirm({
+      title: 'איפוס הרשימה הקבועה',
+      message: 'כל הפריטים האישיים יימחקו ויוחלפו ברשימת ברירת המחדל. הפעולה לא תשפיע על טיולים קיימים.',
+      confirmText: 'אפס לברירת מחדל',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: defaultChecklist });
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: defaultChecklist });
     } catch (err) {
       console.error('Error resetting global checklist:', err);
     }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={attemptClose}>
+      <div className="modal-content" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2>רשימת ציוד קבועה</h2>
-          <button className="btn-close" onClick={onClose}>✕</button>
+          <button className="btn-close" onClick={attemptClose}>✕</button>
         </div>
 
         <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5, marginBottom: 12, flexShrink: 0 }}>
           נהל כאן את רשימת הציוד הקבועה שלך. פריטים אלו יועתקו אוטומטית לכל טיול חדש שתפתח, ותוכל להתאים אותם אישית לכל טיול בנפרד.
         </p>
 
-        {/* Form Container */}
-        <form onSubmit={handleAdd} className="glass-card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
-          <h4 style={{ fontSize: 14, fontWeight: 800, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 4, margin: 0 }}>
+        {/* Form Container — inputs share the same height as the trip checklist */}
+        <form onSubmit={handleAdd} className="glass-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
+          <h4 style={{ fontSize: 15, fontWeight: 800, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 6, margin: 0 }}>
             {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
           </h4>
-          
-          <div className="row-2" style={{ gap: 8 }}>
+
+          <div className="row-2" style={{ gap: 10 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 11 }}>שם הפריט</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="למשל: רישיון נהיגה, כפכפים" 
+              <label>מה להביא?</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="למשל: רישיון נהיגה, כפכפים"
                 value={newItemText}
                 onChange={(e) => setNewItemText(e.target.value)}
                 required
-                style={{ padding: '8px 12px', fontSize: 14, minHeight: 38 }}
               />
             </div>
             <CustomDropdown
@@ -679,70 +733,98 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
               value={newItemCategory}
               onChange={setNewItemCategory}
               options={categories}
+              addable
+              addLabel="הוסף קטגוריה חדשה"
             />
           </div>
 
           {editingItemId ? (
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-              <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 36, fontSize: 14, padding: '6px 12px' }}>שמור</button>
-              <button type="button" className="btn-secondary" onClick={handleCancelEdit} style={{ minHeight: 36, fontSize: 14, padding: '6px 12px' }}>ביטול</button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+              <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
             </div>
           ) : (
-            <button type="submit" className="btn-primary" style={{ marginTop: 2, width: '100%', minHeight: 36, fontSize: 14, padding: '6px 12px' }}>
-              <Plus size={16} />
-              <span>הוסף לרשימה הקבועה</span>
+            <button type="submit" className="btn-primary" style={{ marginTop: 4, width: '100%' }}>
+              <Plus size={18} />
+              <span>הוסף פריט לרשימה</span>
             </button>
           )}
         </form>
 
-        {/* Scrollable checklist items */}
+        {/* Scrollable checklist items — uses the same .checklist-item-row layout as the trip tab */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {categories.map((category, catIdx) => {
             const categoryItems = globalChecklist.filter(item => item.category === category);
             if (categoryItems.length === 0) return null;
+            const isCollapsed = !!collapsedCategories[category];
 
             return (
               <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <h3 style={{ fontSize: 13, fontWeight: '800', color: 'var(--primary)', paddingRight: 2, margin: 0 }}>
-                  {category}
-                </h3>
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
+                    cursor: 'pointer', width: '100%',
+                    fontFamily: 'var(--font-hebrew)'
+                  }}
+                >
+                  <ChevronDown
+                    size={16}
+                    style={{
+                      color: 'var(--text-muted)',
+                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease', flexShrink: 0
+                    }}
+                  />
+                  <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                    {category}
+                  </h3>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                    {categoryItems.length}
+                  </span>
+                </button>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {categoryItems.map((item) => (
-                    <div 
-                      key={item.id} 
-                      className="glass-card" 
-                      style={{ 
-                        padding: '10px 12px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between',
-                        background: 'var(--card-bg)',
-                        border: 'var(--card-border)',
-                      }}
-                    >
-                      <span style={{ fontSize: 14, fontWeight: '600', color: 'var(--text-main)' }}>
-                        {item.text}
-                      </span>
-
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <button 
-                          onClick={() => handleStartEdit(item)}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                        >
-                          <Pencil size={14} />
-                        </button>
-
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: 4 }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                {!isCollapsed && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {categoryItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="glass-card checklist-item-row"
+                        style={{
+                          padding: '12px 14px',
+                          background: 'var(--card-bg)',
+                          border: 'var(--card-border)',
+                        }}
+                      >
+                        {/* RTL grid: text(right via flex) | actions(left) — no checkbox here (this is a template, not a tracked list) */}
+                        <div />
+                        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-main)', textAlign: 'right', wordBreak: 'break-word' }}>
+                          {item.text}
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(item)}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="ערוך"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(item.id)}
+                            style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="מחק"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -753,14 +835,13 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
             </div>
           )}
 
-          {/* Reset button */}
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, paddingBottom: 16 }}>
-            <button 
-              onClick={handleReset} 
-              className="btn-secondary" 
-              style={{ fontSize: 12, padding: '8px 12px', gap: 6, color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)', minHeight: 32 }}
+            <button
+              onClick={handleReset}
+              className="btn-secondary"
+              style={{ fontSize: 13, padding: '10px 16px', gap: 6, color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
             >
-              <RotateCcw size={13} />
+              <RotateCcw size={14} />
               <span>איפוס רשימה קבועה לברירת מחדל</span>
             </button>
           </div>

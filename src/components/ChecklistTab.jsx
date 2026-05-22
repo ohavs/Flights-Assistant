@@ -12,6 +12,7 @@ import {
 import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
+import { useConfirm } from '../ConfirmContext';
 
 export const defaultChecklist = [
   // Category 1: Documents & Core
@@ -49,6 +50,7 @@ export const defaultChecklist = [
 
 export default function ChecklistTab({ tripId }) {
   const { canEdit } = useTrip();
+  const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
@@ -61,13 +63,19 @@ export default function ChecklistTab({ tripId }) {
     setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  const categories = [
+  const defaultCategoryNames = [
     'מסמכים וסידורים',
     'בגדים',
     'אלקטרוניקה',
     'תרופות ועזרה ראשונה',
     'סידורים אחרונים בארץ'
   ];
+  // Allow the user to add custom categories via the dropdown — they
+  // persist as soon as the first item with that category is saved.
+  const categories = Array.from(new Set([
+    ...defaultCategoryNames,
+    ...items.map(i => i.category).filter(Boolean),
+  ]));
 
   // Listen to Firestore checklist
   useEffect(() => {
@@ -136,15 +144,29 @@ export default function ChecklistTab({ tripId }) {
 
   const handleDelete = async (id) => {
     if (!tripId) return;
+    const item = items.find(i => i.id === id);
+    const ok = await confirm({
+      title: 'מחיקת פריט מהרשימה',
+      message: item?.text ? <>האם למחוק את <strong>{item.text}</strong>?</> : 'האם למחוק את הפריט הזה?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     const docRef = doc(db, 'trips', tripId, 'checklist', id);
     await deleteDoc(docRef);
   };
 
   const handleReset = async () => {
     if (!tripId) return;
-    if (!window.confirm('האם אתה בטוח שברצונך לאפס את רשימת הציוד לרשימת ברירת המחדל? כל הפריטים האישיים יימחקו.')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'איפוס רשימת ציוד',
+      message: 'כל הפריטים האישיים בצ\'קליסט של הטיול יימחקו ויוחלפו ברשימת ברירת המחדל. האם להמשיך?',
+      confirmText: 'אפס לרשימת ברירת מחדל',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
 
     setLoading(true);
     const batch = writeBatch(db);
@@ -229,6 +251,8 @@ export default function ChecklistTab({ tripId }) {
             value={newItemCategory}
             onChange={setNewItemCategory}
             options={categories}
+            addable
+            addLabel="הוסף קטגוריה חדשה"
           />
         </div>
 

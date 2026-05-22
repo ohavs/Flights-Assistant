@@ -794,11 +794,14 @@ export function CustomDateTimePicker({ value, onChange, label }) {
 /* ══════════════════════════════════════════════════════════
    CUSTOM DROPDOWN — fully styled select replacement
    ══════════════════════════════════════════════════════════ */
-export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required }) {
+export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש' }) {
   const [isOpen, setIsOpen] = useState(false);
   const [popupRect, setPopupRect] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
   const triggerRef = useRef(null);
   const popupRef = useRef(null);
+  const draftInputRef = useRef(null);
 
   const normalized = (options || []).map(o => (
     typeof o === 'string' ? { value: o, label: o } : o
@@ -851,7 +854,26 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
   const handleSelect = (val) => {
     onChange(val);
     setIsOpen(false);
+    setAdding(false);
+    setDraft('');
   };
+
+  const handleStartAdd = () => {
+    setAdding(true);
+    setDraft('');
+    requestAnimationFrame(() => draftInputRef.current?.focus());
+  };
+
+  const handleCommitAdd = () => {
+    const val = draft.trim();
+    if (!val) { setAdding(false); return; }
+    handleSelect(val);
+  };
+
+  // Reset adding mode when closing
+  useEffect(() => {
+    if (!isOpen) { setAdding(false); setDraft(''); }
+  }, [isOpen]);
 
   return (
     <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
@@ -917,6 +939,65 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
               </button>
             );
           })}
+
+          {addable && !adding && (
+            <button
+              type="button"
+              onClick={handleStartAdd}
+              className="custom-dropdown-option custom-dropdown-add"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>
+                <ChevronDown size={1} style={{ display: 'none' }} />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </span>
+              <span style={{ flex: 1, textAlign: 'right', color: 'var(--accent)', fontWeight: 800 }}>{addLabel}</span>
+            </button>
+          )}
+
+          {addable && adding && (
+            <div className="custom-dropdown-add-row" onClick={(e) => e.stopPropagation()}>
+              <input
+                ref={draftInputRef}
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleCommitAdd(); }
+                  if (e.key === 'Escape') { e.preventDefault(); setAdding(false); setDraft(''); }
+                }}
+                placeholder="שם הקטגוריה החדשה"
+                style={{
+                  flex: 1, minHeight: 36, padding: '6px 10px',
+                  border: '1.5px solid var(--accent)', borderRadius: 8,
+                  fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                  color: 'var(--primary)', outline: 'none', background: '#fff',
+                  textAlign: 'right'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCommitAdd}
+                className="btn-primary"
+                style={{ minHeight: 36, padding: '6px 12px', fontSize: 13 }}
+              >
+                הוסף
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAdding(false); setDraft(''); }}
+                style={{
+                  minHeight: 36, padding: '6px 10px', fontSize: 12,
+                  background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                  cursor: 'pointer', fontWeight: 700
+                }}
+              >
+                בטל
+              </button>
+            </div>
+          )}
         </div>,
         document.body
       )}

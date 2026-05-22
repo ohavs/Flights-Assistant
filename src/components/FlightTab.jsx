@@ -4,6 +4,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24 } from '../services/flightSimulator';
 import { lookupFlightLive } from '../services/flightApi';
 import { useTrip } from '../TripContext';
+import { useConfirm } from '../ConfirmContext';
 import MapComponent from './MapComponent';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
@@ -117,7 +118,11 @@ function formatDateRange(out, ret) {
 
 export default function FlightTab({ tripId }) {
   const { canEdit, ownerProfile } = useTrip();
+  const confirm = useConfirm();
   const [tripData, setTripData] = useState(null);
+  // Snapshot of the form state when the modal opened, used to detect
+  // unsaved changes when the user tries to close it.
+  const initialFormSnapshot = useRef(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   // 'all' | 'trip' | 'outbound' | 'return' | 'hotel'
@@ -420,7 +425,63 @@ export default function FlightTab({ tripId }) {
     setFormHotelRoom(htl.roomNumber || '');
     setFormHotelNotes(htl.notes || '');
 
+    // Snapshot the seeded form values so we can detect unsaved changes.
+    initialFormSnapshot.current = JSON.stringify({
+      formTripName: tripData.name || '',
+      formOutFlightNum: out.flightNumber || '',
+      formOutAirline: out.airline || '',
+      formOutDepTz: out.depAirport?.timezone || 'UTC +02:00',
+      formOutArrTz: out.arrAirport?.timezone || 'UTC +02:00',
+      formOutSchedDep: out.scheduledDep || '',
+      formOutActDep: out.actualDep || '',
+      formOutSchedArr: out.scheduledArr || '',
+      formOutEstArr: out.estimatedArr || '',
+      formOutStatus: out.status || 'בזמן',
+      formOutDate: out.date || '2026-06-15',
+      formOutGate: out.gate || '',
+      formRetFlightNum: ret.flightNumber || '',
+      formRetAirline: ret.airline || '',
+      formRetDepTz: ret.depAirport?.timezone || 'UTC +02:00',
+      formRetArrTz: ret.arrAirport?.timezone || 'UTC +02:00',
+      formRetSchedDep: ret.scheduledDep || '',
+      formRetActDep: ret.actualDep || '',
+      formRetSchedArr: ret.scheduledArr || '',
+      formRetEstArr: ret.estimatedArr || '',
+      formRetStatus: ret.status || 'בזמן',
+      formRetDate: ret.date || '2026-06-22',
+      formRetGate: ret.gate || '',
+      formHotelName: htl.name || '',
+      formHotelAddress: htl.address || '',
+      formHotelCheckIn: htl.checkIn || '',
+      formHotelCheckOut: htl.checkOut || '',
+      formHotelRoom: htl.roomNumber || '',
+      formHotelNotes: htl.notes || '',
+    });
+
     setShowEditModal(true);
+  };
+
+  const currentFormSerialized = () => JSON.stringify({
+    formTripName, formOutFlightNum, formOutAirline, formOutDepTz, formOutArrTz,
+    formOutSchedDep, formOutActDep, formOutSchedArr, formOutEstArr, formOutStatus,
+    formOutDate, formOutGate, formRetFlightNum, formRetAirline, formRetDepTz,
+    formRetArrTz, formRetSchedDep, formRetActDep, formRetSchedArr, formRetEstArr,
+    formRetStatus, formRetDate, formRetGate, formHotelName, formHotelAddress,
+    formHotelCheckIn, formHotelCheckOut, formHotelRoom, formHotelNotes,
+  });
+
+  const attemptCloseEdit = async () => {
+    if (initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'ערכת נתונים שלא נשמרו עדיין. אם תצא עכשיו השינויים יאבדו.',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setShowEditModal(false);
   };
 
   const handleFormSubmit = async (e) => {
@@ -746,7 +807,7 @@ export default function FlightTab({ tripId }) {
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+        <div className="modal-overlay" onClick={attemptCloseEdit}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
 
             <div className="modal-header">
@@ -757,7 +818,7 @@ export default function FlightTab({ tripId }) {
                 editScope === 'trip' ? 'עריכת פרטי הטיול' :
                 'עריכת כל פרטי הנסיעה'
               }</h2>
-              <button className="btn-close" onClick={() => setShowEditModal(false)}>✕</button>
+              <button className="btn-close" onClick={attemptCloseEdit}>✕</button>
             </div>
 
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -980,7 +1041,7 @@ export default function FlightTab({ tripId }) {
 
               <div style={{ display: 'flex', gap: '12px', paddingBottom: '20px' }}>
                 <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">ביטול</button>
+                <button type="button" onClick={attemptCloseEdit} className="btn-secondary">ביטול</button>
               </div>
 
             </form>

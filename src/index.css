@@ -911,6 +911,19 @@ input[type="datetime-local"].form-control {
   background: rgba(79, 70, 229, 0.1);
   color: var(--accent);
 }
+.custom-dropdown-add {
+  border-top: 1px dashed rgba(11, 11, 48, 0.1);
+  margin-top: 4px;
+  padding-top: 12px !important;
+}
+.custom-dropdown-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px dashed rgba(11, 11, 48, 0.1);
+  margin-top: 4px;
+}
 
 /* ── Filter chips (planning tab) ── */
 .filter-chips-row {

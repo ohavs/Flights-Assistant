@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
+import { useConfirm } from '../ConfirmContext';
 import {
   Search,
   Plus,
@@ -140,6 +141,7 @@ export const defaultPraguePlans = [
 
 export default function PlanningTab({ tripId }) {
   const { canEdit } = useTrip();
+  const confirm = useConfirm();
   const [plans, setPlans] = useState([]);
   const [days, setDays] = useState([]);
   const [subTab, setSubTab] = useState('pool'); // 'pool' | 'daily'
@@ -233,6 +235,28 @@ export default function PlanningTab({ tripId }) {
     setShowAddForm(true);
   };
 
+  // Compute whether the add-plan form has content (used by the
+  // "unsaved changes" prompt when the user tries to close).
+  const planFormDirty = () =>
+    !!(title.trim() || description.trim() || address.trim() || price.trim() ||
+       links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim() ||
+       (editingId && category !== 'אטרקציות ודברים לעשות'));
+
+  const attemptClosePlanForm = async () => {
+    if (planFormDirty()) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת נתונים בטופס שלא נשמר. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setShowAddForm(false);
+    setEditingId(null);
+  };
+
   const handleStartEdit = (plan) => {
     setEditingId(plan.id);
     setTitle(plan.title);
@@ -273,10 +297,16 @@ export default function PlanningTab({ tripId }) {
 
   const handleDelete = async (id) => {
     if (!tripId) return;
-    if (window.confirm('האם למחוק פריט תכנון זה?')) {
-      const docRef = doc(db, 'trips', tripId, 'planning', id);
-      await deleteDoc(docRef);
-    }
+    const plan = plans.find(p => p.id === id);
+    const ok = await confirm({
+      title: 'מחיקת פריט תכנון',
+      message: plan?.title ? <>האם למחוק את <strong>{plan.title}</strong>?</> : 'האם למחוק פריט תכנון זה?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
+    await deleteDoc(doc(db, 'trips', tripId, 'planning', id));
   };
 
   const handleAddSubmit = async (e) => {
@@ -367,10 +397,16 @@ export default function PlanningTab({ tripId }) {
 
   const handleDeleteDay = async (dayId) => {
     if (!tripId) return;
-    if (window.confirm('האם למחוק את יום הטיול וכל הפעילויות שבו?')) {
-      const docRef = doc(db, 'trips', tripId, 'days', dayId);
-      await deleteDoc(docRef);
-    }
+    const day = days.find(d => d.id === dayId);
+    const ok = await confirm({
+      title: 'מחיקת יום טיול',
+      message: <>האם למחוק את <strong>{day?.title || 'היום'}</strong> וכל הפעילויות שבו?</>,
+      confirmText: 'מחק יום',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
+    await deleteDoc(doc(db, 'trips', tripId, 'days', dayId));
   };
 
   const handleOpenAddActivity = (dayId) => {
@@ -383,6 +419,25 @@ export default function PlanningTab({ tripId }) {
     setActivityDescription('');
     setActivityCategory('אטרקציות ודברים לעשות');
     setShowActivityForm(true);
+  };
+
+  const activityFormDirty = () =>
+    !!(activityTitle.trim() || activityTimeLabel.trim() ||
+       activityAddress.trim() || activityDescription.trim());
+
+  const attemptCloseActivityForm = async () => {
+    if (activityFormDirty()) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת נתונים בטופס שלא נשמר. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setShowActivityForm(false);
+    setEditingActivityId(null);
   };
 
   const handleStartEditActivity = (dayId, act) => {
@@ -399,10 +454,17 @@ export default function PlanningTab({ tripId }) {
 
   const handleDeleteActivity = async (dayId, activityId) => {
     if (!tripId) return;
-    if (!window.confirm('האם למחוק פעילות זו?')) return;
-
     const day = days.find(d => d.id === dayId);
     if (!day) return;
+    const act = (day.activities || []).find(a => a.id === activityId);
+    const ok = await confirm({
+      title: 'מחיקת פעילות',
+      message: act?.title ? <>האם למחוק את <strong>{act.title}</strong>?</> : 'האם למחוק פעילות זו?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
 
     const updatedActivities = day.activities.filter(act => act.id !== activityId);
     const docRef = doc(db, 'trips', tripId, 'days', dayId);
@@ -564,12 +626,12 @@ export default function PlanningTab({ tripId }) {
 
           {/* Add/Edit Plan Slide-Up Modal */}
           {showAddForm && (
-            <div className="modal-overlay" onClick={() => { setShowAddForm(false); setEditingId(null); }}>
+            <div className="modal-overlay" onClick={attemptClosePlanForm}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 
                 <div className="modal-header">
                   <h2>{editingId ? 'עריכת פריט תכנון' : 'הוספת יעד / אטרקציה חדשה'}</h2>
-                  <button className="btn-close" onClick={() => { setShowAddForm(false); setEditingId(null); }}>✕</button>
+                  <button className="btn-close" onClick={attemptClosePlanForm}>✕</button>
                 </div>
 
                 <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -676,7 +738,7 @@ export default function PlanningTab({ tripId }) {
 
                   <div style={{ display: 'flex', gap: '12px', marginTop: '8px', paddingBottom: '20px' }}>
                     <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-                    <button type="button" onClick={() => { setShowAddForm(false); setEditingId(null); }} className="btn-secondary">ביטול</button>
+                    <button type="button" onClick={attemptClosePlanForm} className="btn-secondary">ביטול</button>
                   </div>
 
                 </form>
@@ -1204,12 +1266,12 @@ export default function PlanningTab({ tripId }) {
 
       {/* Add/Edit Activity Slide-Up Bottom Sheet Modal */}
       {showActivityForm && (
-        <div className="modal-overlay" onClick={() => setShowActivityForm(false)}>
+        <div className="modal-overlay" onClick={attemptCloseActivityForm}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
             
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>
-              <button className="btn-close" onClick={() => setShowActivityForm(false)}>✕</button>
+              <button className="btn-close" onClick={attemptCloseActivityForm}>✕</button>
             </div>
 
             <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>
@@ -1318,7 +1380,7 @@ export default function PlanningTab({ tripId }) {
 
               <div style={{ display: 'flex', gap: 12, marginTop: 8, flexShrink: 0 }}>
                 <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 44, fontSize: 15 }}>שמור פעילות</button>
-                <button type="button" onClick={() => setShowActivityForm(false)} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
+                <button type="button" onClick={attemptCloseActivityForm} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
               </div>
 
             </form>
