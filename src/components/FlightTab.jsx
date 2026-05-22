@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { getFlightProgressInfo, formatOffsetFromIsrael } from '../services/flightSimulator';
+import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24 } from '../services/flightSimulator';
 import { lookupFlightLive } from '../services/flightApi';
 import { useTrip } from '../TripContext';
 import MapComponent from './MapComponent';
@@ -385,10 +385,10 @@ export default function FlightTab({ tripId }) {
     setFormOutAirline(out.airline || '');
     setFormOutDepTz(out.depAirport?.timezone || 'UTC +02:00');
     setFormOutArrTz(out.arrAirport?.timezone || 'UTC +02:00');
-    setFormOutSchedDep(out.scheduledDep || '');
-    setFormOutActDep(out.actualDep || '');
-    setFormOutSchedArr(out.scheduledArr || '');
-    setFormOutEstArr(out.estimatedArr || '');
+    setFormOutSchedDep(toTime24(out.scheduledDep));
+    setFormOutActDep(toTime24(out.actualDep));
+    setFormOutSchedArr(toTime24(out.scheduledArr));
+    setFormOutEstArr(toTime24(out.estimatedArr));
     setFormOutStatus(out.status || 'בזמן');
     setFormOutDate(out.date || '2026-06-15');
     setFormOutGate(out.gate || '');
@@ -401,10 +401,10 @@ export default function FlightTab({ tripId }) {
     setFormRetAirline(ret.airline || '');
     setFormRetDepTz(ret.depAirport?.timezone || 'UTC +02:00');
     setFormRetArrTz(ret.arrAirport?.timezone || 'UTC +02:00');
-    setFormRetSchedDep(ret.scheduledDep || '');
-    setFormRetActDep(ret.actualDep || '');
-    setFormRetSchedArr(ret.scheduledArr || '');
-    setFormRetEstArr(ret.estimatedArr || '');
+    setFormRetSchedDep(toTime24(ret.scheduledDep));
+    setFormRetActDep(toTime24(ret.actualDep));
+    setFormRetSchedArr(toTime24(ret.scheduledArr));
+    setFormRetEstArr(toTime24(ret.estimatedArr));
     setFormRetStatus(ret.status || 'בזמן');
     setFormRetDate(ret.date || '2026-06-22');
     setFormRetGate(ret.gate || '');
@@ -610,14 +610,14 @@ export default function FlightTab({ tripId }) {
               <PlaneTakeoff size={15} style={{ color: 'var(--accent)' }} />
               המראה מתוכננת / מעודכנת:
             </span>
-            <span style={{ fontWeight: '800' }}>{flight.scheduledDep || '—'} ◄ {flight.actualDep || '—'}</span>
+            <span style={{ fontWeight: '800' }}>{toTime24(flight.scheduledDep) || '—'} ◄ {toTime24(flight.actualDep) || '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: '700' }}>
               <PlaneLanding size={15} style={{ color: 'var(--accent)' }} />
               נחיתה מתוכננת / משוערת:
             </span>
-            <span style={{ fontWeight: '800' }}>{flight.scheduledArr || '—'} ◄ {flight.estimatedArr || '—'}</span>
+            <span style={{ fontWeight: '800' }}>{toTime24(flight.scheduledArr) || '—'} ◄ {toTime24(flight.estimatedArr) || '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה (בזמן אמת):</span>

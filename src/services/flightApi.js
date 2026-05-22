@@ -36,15 +36,11 @@ function computeOffsetFromTz(ianaTz) {
   }
 }
 
-function localTimeToAmPm(iso) {
+function localTimeTo24(iso) {
   if (!iso) return '';
   const m = String(iso).match(/(\d{2}):(\d{2})/);
   if (!m) return '';
-  const h24 = parseInt(m[1], 10);
-  const min = m[2];
-  const period = h24 >= 12 ? 'PM' : 'AM';
-  const h12 = String(((h24 + 11) % 12) + 1).padStart(2, '0');
-  return `${h12}:${min} ${period}`;
+  return `${m[1]}:${m[2]}`;
 }
 
 function pickAirport(side) {
@@ -78,10 +74,10 @@ function adaptFlight(api) {
     airline: (api.airline && api.airline.name) || '',
     depAirport: pickAirport(api.departure) || { code: '', city: '', name: '', lat: 0, lng: 0, timezone: 'UTC +00:00' },
     arrAirport: pickAirport(api.arrival) || { code: '', city: '', name: '', lat: 0, lng: 0, timezone: 'UTC +00:00' },
-    scheduledDep: localTimeToAmPm(dep.scheduledTime && (dep.scheduledTime.local || dep.scheduledTime.utc)),
-    actualDep:    localTimeToAmPm((dep.actualTime || dep.revisedTime || {}).local || (dep.actualTime || dep.revisedTime || {}).utc || (dep.scheduledTime && (dep.scheduledTime.local || dep.scheduledTime.utc))),
-    scheduledArr: localTimeToAmPm(arr.scheduledTime && (arr.scheduledTime.local || arr.scheduledTime.utc)),
-    estimatedArr: localTimeToAmPm((arr.predictedTime || arr.revisedTime || arr.actualTime || {}).local || (arr.predictedTime || arr.revisedTime || arr.actualTime || {}).utc || (arr.scheduledTime && (arr.scheduledTime.local || arr.scheduledTime.utc))),
+    scheduledDep: localTimeTo24(dep.scheduledTime && (dep.scheduledTime.local || dep.scheduledTime.utc)),
+    actualDep:    localTimeTo24((dep.actualTime || dep.revisedTime || {}).local || (dep.actualTime || dep.revisedTime || {}).utc || (dep.scheduledTime && (dep.scheduledTime.local || dep.scheduledTime.utc))),
+    scheduledArr: localTimeTo24(arr.scheduledTime && (arr.scheduledTime.local || arr.scheduledTime.utc)),
+    estimatedArr: localTimeTo24((arr.predictedTime || arr.revisedTime || arr.actualTime || {}).local || (arr.predictedTime || arr.revisedTime || arr.actualTime || {}).utc || (arr.scheduledTime && (arr.scheduledTime.local || arr.scheduledTime.utc))),
     status: statusFromApi(api.status),
     gate: dep.gate || arr.gate || '',
     matched: true,

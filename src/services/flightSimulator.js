@@ -208,6 +208,31 @@ const aircraftTypes = [
   { type: 'Airbus A321neo', regPrefix: 'G-NE', country: 'בריטניה' },
 ];
 
+// Normalize any time string ("07:30 AM", "19:30", "7:30 pm") → "HH:MM" 24h.
+export function toTime24(s) {
+  if (!s) return '';
+  const trimmed = String(s).trim();
+  const m12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10) % 12;
+    if (m12[3].toUpperCase() === 'PM') h += 12;
+    return `${String(h).padStart(2, '0')}:${m12[2]}`;
+  }
+  const m24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    return `${String(h).padStart(2, '0')}:${m24[2]}`;
+  }
+  return trimmed;
+}
+
+// Format 24-hour HH:MM from minutes-since-midnight integer.
+function fmt24(totalMins) {
+  const h = Math.floor(((totalMins % 1440) + 1440) % 1440 / 60);
+  const m = ((totalMins % 60) + 60) % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 // Parse a "UTC +03:00" / "UTC -04:00" string into a numeric offset in hours.
 export function parseUtcOffset(tzStr) {
   if (!tzStr) return 0;
@@ -289,6 +314,11 @@ export function lookupFlight(flightNumInput, dateInput) {
     if (!preset.gate) {
       preset.gate = generateGate(flightNumber);
     }
+    // Convert any legacy 12-hour preset times to 24-hour
+    preset.scheduledDep = toTime24(preset.scheduledDep);
+    preset.actualDep = toTime24(preset.actualDep);
+    preset.scheduledArr = toTime24(preset.scheduledArr);
+    preset.estimatedArr = toTime24(preset.estimatedArr);
     preset.matched = true; // true = real preset, false = generated
     return preset;
   }
@@ -322,11 +352,6 @@ export function lookupFlight(flightNumInput, dateInput) {
   // Times
   const scheduledDepHours = intIn(6, 19);
   const scheduledDepMins = intIn(0, 3) * 15;
-  const fmt = (hours, mins) => {
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const h12 = ((hours + 11) % 12) + 1; // 0→12, 13→1, etc.
-    return `${String(h12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
-  };
 
   const actualDelay = next() % 2 === 0 ? intIn(0, 14) : 0;
   const scheduledDepTotal = scheduledDepHours * 60 + scheduledDepMins;
@@ -335,12 +360,10 @@ export function lookupFlight(flightNumInput, dateInput) {
   const scheduledArrTotal = scheduledDepTotal + durationMins;
   const estimatedArrTotal = actualDepTotal + durationMins - (next() % 3 === 0 ? 5 : 0);
 
-  const toHM = (t) => [Math.floor(t / 60) % 24, t % 60];
-
-  const scheduledDepStr = fmt(...toHM(scheduledDepTotal));
-  const actualDepStr = fmt(...toHM(actualDepTotal));
-  const scheduledArrStr = fmt(...toHM(scheduledArrTotal));
-  const estimatedArrStr = fmt(...toHM(estimatedArrTotal));
+  const scheduledDepStr = fmt24(scheduledDepTotal);
+  const actualDepStr = fmt24(actualDepTotal);
+  const scheduledArrStr = fmt24(scheduledArrTotal);
+  const estimatedArrStr = fmt24(estimatedArrTotal);
 
   return {
     flightNumber,

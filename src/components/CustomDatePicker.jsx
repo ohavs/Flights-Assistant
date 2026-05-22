@@ -441,38 +441,39 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
 }
 
 /* ══════════════════════════════════════════════════════════
-   CUSTOM TIME PICKER — outputs "HH:MM AM/PM" (12-hour)
+   CUSTOM TIME PICKER — outputs "HH:MM" (24-hour)
    ══════════════════════════════════════════════════════════ */
-function parse12hString(str) {
-  const m = String(str || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-  if (!m) return { h12: '12', mm: '00', period: 'PM' };
-  let h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  let period = (m[3] || '').toUpperCase();
-  if (!period) {
-    period = h >= 12 ? 'PM' : 'AM';
-    h = ((h + 11) % 12) + 1;
+function parseTime(str) {
+  const s = String(str || '').trim();
+  // 12-hour with AM/PM (legacy data) → convert to 24h
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10) % 12;
+    if (m12[3].toUpperCase() === 'PM') h += 12;
+    return { hh: String(h).padStart(2, '0'), mm: m12[2] };
   }
-  return { h12: String(h).padStart(2, '0'), mm: String(min).padStart(2, '0'), period };
+  // 24-hour
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return { hh: String(parseInt(m24[1], 10)).padStart(2, '0'), mm: m24[2] };
+  return { hh: '12', mm: '00' };
 }
 
 export function formatHebrewTime(timeStr) {
   if (!timeStr) return 'בחר שעה';
-  return timeStr;
+  const { hh, mm } = parseTime(timeStr);
+  return `${hh}:${mm}`;
 }
 
 export function CustomTimePicker({ value, onChange, label, required }) {
   const [isOpen, setIsOpen] = useState(false);
-  const parsed = parse12hString(value);
-  const [tempH, setTempH] = useState(parsed.h12);
+  const parsed = parseTime(value);
+  const [tempH, setTempH] = useState(parsed.hh);
   const [tempM, setTempM] = useState(parsed.mm);
-  const [tempPeriod, setTempPeriod] = useState(parsed.period);
 
   useEffect(() => {
-    const p = parse12hString(value);
-    setTempH(p.h12);
+    const p = parseTime(value);
+    setTempH(p.hh);
     setTempM(p.mm);
-    setTempPeriod(p.period);
   }, [value]);
 
   const hRef = useRef(null);
@@ -491,11 +492,13 @@ export function CustomTimePicker({ value, onChange, label, required }) {
     });
   }, [isOpen, tempH, tempM]);
 
-  const hours12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+  const hours24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
   const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
+  const displayValue = value ? `${parseTime(value).hh}:${parseTime(value).mm}` : '';
+
   const handleSave = () => {
-    onChange(`${tempH}:${tempM} ${tempPeriod}`);
+    onChange(`${tempH}:${tempM}`);
     setIsOpen(false);
   };
 
@@ -508,8 +511,8 @@ export function CustomTimePicker({ value, onChange, label, required }) {
         className="form-control"
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fff' }}
       >
-        <span style={{ fontSize: '15px', fontWeight: '700', color: value ? 'var(--primary)' : 'var(--text-muted)' }}>
-          {value || 'בחר שעה...'}
+        <span style={{ fontSize: '15px', fontWeight: '700', color: displayValue ? 'var(--primary)' : 'var(--text-muted)' }}>
+          {displayValue || 'בחר שעה...'}
         </span>
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
       </div>
@@ -530,32 +533,12 @@ export function CustomTimePicker({ value, onChange, label, required }) {
               </button>
             </div>
 
-            {/* AM/PM toggle */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'rgba(11,11,48,0.04)', padding: 4, borderRadius: 12 }}>
-              {['AM', 'PM'].map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setTempPeriod(p)}
-                  style={{
-                    border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 14, fontWeight: 800, cursor: 'pointer',
-                    background: tempPeriod === p ? '#fff' : 'transparent',
-                    color: tempPeriod === p ? 'var(--primary)' : 'var(--text-muted)',
-                    boxShadow: tempPeriod === p ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {p === 'AM' ? 'לפני הצהריים (AM)' : 'אחר הצהריים (PM)'}
-                </button>
-              ))}
-            </div>
-
-            {/* Hour + Minute columns */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, direction: 'rtl' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Hour + Minute columns (24-hour) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'rtl' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
-                <div ref={hRef} style={{ flex: 1, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {hours12.map(h => {
+                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {hours24.map(h => {
                     const isActive = h === tempH;
                     return (
                       <button
@@ -569,9 +552,9 @@ export function CustomTimePicker({ value, onChange, label, required }) {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
-                <div ref={mRef} style={{ flex: 1, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {minutes.map(m => {
                     const isActive = m === tempM;
                     return (
@@ -588,7 +571,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
             </div>
 
             <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: 12, padding: '10px 14px', fontSize: '13.5px', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
-              {tempH}:{tempM} {tempPeriod}
+              {tempH}:{tempM}
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
