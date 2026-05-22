@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24 } from '../services/flightSimulator';
+import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
 import { lookupFlightLive } from '../services/flightApi';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -16,7 +16,9 @@ import {
   Search,
   PlaneTakeoff,
   PlaneLanding,
-  RefreshCw
+  RefreshCw,
+  ExternalLink,
+  Link2
 } from 'lucide-react';
 
 const FLIGHT_STATUS_OPTIONS = [
@@ -72,6 +74,7 @@ export const defaultTrip = {
   hotelDetails: {
     name: 'Grandium Hotel Prague',
     address: 'Politických vězňů 913/12, 110 00 Nové Město, Prague, Czech Republic',
+    link: 'https://www.grandium.cz/',
     checkIn: '2026-06-15T14:00',
     checkOut: '2026-06-22T12:00',
     roomNumber: '308',
@@ -96,6 +99,7 @@ const emptyFlightDetails = {
 const emptyHotelDetails = {
   name: '',
   address: '',
+  link: '',
   checkIn: '',
   checkOut: '',
   roomNumber: '',
@@ -114,6 +118,127 @@ function formatDateRange(out, ret) {
   const b = fmt(ret);
   if (a && b) return `${a} - ${b}`;
   return a || b || '';
+}
+
+// Parse "07:35", "07:35 AM" etc. to minutes since midnight.
+function timeToMinutes(t) {
+  if (!t) return null;
+  const m = String(t).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const mins = parseInt(m[2], 10);
+  const period = (m[3] || '').toUpperCase();
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return h * 60 + mins;
+}
+
+// Compute the difference (in minutes) between scheduled and updated times,
+// rounding for next-day rollover (e.g. scheduled 23:50 -> actual 00:10).
+function deltaMinutes(scheduled, actual) {
+  const s = timeToMinutes(scheduled);
+  const a = timeToMinutes(actual);
+  if (s == null || a == null) return null;
+  let diff = a - s;
+  if (diff < -12 * 60) diff += 24 * 60;       // crossed midnight forward
+  else if (diff > 12 * 60) diff -= 24 * 60;   // wrapped backward
+  return diff;
+}
+
+function formatDelta(mins) {
+  if (mins == null || mins === 0) return null;
+  const abs = Math.abs(mins);
+  if (abs >= 60) {
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    const body = m ? `${h}:${String(m).padStart(2, '0')} שע'` : `${h} שע'`;
+    return mins > 0 ? `+${body}` : `−${body}`;
+  }
+  return mins > 0 ? `+${abs} דק'` : `−${abs} דק'`;
+}
+
+// One slot for an event time: shows the most up-to-date time,
+// highlighted red on delay, green on "earlier than scheduled",
+// strike-through if cancelled.
+function TimeSlot({ scheduled, updated, label, icon, cancelled }) {
+  const effective = updated || scheduled;
+  const delta = deltaMinutes(scheduled, updated);
+  const delayed = delta != null && delta > 0;
+  const early = delta != null && delta < 0;
+
+  let color = 'var(--primary)';
+  let bgChip = null;
+  let chipColor = null;
+  if (cancelled) color = 'rgb(220, 38, 38)';
+  else if (delayed) { color = 'rgb(220, 38, 38)'; bgChip = 'rgba(220, 38, 38, 0.1)'; chipColor = 'rgb(220, 38, 38)'; }
+  else if (early)   { bgChip = 'rgba(5, 150, 105, 0.1)'; chipColor = 'var(--text-success)'; }
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: 700 }}>
+        {icon}
+        {label}
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {delta != null && delta !== 0 && !cancelled && (
+          <span style={{
+            background: bgChip, color: chipColor,
+            fontSize: 11, fontWeight: 800,
+            padding: '2px 8px', borderRadius: 999,
+          }}>
+            {formatDelta(delta)}
+          </span>
+        )}
+        <span style={{
+          fontWeight: 800,
+          color,
+          textDecoration: cancelled ? 'line-through' : 'none',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {cancelled ? '—' : (effective || '—')}
+        </span>
+        {delayed && !cancelled && (
+          <span style={{
+            fontSize: 10, fontWeight: 800,
+            color: 'rgb(220, 38, 38)',
+            background: 'rgba(220, 38, 38, 0.06)',
+            padding: '1px 6px', borderRadius: 6,
+          }}>
+            מעודכן
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Live ticking clock for an airport, based on a "UTC ±HH:MM" string.
+function LocalClock({ timezone }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!timezone) return null;
+  const offsetH = parseUtcOffset(timezone);
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const local = new Date(utcMs + offsetH * 3600000);
+  const hh = String(local.getHours()).padStart(2, '0');
+  const mm = String(local.getMinutes()).padStart(2, '0');
+  const ss = String(local.getSeconds()).padStart(2, '0');
+  return (
+    <span style={{
+      fontFamily: 'monospace',
+      fontVariantNumeric: 'tabular-nums',
+      fontSize: 12,
+      fontWeight: 800,
+      color: 'var(--accent)',
+      letterSpacing: '0.5px',
+    }}>
+      {hh}:{mm}:{ss}
+    </span>
+  );
 }
 
 export default function FlightTab({ tripId }) {
@@ -176,6 +301,24 @@ export default function FlightTab({ tripId }) {
   const [formHotelCheckOut, setFormHotelCheckOut] = useState('');
   const [formHotelRoom, setFormHotelRoom] = useState('');
   const [formHotelNotes, setFormHotelNotes] = useState('');
+  const [formHotelLink, setFormHotelLink] = useState('');
+
+  // When the outbound flight date changes, slide the hotel check-in to
+  // the same calendar day (preserving the previously-picked time, or
+  // defaulting to 14:00 — standard hotel check-in). Same for return
+  // flight → check-out (default 12:00).
+  const syncOutboundDate = (newDate) => {
+    setFormOutDate(newDate);
+    if (!newDate) return;
+    const time = (formHotelCheckIn || '').split('T')[1] || '14:00';
+    setFormHotelCheckIn(`${newDate}T${time}`);
+  };
+  const syncReturnDate = (newDate) => {
+    setFormRetDate(newDate);
+    if (!newDate) return;
+    const time = (formHotelCheckOut || '').split('T')[1] || '12:00';
+    setFormHotelCheckOut(`${newDate}T${time}`);
+  };
 
   const Banner = ({ color, bg, border, children }) => (
     <div style={{ marginTop: 8, padding: '10px 12px', background: bg, border: `1px solid ${border}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color, lineHeight: 1.5 }}>
@@ -420,6 +563,7 @@ export default function FlightTab({ tripId }) {
 
     setFormHotelName(htl.name || '');
     setFormHotelAddress(htl.address || '');
+    setFormHotelLink(htl.link || '');
     setFormHotelCheckIn(htl.checkIn || '');
     setFormHotelCheckOut(htl.checkOut || '');
     setFormHotelRoom(htl.roomNumber || '');
@@ -452,6 +596,7 @@ export default function FlightTab({ tripId }) {
       formRetGate: ret.gate || '',
       formHotelName: htl.name || '',
       formHotelAddress: htl.address || '',
+      formHotelLink: htl.link || '',
       formHotelCheckIn: htl.checkIn || '',
       formHotelCheckOut: htl.checkOut || '',
       formHotelRoom: htl.roomNumber || '',
@@ -466,7 +611,7 @@ export default function FlightTab({ tripId }) {
     formOutSchedDep, formOutActDep, formOutSchedArr, formOutEstArr, formOutStatus,
     formOutDate, formOutGate, formRetFlightNum, formRetAirline, formRetDepTz,
     formRetArrTz, formRetSchedDep, formRetActDep, formRetSchedArr, formRetEstArr,
-    formRetStatus, formRetDate, formRetGate, formHotelName, formHotelAddress,
+    formRetStatus, formRetDate, formRetGate, formHotelName, formHotelAddress, formHotelLink,
     formHotelCheckIn, formHotelCheckOut, formHotelRoom, formHotelNotes,
   });
 
@@ -521,6 +666,7 @@ export default function FlightTab({ tripId }) {
       hotelDetails: {
         name: formHotelName,
         address: formHotelAddress,
+        link: formHotelLink,
         checkIn: formHotelCheckIn,
         checkOut: formHotelCheckOut,
         roomNumber: formHotelRoom,
@@ -544,6 +690,17 @@ export default function FlightTab({ tripId }) {
       type === 'outbound' ? dateValue : tripData.outboundFlightDetails?.date,
       type === 'return' ? dateValue : tripData.returnFlightDetails?.date
     );
+
+    // Keep the hotel's check-in / check-out aligned with the flights.
+    const hotel = tripData.hotelDetails || {};
+    if (type === 'outbound') {
+      const time = (hotel.checkIn || '').split('T')[1] || '14:00';
+      newData.hotelDetails = { ...hotel, checkIn: `${dateValue}T${time}` };
+    } else {
+      const time = (hotel.checkOut || '').split('T')[1] || '12:00';
+      newData.hotelDetails = { ...(newData.hotelDetails || hotel), checkOut: `${dateValue}T${time}` };
+    }
+
     await setDoc(docRef, newData, { merge: true });
   };
 
@@ -645,45 +802,45 @@ export default function FlightTab({ tripId }) {
           </div>
         </div>
 
-        {/* Airport Codes Row — minimal, no flight line/icon between */}
+        {/* Airport Codes Row + live local clock under each */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, textAlign: 'right' }}>
             <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--primary-color)' }}>{flight.depAirport?.code || '—'}</div>
             <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{flight.depAirport?.city}</div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{flight.depAirport?.timezone}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>{formatOffsetFromIsrael(flight.depAirport?.timezone)}</div>
+            <LocalClock timezone={flight.depAirport?.timezone} />
           </div>
 
           <div style={{ flex: 1, textAlign: 'left' }}>
             <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--primary-color)' }}>{flight.arrAirport?.code || '—'}</div>
             <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{flight.arrAirport?.city}</div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{flight.arrAirport?.timezone}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>{formatOffsetFromIsrael(flight.arrAirport?.timezone)}</div>
+            <LocalClock timezone={flight.arrAirport?.timezone} />
           </div>
         </div>
 
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }} />
 
-        {/* Times / status / gate */}
+        {/* Times / status / gate — single time with delta highlighting */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: '700' }}>
-              <PlaneTakeoff size={15} style={{ color: 'var(--accent)' }} />
-              המראה מתוכננת / מעודכנת:
-            </span>
-            <span style={{ fontWeight: '800' }}>{toTime24(flight.scheduledDep) || '—'} ◄ {toTime24(flight.actualDep) || '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: '700' }}>
-              <PlaneLanding size={15} style={{ color: 'var(--accent)' }} />
-              נחיתה מתוכננת / משוערת:
-            </span>
-            <span style={{ fontWeight: '800' }}>{toTime24(flight.scheduledArr) || '—'} ◄ {toTime24(flight.estimatedArr) || '—'}</span>
-          </div>
+          <TimeSlot
+            label="המראה"
+            icon={<PlaneTakeoff size={15} style={{ color: 'var(--accent)' }} />}
+            scheduled={toTime24(flight.scheduledDep)}
+            updated={toTime24(flight.actualDep)}
+            cancelled={flight.status === 'בוטלה'}
+          />
+          <TimeSlot
+            label="נחיתה"
+            icon={<PlaneLanding size={15} style={{ color: 'var(--accent)' }} />}
+            scheduled={toTime24(flight.scheduledArr)}
+            updated={toTime24(flight.estimatedArr)}
+            cancelled={flight.status === 'בוטלה'}
+          />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה (בזמן אמת):</span>
-            <span className="badge-success">
-              <span className="pulsing-dot"></span>
+            <span className="badge-success" style={flight.status === 'בוטלה' ? { background: 'rgba(220,38,38,0.1)', color: 'rgb(220,38,38)' } : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'rgba(245,158,11,0.12)', color: 'rgb(146,64,14)' } : undefined}>
+              <span className="pulsing-dot" style={flight.status === 'בוטלה' ? { background: 'rgb(220,38,38)' } : flight.status?.includes('איחור') ? { background: 'rgb(245,158,11)' } : undefined}></span>
               <span>{flight.status || '—'}</span>
             </span>
           </div>
@@ -766,12 +923,48 @@ export default function FlightTab({ tripId }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontSize: '17px', fontWeight: '800', color: 'var(--primary-color)' }}>{hotel.name}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px', fontWeight: '600' }}>
-              <MapPin size={14} />
-              <span>{hotel.address}</span>
-            </div>
+            {hotel.address && (
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent(hotel.address)}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  color: 'var(--text-muted)', fontSize: 13,
+                  fontWeight: 600, textDecoration: 'none'
+                }}
+              >
+                <MapPin size={14} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{hotel.address}</span>
+                <ExternalLink size={11} style={{ opacity: 0.6, marginRight: 2, flexShrink: 0 }} />
+              </a>
+            )}
+            {hotel.link && (
+              <a
+                href={hotel.link}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  color: 'var(--accent)', fontSize: 12,
+                  fontWeight: 700, textDecoration: 'none',
+                  background: 'rgba(79,70,229,0.08)',
+                  border: '1px solid rgba(79,70,229,0.18)',
+                  borderRadius: 999, padding: '4px 10px',
+                  alignSelf: 'flex-start',
+                  maxWidth: '100%'
+                }}
+                dir="ltr"
+              >
+                <Link2 size={12} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                  {hotel.link.replace(/^https?:\/\//, '')}
+                </span>
+                <ExternalLink size={11} style={{ opacity: 0.6, flexShrink: 0 }} />
+              </a>
+            )}
           </div>
 
           <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '4px 0' }} />
@@ -844,8 +1037,8 @@ export default function FlightTab({ tripId }) {
 
                 {/* Two "decisive" date pickers — these set the source of truth */}
                 <div className="row-2">
-                  <CustomDatePicker value={formOutDate} onChange={setFormOutDate} label="תאריך טיסת הלוך" required />
-                  <CustomDatePicker value={formRetDate} onChange={setFormRetDate} label="תאריך טיסת חזור" required />
+                  <CustomDatePicker value={formOutDate} onChange={syncOutboundDate} label="תאריך טיסת הלוך" required />
+                  <CustomDatePicker value={formRetDate} onChange={syncReturnDate} label="תאריך טיסת חזור" required />
                 </div>
               </div>
               )}
@@ -887,7 +1080,7 @@ export default function FlightTab({ tripId }) {
                   {renderLookupFeedback(lookupResultOut)}
                 </div>
 
-                <CustomDatePicker value={formOutDate} onChange={setFormOutDate} label="תאריך טיסה" required />
+                <CustomDatePicker value={formOutDate} onChange={syncOutboundDate} label="תאריך טיסה" required />
 
                 <div className="row-2">
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -963,7 +1156,7 @@ export default function FlightTab({ tripId }) {
                   {renderLookupFeedback(lookupResultRet)}
                 </div>
 
-                <CustomDatePicker value={formRetDate} onChange={setFormRetDate} label="תאריך טיסה" required />
+                <CustomDatePicker value={formRetDate} onChange={syncReturnDate} label="תאריך טיסה" required />
 
                 <div className="row-2">
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1019,7 +1212,22 @@ export default function FlightTab({ tripId }) {
 
                 <div className="form-group">
                   <label>כתובת המלון</label>
-                  <input type="text" className="form-control" value={formHotelAddress} onChange={(e) => setFormHotelAddress(e.target.value)} />
+                  <input type="text" className="form-control" value={formHotelAddress} onChange={(e) => setFormHotelAddress(e.target.value)} placeholder="הכתובת הפיזית — תיפתח ב-Google Maps" />
+                </div>
+
+                <div className="form-group">
+                  <label>קישור למלון (אופציונלי)</label>
+                  <input
+                    type="url"
+                    className="form-control"
+                    value={formHotelLink}
+                    onChange={(e) => setFormHotelLink(e.target.value)}
+                    placeholder="https://www.booking.com/..."
+                    dir="ltr"
+                  />
+                  <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
+                    אתר המלון, קישור Booking.com, או כל URL אחר.
+                  </small>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
