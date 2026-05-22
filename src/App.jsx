@@ -98,7 +98,7 @@ function LoadingScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, currentUid, ownerProfiles, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -190,8 +190,21 @@ function Homepage({ trips, currentUid, ownerProfiles, onOpenTrip, onCreateTrip, 
       {trips.map(trip => {
         const myRole = trip.members?.[currentUid];
         const isOwner = myRole === 'owner';
-        const ownerUid = Object.keys(trip.members || {}).find(uid => trip.members[uid] === 'owner');
-        const ownerProfile = ownerUid ? ownerProfiles?.[ownerUid] : null;
+        const memberEntries = Object.entries(trip.members || {}).filter(([, role]) => role);
+        const ownerEntry = memberEntries.find(([, r]) => r === 'owner');
+        const ownerUid = ownerEntry?.[0];
+        const ownerProfile = ownerUid
+          ? (ownerUid === currentUid ? currentUserProfile : memberProfiles?.[ownerUid])
+          : null;
+        // Avatar stack data — owner first, then others. Cap to 4 visible.
+        const stackEntries = [
+          ...(ownerEntry ? [ownerEntry] : []),
+          ...memberEntries.filter(([uid, r]) => r !== 'owner').sort((a, b) => a[0].localeCompare(b[0])),
+        ];
+        const visibleStack = stackEntries.slice(0, 4);
+        const overflowCount = stackEntries.length - visibleStack.length;
+        const showStack = stackEntries.length > 1; // only when actually shared
+
         return (
         <div className="trip-card" key={trip.id} onClick={() => onOpenTrip(trip.id)}>
           <div className="trip-card-header">
@@ -202,6 +215,37 @@ function Homepage({ trips, currentUid, ownerProfiles, onOpenTrip, onCreateTrip, 
               <h3>{trip.name || 'טיול ללא שם'}</h3>
               <p>{trip.destination || ''}</p>
             </div>
+
+            {showStack && (
+              <div className="member-stack" title={`${stackEntries.length} חברים בטיול`}>
+                {visibleStack.map(([uid, role]) => {
+                  const profile = uid === currentUid ? currentUserProfile : memberProfiles?.[uid];
+                  const isOwnerAvatar = role === 'owner';
+                  const initial = (profile?.displayName || profile?.email || '?')[0];
+                  return (
+                    <div
+                      key={uid}
+                      className={`member-stack-avatar${isOwnerAvatar ? ' owner' : ''}`}
+                      title={`${profile?.displayName || profile?.email || ''}${isOwnerAvatar ? ' · בעלים' : ''}`}
+                    >
+                      {profile?.photoURL ? (
+                        <img src={profile.photoURL} alt="" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span>{initial}</span>
+                      )}
+                      {isOwnerAvatar && (
+                        <svg className="member-stack-crown" viewBox="0 0 24 24" width="10" height="10" fill="currentColor" aria-hidden="true">
+                          <path d="M5 19h14l1-9-4 3-4-7-4 7-4-3z" />
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
+                {overflowCount > 0 && (
+                  <div className="member-stack-avatar more">+{overflowCount}</div>
+                )}
+              </div>
+            )}
           </div>
 
           {!isOwner && ownerProfile && (
@@ -736,7 +780,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('flight');
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [trips, setTrips] = useState([]);
-  const [ownerProfiles, setOwnerProfiles] = useState({}); // uid -> profile
+  const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
@@ -876,25 +920,25 @@ export default function App() {
   // show "טיול של ..." badges without lazy-loading per card.
   useEffect(() => {
     if (!user || trips.length === 0) return;
-    const ownerUids = new Set();
+    const uids = new Set();
     for (const t of trips) {
       const members = t.members || {};
-      for (const [uid, role] of Object.entries(members)) {
-        if (role === 'owner' && uid !== user.uid) ownerUids.add(uid);
+      for (const uid of Object.keys(members)) {
+        if (uid !== user.uid) uids.add(uid);
       }
     }
     let cancelled = false;
     (async () => {
       const updates = {};
-      await Promise.all([...ownerUids].map(async (uid) => {
-        if (ownerProfiles[uid]) return;
+      await Promise.all([...uids].map(async (uid) => {
+        if (memberProfiles[uid]) return;
         try {
           const u = await getDoc(doc(db, 'users', uid));
           if (u.exists()) updates[uid] = u.data();
         } catch { /* ignore */ }
       }));
       if (!cancelled && Object.keys(updates).length > 0) {
-        setOwnerProfiles(prev => ({ ...prev, ...updates }));
+        setMemberProfiles(prev => ({ ...prev, ...updates }));
       }
     })();
     return () => { cancelled = true; };
@@ -1107,7 +1151,8 @@ export default function App() {
           <Homepage
             trips={trips}
             currentUid={user.uid}
-            ownerProfiles={ownerProfiles}
+            memberProfiles={memberProfiles}
+            currentUserProfile={{ displayName: user.displayName, email: user.email, photoURL: user.photoURL }}
             onOpenTrip={(id) => { setSelectedTripId(id); setActiveTab('flight'); setScreen('trip'); }}
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={requestDeleteTrip}
@@ -1223,7 +1268,7 @@ export default function App() {
           isOwner: selectedTrip?.members?.[user.uid] === 'owner',
           ownerProfile: (() => {
             const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
-            return ownerUid && ownerUid !== user.uid ? ownerProfiles[ownerUid] : null;
+            return ownerUid && ownerUid !== user.uid ? memberProfiles[ownerUid] : null;
           })(),
         }}>
           {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
