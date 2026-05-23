@@ -7,6 +7,7 @@ import {
   getDoc, writeBatch
 } from 'firebase/firestore';
 import ConfirmModal from './components/ConfirmModal';
+import ExportMenu from './components/ExportMenu';
 import { TripProvider } from './TripContext';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
@@ -188,6 +189,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
         </div>
       )}
 
+      <div className="trip-list-grid">
       {trips.map(trip => {
         const myRole = trip.members?.[currentUid];
         const isOwner = myRole === 'owner';
@@ -300,6 +302,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
         </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -1316,6 +1319,9 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {selectedTripId && selectedTrip && (
+            <ExportMenu tripId={selectedTripId} trip={selectedTrip} />
+          )}
           {activeTab === 'flight' && ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]) && (
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
