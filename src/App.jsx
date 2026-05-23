@@ -1320,7 +1320,7 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {selectedTripId && selectedTrip && (
-            <ExportMenu tripId={selectedTripId} trip={selectedTrip} />
+            <ExportMenu tripId={selectedTripId} trip={selectedTrip} activeTab={activeTab} />
           )}
           {activeTab === 'flight' && ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]) && (
             <button

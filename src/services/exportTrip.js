@@ -52,9 +52,17 @@ function groupByCategory(items) {
   return map;
 }
 
+// Scope is one of: 'flight' | 'planning' | 'checklist' | 'all'
+// It controls which sections each export includes.
+const SCOPE = {
+  flight:   { flight: true,  planning: false, days: false, checklist: false },
+  planning: { flight: false, planning: true,  days: true,  checklist: false },
+  checklist:{ flight: false, planning: false, days: false, checklist: true  },
+  all:      { flight: true,  planning: true,  days: true,  checklist: true  },
+};
+
 // ──────────────────────────────────────────────────────────────────────
-// PDF — uses bidi-js for proper Unicode BIDI ordering so Hebrew runs
-// flow right-to-left while Latin/digit runs stay left-to-right.
+// PDF
 // ──────────────────────────────────────────────────────────────────────
 
 let hebrewFontPromise = null;
@@ -75,9 +83,6 @@ async function loadHebrewFont() {
   return hebrewFontPromise;
 }
 
-// Re-orders a logical-order string into visual order using the Unicode
-// BIDI algorithm (paragraph base direction = RTL). This is what jsPDF
-// needs since it just draws characters left-to-right.
 let bidiInstance = null;
 async function getBidi() {
   if (!bidiInstance) {
@@ -87,14 +92,16 @@ async function getBidi() {
   }
   return bidiInstance;
 }
+
 function shapeBidi(bidi, text) {
   if (!text) return '';
   const s = String(text);
-  const embeddingLevels = bidi.getEmbeddingLevels(s, 'rtl');
-  return bidi.getReorderedString(s, embeddingLevels);
+  return bidi.getReorderedString(s, bidi.getEmbeddingLevels(s, 'rtl'));
 }
 
-export async function exportTripPdf({ trip, planning, days, checklist }) {
+export async function exportTripPdf(data, scope = 'all') {
+  const { trip, planning, days, checklist } = data;
+  const SS = SCOPE[scope] || SCOPE.all;
   const { jsPDF } = await import('jspdf');
   const [fontBase64, bidi] = await Promise.all([loadHebrewFont(), getBidi()]);
 
@@ -105,326 +112,355 @@ export async function exportTripPdf({ trip, planning, days, checklist }) {
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 48;
+  const margin = 52;
   const rightX = pageW - margin;
+  const leftX  = margin;
+  const contentW = pageW - margin * 2;
   let y = margin;
 
+  // Key trick: pre-shape with bidi-js AND tell jsPDF the input is already
+  // in visual order so its internal bidi engine doesn't double-process.
+  const TEXT_OPTS = { align: 'right', isInputVisual: true, isOutputVisual: true };
   const shape = (t) => shapeBidi(bidi, t);
 
   const ensureSpace = (h = 16) => {
-    if (y + h > pageH - margin) { doc.addPage(); y = margin; return true; }
-    return false;
+    if (y + h > pageH - margin) { doc.addPage(); y = margin; }
   };
 
-  const writeRtl = (text, { size = 11, color = [11, 11, 48], indent = 0 } = {}) => {
+  // Colors — darker than before for readability
+  const C_TEXT = [11, 11, 38];          // near-black navy for body text
+  const C_MUTED = [55, 65, 81];         // dark gray for secondary
+  const C_ACCENT = [79, 70, 229];       // purple
+  const C_HEADING = [11, 11, 38];
+
+  const write = (text, { size = 12, color = C_TEXT, indent = 0, bold = false } = {}) => {
     doc.setFontSize(size);
     doc.setTextColor(...color);
-    const maxWidth = pageW - margin * 2 - indent;
+    const maxWidth = contentW - indent;
     const lines = doc.splitTextToSize(String(text), maxWidth);
     for (const line of lines) {
-      ensureSpace(size * 1.4);
-      doc.text(shape(line), rightX - indent, y, { align: 'right' });
-      y += size * 1.4;
+      ensureSpace(size * 1.5);
+      doc.text(shape(line), rightX - indent, y, { ...TEXT_OPTS });
+      y += size * 1.5;
     }
   };
 
-  const writeLink = (text, url, { size = 11, indent = 0 } = {}) => {
-    if (!url) return writeRtl(text, { size, color: [79, 70, 229], indent });
+  const writeLink = (text, url, { size = 12, indent = 0 } = {}) => {
+    if (!url) return write(text, { size, color: C_ACCENT, indent });
     doc.setFontSize(size);
-    doc.setTextColor(79, 70, 229);
-    const maxWidth = pageW - margin * 2 - indent;
+    doc.setTextColor(...C_ACCENT);
+    const maxWidth = contentW - indent;
     const lines = doc.splitTextToSize(String(text), maxWidth);
     for (const line of lines) {
-      ensureSpace(size * 1.4);
-      doc.textWithLink(shape(line), rightX - indent, y, { url, align: 'right' });
-      y += size * 1.4;
+      ensureSpace(size * 1.5);
+      doc.textWithLink(shape(line), rightX - indent, y, { url, ...TEXT_OPTS });
+      y += size * 1.5;
     }
-    doc.setTextColor(11, 11, 48);
   };
 
-  const hr = (opacity = 1) => {
+  // Decorative banner: full-width background + label
+  const banner = (label, color = C_ACCENT) => {
+    ensureSpace(48);
+    doc.setFillColor(color[0], color[1], color[2]);
+    doc.rect(leftX, y, contentW, 32, 'F');
+    doc.setFontSize(18);
+    doc.setTextColor(255, 255, 255);
+    doc.text(shape(label), rightX - 12, y + 22, { ...TEXT_OPTS });
+    y += 44;
+  };
+
+  const sectionHeader = (label) => {
+    ensureSpace(40);
+    // Right-edge accent bar
+    doc.setFillColor(...C_ACCENT);
+    doc.rect(rightX - 4, y - 4, 4, 26, 'F');
+    doc.setFontSize(20);
+    doc.setTextColor(...C_HEADING);
+    doc.text(shape(label), rightX - 14, y + 14, { ...TEXT_OPTS });
+    y += 32;
+  };
+
+  const subHeader = (label) => {
+    ensureSpace(22);
+    doc.setFontSize(14);
+    doc.setTextColor(...C_ACCENT);
+    doc.text(shape(label), rightX, y + 8, { ...TEXT_OPTS });
+    y += 22;
+  };
+
+  const hr = () => {
     ensureSpace(20);
-    doc.setDrawColor(220 * opacity + 255 * (1 - opacity), 220 * opacity + 255 * (1 - opacity), 230 * opacity + 255 * (1 - opacity));
+    doc.setDrawColor(200, 200, 220);
     doc.setLineWidth(0.5);
-    doc.line(margin, y, pageW - margin, y);
+    doc.line(leftX, y, pageW - margin, y);
     y += 14;
   };
 
-  const sectionHeader = (text, accent = false) => {
-    ensureSpace(40);
-    // Accent bar at the right edge
-    doc.setFillColor(79, 70, 229);
-    doc.rect(rightX - 4, y - 4, 4, 22, 'F');
-    doc.setFontSize(18);
-    doc.setTextColor(11, 11, 48);
-    doc.text(shape(text), rightX - 12, y + 12, { align: 'right' });
-    y += 28;
-  };
+  const newPage = () => { doc.addPage(); y = margin; };
 
-  const subHeader = (text) => {
-    ensureSpace(22);
-    doc.setFontSize(13);
-    doc.setTextColor(79, 70, 229);
-    doc.text(shape(text), rightX, y + 8, { align: 'right' });
-    y += 20;
-  };
+  // ── Cover ──
+  doc.setFontSize(30);
+  doc.setTextColor(...C_HEADING);
+  doc.text(shape(trip?.name || 'הטיול שלי'), rightX, y + 26, { ...TEXT_OPTS });
+  y += 40;
+  if (trip?.destination) {
+    doc.setFontSize(16);
+    doc.setTextColor(...C_MUTED);
+    doc.text(shape(trip.destination), rightX, y + 10, { ...TEXT_OPTS });
+    y += 24;
+  }
+  if (trip?.dates) {
+    doc.setFontSize(14);
+    doc.setTextColor(...C_MUTED);
+    doc.text(shape(trip.dates), rightX, y + 10, { ...TEXT_OPTS });
+    y += 22;
+  }
+  y += 12;
+  hr();
 
-  const titlePage = () => {
-    // Trip name as a big centered-right title
-    doc.setFontSize(28);
-    doc.setTextColor(11, 11, 48);
-    doc.text(shape(trip?.name || 'הטיול שלי'), rightX, y + 24, { align: 'right' });
-    y += 36;
-    if (trip?.destination) {
-      doc.setFontSize(15);
-      doc.setTextColor(71, 85, 105);
-      doc.text(shape(trip.destination), rightX, y + 10, { align: 'right' });
-      y += 22;
-    }
-    if (trip?.dates) {
-      doc.setFontSize(13);
-      doc.setTextColor(71, 85, 105);
-      doc.text(shape(trip.dates), rightX, y + 10, { align: 'right' });
-      y += 20;
-    }
-    y += 10;
-    hr();
-  };
-
-  // ── 1. Title + flight & hotel summary ──
-  titlePage();
-
-  sectionHeader('סיכום טיסה ומלון');
   const ob = trip?.outboundFlightDetails;
   const rt = trip?.returnFlightDetails;
   const ht = trip?.hotelDetails;
 
-  if (ob?.flightNumber) {
-    subHeader('טיסת הלוך');
-    writeRtl(`${ob.flightNumber}  ${ob.airline || ''}`, { size: 12 });
-    writeRtl(`${ob.depAirport?.code || ''} → ${ob.arrAirport?.code || ''}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (ob.date) writeRtl(`תאריך: ${ob.date}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (ob.scheduledDep || ob.scheduledArr) writeRtl(`המראה ${ob.scheduledDep || '—'} · נחיתה ${ob.scheduledArr || '—'}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (ob.gate) writeRtl(`שער: ${ob.gate}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    y += 6;
-  }
-  if (rt?.flightNumber) {
-    subHeader('טיסת חזור');
-    writeRtl(`${rt.flightNumber}  ${rt.airline || ''}`, { size: 12 });
-    writeRtl(`${rt.depAirport?.code || ''} → ${rt.arrAirport?.code || ''}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (rt.date) writeRtl(`תאריך: ${rt.date}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (rt.scheduledDep || rt.scheduledArr) writeRtl(`המראה ${rt.scheduledDep || '—'} · נחיתה ${rt.scheduledArr || '—'}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (rt.gate) writeRtl(`שער: ${rt.gate}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    y += 6;
-  }
-  if (ht?.name) {
-    subHeader('מלון');
-    writeRtl(ht.name, { size: 12 });
-    if (ht.address) writeLink(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 11, indent: 12 });
-    if (ht.link) writeLink(`🔗 ${ht.link}`, ht.link, { size: 11, indent: 12 });
-    if (ht.checkIn || ht.checkOut) writeRtl(`כניסה ${formatHotelDateTime(ht.checkIn)} · יציאה ${formatHotelDateTime(ht.checkOut)}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (ht.roomNumber) writeRtl(`חדר: ${ht.roomNumber}`, { size: 11, color: [71, 85, 105], indent: 12 });
-    if (ht.notes) writeRtl(ht.notes, { size: 10, color: [71, 85, 105], indent: 12 });
+  // ── Flight & hotel section ──
+  if (SS.flight) {
+    banner('טיסה ומלון');
+    if (ob?.flightNumber) {
+      subHeader('טיסת הלוך');
+      write(`${ob.flightNumber}   ${ob.airline || ''}`, { size: 13, bold: true });
+      write(`${ob.depAirport?.code || ''} → ${ob.arrAirport?.code || ''}`, { size: 12, indent: 14 });
+      if (ob.date) write(`תאריך: ${ob.date}`, { size: 12, color: C_MUTED, indent: 14 });
+      if (ob.scheduledDep || ob.scheduledArr) write(`המראה ${ob.scheduledDep || '—'}    נחיתה ${ob.scheduledArr || '—'}`, { size: 12, color: C_MUTED, indent: 14 });
+      if (ob.gate) write(`שער: ${ob.gate}`, { size: 12, color: C_MUTED, indent: 14 });
+      y += 8;
+    }
+    if (rt?.flightNumber) {
+      subHeader('טיסת חזור');
+      write(`${rt.flightNumber}   ${rt.airline || ''}`, { size: 13 });
+      write(`${rt.depAirport?.code || ''} → ${rt.arrAirport?.code || ''}`, { size: 12, indent: 14 });
+      if (rt.date) write(`תאריך: ${rt.date}`, { size: 12, color: C_MUTED, indent: 14 });
+      if (rt.scheduledDep || rt.scheduledArr) write(`המראה ${rt.scheduledDep || '—'}    נחיתה ${rt.scheduledArr || '—'}`, { size: 12, color: C_MUTED, indent: 14 });
+      if (rt.gate) write(`שער: ${rt.gate}`, { size: 12, color: C_MUTED, indent: 14 });
+      y += 8;
+    }
+    if (ht?.name) {
+      subHeader('מלון');
+      write(ht.name, { size: 13 });
+      if (ht.address) writeLink(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 12, indent: 14 });
+      if (ht.link) writeLink(`🔗 ${ht.link}`, ht.link, { size: 12, indent: 14 });
+      if (ht.checkIn || ht.checkOut) write(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { size: 12, color: C_MUTED, indent: 14 });
+      if (ht.roomNumber) write(`חדר: ${ht.roomNumber}`, { size: 12, color: C_MUTED, indent: 14 });
+      if (ht.notes) write(ht.notes, { size: 11, color: C_MUTED, indent: 14 });
+    }
   }
 
-  // ── 2. Planning pool ──
-  if (planning.length > 0) {
-    doc.addPage(); y = margin;
-    sectionHeader('תכנון הטיול');
+  // ── Planning section ──
+  if (SS.planning && planning.length > 0) {
+    if (SS.flight) newPage();
+    banner('תכנון הטיול');
     const groups = groupByCategory(planning);
     for (const [cat, items] of Object.entries(groups)) {
       subHeader(cat);
       for (const p of items) {
-        ensureSpace(40);
-        writeRtl(`• ${p.title}${p.visited ? '  ✓' : ''}`, { size: 12 });
-        if (p.description) writeRtl(p.description, { size: 10, color: [71, 85, 105], indent: 14 });
-        if (p.price) writeRtl(`מחיר: ${p.price}`, { size: 10, color: [71, 85, 105], indent: 14 });
-        if (p.address) writeLink(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`, { size: 10, indent: 14 });
+        ensureSpace(60);
+        write(`• ${p.title}${p.visited ? '   ✓' : ''}`, { size: 13 });
+        if (p.description) write(p.description, { size: 11, color: C_MUTED, indent: 16 });
+        if (p.price) write(`מחיר: ${p.price}`, { size: 11, color: C_MUTED, indent: 16 });
+        if (p.address) writeLink(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`, { size: 11, indent: 16 });
         if (Array.isArray(p.links)) {
           for (const ln of p.links) {
-            if (ln?.url) writeLink(`🔗 ${ln.label || ln.url}`, ln.url, { size: 10, indent: 14 });
+            if (ln?.url) writeLink(`🔗 ${ln.label || ln.url}`, ln.url, { size: 11, indent: 16 });
           }
         }
         y += 6;
-      }
-      y += 4;
-    }
-  }
-
-  // ── 3. Daily plan — each day on its own page ──
-  if (days.length > 0) {
-    for (let i = 0; i < days.length; i++) {
-      doc.addPage(); y = margin;
-      const day = days[i];
-      sectionHeader(day.title || `יום ${i + 1}`);
-      const acts = day.activities || [];
-      if (acts.length === 0) {
-        writeRtl('אין פעילויות מתוכננות', { size: 11, color: [148, 163, 184] });
-      } else {
-        for (const act of acts) {
-          ensureSpace(40);
-          const labelPart = act.timeLabel ? `[${act.timeLabel}]  ` : '';
-          writeRtl(`• ${labelPart}${act.title}`, { size: 13 });
-          if (act.category) writeRtl(act.category, { size: 10, color: [148, 163, 184], indent: 14 });
-          if (act.description) writeRtl(act.description, { size: 10, color: [71, 85, 105], indent: 14 });
-          if (act.address) writeLink(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`, { size: 10, indent: 14 });
-          y += 8;
-        }
-      }
-    }
-  }
-
-  // ── 4. Checklist ──
-  if (checklist?.length > 0) {
-    doc.addPage(); y = margin;
-    sectionHeader("צ'קליסט הציוד");
-    const groups = groupByCategory(checklist);
-    for (const [cat, items] of Object.entries(groups)) {
-      subHeader(cat);
-      for (const item of items) {
-        ensureSpace(18);
-        const mark = item.completed ? '☑' : '☐';
-        writeRtl(`${mark}  ${item.text}`, { size: 11, indent: 4 });
       }
       y += 6;
     }
   }
 
-  doc.save(`${safeFileName(trip?.name || 'trip')}.pdf`);
+  // ── Daily plan: each day on its own page ──
+  if (SS.days && days.length > 0) {
+    for (let i = 0; i < days.length; i++) {
+      newPage();
+      const day = days[i];
+      banner(day.title || `יום ${i + 1}`);
+      const acts = day.activities || [];
+      if (acts.length === 0) {
+        write('אין פעילויות מתוכננות', { size: 12, color: [148, 163, 184] });
+      } else {
+        for (const act of acts) {
+          ensureSpace(60);
+          const labelPart = act.timeLabel ? `[${act.timeLabel}]   ` : '';
+          write(`• ${labelPart}${act.title}`, { size: 14 });
+          if (act.category) write(act.category, { size: 11, color: [148, 163, 184], indent: 16 });
+          if (act.description) write(act.description, { size: 11, color: C_MUTED, indent: 16 });
+          if (act.address) writeLink(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
+          y += 10;
+        }
+      }
+    }
+  }
+
+  // ── Checklist ──
+  if (SS.checklist && checklist?.length > 0) {
+    newPage();
+    banner("צ'קליסט ציוד");
+    const groups = groupByCategory(checklist);
+    for (const [cat, items] of Object.entries(groups)) {
+      subHeader(cat);
+      for (const item of items) {
+        ensureSpace(20);
+        const mark = item.completed ? '☑' : '☐';
+        write(`${mark}   ${item.text}`, { size: 12, indent: 6 });
+      }
+      y += 8;
+    }
+  }
+
+  doc.save(`${safeFileName(trip?.name || 'trip')}_${scope}.pdf`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// WORD (.docx)  — uses docx package with bidirectional paragraphs
+// WORD (.docx)
 // ──────────────────────────────────────────────────────────────────────
 
-export async function exportTripDocx({ trip, planning, days, checklist }) {
-  const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType } = await import('docx');
+export async function exportTripDocx(data, scope = 'all') {
+  const { trip, planning, days, checklist } = data;
+  const SS = SCOPE[scope] || SCOPE.all;
+  const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType, Footer, Header } = await import('docx');
   const { saveAs } = await import('file-saver');
 
-  // RTL-aware paragraph helpers.
-  const RTL_RUN_OPTS = { rtl: true, font: 'Arial' };
+  const RUN_OPTS = { rtl: true, font: 'David', size: 24 };
+
   const para = (text, opts = {}) => {
-    const { bold = false, size = 22, color = '0b0b30', heading } = opts;
+    const { bold = false, size = 24, color = '0b0b26', heading, spacing, indent } = opts;
     return new Paragraph({
       bidirectional: true,
       alignment: AlignmentType.RIGHT,
       heading,
-      spacing: { after: 80 },
-      children: [new TextRun({ text: String(text || ''), bold, size, color, ...RTL_RUN_OPTS })],
+      spacing: spacing || { after: 100 },
+      indent,
+      children: [new TextRun({ text: String(text || ''), bold, size, color, rtl: true, font: 'David' })],
     });
   };
+
   const linkPara = (text, url, opts = {}) => {
-    const { size = 22 } = opts;
+    const { size = 22, indent } = opts;
     return new Paragraph({
       bidirectional: true,
       alignment: AlignmentType.RIGHT,
-      spacing: { after: 80 },
+      spacing: { after: 100 },
+      indent,
       children: [new ExternalHyperlink({
         link: url,
-        children: [new TextRun({ text: String(text || ''), color: '4f46e5', underline: {}, size, ...RTL_RUN_OPTS })],
+        children: [new TextRun({ text: String(text || ''), color: '4f46e5', underline: {}, size, rtl: true, font: 'David' })],
       })],
     });
   };
-  const spacer = () => new Paragraph({ children: [new TextRun({ text: '', ...RTL_RUN_OPTS })] });
+
+  const spacer = () => new Paragraph({ spacing: { before: 200 }, children: [new TextRun({ text: '', ...RUN_OPTS })] });
 
   const sections = [];
+  const main = [];
 
-  // ── Section 1: cover + flight + hotel summary ──
-  const cover = [];
-  cover.push(para(trip?.name || 'הטיול שלי', { bold: true, size: 48, heading: HeadingLevel.TITLE }));
-  if (trip?.destination) cover.push(para(trip.destination, { size: 28, color: '475569' }));
-  if (trip?.dates)       cover.push(para(trip.dates, { size: 24, color: '475569' }));
-  cover.push(spacer());
+  // Cover
+  main.push(para(trip?.name || 'הטיול שלי', { bold: true, size: 52, heading: HeadingLevel.TITLE }));
+  if (trip?.destination) main.push(para(trip.destination, { size: 30, color: '475569' }));
+  if (trip?.dates)       main.push(para(trip.dates, { size: 26, color: '475569' }));
+  main.push(spacer());
 
-  cover.push(para('סיכום טיסה ומלון', { bold: true, size: 32, color: '4f46e5', heading: HeadingLevel.HEADING_1 }));
   const ob = trip?.outboundFlightDetails;
   const rt = trip?.returnFlightDetails;
   const ht = trip?.hotelDetails;
-  if (ob?.flightNumber) {
-    cover.push(para('טיסת הלוך', { bold: true, size: 26, heading: HeadingLevel.HEADING_2 }));
-    cover.push(para(`${ob.flightNumber}  ${ob.airline || ''}`, { bold: true, size: 24 }));
-    cover.push(para(`${ob.depAirport?.code || ''} → ${ob.arrAirport?.code || ''}`, { color: '475569' }));
-    if (ob.date) cover.push(para(`תאריך: ${ob.date}`, { color: '475569' }));
-    if (ob.scheduledDep || ob.scheduledArr) cover.push(para(`המראה ${ob.scheduledDep || '—'} · נחיתה ${ob.scheduledArr || '—'}`, { color: '475569' }));
-    if (ob.gate) cover.push(para(`שער: ${ob.gate}`, { color: '475569' }));
-  }
-  if (rt?.flightNumber) {
-    cover.push(para('טיסת חזור', { bold: true, size: 26, heading: HeadingLevel.HEADING_2 }));
-    cover.push(para(`${rt.flightNumber}  ${rt.airline || ''}`, { bold: true, size: 24 }));
-    cover.push(para(`${rt.depAirport?.code || ''} → ${rt.arrAirport?.code || ''}`, { color: '475569' }));
-    if (rt.date) cover.push(para(`תאריך: ${rt.date}`, { color: '475569' }));
-    if (rt.scheduledDep || rt.scheduledArr) cover.push(para(`המראה ${rt.scheduledDep || '—'} · נחיתה ${rt.scheduledArr || '—'}`, { color: '475569' }));
-    if (rt.gate) cover.push(para(`שער: ${rt.gate}`, { color: '475569' }));
-  }
-  if (ht?.name) {
-    cover.push(para('מלון', { bold: true, size: 26, heading: HeadingLevel.HEADING_2 }));
-    cover.push(para(ht.name, { bold: true, size: 24 }));
-    if (ht.address) cover.push(linkPara(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`));
-    if (ht.link) cover.push(linkPara(`🔗 ${ht.link}`, ht.link));
-    if (ht.checkIn || ht.checkOut) cover.push(para(`כניסה ${formatHotelDateTime(ht.checkIn)} · יציאה ${formatHotelDateTime(ht.checkOut)}`, { color: '475569' }));
-    if (ht.roomNumber) cover.push(para(`חדר: ${ht.roomNumber}`, { color: '475569' }));
-    if (ht.notes) cover.push(para(ht.notes, { color: '475569' }));
+
+  if (SS.flight) {
+    main.push(para('טיסה ומלון', { bold: true, size: 36, color: '4f46e5', heading: HeadingLevel.HEADING_1, spacing: { before: 240, after: 200 } }));
+    if (ob?.flightNumber) {
+      main.push(para('טיסת הלוך', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 120, after: 100 } }));
+      main.push(para(`${ob.flightNumber}   ${ob.airline || ''}`, { bold: true, size: 26 }));
+      main.push(para(`${ob.depAirport?.code || ''} → ${ob.arrAirport?.code || ''}`, { size: 24, color: '334155' }));
+      if (ob.date) main.push(para(`תאריך: ${ob.date}`, { color: '475569' }));
+      if (ob.scheduledDep || ob.scheduledArr) main.push(para(`המראה ${ob.scheduledDep || '—'}    נחיתה ${ob.scheduledArr || '—'}`, { color: '475569' }));
+      if (ob.gate) main.push(para(`שער: ${ob.gate}`, { color: '475569' }));
+    }
+    if (rt?.flightNumber) {
+      main.push(para('טיסת חזור', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }));
+      main.push(para(`${rt.flightNumber}   ${rt.airline || ''}`, { bold: true, size: 26 }));
+      main.push(para(`${rt.depAirport?.code || ''} → ${rt.arrAirport?.code || ''}`, { size: 24, color: '334155' }));
+      if (rt.date) main.push(para(`תאריך: ${rt.date}`, { color: '475569' }));
+      if (rt.scheduledDep || rt.scheduledArr) main.push(para(`המראה ${rt.scheduledDep || '—'}    נחיתה ${rt.scheduledArr || '—'}`, { color: '475569' }));
+      if (rt.gate) main.push(para(`שער: ${rt.gate}`, { color: '475569' }));
+    }
+    if (ht?.name) {
+      main.push(para('מלון', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }));
+      main.push(para(ht.name, { bold: true, size: 26 }));
+      if (ht.address) main.push(linkPara(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 22 }));
+      if (ht.link) main.push(linkPara(`🔗 ${ht.link}`, ht.link, { size: 22 }));
+      if (ht.checkIn || ht.checkOut) main.push(para(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { color: '475569' }));
+      if (ht.roomNumber) main.push(para(`חדר: ${ht.roomNumber}`, { color: '475569' }));
+      if (ht.notes) main.push(para(ht.notes, { color: '475569' }));
+    }
+    main.push(spacer());
   }
 
-  // ── Section 2: planning grouped by category ──
-  if (planning.length > 0) {
-    cover.push(spacer());
-    cover.push(para('תכנון הטיול', { bold: true, size: 32, color: '4f46e5', heading: HeadingLevel.HEADING_1 }));
+  if (SS.planning && planning.length > 0) {
+    main.push(para('תכנון הטיול', { bold: true, size: 36, color: '4f46e5', heading: HeadingLevel.HEADING_1, spacing: { before: 240, after: 200 } }));
     const groups = groupByCategory(planning);
     for (const [cat, items] of Object.entries(groups)) {
-      cover.push(para(cat, { bold: true, size: 26, color: '0b0b30', heading: HeadingLevel.HEADING_2 }));
+      main.push(para(cat, { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 100 } }));
       for (const p of items) {
-        cover.push(para(`• ${p.title}${p.visited ? '  ✓' : ''}`, { bold: true, size: 24 }));
-        if (p.description) cover.push(para(p.description, { color: '475569' }));
-        if (p.price) cover.push(para(`מחיר: ${p.price}`, { color: '475569' }));
-        if (p.address) cover.push(linkPara(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`));
+        main.push(para(`• ${p.title}${p.visited ? '   ✓' : ''}`, { bold: true, size: 26 }));
+        if (p.description) main.push(para(p.description, { color: '475569' }));
+        if (p.price) main.push(para(`מחיר: ${p.price}`, { color: '475569' }));
+        if (p.address) main.push(linkPara(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`));
         if (Array.isArray(p.links)) {
-          for (const ln of p.links) if (ln?.url) cover.push(linkPara(`🔗 ${ln.label || ln.url}`, ln.url));
+          for (const ln of p.links) if (ln?.url) main.push(linkPara(`🔗 ${ln.label || ln.url}`, ln.url));
         }
-        cover.push(spacer());
+        main.push(spacer());
       }
     }
   }
 
   sections.push({
     properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
-    children: cover,
+    children: main,
   });
 
-  // ── A separate section per day = new page in Word ──
-  for (let i = 0; i < days.length; i++) {
-    const day = days[i];
-    const dayChildren = [];
-    dayChildren.push(para(day.title || `יום ${i + 1}`, { bold: true, size: 40, color: '0b0b30', heading: HeadingLevel.TITLE }));
-    const acts = day.activities || [];
-    if (acts.length === 0) {
-      dayChildren.push(para('אין פעילויות מתוכננות', { color: '94a3b8' }));
-    } else {
-      for (const act of acts) {
-        const labelPart = act.timeLabel ? `[${act.timeLabel}]  ` : '';
-        dayChildren.push(para(`• ${labelPart}${act.title}`, { bold: true, size: 28 }));
-        if (act.category) dayChildren.push(para(act.category, { color: '94a3b8' }));
-        if (act.description) dayChildren.push(para(act.description, { color: '475569' }));
-        if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`));
-        dayChildren.push(spacer());
+  // One section per day = its own page in Word
+  if (SS.days) {
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      const dayChildren = [];
+      dayChildren.push(para(day.title || `יום ${i + 1}`, { bold: true, size: 44, color: '4f46e5', heading: HeadingLevel.TITLE, spacing: { after: 240 } }));
+      const acts = day.activities || [];
+      if (acts.length === 0) {
+        dayChildren.push(para('אין פעילויות מתוכננות', { color: '94a3b8' }));
+      } else {
+        for (const act of acts) {
+          const labelPart = act.timeLabel ? `[${act.timeLabel}]   ` : '';
+          dayChildren.push(para(`• ${labelPart}${act.title}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2 }));
+          if (act.category) dayChildren.push(para(act.category, { color: '94a3b8' }));
+          if (act.description) dayChildren.push(para(act.description, { color: '475569' }));
+          if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`));
+          dayChildren.push(spacer());
+        }
       }
+      sections.push({
+        properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+        children: dayChildren,
+      });
     }
-    sections.push({
-      properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
-      children: dayChildren,
-    });
   }
 
-  // ── Checklist section ──
-  if (checklist?.length > 0) {
+  if (SS.checklist && checklist?.length > 0) {
     const ck = [];
-    ck.push(para("צ'קליסט הציוד", { bold: true, size: 40, color: '0b0b30', heading: HeadingLevel.TITLE }));
+    ck.push(para("צ'קליסט ציוד", { bold: true, size: 44, color: '4f46e5', heading: HeadingLevel.TITLE, spacing: { after: 240 } }));
     const groups = groupByCategory(checklist);
     for (const [cat, items] of Object.entries(groups)) {
-      ck.push(para(cat, { bold: true, size: 26, color: '4f46e5', heading: HeadingLevel.HEADING_2 }));
+      ck.push(para(cat, { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 80 } }));
       for (const item of items) {
         const mark = item.completed ? '☑' : '☐';
-        ck.push(para(`${mark}  ${item.text}`, { size: 24 }));
+        ck.push(para(`${mark}   ${item.text}`, { size: 24 }));
       }
       ck.push(spacer());
     }
@@ -437,68 +473,158 @@ export async function exportTripDocx({ trip, planning, days, checklist }) {
   const documentInstance = new Document({
     creator: 'Flights Assistant',
     title: trip?.name || 'Trip',
-    styles: { default: { document: { run: { font: 'Arial', rightToLeft: true } } } },
+    styles: {
+      default: {
+        document: { run: { font: 'David', rightToLeft: true, size: 24 } },
+      },
+      paragraphStyles: [
+        { id: 'Title',    name: 'Title',    basedOn: 'Normal', next: 'Normal', run: { font: 'David', bold: true, size: 52, color: '0b0b26', rightToLeft: true }, paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 240 } } },
+        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', run: { font: 'David', bold: true, size: 36, color: '4f46e5', rightToLeft: true }, paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { before: 240, after: 160 } } },
+        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', run: { font: 'David', bold: true, size: 28, color: '0b0b26', rightToLeft: true }, paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { before: 200, after: 100 } } },
+      ],
+    },
     sections,
   });
   const blob = await Packer.toBlob(documentInstance);
-  saveAs(blob, `${safeFileName(trip?.name || 'trip')}.docx`);
+  saveAs(blob, `${safeFileName(trip?.name || 'trip')}_${scope}.docx`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// EXCEL (.xlsx)
+// EXCEL (.xlsx) — with header formatting (font, fill, borders)
 // ──────────────────────────────────────────────────────────────────────
 
-export async function exportTripXlsx({ trip, planning, days, checklist }) {
+// Apply consistent style ranges to a worksheet.
+function styleSheet(ws, { headerRows = [0], titleRows = [], divRows = [], colCount = 1 }) {
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 13, name: 'David' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'FF4F46E5' } },
+    alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 },
+    border: {
+      top:    { style: 'thin', color: { rgb: 'FF312E81' } },
+      bottom: { style: 'thin', color: { rgb: 'FF312E81' } },
+      left:   { style: 'thin', color: { rgb: 'FF312E81' } },
+      right:  { style: 'thin', color: { rgb: 'FF312E81' } },
+    },
+  };
+  const titleStyle = {
+    font: { bold: true, color: { rgb: 'FF0B0B26' }, sz: 14, name: 'David' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'FFEEF2FF' } },
+    alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 },
+  };
+  const divStyle = {
+    font: { bold: true, color: { rgb: 'FF4F46E5' }, sz: 12, name: 'David' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'FFF1F5F9' } },
+    alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 },
+  };
+  const bodyStyle = {
+    font: { name: 'David', sz: 12, color: { rgb: 'FF0B0B26' } },
+    alignment: { horizontal: 'right', vertical: 'center', wrapText: true, readingOrder: 2 },
+  };
+  const setRowStyle = (r, st) => {
+    for (let c = 0; c < colCount; c++) {
+      const ref = encodeCell(c, r);
+      if (!ws[ref]) ws[ref] = { v: '', t: 's' };
+      ws[ref].s = st;
+    }
+  };
+  // Determine sheet range
+  const range = ws['!ref'] ? decodeRange(ws['!ref']) : { s: { c: 0, r: 0 }, e: { c: colCount - 1, r: 0 } };
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    if (headerRows.includes(r))      setRowStyle(r, headerStyle);
+    else if (titleRows.includes(r))  setRowStyle(r, titleStyle);
+    else if (divRows.includes(r))    setRowStyle(r, divStyle);
+    else                              setRowStyle(r, bodyStyle);
+  }
+  // Frozen header row
+  ws['!freeze'] = { xSplit: 0, ySplit: headerRows.length };
+}
+
+// Small helpers compatible with SheetJS encode/decode
+function encodeCell(c, r) {
+  let s = '';
+  let n = c;
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s + (r + 1);
+}
+function decodeRange(ref) {
+  const [from, to] = ref.split(':');
+  const decode = (a) => {
+    const m = a.match(/^([A-Z]+)(\d+)$/);
+    let c = 0;
+    for (const ch of m[1]) c = c * 26 + (ch.charCodeAt(0) - 64);
+    return { c: c - 1, r: parseInt(m[2], 10) - 1 };
+  };
+  return { s: decode(from), e: decode(to || from) };
+}
+
+export async function exportTripXlsx(data, scope = 'all') {
+  const { trip, planning, days, checklist } = data;
+  const SS = SCOPE[scope] || SCOPE.all;
   const XLSX = await import('xlsx');
+
   const wb = XLSX.utils.book_new();
   wb.Workbook = wb.Workbook || {};
   wb.Workbook.Views = [{ RTL: true }];
 
-  const addSheet = (name, rows, colWidths) => {
+  const addSheet = (name, rows, opts = {}) => {
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    if (colWidths) ws['!cols'] = colWidths.map(w => ({ wch: w }));
-    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 28));
+    if (opts.cols) ws['!cols'] = opts.cols.map(w => ({ wch: w }));
+    if (opts.merges) ws['!merges'] = opts.merges;
+    styleSheet(ws, {
+      headerRows: opts.headerRows || [0],
+      titleRows: opts.titleRows || [],
+      divRows: opts.divRows || [],
+      colCount: rows[0]?.length || 1,
+    });
+    // Adjust default row height for readability
+    ws['!rows'] = rows.map((_, i) => ({ hpt: opts.headerRows?.includes(i) ? 24 : 20 }));
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 30));
   };
 
-  // 1. Trip summary
-  addSheet('סיכום', [
-    ['פרט', 'ערך'],
-    ['שם הטיול', trip?.name || ''],
-    ['יעד', trip?.destination || ''],
-    ['תאריכים', trip?.dates || ''],
-    [],
-    ['── טיסת הלוך ──', ''],
-    ['מספר טיסה', trip?.outboundFlightDetails?.flightNumber || ''],
-    ['חברת תעופה', trip?.outboundFlightDetails?.airline || ''],
-    ['ממוצא', trip?.outboundFlightDetails?.depAirport?.code || ''],
-    ['ליעד', trip?.outboundFlightDetails?.arrAirport?.code || ''],
-    ['תאריך', trip?.outboundFlightDetails?.date || ''],
-    ['המראה', trip?.outboundFlightDetails?.scheduledDep || ''],
-    ['נחיתה', trip?.outboundFlightDetails?.scheduledArr || ''],
-    ['שער', trip?.outboundFlightDetails?.gate || ''],
-    [],
-    ['── טיסת חזור ──', ''],
-    ['מספר טיסה', trip?.returnFlightDetails?.flightNumber || ''],
-    ['חברת תעופה', trip?.returnFlightDetails?.airline || ''],
-    ['ממוצא', trip?.returnFlightDetails?.depAirport?.code || ''],
-    ['ליעד', trip?.returnFlightDetails?.arrAirport?.code || ''],
-    ['תאריך', trip?.returnFlightDetails?.date || ''],
-    ['המראה', trip?.returnFlightDetails?.scheduledDep || ''],
-    ['נחיתה', trip?.returnFlightDetails?.scheduledArr || ''],
-    ['שער', trip?.returnFlightDetails?.gate || ''],
-    [],
-    ['── מלון ──', ''],
-    ['שם המלון', trip?.hotelDetails?.name || ''],
-    ['כתובת', trip?.hotelDetails?.address || ''],
-    ['קישור', trip?.hotelDetails?.link || ''],
-    ['כניסה', formatHotelDateTime(trip?.hotelDetails?.checkIn)],
-    ['יציאה', formatHotelDateTime(trip?.hotelDetails?.checkOut)],
-    ['חדר', trip?.hotelDetails?.roomNumber || ''],
-    ['הערות', trip?.hotelDetails?.notes || ''],
-  ], [28, 60]);
+  if (SS.flight) {
+    const rows = [
+      ['פרט', 'ערך'],
+      ['שם הטיול', trip?.name || ''],
+      ['יעד', trip?.destination || ''],
+      ['תאריכים', trip?.dates || ''],
+      ['טיסת הלוך', ''],
+      ['מספר טיסה', trip?.outboundFlightDetails?.flightNumber || ''],
+      ['חברת תעופה', trip?.outboundFlightDetails?.airline || ''],
+      ['ממוצא', trip?.outboundFlightDetails?.depAirport?.code || ''],
+      ['ליעד', trip?.outboundFlightDetails?.arrAirport?.code || ''],
+      ['תאריך', trip?.outboundFlightDetails?.date || ''],
+      ['המראה', trip?.outboundFlightDetails?.scheduledDep || ''],
+      ['נחיתה', trip?.outboundFlightDetails?.scheduledArr || ''],
+      ['שער', trip?.outboundFlightDetails?.gate || ''],
+      ['טיסת חזור', ''],
+      ['מספר טיסה', trip?.returnFlightDetails?.flightNumber || ''],
+      ['חברת תעופה', trip?.returnFlightDetails?.airline || ''],
+      ['ממוצא', trip?.returnFlightDetails?.depAirport?.code || ''],
+      ['ליעד', trip?.returnFlightDetails?.arrAirport?.code || ''],
+      ['תאריך', trip?.returnFlightDetails?.date || ''],
+      ['המראה', trip?.returnFlightDetails?.scheduledDep || ''],
+      ['נחיתה', trip?.returnFlightDetails?.scheduledArr || ''],
+      ['שער', trip?.returnFlightDetails?.gate || ''],
+      ['מלון', ''],
+      ['שם המלון', trip?.hotelDetails?.name || ''],
+      ['כתובת', trip?.hotelDetails?.address || ''],
+      ['קישור', trip?.hotelDetails?.link || ''],
+      ['כניסה', formatHotelDateTime(trip?.hotelDetails?.checkIn)],
+      ['יציאה', formatHotelDateTime(trip?.hotelDetails?.checkOut)],
+      ['חדר', trip?.hotelDetails?.roomNumber || ''],
+      ['הערות', trip?.hotelDetails?.notes || ''],
+    ];
+    addSheet('סיכום', rows, {
+      cols: [28, 60],
+      headerRows: [0],
+      titleRows: [4, 13, 22], // "טיסת הלוך", "טיסת חזור", "מלון"
+    });
+  }
 
-  // 2. Planning pool
-  if (planning.length > 0) {
+  if (SS.planning && planning.length > 0) {
     const rows = [['קטגוריה', 'שם', 'תיאור', 'כתובת', 'מחיר', 'קישורים', 'נצפה?']];
     for (const p of planning) {
       const linksText = Array.isArray(p.links) && p.links.length
@@ -514,33 +640,33 @@ export async function exportTripXlsx({ trip, planning, days, checklist }) {
         p.visited ? '✓' : '',
       ]);
     }
-    addSheet('תכנון', rows, [22, 32, 50, 36, 14, 40, 10]);
+    addSheet('תכנון', rows, { cols: [22, 32, 50, 36, 14, 40, 10] });
   }
 
-  // 3. One sheet per day
-  for (let i = 0; i < days.length; i++) {
-    const day = days[i];
-    const rows = [['תיוג זמן', 'כותרת', 'קטגוריה', 'הערות', 'כתובת']];
-    for (const a of (day.activities || [])) {
-      rows.push([
-        a.timeLabel || '',
-        a.title || '',
-        a.category || '',
-        a.description || '',
-        a.address || '',
-      ]);
+  if (SS.days) {
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      const rows = [['תיוג זמן', 'כותרת', 'קטגוריה', 'הערות', 'כתובת']];
+      for (const a of (day.activities || [])) {
+        rows.push([
+          a.timeLabel || '',
+          a.title || '',
+          a.category || '',
+          a.description || '',
+          a.address || '',
+        ]);
+      }
+      addSheet(day.title || `יום ${i + 1}`, rows, { cols: [14, 32, 22, 50, 36] });
     }
-    addSheet(day.title || `יום ${i + 1}`, rows, [14, 32, 22, 50, 36]);
   }
 
-  // 4. Checklist
-  if (checklist?.length > 0) {
+  if (SS.checklist && checklist?.length > 0) {
     const rows = [['קטגוריה', 'פריט', 'הושלם?']];
     for (const item of checklist) {
       rows.push([item.category || '', item.text || '', item.completed ? '✓' : '']);
     }
-    addSheet("צ'קליסט", rows, [22, 50, 12]);
+    addSheet("צ'קליסט", rows, { cols: [22, 50, 12] });
   }
 
-  XLSX.writeFile(wb, `${safeFileName(trip?.name || 'trip')}.xlsx`);
+  XLSX.writeFile(wb, `${safeFileName(trip?.name || 'trip')}_${scope}.xlsx`);
 }
