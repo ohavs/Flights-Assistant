@@ -36,6 +36,25 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'maskable'
           }
+        ],
+        // Long-press shortcuts (Android) — show up next to the home-screen
+        // icon so the user can jump directly to a feature without first
+        // opening the app and tapping through tabs.
+        shortcuts: [
+          {
+            name: 'הטיולים שלי',
+            short_name: 'טיולים',
+            description: 'רשימת הטיולים',
+            url: '/?screen=home',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'המרת מטבעות',
+            short_name: 'מטבעות',
+            description: 'מחשבון המרת מטבעות עם נתונים אופליין',
+            url: '/?screen=converter',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          }
         ]
       },
       workbox: {

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDownUp, Coins, ChevronDown, Search, Check, Wifi, WifiOff } from 'lucide-react';
+import { ArrowDownUp, Coins, ChevronDown, Search, Check, Wifi, WifiOff, Smartphone, Share2, X } from 'lucide-react';
 import {
   CURRENCY_META, getInitialRates, refreshRatesIfStale,
   convert, formatAmount
 } from '../services/currency';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 
 const QUICK_CODES = ['ILS', 'USD', 'EUR'];
 
@@ -147,11 +148,35 @@ function CurrencyPicker({ value, onChange, exclude }) {
 
 export default function CurrencyConverter() {
   const [{ rates, fetchedAt }, setCache] = useState(getInitialRates);
-  const [amount, setAmount] = useState('100');
-  const [from, setFrom] = useState('ILS');
-  const [to, setTo] = useState('EUR');
+  // Remember the user's currency picks + last amount across reloads.
+  const PREF_KEY = 'currencyConverterPrefsV1';
+  const [prefs] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+    } catch { return {}; }
+  });
+  const [amount, setAmount] = useState(prefs.amount ?? '100');
+  const [from, setFrom] = useState(prefs.from && CURRENCY_META[prefs.from] ? prefs.from : 'ILS');
+  const [to, setTo] = useState(prefs.to && CURRENCY_META[prefs.to] ? prefs.to : 'EUR');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREF_KEY, JSON.stringify({ amount, from, to }));
+    } catch { /* ignore */ }
+  }, [amount, from, to]);
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [refreshing, setRefreshing] = useState(false);
+  const { canInstall, install, installed, isIOS } = useInstallPrompt();
+  const [showIosTip, setShowIosTip] = useState(false);
+
+  const handleInstallClick = async () => {
+    if (canInstall) {
+      await install();
+    } else if (isIOS) {
+      setShowIosTip(true);
+    }
+  };
+  const showInstallButton = !installed && (canInstall || isIOS);
 
   // Refresh rates on mount (and whenever we come back online), but always
   // fall back to whatever's in localStorage.
@@ -210,6 +235,86 @@ export default function CurrencyConverter() {
           {online ? (refreshing ? 'מעדכן…' : 'עדכני') : 'מצב לא מקוון'}
         </span>
       </div>
+
+      {/* Add-to-home-screen prompt */}
+      {showInstallButton && (
+        <button
+          type="button"
+          onClick={handleInstallClick}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px',
+            background: 'linear-gradient(135deg, rgba(79,70,229,0.1), rgba(124,58,237,0.08))',
+            border: '1.5px dashed rgba(79,70,229,0.35)',
+            color: 'var(--accent)',
+            borderRadius: 12, cursor: 'pointer',
+            fontFamily: 'var(--font-hebrew)',
+            fontSize: 13, fontWeight: 800,
+            textAlign: 'right',
+          }}
+          title="התקן את האפליקציה כך שתוכל לפתוח אותה ישירות ממסך הבית"
+        >
+          <Smartphone size={18} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, textAlign: 'right' }}>
+            הוסף את האפליקציה למסך הבית
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
+              גישה מהירה למחשבון ולכל המידע — גם אופליין.
+            </div>
+          </span>
+        </button>
+      )}
+
+      {/* iOS manual instructions modal */}
+      {showIosTip && createPortal(
+        <div className="modal-overlay" style={{ alignItems: 'center' }} onClick={() => setShowIosTip(false)}>
+          <div
+            className="modal-content"
+            style={{ height: 'auto', maxHeight: '80%', maxWidth: 420, margin: 16, padding: '24px 20px', borderRadius: 'var(--radius-xl)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%',
+                background: 'rgba(79,70,229,0.12)', color: 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <Smartphone size={22} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+                  הוספה למסך הבית ב-iPhone
+                </h3>
+                <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, fontWeight: 600 }}>
+                  ב-iOS Safari ההתקנה היא ידנית:
+                </p>
+                <ol style={{ paddingRight: 18, fontSize: 14, color: 'var(--text)', fontWeight: 600, lineHeight: 1.8, margin: '6px 0 10px' }}>
+                  <li>לחץ על כפתור <strong>שיתוף <Share2 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /></strong> בתחתית/למעלה של Safari.</li>
+                  <li>גלול ובחר <strong>"הוסף למסך הבית"</strong>.</li>
+                  <li>אשר את השם של האפליקציה ולחץ <strong>"הוסף"</strong>.</li>
+                </ol>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  ⚠️ הדפדפן חייב להיות Safari — לא Chrome או אחר.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIosTip(false)}
+                style={{
+                  background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
+                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <button onClick={() => setShowIosTip(false)} className="btn-primary" style={{ width: '100%', marginTop: 18 }}>
+              הבנתי
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Amount input */}
       <div className="form-group" style={{ marginBottom: 0 }}>
