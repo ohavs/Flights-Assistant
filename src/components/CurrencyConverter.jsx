@@ -172,11 +172,25 @@ export default function CurrencyConverter() {
   const handleInstallClick = async () => {
     if (canInstall) {
       await install();
-    } else if (isIOS) {
+    } else if (installed) {
+      // Already installed — open the converter as a standalone window.
+      window.open('/?screen=converter', '_blank');
+    } else {
+      // No native prompt available (iOS Safari or browser hasn't fired it yet).
       setShowIosTip(true);
     }
   };
-  const showInstallButton = !installed && (canInstall || isIOS);
+  // Always show the button so the user has a clear path to install the
+  // app or open the converter as a standalone window. The label changes
+  // based on what the platform actually supports.
+  const showInstallButton = true;
+  const installLabel = installed ? 'פתח את המחשבון כוידג\'ט עצמאי'
+    : canInstall ? 'הוסף את האפליקציה למסך הבית'
+    : isIOS ? 'הוסף למסך הבית ב-iPhone'
+    : 'הוסף למסך הבית';
+  const installSubLabel = installed
+    ? 'פתיחה בחלון נפרד עם מחשבון ההמרות בלבד.'
+    : 'גישה מהירה למחשבון, וגם אופליין.';
 
   // Refresh rates on mount (and whenever we come back online), but always
   // fall back to whatever's in localStorage.
@@ -256,9 +270,9 @@ export default function CurrencyConverter() {
         >
           <Smartphone size={18} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1, textAlign: 'right' }}>
-            הוסף את האפליקציה למסך הבית
+            {installLabel}
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
-              גישה מהירה למחשבון ולכל המידע — גם אופליין.
+              {installSubLabel}
             </div>
           </span>
         </button>
