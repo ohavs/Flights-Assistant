@@ -538,7 +538,7 @@ export default function PlanningTab({ tripId }) {
   }
 
   return (
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
       {/* Sub-tab Selector */}
       <div style={{ 
