@@ -454,7 +454,10 @@ export async function exportTripDocx(data, scope = 'all') {
   }
 
   sections.push({
-    properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+    properties: {
+      bidi: true,
+      page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+    },
     children: main,
   });
 
@@ -478,7 +481,10 @@ export async function exportTripDocx(data, scope = 'all') {
         }
       }
       sections.push({
-        properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+        properties: {
+      bidi: true,
+      page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+    },
         children: dayChildren,
       });
     }
@@ -497,7 +503,10 @@ export async function exportTripDocx(data, scope = 'all') {
       ck.push(spacer());
     }
     sections.push({
-      properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+      properties: {
+      bidi: true,
+      page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+    },
       children: ck,
     });
   }
@@ -526,7 +535,10 @@ export async function exportTripDocx(data, scope = 'all') {
       }
     }
     sections.push({
-      properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+      properties: {
+      bidi: true,
+      page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+    },
       children: inf,
     });
   }
@@ -536,7 +548,10 @@ export async function exportTripDocx(data, scope = 'all') {
     title: trip?.name || 'Trip',
     styles: {
       default: {
-        document: { run: { font: 'David', rightToLeft: true, size: 24 } },
+        document: {
+          run: { font: 'David', rightToLeft: true, size: 24 },
+          paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT },
+        },
       },
       paragraphStyles: [
         { id: 'Title',    name: 'Title',    basedOn: 'Normal', next: 'Normal', run: { font: 'David', bold: true, size: 52, color: '0b0b26', rightToLeft: true }, paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 240 } } },
@@ -624,34 +639,119 @@ function decodeRange(ref) {
 export async function exportTripXlsx(data, scope = 'all') {
   const { trip, planning, days, checklist, info } = data;
   const SS = SCOPE[scope] || SCOPE.all;
-  const XLSX = await import('xlsx');
+  const ExcelJS = (await import('exceljs')).default || (await import('exceljs'));
+  const { saveAs } = await import('file-saver');
 
-  const wb = XLSX.utils.book_new();
-  wb.Workbook = wb.Workbook || {};
-  wb.Workbook.Views = [{ RTL: true }];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Flights Assistant';
+  wb.created = new Date();
+  wb.title = trip?.name || 'Trip';
 
-  const addSheet = (name, rows, opts = {}) => {
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    if (opts.cols) ws['!cols'] = opts.cols.map(w => ({ wch: w }));
-    if (opts.merges) ws['!merges'] = opts.merges;
-    styleSheet(ws, {
-      headerRows: opts.headerRows || [0],
-      titleRows: opts.titleRows || [],
-      divRows: opts.divRows || [],
-      colCount: rows[0]?.length || 1,
-    });
-    // Adjust default row height for readability
-    ws['!rows'] = rows.map((_, i) => ({ hpt: opts.headerRows?.includes(i) ? 24 : 20 }));
-    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 30));
+  // Reusable cell-style helpers (real ExcelJS styling — survives in Excel)
+  const FONT = { name: 'Calibri' };
+  const stylesPalette = {
+    title: {
+      font: { ...FONT, name: 'Calibri', size: 18, bold: true, color: { argb: 'FFFFFFFF' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } },
+      alignment: { horizontal: 'right', vertical: 'middle', readingOrder: 'rtl' },
+      border: { bottom: { style: 'medium', color: { argb: 'FF312E81' } } },
+    },
+    header: {
+      font: { ...FONT, size: 13, bold: true, color: { argb: 'FFFFFFFF' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6366F1' } },
+      alignment: { horizontal: 'right', vertical: 'middle', readingOrder: 'rtl' },
+      border: {
+        top:    { style: 'thin', color: { argb: 'FF4F46E5' } },
+        bottom: { style: 'thin', color: { argb: 'FF4F46E5' } },
+        left:   { style: 'thin', color: { argb: 'FF4F46E5' } },
+        right:  { style: 'thin', color: { argb: 'FF4F46E5' } },
+      },
+    },
+    subHeader: {
+      font: { ...FONT, size: 13, bold: true, color: { argb: 'FF312E81' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } },
+      alignment: { horizontal: 'right', vertical: 'middle', readingOrder: 'rtl' },
+    },
+    label: {
+      font: { ...FONT, size: 12, bold: true, color: { argb: 'FF0B0B26' } },
+      alignment: { horizontal: 'right', vertical: 'middle', readingOrder: 'rtl' },
+    },
+    body: {
+      font: { ...FONT, size: 12, color: { argb: 'FF1F2937' } },
+      alignment: { horizontal: 'right', vertical: 'middle', wrapText: true, readingOrder: 'rtl' },
+    },
+    bodyAlt: {
+      font: { ...FONT, size: 12, color: { argb: 'FF1F2937' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } },
+      alignment: { horizontal: 'right', vertical: 'middle', wrapText: true, readingOrder: 'rtl' },
+    },
+    link: {
+      font: { ...FONT, size: 12, color: { argb: 'FF4F46E5' }, underline: true },
+      alignment: { horizontal: 'right', vertical: 'middle', readingOrder: 'rtl' },
+    },
   };
 
+  // Workbook-level RTL view
+  wb.views = [{ activeTab: 0 }];
+
+  const applyRowStyle = (row, style) => { row.eachCell({ includeEmpty: true }, cell => { cell.style = { ...cell.style, ...style }; }); };
+  const applyCellStyle = (cell, style) => { cell.style = { ...cell.style, ...style }; };
+
+  const addSheet = (name, opts = {}) => {
+    const ws = wb.addWorksheet(name.slice(0, 30), {
+      views: [{ rightToLeft: true, showGridLines: opts.gridlines !== false }],
+      pageSetup: { orientation: 'portrait', paperSize: 9 /* A4 */, margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 } },
+    });
+    if (opts.cols) ws.columns = opts.cols.map(w => ({ width: w }));
+    return ws;
+  };
+
+  // ── Summary sheet ──
   if (SS.flight) {
-    const rows = [
-      ['פרט', 'ערך'],
-      ['שם הטיול', trip?.name || ''],
+    const ws = addSheet('סיכום', { cols: [32, 60] });
+
+    // Title banner
+    ws.mergeCells('A1:B1');
+    const titleCell = ws.getCell('A1');
+    titleCell.value = trip?.name || 'הטיול שלי';
+    applyCellStyle(titleCell, stylesPalette.title);
+    ws.getRow(1).height = 32;
+
+    // Trip metadata
+    const meta = [
       ['יעד', trip?.destination || ''],
       ['תאריכים', trip?.dates || ''],
-      ['טיסת הלוך', ''],
+    ];
+    let r = 3;
+    for (const [label, val] of meta) {
+      ws.getCell(`A${r}`).value = label;
+      ws.getCell(`B${r}`).value = val;
+      applyCellStyle(ws.getCell(`A${r}`), stylesPalette.label);
+      applyCellStyle(ws.getCell(`B${r}`), stylesPalette.body);
+      r++;
+    }
+
+    const section = (title, pairs) => {
+      r++;
+      ws.mergeCells(`A${r}:B${r}`);
+      const head = ws.getCell(`A${r}`);
+      head.value = title;
+      applyCellStyle(head, stylesPalette.subHeader);
+      ws.getRow(r).height = 24;
+      r++;
+      let alt = false;
+      for (const [label, val] of pairs) {
+        if (val === '' || val == null) continue;
+        ws.getCell(`A${r}`).value = label;
+        ws.getCell(`B${r}`).value = val;
+        applyCellStyle(ws.getCell(`A${r}`), stylesPalette.label);
+        applyCellStyle(ws.getCell(`B${r}`), alt ? stylesPalette.bodyAlt : stylesPalette.body);
+        alt = !alt;
+        r++;
+      }
+    };
+
+    section('טיסת הלוך', [
       ['מספר טיסה', trip?.outboundFlightDetails?.flightNumber || ''],
       ['חברת תעופה', trip?.outboundFlightDetails?.airline || ''],
       ['ממוצא', trip?.outboundFlightDetails?.depAirport?.code || ''],
@@ -660,7 +760,8 @@ export async function exportTripXlsx(data, scope = 'all') {
       ['המראה', trip?.outboundFlightDetails?.scheduledDep || ''],
       ['נחיתה', trip?.outboundFlightDetails?.scheduledArr || ''],
       ['שער', trip?.outboundFlightDetails?.gate || ''],
-      ['טיסת חזור', ''],
+    ]);
+    section('טיסת חזור', [
       ['מספר טיסה', trip?.returnFlightDetails?.flightNumber || ''],
       ['חברת תעופה', trip?.returnFlightDetails?.airline || ''],
       ['ממוצא', trip?.returnFlightDetails?.depAirport?.code || ''],
@@ -669,7 +770,8 @@ export async function exportTripXlsx(data, scope = 'all') {
       ['המראה', trip?.returnFlightDetails?.scheduledDep || ''],
       ['נחיתה', trip?.returnFlightDetails?.scheduledArr || ''],
       ['שער', trip?.returnFlightDetails?.gate || ''],
-      ['מלון', ''],
+    ]);
+    section('מלון', [
       ['שם המלון', trip?.hotelDetails?.name || ''],
       ['כתובת', trip?.hotelDetails?.address || ''],
       ['קישור', trip?.hotelDetails?.link || ''],
@@ -677,73 +779,63 @@ export async function exportTripXlsx(data, scope = 'all') {
       ['יציאה', formatHotelDateTime(trip?.hotelDetails?.checkOut)],
       ['חדר', trip?.hotelDetails?.roomNumber || ''],
       ['הערות', trip?.hotelDetails?.notes || ''],
-    ];
-    addSheet('סיכום', rows, {
-      cols: [28, 60],
-      headerRows: [0],
-      titleRows: [4, 13, 22], // "טיסת הלוך", "טיסת חזור", "מלון"
-    });
+    ]);
   }
 
+  // Helper for table-style sheets: header row + alternating body rows
+  const addTableSheet = (sheetName, headers, rows, cols) => {
+    const ws = addSheet(sheetName, { cols });
+    // Header row
+    ws.addRow(headers);
+    applyRowStyle(ws.getRow(1), stylesPalette.header);
+    ws.getRow(1).height = 26;
+    // Body rows with alternating fill
+    rows.forEach((row, i) => {
+      ws.addRow(row);
+      applyRowStyle(ws.getRow(i + 2), i % 2 === 0 ? stylesPalette.body : stylesPalette.bodyAlt);
+      ws.getRow(i + 2).height = 22;
+    });
+    // Freeze header
+    ws.views = [{ rightToLeft: true, state: 'frozen', ySplit: 1 }];
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+  };
+
+  // ── Planning sheet ──
   if (SS.planning && planning.length > 0) {
-    const rows = [['קטגוריה', 'שם', 'תיאור', 'כתובת', 'מחיר', 'קישורים', 'נצפה?']];
-    for (const p of planning) {
-      const linksText = Array.isArray(p.links) && p.links.length
+    const rows = planning.map(p => {
+      const links = Array.isArray(p.links) && p.links.length
         ? p.links.map(l => l.url).filter(Boolean).join(' | ')
         : '';
-      rows.push([
-        p.category || '',
-        p.title || '',
-        p.description || '',
-        p.address || '',
-        p.price || '',
-        linksText,
-        p.visited ? '✓' : '',
-      ]);
-    }
-    addSheet('תכנון', rows, { cols: [22, 32, 50, 36, 14, 40, 10] });
+      return [p.category || '', p.title || '', p.description || '', p.address || '', p.price || '', links, p.visited ? '✓' : ''];
+    });
+    addTableSheet('תכנון', ['קטגוריה', 'שם', 'תיאור', 'כתובת', 'מחיר', 'קישורים', 'נצפה?'], rows, [22, 32, 50, 36, 14, 40, 10]);
   }
 
+  // ── One sheet per day ──
   if (SS.days) {
     for (let i = 0; i < days.length; i++) {
       const day = days[i];
-      const rows = [['תיוג זמן', 'כותרת', 'קטגוריה', 'הערות', 'כתובת']];
-      for (const a of (day.activities || [])) {
-        rows.push([
-          a.timeLabel || '',
-          a.title || '',
-          a.category || '',
-          a.description || '',
-          a.address || '',
-        ]);
-      }
-      addSheet(day.title || `יום ${i + 1}`, rows, { cols: [14, 32, 22, 50, 36] });
-    }
-  }
-
-  if (SS.checklist && checklist?.length > 0) {
-    const rows = [['קטגוריה', 'פריט', 'הושלם?']];
-    for (const item of checklist) {
-      rows.push([item.category || '', item.text || '', item.completed ? '✓' : '']);
-    }
-    addSheet("צ'קליסט", rows, { cols: [22, 50, 12] });
-  }
-
-  if (SS.info && info?.length > 0) {
-    const typeLabel = {
-      phone: 'טלפון', address: 'כתובת', url: 'קישור', text: 'טקסט',
-    };
-    const rows = [['קטגוריה', 'כותרת', 'סוג', 'ערך']];
-    for (const item of info) {
-      rows.push([
-        item.category || '',
-        item.title || '',
-        typeLabel[item.type] || 'טקסט',
-        item.value || '',
+      const rows = (day.activities || []).map(a => [
+        a.timeLabel || '', a.title || '', a.category || '', a.description || '', a.address || '',
       ]);
+      addTableSheet(day.title || `יום ${i + 1}`, ['תיוג זמן', 'כותרת', 'קטגוריה', 'הערות', 'כתובת'], rows, [14, 32, 22, 50, 36]);
     }
-    addSheet('מידע חשוב', rows, { cols: [22, 32, 14, 50] });
   }
 
-  XLSX.writeFile(wb, `${safeFileName(trip?.name || 'trip')}_${scope}.xlsx`);
+  // ── Checklist sheet ──
+  if (SS.checklist && checklist?.length > 0) {
+    const rows = checklist.map(item => [item.category || '', item.text || '', item.completed ? '✓' : '']);
+    addTableSheet("צ'קליסט", ['קטגוריה', 'פריט', 'הושלם?'], rows, [22, 50, 12]);
+  }
+
+  // ── Info sheet ──
+  if (SS.info && info?.length > 0) {
+    const typeLabel = { phone: 'טלפון', address: 'כתובת', url: 'קישור', text: 'טקסט' };
+    const rows = info.map(item => [item.category || '', item.title || '', typeLabel[item.type] || 'טקסט', item.value || '']);
+    addTableSheet('מידע חשוב', ['קטגוריה', 'כותרת', 'סוג', 'ערך'], rows, [22, 32, 14, 50]);
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+         `${safeFileName(trip?.name || 'trip')}_${scope}.xlsx`);
 }

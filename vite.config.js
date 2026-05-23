@@ -78,6 +78,24 @@ export default defineConfig({
               cacheName: 'map-tiles-cache',
               expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 }
             }
+          },
+          {
+            // Currency exchange rates — keep last response for offline.
+            urlPattern: /^https:\/\/api\.frankfurter\.app\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'currency-rates-cache',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 7 }
+            }
+          },
+          {
+            // Hebrew TTF served from /fonts (for PDF export) — cache long.
+            urlPattern: /\/fonts\/.*\.ttf$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'fonts-local-cache',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 365 }
+            }
           }
         ]
       }

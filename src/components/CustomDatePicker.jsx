@@ -808,19 +808,28 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
   ));
   const current = normalized.find(o => o.value === value);
 
-  // Compute popup position relative to viewport (so it escapes overflow:auto parents)
+  // Compute popup position relative to viewport. Anchor the popup so its
+  // right edge lines up with the trigger's right edge (natural for RTL
+  // Hebrew layout) and clamp to the viewport so we never spill off-screen.
   useEffect(() => {
     if (!isOpen) return;
     const update = () => {
       if (!triggerRef.current) return;
       const r = triggerRef.current.getBoundingClientRect();
+      const gutter = 8;
+      const desiredWidth = Math.max(r.width, 220);
+      let left = r.right - desiredWidth;
+      if (left < gutter) left = gutter;
+      if (left + desiredWidth > window.innerWidth - gutter) {
+        left = window.innerWidth - desiredWidth - gutter;
+      }
       const spaceBelow = window.innerHeight - r.bottom;
       const openAbove = spaceBelow < 220 && r.top > 220;
       setPopupRect({
-        top: openAbove ? null : r.bottom + 6,
-        bottom: openAbove ? (window.innerHeight - r.top + 6) : null,
-        left: r.left,
-        width: r.width
+        top: openAbove ? undefined : r.bottom + 6,
+        bottom: openAbove ? (window.innerHeight - r.top + 6) : undefined,
+        left,
+        width: desiredWidth,
       });
     };
     update();

@@ -25,7 +25,15 @@ export default function ExportMenu({ tripId, trip, activeTab }) {
     const update = () => {
       if (!triggerRef.current) return;
       const r = triggerRef.current.getBoundingClientRect();
-      setPopupRect({ top: r.bottom + 6, left: r.left, width: Math.max(r.width, 300) });
+      const gutter = 8;
+      const desiredWidth = Math.max(r.width, 300);
+      // Right-align with trigger (natural for RTL), then clamp to viewport.
+      let left = r.right - desiredWidth;
+      if (left < gutter) left = gutter;
+      if (left + desiredWidth > window.innerWidth - gutter) {
+        left = window.innerWidth - desiredWidth - gutter;
+      }
+      setPopupRect({ top: r.bottom + 6, left, width: desiredWidth });
     };
     update();
     window.addEventListener('resize', update);

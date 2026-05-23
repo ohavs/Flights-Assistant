@@ -1002,14 +1002,25 @@ export default function App() {
     });
   }, [user]);
 
-  // Listen for trips where this user is a member. We use the memberIds array
-  // (parallel to the members map) so shared trips show up without writing
-  // to the invited user's profile.
+  // Listen for trips where this user is a member. We always clear the
+  // trips + cached profiles immediately when the user changes so a brief
+  // stale render of the previous user's trips can't leak across accounts.
+  // We also filter client-side as a defensive check that the current uid
+  // really appears in members/memberIds.
   useEffect(() => {
-    if (!user) { setTrips([]); return; }
-    const q = query(collection(db, 'trips'), where('memberIds', 'array-contains', user.uid));
+    setTrips([]);
+    setMemberProfiles({});
+    if (!user) return;
+    const uid = user.uid;
+    const q = query(collection(db, 'trips'), where('memberIds', 'array-contains', uid));
     return onSnapshot(q, (snap) => {
-      setTrips(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const filtered = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(t =>
+          (Array.isArray(t.memberIds) && t.memberIds.includes(uid)) ||
+          (t.members && t.members[uid])
+        );
+      setTrips(filtered);
     }, (err) => {
       console.error('Trips listener error:', err);
     });

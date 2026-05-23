@@ -6,6 +6,7 @@ import { lookupFlightLive } from '../services/flightApi';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import MapComponent from './MapComponent';
+import CurrencyConverter from './CurrencyConverter';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
@@ -916,6 +917,9 @@ export default function FlightTab({ tripId }) {
 
       {/* Return flight card — same gap as flight→hotel (handled by .dashboard-grid gap) */}
       {renderFlightCard(returning, 'return')}
+
+      {/* Currency converter widget — works offline thanks to localStorage cache */}
+      <CurrencyConverter />
 
       {/* Hotel — bigger gap above (handled by the grid's row-gap), same gap as outbound→return originally was) */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
