@@ -24,6 +24,7 @@ import {
   Train,
   Info,
   CheckCircle2,
+  Check,
   Pencil,
   ArrowUp,
   ArrowDown,
@@ -180,13 +181,21 @@ export default function PlanningTab({ tripId }) {
   const [editingDayId, setEditingDayId] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
 
-  const categories = [
+  const defaultCategoryNames = [
     'אטרקציות ודברים לעשות',
     'מסעדות ומקומות אכילה',
     'מקומות לבקר',
     'תחבורה ציבורית',
     'מידע כללי וטיפים'
   ];
+  // Derive the full category list from defaults + anything already used
+  // by existing plans / day activities so that custom categories added
+  // via the dropdown's "+" affordance persist across sessions.
+  const categories = Array.from(new Set([
+    ...defaultCategoryNames,
+    ...plans.map(p => p.category).filter(Boolean),
+    ...days.flatMap(d => (d.activities || []).map(a => a.category).filter(Boolean)),
+  ]));
 
   // Listen to Firestore planning items (pool)
   useEffect(() => {
@@ -363,14 +372,20 @@ export default function PlanningTab({ tripId }) {
     }
   };
 
-  // Filter plans
-  const filteredPlans = plans.filter(plan => {
-    const matchesCategory = selectedFilter === 'הכל' || plan.category === selectedFilter;
-    const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          plan.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          plan.address.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // Filter plans + sort visited ones to the bottom
+  const filteredPlans = plans
+    .filter(plan => {
+      const matchesCategory = selectedFilter === 'הכל' || plan.category === selectedFilter;
+      const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            plan.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            plan.address.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    })
+    .sort((a, b) => {
+      // Visited items always go to the bottom of the list.
+      if (!!a.visited === !!b.visited) return 0;
+      return a.visited ? 1 : -1;
+    });
 
   /* ══════════════════════════════════════════════════════════
      DAILY PLANNER OPERATIONS
@@ -653,6 +668,8 @@ export default function PlanningTab({ tripId }) {
                     value={category}
                     onChange={setCategory}
                     options={categories}
+                    addable
+                    addLabel="הוסף קטגוריה חדשה"
                   />
 
                   <div className="form-group">
@@ -842,49 +859,73 @@ export default function PlanningTab({ tripId }) {
                 return (
                   <div
                     key={plan.id}
-                    className="glass-card"
+                    className={`glass-card plan-card${plan.visited ? ' visited' : ''}`}
                     onClick={() => togglePlanExpanded(plan.id)}
                     style={{
                       padding: '12px 14px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: isOpen ? '12px' : '0',
-                      borderRight: plan.visited ? '5px solid var(--text-success)' : '1px solid rgba(255,255,255,0.6)',
-                      opacity: plan.visited ? 0.8 : 1,
                       cursor: 'pointer',
-                      transition: 'all 0.2s ease'
                     }}
                   >
-                    {/* Header — always visible */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                        <span style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '10px',
-                          background: 'rgba(11, 11, 48, 0.05)',
-                          color: 'var(--primary-color)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          {getCategoryIcon(plan.category)}
-                        </span>
+                    {/* Header — always visible. Visited toggle here so the
+                        user can mark/unmark without expanding the card. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {/* Big checkbox-style toggle on the right (visual start in RTL) */}
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleToggleVisited(plan); }}
+                          className={`plan-visit-toggle${plan.visited ? ' on' : ''}`}
+                          title={plan.visited ? 'בטל סימון' : 'סמן כנצפה'}
+                          aria-pressed={!!plan.visited}
+                        >
+                          {plan.visited && <Check size={18} strokeWidth={3} />}
+                        </button>
+                      ) : (
+                        plan.visited && (
+                          <div className="plan-visit-toggle on" aria-hidden="true">
+                            <Check size={18} strokeWidth={3} />
+                          </div>
+                        )
+                      )}
 
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <h3 style={{
-                            fontSize: '14px',
-                            fontWeight: '800',
-                            color: 'var(--primary-color)',
-                            textDecoration: plan.visited ? 'line-through' : 'none',
-                            lineHeight: 1.25,
-                            wordBreak: 'break-word'
-                          }}>
-                            {plan.title}
-                          </h3>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700' }}>{plan.category}</span>
-                        </div>
+                      <span style={{
+                        width: 32, height: 32, borderRadius: 10,
+                        background: 'rgba(11, 11, 48, 0.05)',
+                        color: 'var(--primary-color)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {getCategoryIcon(plan.category)}
+                      </span>
+
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <h3 style={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: plan.visited ? 'var(--text-success)' : 'var(--primary-color)',
+                          textDecoration: plan.visited ? 'line-through' : 'none',
+                          lineHeight: 1.25,
+                          wordBreak: 'break-word',
+                        }}>
+                          {plan.title}
+                          {plan.visited && (
+                            <span style={{
+                              marginRight: 8,
+                              fontSize: 10, fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: 'rgba(5, 150, 105, 0.15)',
+                              color: 'var(--text-success)',
+                              verticalAlign: 'middle',
+                              textDecoration: 'none',
+                              display: 'inline-block',
+                            }}>נצפה</span>
+                          )}
+                        </h3>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{plan.category}</span>
                       </div>
 
                       <ChevronDown
@@ -893,7 +934,7 @@ export default function PlanningTab({ tripId }) {
                           color: 'var(--text-muted)',
                           transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
                           transition: 'transform 0.2s ease',
-                          flexShrink: 0
+                          flexShrink: 0,
                         }}
                       />
                     </div>
@@ -903,21 +944,6 @@ export default function PlanningTab({ tripId }) {
                       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {canEdit && (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => handleToggleVisited(plan)}
-                            style={{
-                              width: '40px', height: '40px', borderRadius: '50%',
-                              background: plan.visited ? 'rgba(34, 197, 94, 0.1)' : 'rgba(11, 11, 48, 0.04)',
-                              border: 'none',
-                              color: plan.visited ? 'var(--text-success)' : 'var(--text-muted)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              cursor: 'pointer'
-                            }}
-                            title="סמן שביקרתי"
-                          >
-                            <CheckCircle2 size={18} />
-                          </button>
-
                           <button
                             onClick={() => handleStartEdit(plan)}
                             style={{
@@ -1317,6 +1343,8 @@ export default function PlanningTab({ tripId }) {
                 value={activityCategory}
                 onChange={setActivityCategory}
                 options={categories}
+                addable
+                addLabel="הוסף קטגוריה חדשה"
               />
 
               {/* Time Label Tagging */}

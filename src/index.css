@@ -1039,6 +1039,41 @@ input[type="datetime-local"].form-control {
   height: 15px;
 }
 
+/* ── Planning card: visited state + big inline checkbox ── */
+.plan-card {
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+}
+.plan-card.visited {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.10), rgba(5, 150, 105, 0.04));
+  border-right: 6px solid var(--text-success);
+  box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.20), 0 2px 8px rgba(5, 150, 105, 0.10);
+}
+
+.plan-visit-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 2px solid rgba(11, 11, 48, 0.18);
+  background: #fff;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.plan-visit-toggle:hover {
+  border-color: var(--text-success);
+}
+.plan-visit-toggle.on {
+  background: var(--text-success);
+  border-color: var(--text-success);
+  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
+}
+
 /* Round add button (used next to search) — guaranteed circular */
 .btn-add-circle {
   width: 44px;
