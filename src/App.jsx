@@ -15,10 +15,11 @@ import FlightTab, { defaultTrip } from './components/FlightTab';
 import { CustomDropdown } from './components/CustomDatePicker';
 import PlanningTab from './components/PlanningTab';
 import ChecklistTab from './components/ChecklistTab';
+import InfoTab, { defaultInfoItems } from './components/InfoTab';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw, ChevronDown
+  Check, RotateCcw, ChevronDown, AlertCircle
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -927,6 +928,20 @@ export default function App() {
           });
         }
 
+        // Seed the info / emergency contacts subcollection with the
+        // default emergency numbers + Israeli MFA / embassy placeholders.
+        if (Array.isArray(defaultInfoItems)) {
+          defaultInfoItems.forEach(item => {
+            const itemRef = doc(db, 'trips', defaultTripId, 'info', item.id);
+            batch.set(itemRef, {
+              title: item.title,
+              value: item.value || '',
+              type: item.type,
+              category: item.category,
+            });
+          });
+        }
+
         await batch.commit();
 
         // Save user profile with this trip in their tripIds list and the globalChecklist template
@@ -1094,6 +1109,18 @@ export default function App() {
         });
       });
     }
+    // Seed the default info / emergency contacts subcollection
+    if (Array.isArray(defaultInfoItems)) {
+      defaultInfoItems.forEach(item => {
+        const itemRef = doc(db, 'trips', tripId, 'info', item.id);
+        batch.set(itemRef, {
+          title: item.title,
+          value: item.value || '',
+          type: item.type,
+          category: item.category,
+        });
+      });
+    }
     await batch.commit();
 
     // Add to user's tripIds
@@ -1190,6 +1217,7 @@ export default function App() {
       case 'flight':   return 'טיסה ומלון';
       case 'planning': return 'תכנון הטיול';
       case 'checklist': return 'רשימת ציוד';
+      case 'info':      return 'מידע חשוב';
       default:          return 'עוזר טיסות';
     }
   };
@@ -1361,6 +1389,7 @@ export default function App() {
           {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
           {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
           {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+          {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
         </TripProvider>
       </main>
 
@@ -1373,6 +1402,9 @@ export default function App() {
         </button>
         <button onClick={() => setActiveTab('checklist')} className={`nav-item ${activeTab === 'checklist' ? 'active' : ''}`}>
           <ClipboardList /><span className="nav-label">צ'קליסט</span>
+        </button>
+        <button onClick={() => setActiveTab('info')}      className={`nav-item ${activeTab === 'info' ? 'active' : ''}`}>
+          <AlertCircle /><span className="nav-label">מידע חשוב</span>
         </button>
       </nav>
     </div>

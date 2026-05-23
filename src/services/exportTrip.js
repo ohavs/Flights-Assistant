@@ -20,7 +20,10 @@ export async function loadTripExportData(tripId, trip) {
   const checklistSnap = await getDocs(collection(db, 'trips', tripId, 'checklist'));
   const checklist = checklistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  return { trip, planning, days, checklist };
+  const infoSnap = await getDocs(collection(db, 'trips', tripId, 'info'));
+  const info = infoSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  return { trip, planning, days, checklist, info };
 }
 
 function safeFileName(name) {
@@ -55,10 +58,11 @@ function groupByCategory(items) {
 // Scope is one of: 'flight' | 'planning' | 'checklist' | 'all'
 // It controls which sections each export includes.
 const SCOPE = {
-  flight:   { flight: true,  planning: false, days: false, checklist: false },
-  planning: { flight: false, planning: true,  days: true,  checklist: false },
-  checklist:{ flight: false, planning: false, days: false, checklist: true  },
-  all:      { flight: true,  planning: true,  days: true,  checklist: true  },
+  flight:   { flight: true,  planning: false, days: false, checklist: false, info: false },
+  planning: { flight: false, planning: true,  days: true,  checklist: false, info: false },
+  checklist:{ flight: false, planning: false, days: false, checklist: true,  info: false },
+  info:     { flight: false, planning: false, days: false, checklist: false, info: true  },
+  all:      { flight: true,  planning: true,  days: true,  checklist: true,  info: true  },
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -100,7 +104,7 @@ function shapeBidi(bidi, text) {
 }
 
 export async function exportTripPdf(data, scope = 'all') {
-  const { trip, planning, days, checklist } = data;
+  const { trip, planning, days, checklist, info } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { jsPDF } = await import('jspdf');
   const [fontBase64, bidi] = await Promise.all([loadHebrewFont(), getBidi()]);
@@ -317,6 +321,34 @@ export async function exportTripPdf(data, scope = 'all') {
     }
   }
 
+  // ── Important info / emergency contacts ──
+  if (SS.info && info?.length > 0) {
+    newPage();
+    banner('מידע חשוב', [220, 38, 38]);
+    const groups = groupByCategory(info);
+    for (const [cat, items] of Object.entries(groups)) {
+      subHeader(cat);
+      for (const item of items) {
+        ensureSpace(40);
+        write(`• ${item.title}`, { size: 13 });
+        if (item.value) {
+          if (item.type === 'phone') {
+            writeLink(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`, { size: 12, indent: 16 });
+          } else if (item.type === 'address') {
+            writeLink(`📍 ${item.value}`, `https://maps.google.com/?q=${encodeURIComponent(item.value)}`, { size: 12, indent: 16 });
+          } else if (item.type === 'url') {
+            const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
+            writeLink(`🔗 ${item.value}`, url, { size: 12, indent: 16 });
+          } else {
+            write(item.value, { size: 12, color: C_MUTED, indent: 16 });
+          }
+        }
+        y += 4;
+      }
+      y += 6;
+    }
+  }
+
   doc.save(`${safeFileName(trip?.name || 'trip')}_${scope}.pdf`);
 }
 
@@ -325,7 +357,7 @@ export async function exportTripPdf(data, scope = 'all') {
 // ──────────────────────────────────────────────────────────────────────
 
 export async function exportTripDocx(data, scope = 'all') {
-  const { trip, planning, days, checklist } = data;
+  const { trip, planning, days, checklist, info } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType, Footer, Header } = await import('docx');
   const { saveAs } = await import('file-saver');
@@ -470,6 +502,35 @@ export async function exportTripDocx(data, scope = 'all') {
     });
   }
 
+  if (SS.info && info?.length > 0) {
+    const inf = [];
+    inf.push(para('מידע חשוב', { bold: true, size: 44, color: 'dc2626', heading: HeadingLevel.TITLE, spacing: { after: 240 } }));
+    const groups = groupByCategory(info);
+    for (const [cat, items] of Object.entries(groups)) {
+      inf.push(para(cat, { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 80 } }));
+      for (const item of items) {
+        inf.push(para(`• ${item.title}`, { bold: true, size: 26 }));
+        if (item.value) {
+          if (item.type === 'phone') {
+            inf.push(linkPara(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`));
+          } else if (item.type === 'address') {
+            inf.push(linkPara(`📍 ${item.value}`, `https://maps.google.com/?q=${encodeURIComponent(item.value)}`));
+          } else if (item.type === 'url') {
+            const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
+            inf.push(linkPara(`🔗 ${item.value}`, url));
+          } else {
+            inf.push(para(item.value, { color: '475569' }));
+          }
+        }
+        inf.push(spacer());
+      }
+    }
+    sections.push({
+      properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+      children: inf,
+    });
+  }
+
   const documentInstance = new Document({
     creator: 'Flights Assistant',
     title: trip?.name || 'Trip',
@@ -561,7 +622,7 @@ function decodeRange(ref) {
 }
 
 export async function exportTripXlsx(data, scope = 'all') {
-  const { trip, planning, days, checklist } = data;
+  const { trip, planning, days, checklist, info } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const XLSX = await import('xlsx');
 
@@ -666,6 +727,22 @@ export async function exportTripXlsx(data, scope = 'all') {
       rows.push([item.category || '', item.text || '', item.completed ? '✓' : '']);
     }
     addSheet("צ'קליסט", rows, { cols: [22, 50, 12] });
+  }
+
+  if (SS.info && info?.length > 0) {
+    const typeLabel = {
+      phone: 'טלפון', address: 'כתובת', url: 'קישור', text: 'טקסט',
+    };
+    const rows = [['קטגוריה', 'כותרת', 'סוג', 'ערך']];
+    for (const item of info) {
+      rows.push([
+        item.category || '',
+        item.title || '',
+        typeLabel[item.type] || 'טקסט',
+        item.value || '',
+      ]);
+    }
+    addSheet('מידע חשוב', rows, { cols: [22, 32, 14, 50] });
   }
 
   XLSX.writeFile(wb, `${safeFileName(trip?.name || 'trip')}_${scope}.xlsx`);

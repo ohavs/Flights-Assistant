@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, FileText, FileSpreadsheet, FileType2, Loader2, Plane, Compass, ClipboardList, Layers } from 'lucide-react';
+import { Download, FileText, FileSpreadsheet, FileType2, Loader2, Plane, Compass, ClipboardList, Layers, AlertCircle } from 'lucide-react';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
 
 // Export menu: pick a scope (current tab / all), then a format.
@@ -73,6 +73,7 @@ export default function ExportMenu({ tripId, trip, activeTab }) {
     { key: 'flight',    label: 'טיסה ומלון',   icon: <Plane size={14} /> },
     { key: 'planning',  label: 'תכנון הטיול',  icon: <Compass size={14} /> },
     { key: 'checklist', label: "צ'קליסט",      icon: <ClipboardList size={14} /> },
+    { key: 'info',      label: 'מידע חשוב',    icon: <AlertCircle size={14} /> },
     { key: 'all',       label: 'הכל ביחד',      icon: <Layers size={14} /> },
   ];
 
