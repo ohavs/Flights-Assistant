@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -143,6 +143,35 @@ export const defaultPraguePlans = [
 export default function PlanningTab({ tripId }) {
   const { canEdit } = useTrip();
   const confirm = useConfirm();
+
+  // FLIP animation: when the visited-sort changes the order, each card
+  // slides from its previous position to the new one. We record every
+  // card's bounding rect after each render in lastPositions; on the next
+  // render the layout effect compares the new position to the recorded
+  // one and plays a transform animation from the delta back to 0.
+  const itemRefs = useRef(new Map());
+  const lastPositions = useRef(new Map());
+  useLayoutEffect(() => {
+    for (const [id, node] of itemRefs.current.entries()) {
+      if (!node) continue;
+      const newRect = node.getBoundingClientRect();
+      const prev = lastPositions.current.get(id);
+      if (prev) {
+        const dy = prev.top - newRect.top;
+        if (Math.abs(dy) > 2) {
+          node.style.transition = 'none';
+          node.style.transform = `translateY(${dy}px)`;
+          // Force a reflow so the no-transition transform is committed
+          // before we apply the animated transition.
+          // eslint-disable-next-line no-unused-expressions
+          node.offsetHeight;
+          node.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+          node.style.transform = 'translateY(0)';
+        }
+      }
+      lastPositions.current.set(id, newRect);
+    }
+  });
   const [plans, setPlans] = useState([]);
   const [days, setDays] = useState([]);
   const [subTab, setSubTab] = useState('pool'); // 'pool' | 'daily'
@@ -859,6 +888,10 @@ export default function PlanningTab({ tripId }) {
                 return (
                   <div
                     key={plan.id}
+                    ref={(node) => {
+                      if (node) itemRefs.current.set(plan.id, node);
+                      else itemRefs.current.delete(plan.id);
+                    }}
                     className={`glass-card plan-card${plan.visited ? ' visited' : ''}`}
                     onClick={() => togglePlanExpanded(plan.id)}
                     style={{
@@ -867,6 +900,7 @@ export default function PlanningTab({ tripId }) {
                       flexDirection: 'column',
                       gap: isOpen ? '12px' : '0',
                       cursor: 'pointer',
+                      willChange: 'transform',
                     }}
                   >
                     {/* Header — always visible. Visited toggle here so the
