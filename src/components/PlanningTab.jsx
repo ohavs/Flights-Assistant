@@ -1,26 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  writeBatch 
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
-import { 
-  Search, 
-  Plus, 
-  Trash2, 
-  Star, 
-  MapPin, 
-  ExternalLink, 
-  DollarSign, 
-  Compass, 
-  UtensilsCrossed, 
-  Train, 
-  Info, 
+import {
+  Search,
+  Plus,
+  Trash2,
+  Star,
+  MapPin,
+  ExternalLink,
+  DollarSign,
+  Compass,
+  UtensilsCrossed,
+  Train,
+  Info,
   CheckCircle2,
   Pencil,
   ArrowUp,
@@ -28,7 +29,12 @@ import {
   Calendar,
   Clock,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Check,
+  Link2,
+  FileText,
+  FileDown,
+  X
 } from 'lucide-react';
 
 export const defaultGironaPlans = [
@@ -155,6 +161,14 @@ export default function PlanningTab({ tripId }) {
   const [address, setAddress] = useState('');
   const [rating, setRating] = useState(5);
   const [price, setPrice] = useState('');
+  const [links, setLinks] = useState([]);
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [newLinkName, setNewLinkName] = useState('');
+
+  // Custom category dropdown state
+  const [showCatDropdown, setShowCatDropdown] = useState(false);
+  const [catDropRect, setCatDropRect] = useState(null);
+  const categoryBtnRef = useRef(null);
 
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -221,6 +235,10 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setRating(5);
     setPrice('');
+    setLinks([]);
+    setNewLinkUrl('');
+    setNewLinkName('');
+    setShowCatDropdown(false);
     setShowAddForm(true);
   };
 
@@ -232,6 +250,10 @@ export default function PlanningTab({ tripId }) {
     setAddress(plan.address || '');
     setRating(plan.rating || 5);
     setPrice(plan.price || '');
+    setLinks(plan.links || []);
+    setNewLinkUrl('');
+    setNewLinkName('');
+    setShowCatDropdown(false);
     setShowAddForm(true);
   };
 
@@ -255,6 +277,11 @@ export default function PlanningTab({ tripId }) {
     e.preventDefault();
     if (!title.trim() || !tripId) return;
 
+    const pendingLinks = [...links];
+    if (newLinkUrl.trim()) {
+      pendingLinks.push({ url: newLinkUrl.trim(), name: newLinkName.trim() });
+    }
+
     if (editingId) {
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
       await updateDoc(docRef, {
@@ -263,7 +290,8 @@ export default function PlanningTab({ tripId }) {
         description: description.trim(),
         address: address.trim(),
         rating: Number(rating) || 5,
-        price: price.trim() || 'חינם'
+        price: price.trim() || 'חינם',
+        links: pendingLinks
       });
     } else {
       const id = 'plan-' + Date.now();
@@ -275,7 +303,8 @@ export default function PlanningTab({ tripId }) {
         address: address.trim(),
         rating: Number(rating) || 5,
         price: price.trim() || 'חינם',
-        visited: false
+        visited: false,
+        links: pendingLinks
       });
     }
 
@@ -285,8 +314,64 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setRating(5);
     setPrice('');
+    setLinks([]);
+    setNewLinkUrl('');
+    setNewLinkName('');
     setEditingId(null);
     setShowAddForm(false);
+  };
+
+  // Open custom category dropdown aligned to the trigger button
+  const openCatDropdown = () => {
+    if (categoryBtnRef.current) {
+      setCatDropRect(categoryBtnRef.current.getBoundingClientRect());
+    }
+    setShowCatDropdown(true);
+  };
+
+  // Generate export HTML (title + links + notes, no price)
+  const generateExportHTML = (planList) => {
+    const rows = planList.map(plan => {
+      const linkItems = [];
+      if (plan.address) {
+        const isUrl = plan.address.startsWith('http');
+        const href = isUrl ? plan.address : `https://maps.google.com/?q=${encodeURIComponent(plan.address)}`;
+        linkItems.push(`<a href="${href}" style="color:#4f46e5;display:block;margin-bottom:3px;">${plan.address}</a>`);
+      }
+      (plan.links || []).forEach(l => {
+        if (l.url) linkItems.push(`<a href="${l.url}" style="color:#4f46e5;display:block;margin-bottom:3px;">${l.name || l.url}</a>`);
+      });
+      return `<div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #e2e8f0;">
+        <div style="font-size:17px;font-weight:bold;color:#1e293b;margin-bottom:4px;">${plan.title}</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:8px;">${plan.category}</div>
+        ${linkItems.length ? `<div style="margin-bottom:8px;font-size:13px;">${linkItems.join('')}</div>` : ''}
+        ${plan.description ? `<div style="font-size:14px;color:#334155;line-height:1.6;">${plan.description}</div>` : ''}
+      </div>`;
+    });
+    return `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>תכנון טיול</title></head><body style="font-family:Arial,sans-serif;direction:rtl;margin:40px;color:#1e293b;"><h1 style="color:#4f46e5;border-bottom:2px solid #4f46e5;padding-bottom:10px;margin-bottom:24px;">תכנון טיול</h1>${rows.join('')}</body></html>`;
+  };
+
+  const handleExportPDF = () => {
+    const html = generateExportHTML(filteredPlans.length > 0 ? filteredPlans : plans);
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 400);
+  };
+
+  const handleExportWord = () => {
+    const html = generateExportHTML(filteredPlans.length > 0 ? filteredPlans : plans);
+    const blob = new Blob([html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'תכנון_טיול.doc';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Helper to resolve category icons
@@ -512,79 +597,104 @@ export default function PlanningTab({ tripId }) {
           {/* Search and Toggle Form */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <div style={{ position: 'relative', flex: 1 }}>
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="חיפוש אטרקציות, מסעדות..." 
+              <input
+                type="text"
+                className="form-control"
+                placeholder="חיפוש אטרקציות, מסעדות..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ paddingRight: '40px' }}
               />
               <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             </div>
-            
-            <button 
-              onClick={handleOpenAdd} 
-              className="btn-primary" 
+
+            {plans.length > 0 && (
+              <>
+                <button
+                  onClick={handleExportPDF}
+                  title="ייצוא PDF"
+                  style={{ padding: '12px', borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  <FileText size={18} />
+                </button>
+                <button
+                  onClick={handleExportWord}
+                  title="ייצוא Word"
+                  style={{ padding: '12px', borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  <FileDown size={18} />
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={handleOpenAdd}
+              className="btn-primary"
               style={{ padding: '12px', borderRadius: '50%' }}
             >
               <Plus size={20} />
             </button>
           </div>
 
-          {/* Add/Edit Plan Slide-Up Modal */}
-          {showAddForm && (
-            <div className="modal-overlay" onClick={() => { setShowAddForm(false); setEditingId(null); }}>
+          {/* Add/Edit Plan Slide-Up Modal — portaled to avoid scroll-jump */}
+          {showAddForm && createPortal(
+            <div className="modal-overlay" onClick={() => { setShowAddForm(false); setEditingId(null); setShowCatDropdown(false); }}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                
+
                 <div className="modal-header">
                   <h2>{editingId ? 'עריכת פריט תכנון' : 'הוספת יעד / אטרקציה חדשה'}</h2>
-                  <button className="btn-close" onClick={() => { setShowAddForm(false); setEditingId(null); }}>✕</button>
+                  <button className="btn-close" onClick={() => { setShowAddForm(false); setEditingId(null); setShowCatDropdown(false); }}>✕</button>
                 </div>
 
                 <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  
+
                   <div className="form-group">
                     <label>שם המקום/הפעילות *</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={title} 
-                      onChange={(e) => setTitle(e.target.value)} 
-                      required 
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      required
                       placeholder="למשל: תצפית שקיעה בגבעה"
                     />
                   </div>
 
+                  {/* Custom category dropdown */}
                   <div className="form-group">
                     <label>קטגוריה</label>
-                    <select className="form-control" value={category} onChange={(e) => setCategory(e.target.value)}>
-                      {categories.map((cat, idx) => (
-                        <option key={idx} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                    <button
+                      type="button"
+                      ref={categoryBtnRef}
+                      className="form-control"
+                      onClick={openCatDropdown}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 14 }}
+                    >
+                      <span>{category}</span>
+                      <ChevronDown size={16} style={{ flexShrink: 0, color: 'var(--text-muted)', transform: showCatDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                    </button>
                   </div>
 
                   <div className="row-2">
                     <div className="form-group">
                       <label>דירוג (1-5)</label>
-                      <input 
-                        type="number" 
-                        min="1" 
-                        max="5" 
-                        step="0.1" 
-                        className="form-control" 
-                        value={rating} 
+                      <input
+                        type="number"
+                        min="1"
+                        max="5"
+                        step="0.1"
+                        className="form-control"
+                        value={rating}
                         onChange={(e) => setRating(e.target.value)}
                       />
                     </div>
                     <div className="form-group">
                       <label>עלות/תקציב</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        placeholder="למשל: 10 €, חינם" 
-                        value={price} 
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="למשל: 10 €, חינם"
+                        value={price}
                         onChange={(e) => setPrice(e.target.value)}
                       />
                     </div>
@@ -592,22 +702,70 @@ export default function PlanningTab({ tripId }) {
 
                   <div className="form-group">
                     <label>כתובת / מיקום</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      placeholder="כתובת או קישור למפה" 
-                      value={address} 
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="כתובת או קישור למפה"
+                      value={address}
                       onChange={(e) => setAddress(e.target.value)}
                     />
                   </div>
 
+                  {/* Additional links */}
+                  <div className="form-group">
+                    <label>קישורים נוספים</label>
+                    {links.map((link, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, background: 'rgba(79,70,229,0.04)', borderRadius: 8, padding: '6px 10px' }}>
+                        <Link2 size={12} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: 13, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {link.name || link.url}
+                        </span>
+                        <button type="button" onClick={() => setLinks(links.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2 }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                      <input
+                        type="url"
+                        className="form-control"
+                        placeholder="https://..."
+                        value={newLinkUrl}
+                        onChange={(e) => setNewLinkUrl(e.target.value)}
+                        style={{ flex: 2 }}
+                      />
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="שם הקישור (אופציונלי)"
+                        value={newLinkName}
+                        onChange={(e) => setNewLinkName(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newLinkUrl.trim()) {
+                          setLinks([...links, { url: newLinkUrl.trim(), name: newLinkName.trim() }]);
+                          setNewLinkUrl('');
+                          setNewLinkName('');
+                        }
+                      }}
+                      className="btn-secondary"
+                      style={{ width: '100%', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <Plus size={14} /> הוסף קישור
+                    </button>
+                  </div>
+
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
-                    <textarea 
-                      className="form-control" 
-                      rows="4" 
-                      placeholder="פרטים נוספים, שעות פתיחה, טיפים..." 
-                      value={description} 
+                    <textarea
+                      className="form-control"
+                      rows="4"
+                      placeholder="פרטים נוספים, שעות פתיחה, טיפים..."
+                      value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       style={{ resize: 'none', fontFamily: 'inherit' }}
                     />
@@ -615,12 +773,60 @@ export default function PlanningTab({ tripId }) {
 
                   <div style={{ display: 'flex', gap: '12px', marginTop: '8px', paddingBottom: '20px' }}>
                     <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-                    <button type="button" onClick={() => { setShowAddForm(false); setEditingId(null); }} className="btn-secondary">ביטול</button>
+                    <button type="button" onClick={() => { setShowAddForm(false); setEditingId(null); setShowCatDropdown(false); }} className="btn-secondary">ביטול</button>
                   </div>
 
                 </form>
               </div>
-            </div>
+            </div>,
+            document.querySelector('.app-container') || document.body
+          )}
+
+          {/* Custom category dropdown portal (fixed-position, no clip issues) */}
+          {showCatDropdown && catDropRect && createPortal(
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={() => setShowCatDropdown(false)} />
+              <div style={{
+                position: 'fixed',
+                top: catDropRect.bottom + 4,
+                right: window.innerWidth - catDropRect.right,
+                width: catDropRect.width,
+                background: '#fff',
+                borderRadius: 14,
+                boxShadow: '0 8px 32px rgba(11,11,48,0.18)',
+                border: '1px solid rgba(11,11,48,0.07)',
+                zIndex: 9000,
+                overflow: 'hidden'
+              }}>
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => { setCategory(cat); setShowCatDropdown(false); }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: 'none',
+                      background: cat === category ? 'rgba(79,70,229,0.06)' : 'none',
+                      textAlign: 'right',
+                      fontFamily: 'inherit',
+                      fontSize: 14,
+                      fontWeight: cat === category ? 700 : 500,
+                      color: cat === category ? 'var(--accent)' : 'var(--primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      gap: 8
+                    }}
+                  >
+                    <span>{cat}</span>
+                    {cat === category && <Check size={14} />}
+                  </button>
+                ))}
+              </div>
+            </>,
+            document.body
           )}
 
           {/* Category Horizontal Filter Chips */}
@@ -827,18 +1033,31 @@ export default function PlanningTab({ tripId }) {
                       </p>
                     )}
 
-                    {/* Details footer (Rating, Price, Location) */}
-                    <div style={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap', 
-                      gap: '8px', 
-                      alignItems: 'center', 
-                      borderTop: '1px solid rgba(0,0,0,0.04)', 
+                    {/* Details footer (Rating, Price, Location, Links) */}
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      alignItems: 'center',
+                      borderTop: '1px solid rgba(0,0,0,0.04)',
                       paddingTop: '10px'
                     }}>
                       {renderChip(<Star size={12} fill="#eab308" style={{ color: '#eab308' }} />, plan.rating > 0 ? plan.rating.toString() : null)}
                       {renderChip(<DollarSign size={12} />, plan.price)}
                       {renderChip(<MapPin size={12} />, plan.address, true)}
+                      {(plan.links || []).map((link, idx) =>
+                        link.url ? (
+                          <a
+                            key={idx}
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
+                          >
+                            {renderChip(<Link2 size={12} />, link.name || link.url, true)}
+                          </a>
+                        ) : null
+                      )}
                     </div>
 
                   </div>
@@ -1098,8 +1317,8 @@ export default function PlanningTab({ tripId }) {
         </div>
       )}
 
-      {/* Add/Edit Activity Slide-Up Bottom Sheet Modal */}
-      {showActivityForm && (
+      {/* Add/Edit Activity Slide-Up Bottom Sheet Modal — portaled to avoid scroll-jump */}
+      {showActivityForm && createPortal(
         <div className="modal-overlay" onClick={() => setShowActivityForm(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
             
@@ -1231,7 +1450,8 @@ export default function PlanningTab({ tripId }) {
 
             </form>
           </div>
-        </div>
+        </div>,
+        document.querySelector('.app-container') || document.body
       )}
 
     </div>

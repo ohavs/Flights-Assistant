@@ -6,9 +6,8 @@ import {
   query, where, getDocs, updateDoc, arrayUnion, arrayRemove,
   getDoc, writeBatch
 } from 'firebase/firestore';
-import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
-import FlightTab, { defaultTrip } from './components/FlightTab';
+import FlightTab from './components/FlightTab';
 import PlanningTab from './components/PlanningTab';
 import ChecklistTab from './components/ChecklistTab';
 import {
@@ -553,81 +552,33 @@ export default function App() {
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
-        // User profile doesn't exist, this is a first-time login
-        // Seed the Prague trip
-        const defaultTripId = `trip_prague_${user.uid}`;
-        const tripRef = doc(db, 'trips', defaultTripId);
-
-        // Prepare the Prague trip document data
-        const pragueTripDoc = {
-          name: defaultTrip?.name || 'פראג - סוף שבוע אירופאי קלאסי',
-          destination: defaultTrip?.destination || 'פראג, צ\'כיה',
-          dates: defaultTrip?.dates || '15.06.2026 - 22.06.2026',
-          members: { [user.uid]: 'owner' },
-          createdAt: new Date().toISOString(),
-          outboundFlightDetails: defaultTrip?.outboundFlightDetails || {},
-          returnFlightDetails: defaultTrip?.returnFlightDetails || {},
-          hotelDetails: defaultTrip?.hotelDetails || {}
-        };
-
-        // Create the trip document
-        await setDoc(tripRef, pragueTripDoc);
-
-        // Batch write the planning plans to the subcollection
-        const batch = writeBatch(db);
-        if (Array.isArray(defaultPraguePlans)) {
-          defaultPraguePlans.forEach(plan => {
-            const planRef = doc(db, 'trips', defaultTripId, 'planning', plan.id);
-            batch.set(planRef, {
-              title: plan.title,
-              category: plan.category,
-              description: plan.description || '',
-              address: plan.address || '',
-              rating: plan.rating || 5,
-              price: plan.price || '',
-              visited: plan.visited || false
-            });
-          });
-        }
-
-        // Batch write the checklist items to the subcollection
-        if (Array.isArray(defaultChecklist)) {
-          defaultChecklist.forEach(item => {
-            const itemRef = doc(db, 'trips', defaultTripId, 'checklist', item.id);
-            batch.set(itemRef, {
-              text: item.text,
-              completed: item.completed || false,
-              category: item.category
-            });
-          });
-        }
-
-        await batch.commit();
-
-        // Save user profile with this trip in their tripIds list and the globalChecklist template
+        // New user — create profile with empty trip list (no seeded trip)
         await setDoc(userRef, {
           email: user.email?.toLowerCase() || '',
           displayName: user.displayName || '',
           photoURL: user.photoURL || '',
-          tripIds: [defaultTripId],
+          tripIds: [],
           globalChecklist: defaultChecklist
         });
       } else {
-        // User profile already exists, update info and ensure globalChecklist exists
+        // Existing user — update info, ensure globalChecklist, and clean up seeded demo trip
         const userData = userSnap.data();
+        const seededTripId = `trip_prague_${user.uid}`;
+        const updates = {
+          email: user.email?.toLowerCase() || '',
+          displayName: user.displayName || '',
+          photoURL: user.photoURL || ''
+        };
         if (!userData?.globalChecklist) {
-          await setDoc(userRef, {
-            email: user.email?.toLowerCase() || '',
-            displayName: user.displayName || '',
-            photoURL: user.photoURL || '',
-            globalChecklist: defaultChecklist
-          }, { merge: true });
-        } else {
-          await setDoc(userRef, {
-            email: user.email?.toLowerCase() || '',
-            displayName: user.displayName || '',
-            photoURL: user.photoURL || ''
-          }, { merge: true });
+          updates.globalChecklist = defaultChecklist;
+        }
+        await setDoc(userRef, updates, { merge: true });
+
+        // Remove the old auto-seeded Prague demo trip if it still exists in this user's list
+        if (userData.tripIds?.includes(seededTripId)) {
+          await updateDoc(userRef, {
+            tripIds: arrayRemove(seededTripId)
+          });
         }
       }
     };
