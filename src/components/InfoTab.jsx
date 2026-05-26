@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
-  Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText,
+  Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText, Hash,
   ChevronDown, ExternalLink, RotateCcw, AlertCircle, Globe, X
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
@@ -36,6 +36,7 @@ const TYPES = [
   { value: 'phone',   label: 'טלפון',  icon: Phone },
   { value: 'address', label: 'כתובת',  icon: MapPin },
   { value: 'url',     label: 'קישור',  icon: Link2 },
+  { value: 'number',  label: 'מספר',   icon: Hash },
   { value: 'text',    label: 'טקסט',   icon: FileText },
 ];
 
@@ -312,11 +313,14 @@ export default function InfoTab({ tripId }) {
                       ))}
                     </div>
                     <input
-                      type="text" className="form-control"
+                      type={field.type === 'number' ? 'number' : 'text'}
+                      inputMode={field.type === 'number' ? 'numeric' : field.type === 'phone' ? 'tel' : undefined}
+                      className="form-control"
                       placeholder={
                         field.type === 'phone' ? 'מספר טלפון' :
                         field.type === 'address' ? 'כתובת' :
-                        field.type === 'url' ? 'https://...' : 'ערך'
+                        field.type === 'url' ? 'https://...' :
+                        field.type === 'number' ? '0' : 'ערך'
                       }
                       value={field.value}
                       onChange={e => setFExtraFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}

@@ -267,10 +267,9 @@ export async function exportTripPdf(data, scope = 'all') {
       subHeader(cat);
       for (const p of items) {
         ensureSpace(60);
-        write(`• ${p.title}${p.visited ? '   ✓' : ''}`, { size: 13 });
-        if (p.description) write(p.description, { size: 11, color: C_MUTED, indent: 16 });
-        if (p.price) write(`מחיר: ${p.price}`, { size: 11, color: C_MUTED, indent: 16 });
-        if (p.address) writeLink(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`, { size: 11, indent: 16 });
+        write(`• ${p.title}${p.visited ? '   ✓' : ''}`, { size: 14 });
+        if (p.description) write(p.description, { size: 12, color: C_TEXT, indent: 16 });
+        if (p.address) writeLink(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`, { size: 12, indent: 16 });
         if (Array.isArray(p.links)) {
           for (const ln of p.links) {
             if (ln?.url) writeLink(`🔗 ${ln.label || ln.url}`, ln.url, { size: 11, indent: 16 });
@@ -441,9 +440,8 @@ export async function exportTripDocx(data, scope = 'all') {
     for (const [cat, items] of Object.entries(groups)) {
       main.push(para(cat, { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 100 } }));
       for (const p of items) {
-        main.push(para(`• ${p.title}${p.visited ? '   ✓' : ''}`, { bold: true, size: 26 }));
-        if (p.description) main.push(para(p.description, { color: '475569' }));
-        if (p.price) main.push(para(`מחיר: ${p.price}`, { color: '475569' }));
+        main.push(para(`• ${p.title}${p.visited ? '   ✓' : ''}`, { bold: true, size: 28 }));
+        if (p.description) main.push(para(p.description, { color: '1e293b', size: 24 }));
         if (p.address) main.push(linkPara(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`));
         if (Array.isArray(p.links)) {
           for (const ln of p.links) if (ln?.url) main.push(linkPara(`🔗 ${ln.label || ln.url}`, ln.url));
@@ -806,9 +804,9 @@ export async function exportTripXlsx(data, scope = 'all') {
       const links = Array.isArray(p.links) && p.links.length
         ? p.links.map(l => l.url).filter(Boolean).join(' | ')
         : '';
-      return [p.category || '', p.title || '', p.description || '', p.address || '', p.price || '', links, p.visited ? '✓' : ''];
+      return [p.category || '', p.title || '', p.description || '', p.address || '', links, p.visited ? '✓' : ''];
     });
-    addTableSheet('תכנון', ['קטגוריה', 'שם', 'תיאור', 'כתובת', 'מחיר', 'קישורים', 'נצפה?'], rows, [22, 32, 50, 36, 14, 40, 10]);
+    addTableSheet('תכנון', ['קטגוריה', 'שם', 'תיאור', 'כתובת', 'קישורים', 'נצפה?'], rows, [22, 32, 50, 36, 40, 10]);
   }
 
   // ── One sheet per day ──
