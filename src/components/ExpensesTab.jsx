@@ -6,36 +6,17 @@ import {
   Plus, Trash2, Search, X, TrendingUp,
   Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin
 } from 'lucide-react';
+import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
+import { useConfirm } from '../ConfirmContext';
 
-const ALL_CURRENCIES = [
-  { code: 'ILS', symbol: '₪', name: 'שקל ישראלי' },
-  { code: 'EUR', symbol: '€', name: 'יורו' },
-  { code: 'USD', symbol: '$', name: 'דולר אמריקאי' },
-  { code: 'GBP', symbol: '£', name: 'פאונד בריטי' },
-  { code: 'CZK', symbol: 'Kč', name: "קורונה צ'כית" },
-  { code: 'HUF', symbol: 'Ft', name: 'פורינט הונגרי' },
-  { code: 'PLN', symbol: 'zł', name: 'זלוטי פולני' },
-  { code: 'CHF', symbol: 'CHF', name: 'פרנק שוויצרי' },
-  { code: 'SEK', symbol: 'kr', name: 'קרונה שוודית' },
-  { code: 'NOK', symbol: 'kr', name: 'קרונה נורווגית' },
-  { code: 'DKK', symbol: 'kr', name: 'קרונה דנית' },
-  { code: 'JPY', symbol: '¥', name: 'ין יפני' },
-  { code: 'AUD', symbol: 'A$', name: 'דולר אוסטרלי' },
-  { code: 'CAD', symbol: 'C$', name: 'דולר קנדי' },
-  { code: 'TRY', symbol: '₺', name: 'לירה טורקית' },
-  { code: 'THB', symbol: '฿', name: 'באט תאילנדי' },
-  { code: 'SGD', symbol: 'S$', name: 'דולר סינגפורי' },
-  { code: 'MXN', symbol: '$', name: 'פסו מקסיקני' },
-  { code: 'BRL', symbol: 'R$', name: 'ריאל ברזילאי' },
-  { code: 'CNY', symbol: '¥', name: 'יואן סיני' },
-  { code: 'RON', symbol: 'lei', name: 'לאו רומני' },
-  { code: 'ZAR', symbol: 'R', name: 'רנד דרום אפריקאי' },
-];
+const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
 const DEFAULT_CURRENCIES = ['ILS', 'EUR', 'USD'];
 
-const getCurrencyInfo = (code) =>
-  ALL_CURRENCIES.find(c => c.code === code) || { code, symbol: code, name: code };
+const getCurrencyInfo = (code) => {
+  const meta = CURRENCY_META[code];
+  return meta ? { code, ...meta } : { code, symbol: code, name: code, flag: '' };
+};
 
 export default function ExpensesTab({ tripId }) {
   const [expenses, setExpenses] = useState([]);
@@ -62,6 +43,11 @@ export default function ExpensesTab({ tripId }) {
   const [planFilter, setPlanFilter] = useState('');
   const [showCustomPlaceInput, setShowCustomPlaceInput] = useState(false);
 
+  // Exchange rates for ILS conversion
+  const [rates, setRates] = useState(null);
+
+  const confirm = useConfirm();
+
   // Load expenses
   useEffect(() => {
     if (!tripId) return;
@@ -73,6 +59,10 @@ export default function ExpensesTab({ tripId }) {
     });
     return () => unsub();
   }, [tripId]);
+
+  useEffect(() => {
+    refreshRatesIfStale().then(r => setRates(r.rates)).catch(() => {});
+  }, []);
 
   // Load planning items for linking
   useEffect(() => {
@@ -135,9 +125,25 @@ export default function ExpensesTab({ tripId }) {
   };
 
   const handleDelete = async (id) => {
-    if (!tripId || !window.confirm('למחוק הוצאה זו?')) return;
+    if (!tripId) return;
+    const expense = expenses.find(e => e.id === id);
+    const ok = await confirm({
+      title: 'מחיקת הוצאה',
+      message: expense?.description
+        ? <span>האם למחוק את <strong>{expense.description}</strong>?</span>
+        : 'האם למחוק הוצאה זו?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     await deleteDoc(doc(db, 'trips', tripId, 'expenses', id));
   };
+
+  const ilsTotal = useMemo(() => {
+    if (!rates) return null;
+    return expenses.reduce((sum, e) => sum + convert(e.amount, e.currency, 'ILS', rates), 0);
+  }, [expenses, rates]);
 
   const summary = useMemo(() => {
     const totals = {};
@@ -217,6 +223,14 @@ export default function ExpensesTab({ tripId }) {
                 </span>
               </div>
             ))}
+            {ilsTotal !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 12px', background: 'rgba(22,163,74,0.07)', borderRadius: 10, marginTop: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'rgb(22,163,74)' }}>סה"כ מוערך בשקלים</span>
+                <span style={{ fontSize: 17, fontWeight: 900, color: 'rgb(22,163,74)' }}>
+                  ₪{ilsTotal.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 4, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>סה"כ רשומות</span>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{expenses.length}</span>
@@ -246,7 +260,9 @@ export default function ExpensesTab({ tripId }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)' }}>
                     {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 6 }}>{expense.currency}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 6 }}>
+                      {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
+                    </span>
                   </div>
                   {expense.description ? (
                     <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

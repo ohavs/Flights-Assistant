@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
   Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText,
-  ChevronDown, ExternalLink, RotateCcw, AlertCircle, Globe
+  ChevronDown, ExternalLink, RotateCcw, AlertCircle, Globe, X
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
@@ -71,6 +71,7 @@ export default function InfoTab({ tripId }) {
   const [fValue, setFValue] = useState('');
   const [fType, setFType] = useState('phone');
   const [fCategory, setFCategory] = useState('מספרי חירום');
+  const [fExtraFields, setFExtraFields] = useState([]);
 
   useEffect(() => {
     if (!tripId) return;
@@ -97,6 +98,7 @@ export default function InfoTab({ tripId }) {
     setFValue('');
     setFType('phone');
     setFCategory('מספרי חירום');
+    setFExtraFields([]);
     setShowForm(true);
   };
 
@@ -106,10 +108,11 @@ export default function InfoTab({ tripId }) {
     setFValue(item.value || '');
     setFType(item.type || 'phone');
     setFCategory(item.category || 'מותאם אישית');
+    setFExtraFields(item.extraFields || []);
     setShowForm(true);
   };
 
-  const formDirty = () => fTitle.trim() || fValue.trim();
+  const formDirty = () => fTitle.trim() || fValue.trim() || fExtraFields.some(f => f.label.trim() || f.value.trim());
   const attemptCloseForm = async () => {
     if (formDirty()) {
       const ok = await confirm({
@@ -131,6 +134,9 @@ export default function InfoTab({ tripId }) {
       value: fValue.trim(),
       type: fType,
       category: fCategory,
+      extraFields: fExtraFields
+        .filter(f => f.label.trim() || f.value.trim())
+        .map(f => ({ id: f.id, label: f.label.trim(), type: f.type, value: f.value.trim() })),
     };
     if (editingId) {
       await updateDoc(doc(db, 'trips', tripId, 'info', editingId), payload);
@@ -221,13 +227,13 @@ export default function InfoTab({ tripId }) {
       {/* Add/edit form (modal-style inline) */}
       {showForm && canEdit && (
         <div className="modal-overlay" onClick={attemptCloseForm}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingId ? 'עריכת פריט' : 'הוספת פריט חדש'}</h2>
               <button className="btn-close" onClick={attemptCloseForm}>✕</button>
             </div>
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>כותרת</label>
                 <input
@@ -271,6 +277,64 @@ export default function InfoTab({ tripId }) {
                 addable
                 addLabel="הוסף קטגוריה חדשה"
               />
+
+              {/* Extra fields */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>שדות נוספים (אופציונלי)</label>
+                {fExtraFields.map((field, idx) => (
+                  <div key={field.id} style={{ background: 'rgba(11,11,48,0.03)', borderRadius: 12, padding: 10, marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        type="text" className="form-control"
+                        placeholder="שם השדה (למשל: וואטסאפ, כתובת סניף...)"
+                        value={field.label}
+                        onChange={e => setFExtraFields(prev => prev.map((f, i) => i === idx ? { ...f, label: e.target.value } : f))}
+                        style={{ flex: 1, minHeight: 36, fontSize: 13 }}
+                      />
+                      <button type="button"
+                        onClick={() => setFExtraFields(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 6, display: 'flex', flexShrink: 0 }}>
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {TYPES.map(t => (
+                        <button key={t.value} type="button"
+                          onClick={() => setFExtraFields(prev => prev.map((f, i) => i === idx ? { ...f, type: t.value } : f))}
+                          style={{
+                            padding: '4px 10px', borderRadius: 16, border: 'none',
+                            background: field.type === t.value ? 'var(--accent)' : 'rgba(11,11,48,0.06)',
+                            color: field.type === t.value ? '#fff' : 'var(--primary)',
+                            fontFamily: 'inherit', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text" className="form-control"
+                      placeholder={
+                        field.type === 'phone' ? 'מספר טלפון' :
+                        field.type === 'address' ? 'כתובת' :
+                        field.type === 'url' ? 'https://...' : 'ערך'
+                      }
+                      value={field.value}
+                      onChange={e => setFExtraFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}
+                      style={{ minHeight: 36, fontSize: 13 }}
+                      dir={field.type === 'url' || field.type === 'phone' ? 'ltr' : 'rtl'}
+                    />
+                  </div>
+                ))}
+                <button type="button"
+                  onClick={() => setFExtraFields(prev => [...prev, { id: 'ef-' + Date.now(), label: '', type: 'text', value: '' }])}
+                  style={{
+                    width: '100%', border: '1.5px dashed rgba(79,70,229,0.3)', background: 'transparent',
+                    color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '8px 0',
+                    borderRadius: 12, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                  }}>
+                  <Plus size={13} /> הוסף שדה נוסף
+                </button>
+              </div>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
                 <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
@@ -382,6 +446,43 @@ export default function InfoTab({ tripId }) {
                         ) : (
                           <div style={{ fontSize: 12, fontWeight: 600, color: 'rgb(180, 180, 195)', marginTop: 2, textAlign: 'right', fontStyle: 'italic' }}>
                             לא הוגדר — לחץ עיפרון להוסיף
+                          </div>
+                        )}
+                        {/* Extra fields */}
+                        {item.extraFields && item.extraFields.length > 0 && (
+                          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {item.extraFields.map(field => {
+                              if (!field.label && !field.value) return null;
+                              const FieldIcon = iconFor(field.type);
+                              const fieldHref = hrefFor(field);
+                              return (
+                                <div key={field.id} style={{ display: 'flex', alignItems: 'baseline', gap: 5, textAlign: 'right' }}>
+                                  {field.label && (
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                      {field.label}:
+                                    </span>
+                                  )}
+                                  {field.value ? (
+                                    fieldHref ? (
+                                      <a href={fieldHref} target={field.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
+                                        style={{
+                                          fontSize: 13, fontWeight: 700, color: 'var(--accent)',
+                                          textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3,
+                                          direction: field.type === 'phone' || field.type === 'url' ? 'ltr' : 'rtl',
+                                        }}>
+                                        <FieldIcon size={11} />
+                                        <span style={{ overflowWrap: 'anywhere' }}>{field.value}</span>
+                                        {field.type !== 'phone' && <ExternalLink size={10} style={{ opacity: 0.6 }} />}
+                                      </a>
+                                    ) : (
+                                      <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, overflowWrap: 'anywhere' }}>{field.value}</span>
+                                    )
+                                  ) : (
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>לא הוגדר</span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

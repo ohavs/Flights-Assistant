@@ -808,28 +808,26 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
   ));
   const current = normalized.find(o => o.value === value);
 
-  // Compute popup position relative to viewport. Anchor the popup so its
-  // right edge lines up with the trigger's right edge (natural for RTL
-  // Hebrew layout) and clamp to the viewport so we never spill off-screen.
+  // Compute popup position. On desktop the app-container is centered
+  // (max-width 520px), so we always align with that column rather than
+  // trying to align with the trigger's own rect (which gives wrong
+  // coordinates when the modal has backdrop-filter).
   useEffect(() => {
     if (!isOpen) return;
     const update = () => {
       if (!triggerRef.current) return;
       const r = triggerRef.current.getBoundingClientRect();
-      const gutter = 8;
-      const desiredWidth = Math.max(r.width, 220);
-      let left = r.right - desiredWidth;
-      if (left < gutter) left = gutter;
-      if (left + desiredWidth > window.innerWidth - gutter) {
-        left = window.innerWidth - desiredWidth - gutter;
-      }
+      const gutter = 16;
+      const appWidth = 520;
+      const containerLeft = Math.max(gutter, (window.innerWidth - appWidth) / 2 + gutter);
+      const availableWidth = Math.min(appWidth - 2 * gutter, window.innerWidth - 2 * gutter);
       const spaceBelow = window.innerHeight - r.bottom;
       const openAbove = spaceBelow < 220 && r.top > 220;
       setPopupRect({
         top: openAbove ? undefined : r.bottom + 6,
         bottom: openAbove ? (window.innerHeight - r.top + 6) : undefined,
-        left,
-        width: desiredWidth,
+        left: containerLeft,
+        width: availableWidth,
       });
     };
     update();

@@ -702,17 +702,6 @@ export default function PlanningTab({ tripId }) {
                   />
 
                   <div className="form-group">
-                    <label>עלות/תקציב</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="למשל: 10 €, חינם"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
                     <label>כתובת / מיקום</label>
                     <input
                       type="text"
@@ -1022,7 +1011,6 @@ export default function PlanningTab({ tripId }) {
                           borderTop: '1px solid rgba(0,0,0,0.04)',
                           paddingTop: '10px'
                         }}>
-                          {renderChip(<DollarSign size={12} />, plan.price)}
                           {renderChip(<MapPin size={12} />, plan.address, true)}
                           {Array.isArray(plan.links) && plan.links.map((link, idx) => (
                             <a
