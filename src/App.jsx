@@ -10,10 +10,11 @@ import { defaultChecklist } from './components/ChecklistTab';
 import FlightTab from './components/FlightTab';
 import PlanningTab from './components/PlanningTab';
 import ChecklistTab from './components/ChecklistTab';
+import ExpensesTab from './components/ExpensesTab';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw
+  Check, RotateCcw, Wallet
 } from 'lucide-react';
 import './index.css';
 
@@ -726,6 +727,7 @@ export default function App() {
       case 'flight':   return 'טיסה ומלון';
       case 'planning': return 'תכנון הטיול';
       case 'checklist': return 'רשימת ציוד';
+      case 'expenses': return 'מעקב הוצאות';
       default:          return 'עוזר טיסות';
     }
   };
@@ -833,6 +835,7 @@ export default function App() {
         {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
         {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
         {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+        {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
       </main>
 
       <nav className="bottom-nav">
@@ -844,6 +847,9 @@ export default function App() {
         </button>
         <button onClick={() => setActiveTab('checklist')} className={`nav-item ${activeTab === 'checklist' ? 'active' : ''}`}>
           <ClipboardList /><span className="nav-label">צ'קליסט</span>
+        </button>
+        <button onClick={() => setActiveTab('expenses')}  className={`nav-item ${activeTab === 'expenses' ? 'active' : ''}`}>
+          <Wallet /><span className="nav-label">הוצאות</span>
         </button>
       </nav>
     </div>

@@ -17,7 +17,6 @@ import {
   Star,
   MapPin,
   ExternalLink,
-  DollarSign,
   Compass,
   UtensilsCrossed,
   Train,
@@ -34,7 +33,9 @@ import {
   Link2,
   FileText,
   FileDown,
-  X
+  X,
+  Phone,
+  Mail
 } from 'lucide-react';
 
 export const defaultGironaPlans = [
@@ -160,8 +161,8 @@ export default function PlanningTab({ tripId }) {
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
   const [rating, setRating] = useState(5);
-  const [price, setPrice] = useState('');
   const [links, setLinks] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkName, setNewLinkName] = useState('');
 
@@ -234,8 +235,8 @@ export default function PlanningTab({ tripId }) {
     setDescription('');
     setAddress('');
     setRating(5);
-    setPrice('');
     setLinks([]);
+    setCustomFields([]);
     setNewLinkUrl('');
     setNewLinkName('');
     setShowCatDropdown(false);
@@ -249,8 +250,8 @@ export default function PlanningTab({ tripId }) {
     setDescription(plan.description || '');
     setAddress(plan.address || '');
     setRating(plan.rating || 5);
-    setPrice(plan.price || '');
     setLinks(plan.links || []);
+    setCustomFields(plan.customFields || []);
     setNewLinkUrl('');
     setNewLinkName('');
     setShowCatDropdown(false);
@@ -282,6 +283,8 @@ export default function PlanningTab({ tripId }) {
       pendingLinks.push({ url: newLinkUrl.trim(), name: newLinkName.trim() });
     }
 
+    const filteredCustomFields = customFields.filter(f => f.label.trim() && f.value.trim());
+
     if (editingId) {
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
       await updateDoc(docRef, {
@@ -290,8 +293,8 @@ export default function PlanningTab({ tripId }) {
         description: description.trim(),
         address: address.trim(),
         rating: Number(rating) || 5,
-        price: price.trim() || 'חינם',
-        links: pendingLinks
+        links: pendingLinks,
+        customFields: filteredCustomFields
       });
     } else {
       const id = 'plan-' + Date.now();
@@ -302,9 +305,9 @@ export default function PlanningTab({ tripId }) {
         description: description.trim(),
         address: address.trim(),
         rating: Number(rating) || 5,
-        price: price.trim() || 'חינם',
         visited: false,
-        links: pendingLinks
+        links: pendingLinks,
+        customFields: filteredCustomFields
       });
     }
 
@@ -313,18 +316,18 @@ export default function PlanningTab({ tripId }) {
     setDescription('');
     setAddress('');
     setRating(5);
-    setPrice('');
     setLinks([]);
+    setCustomFields([]);
     setNewLinkUrl('');
     setNewLinkName('');
     setEditingId(null);
     setShowAddForm(false);
   };
 
-  // Open custom category dropdown aligned to the trigger button
+  // Open custom category dropdown — only capture vertical position; horizontal uses CSS calc
   const openCatDropdown = () => {
     if (categoryBtnRef.current) {
-      setCatDropRect(categoryBtnRef.current.getBoundingClientRect());
+      setCatDropRect({ bottom: categoryBtnRef.current.getBoundingClientRect().bottom });
     }
     setShowCatDropdown(true);
   };
@@ -675,29 +678,17 @@ export default function PlanningTab({ tripId }) {
                     </button>
                   </div>
 
-                  <div className="row-2">
-                    <div className="form-group">
-                      <label>דירוג (1-5)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="5"
-                        step="0.1"
-                        className="form-control"
-                        value={rating}
-                        onChange={(e) => setRating(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>עלות/תקציב</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="למשל: 10 €, חינם"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                      />
-                    </div>
+                  <div className="form-group">
+                    <label>דירוג (1-5)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="5"
+                      step="0.1"
+                      className="form-control"
+                      value={rating}
+                      onChange={(e) => setRating(e.target.value)}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -759,6 +750,57 @@ export default function PlanningTab({ tripId }) {
                     </button>
                   </div>
 
+                  {/* Custom fields */}
+                  <div className="form-group">
+                    <label>שדות מותאמים אישית</label>
+                    {customFields.map((field, idx) => (
+                      <div key={field.id} style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="שם השדה"
+                          value={field.label}
+                          onChange={e => setCustomFields(customFields.map((f, i) => i === idx ? { ...f, label: e.target.value } : f))}
+                          style={{ flex: '1 1 80px', minWidth: 0 }}
+                        />
+                        <select
+                          className="form-control"
+                          value={field.type}
+                          onChange={e => setCustomFields(customFields.map((f, i) => i === idx ? { ...f, type: e.target.value } : f))}
+                          style={{ flex: '0 0 90px', fontSize: 13 }}
+                        >
+                          <option value="text">טקסט</option>
+                          <option value="phone">טלפון</option>
+                          <option value="email">אימייל</option>
+                          <option value="url">קישור</option>
+                          <option value="number">מספר</option>
+                        </select>
+                        <input
+                          type={field.type === 'phone' ? 'tel' : field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
+                          className="form-control"
+                          placeholder="ערך"
+                          value={field.value}
+                          onChange={e => setCustomFields(customFields.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}
+                          style={{ flex: '2 1 120px', minWidth: 0 }}
+                          dir={field.type === 'url' || field.type === 'email' || field.type === 'phone' ? 'ltr' : 'rtl'}
+                        />
+                        <button type="button"
+                          onClick={() => setCustomFields(customFields.filter((_, i) => i !== idx))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 6, flexShrink: 0, alignSelf: 'center' }}>
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCustomFields([...customFields, { id: 'cf-' + Date.now(), label: '', type: 'text', value: '' }])}
+                      className="btn-secondary"
+                      style={{ width: '100%', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <Plus size={14} /> הוסף שדה
+                    </button>
+                  </div>
+
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
                     <textarea
@@ -789,8 +831,8 @@ export default function PlanningTab({ tripId }) {
               <div style={{
                 position: 'fixed',
                 top: catDropRect.bottom + 4,
-                left: catDropRect.left,
-                width: catDropRect.width,
+                left: 'max(16px, calc((100vw - 520px) / 2 + 16px))',
+                width: 'min(488px, calc(100vw - 32px))',
                 background: '#fff',
                 borderRadius: 14,
                 boxShadow: '0 8px 32px rgba(11,11,48,0.18)',
@@ -1043,7 +1085,6 @@ export default function PlanningTab({ tripId }) {
                       paddingTop: '10px'
                     }}>
                       {renderChip(<Star size={12} fill="#eab308" style={{ color: '#eab308' }} />, plan.rating > 0 ? plan.rating.toString() : null)}
-                      {renderChip(<DollarSign size={12} />, plan.price)}
                       {renderChip(<MapPin size={12} />, plan.address, true)}
                       {(plan.links || []).map((link, idx) =>
                         link.url ? (
@@ -1058,6 +1099,25 @@ export default function PlanningTab({ tripId }) {
                           </a>
                         ) : null
                       )}
+                      {(plan.customFields || []).filter(f => f.value).map((field, idx) => {
+                        const label = field.label ? `${field.label}: ${field.value}` : field.value;
+                        if (field.type === 'phone') return (
+                          <a key={idx} href={`tel:${field.value}`} style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}>
+                            {renderChip(<Phone size={12} />, label)}
+                          </a>
+                        );
+                        if (field.type === 'email') return (
+                          <a key={idx} href={`mailto:${field.value}`} style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}>
+                            {renderChip(<Mail size={12} />, label)}
+                          </a>
+                        );
+                        if (field.type === 'url') return (
+                          <a key={idx} href={field.value} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}>
+                            {renderChip(<ExternalLink size={12} />, field.label || field.value, true)}
+                          </a>
+                        );
+                        return renderChip(null, label);
+                      })}
                     </div>
 
                   </div>
