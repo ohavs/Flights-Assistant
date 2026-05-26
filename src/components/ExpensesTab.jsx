@@ -41,7 +41,6 @@ export default function ExpensesTab({ tripId }) {
   // Planning items dropdown
   const [showPlanDropdown, setShowPlanDropdown] = useState(false);
   const [planFilter, setPlanFilter] = useState('');
-  const [showCustomPlaceInput, setShowCustomPlaceInput] = useState(false);
 
   // Exchange rates for ILS conversion
   const [rates, setRates] = useState(null);
@@ -103,7 +102,6 @@ export default function ExpensesTab({ tripId }) {
     setCurrencySearch('');
     setShowPlanDropdown(false);
     setPlanFilter('');
-    setShowCustomPlaceInput(false);
     setShowForm(true);
   };
 
@@ -396,117 +394,88 @@ export default function ExpensesTab({ tripId }) {
 
               {/* Link to plan item — dropdown */}
               <div className="form-group">
-                <label>קישור לאטרקציה / מסעדה (אופציונלי)</label>
+                <label>קישור לפריט מרשימת הטיול (אופציונלי)</label>
 
-                {/* Linked badge */}
-                {linkedLabel ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(79,70,229,0.06)', borderRadius: 10, marginBottom: 8 }}>
+                {linkedPlanId ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(79,70,229,0.06)', borderRadius: 10 }}>
                     <Link2 size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 13, color: 'var(--accent)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {linkedLabel}
+                      {plans.find(p => p.id === linkedPlanId)?.title || linkedPlanId}
                     </span>
-                    <button type="button" onClick={() => { setLinkedPlanId(''); setCustomPlace(''); setShowPlanDropdown(false); setShowCustomPlaceInput(false); }}
+                    <button type="button" onClick={() => { setLinkedPlanId(''); setShowPlanDropdown(false); }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2 }}>
                       <X size={14} />
                     </button>
                   </div>
                 ) : (
-                  /* Dropdown toggle */
-                  <button type="button"
-                    onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); setShowCustomPlaceInput(false); }}
-                    className="form-control"
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 14, color: 'var(--text-muted)' }}
-                  >
-                    <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מרשימת האטרקציות...'}</span>
-                    <ChevronDown size={16} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
-                  </button>
-                )}
+                  <>
+                    <button type="button"
+                      onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); }}
+                      className="form-control"
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 14, color: 'var(--text-muted)' }}
+                    >
+                      <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מרשימת האטרקציות...'}</span>
+                      <ChevronDown size={16} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
+                    </button>
 
-                {/* Dropdown content */}
-                {showPlanDropdown && !linkedLabel && (
-                  <div style={{ marginTop: 4, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
-
-                    {/* Search filter */}
-                    <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: '#fff' }}>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="text"
-                          className="form-control"
-                          placeholder="חפש אטרקציה, מסעדה..."
-                          value={planFilter}
-                          onChange={e => setPlanFilter(e.target.value)}
-                          style={{ minHeight: 36, fontSize: 13, paddingRight: 36 }}
-                        />
-                        <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                        {planFilter && (
-                          <button type="button" onClick={() => setPlanFilter('')}
-                            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
-                            <X size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Items list */}
-                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                      {plans.length === 0 ? (
-                        <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
-                          אין פריטים בתכנון הטיול עדיין
-                        </p>
-                      ) : filteredDropdownPlans.length === 0 ? (
-                        <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>לא נמצאו תוצאות</p>
-                      ) : filteredDropdownPlans.map(p => (
-                        <button key={p.id} type="button"
-                          onClick={() => { setLinkedPlanId(p.id); setCustomPlace(''); setShowPlanDropdown(false); setPlanFilter(''); }}
-                          style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-                          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'rgba(11,11,48,0.05)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Add custom place */}
-                    <div style={{ borderTop: '1px solid rgba(11,11,48,0.07)', padding: '10px 12px' }}>
-                      {showCustomPlaceInput ? (
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <input
-                            type="text"
-                            className="form-control"
-                            placeholder="שם המקום..."
-                            value={customPlace}
-                            onChange={e => setCustomPlace(e.target.value)}
-                            style={{ flex: 1, minHeight: 36, fontSize: 13 }}
-                            autoFocus
-                          />
-                          <button type="button"
-                            onClick={() => { if (customPlace.trim()) { setLinkedPlanId(''); setShowPlanDropdown(false); setShowCustomPlaceInput(false); } }}
-                            className="btn-primary"
-                            style={{ padding: '6px 14px', fontSize: 13, minHeight: 36 }}>
-                            אישור
-                          </button>
-                          <button type="button"
-                            onClick={() => { setShowCustomPlaceInput(false); setCustomPlace(''); }}
-                            className="btn-secondary"
-                            style={{ padding: '6px 10px', fontSize: 13, minHeight: 36 }}>
-                            <X size={14} />
-                          </button>
+                    {showPlanDropdown && (
+                      <div style={{ marginTop: 4, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
+                        <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: '#fff' }}>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="text" className="form-control"
+                              placeholder="חפש אטרקציה, מסעדה..."
+                              value={planFilter}
+                              onChange={e => setPlanFilter(e.target.value)}
+                              style={{ minHeight: 36, fontSize: 13, paddingRight: 36 }}
+                            />
+                            <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            {planFilter && (
+                              <button type="button" onClick={() => setPlanFilter('')}
+                                style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <button type="button"
-                          onClick={() => setShowCustomPlaceInput(true)}
-                          style={{ width: '100%', border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '4px 0', textAlign: 'right', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <MapPin size={13} />
-                          הוסף מקום שלא ברשימה
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                          {plans.length === 0 ? (
+                            <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+                              אין פריטים בתכנון הטיול עדיין
+                            </p>
+                          ) : filteredDropdownPlans.length === 0 ? (
+                            <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>לא נמצאו תוצאות</p>
+                          ) : filteredDropdownPlans.map(p => (
+                            <button key={p.id} type="button"
+                              onClick={() => { setLinkedPlanId(p.id); setCustomPlace(''); setShowPlanDropdown(false); setPlanFilter(''); }}
+                              style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                            >
+                              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'rgba(11,11,48,0.05)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
+              </div>
 
-                {!linkedLabel && (
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                    ניתן להוסיף הוצאה גם ללא קישור לפריט בתכנון
+              {/* Custom place — separate field */}
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <MapPin size={13} style={{ color: 'var(--accent)' }} />
+                  מקום ידנית (אופציונלי)
+                </label>
+                <input
+                  type="text" className="form-control"
+                  placeholder="שם מקום שלא נמצא ברשימה..."
+                  value={customPlace}
+                  onChange={e => { setCustomPlace(e.target.value); if (e.target.value.trim()) setLinkedPlanId(''); }}
+                />
+                {customPlace && linkedPlanId === '' && (
+                  <p style={{ fontSize: 11, color: 'var(--accent)', marginTop: 4, fontWeight: 600 }}>
+                    מקום ידנית פעיל — בחירה מהרשימה תבטל אותו
                   </p>
                 )}
               </div>
