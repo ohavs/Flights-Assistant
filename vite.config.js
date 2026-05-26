@@ -36,10 +36,34 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'maskable'
           }
+        ],
+        // Long-press shortcuts (Android) — show up next to the home-screen
+        // icon so the user can jump directly to a feature without first
+        // opening the app and tapping through tabs.
+        shortcuts: [
+          {
+            name: 'הטיולים שלי',
+            short_name: 'טיולים',
+            description: 'רשימת הטיולים',
+            url: '/?screen=home',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'המרת מטבעות',
+            short_name: 'מטבעות',
+            description: 'מחשבון המרת מטבעות עם נתונים אופליין',
+            url: '/?screen=converter',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -63,6 +87,33 @@ export default defineConfig({
             options: {
               cacheName: 'leaflet-cache',
               expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 30 }
+            }
+          },
+          {
+            // OpenStreetMap raster tiles for the flight-path map
+            urlPattern: /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'map-tiles-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 }
+            }
+          },
+          {
+            // Currency exchange rates — keep last response for offline.
+            urlPattern: /^https:\/\/api\.frankfurter\.app\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'currency-rates-cache',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 7 }
+            }
+          },
+          {
+            // Hebrew TTF served from /fonts (for PDF export) — cache long.
+            urlPattern: /\/fonts\/.*\.ttf$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'fonts-local-cache',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 365 }
             }
           }
         ]

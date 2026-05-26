@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, X, Check } from 'lucide-react';
 
 const MONTHS_HE = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -203,17 +204,18 @@ function TimeBody({ hour, minute, onChangeTime }) {
   }, []);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', direction: 'rtl' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', maxHeight: '240px', direction: 'rtl' }}>
       {/* Hours Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>שעה</span>
-        <div 
+        <div
           ref={hourRef}
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            border: '1px solid rgba(11,11,48,0.08)', 
-            borderRadius: '12px', 
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            border: '1px solid rgba(11,11,48,0.08)',
+            borderRadius: '12px',
             background: 'rgba(11,11,48,0.02)',
             padding: '6px',
             display: 'flex',
@@ -249,15 +251,16 @@ function TimeBody({ hour, minute, onChangeTime }) {
       </div>
 
       {/* Minutes Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>דקה</span>
-        <div 
+        <div
           ref={minRef}
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            border: '1px solid rgba(11,11,48,0.08)', 
-            borderRadius: '12px', 
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            border: '1px solid rgba(11,11,48,0.08)',
+            borderRadius: '12px',
             background: 'rgba(11,11,48,0.02)',
             padding: '6px',
             display: 'flex',
@@ -438,6 +441,151 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
 }
 
 /* ══════════════════════════════════════════════════════════
+   CUSTOM TIME PICKER — outputs "HH:MM" (24-hour)
+   ══════════════════════════════════════════════════════════ */
+function parseTime(str) {
+  const s = String(str || '').trim();
+  // 12-hour with AM/PM (legacy data) → convert to 24h
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10) % 12;
+    if (m12[3].toUpperCase() === 'PM') h += 12;
+    return { hh: String(h).padStart(2, '0'), mm: m12[2] };
+  }
+  // 24-hour
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return { hh: String(parseInt(m24[1], 10)).padStart(2, '0'), mm: m24[2] };
+  return { hh: '12', mm: '00' };
+}
+
+export function formatHebrewTime(timeStr) {
+  if (!timeStr) return 'בחר שעה';
+  const { hh, mm } = parseTime(timeStr);
+  return `${hh}:${mm}`;
+}
+
+export function CustomTimePicker({ value, onChange, label, required }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const parsed = parseTime(value);
+  const [tempH, setTempH] = useState(parsed.hh);
+  const [tempM, setTempM] = useState(parsed.mm);
+
+  useEffect(() => {
+    const p = parseTime(value);
+    setTempH(p.hh);
+    setTempM(p.mm);
+  }, [value]);
+
+  const hRef = useRef(null);
+  const mRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    requestAnimationFrame(() => {
+      const scrollActive = (ref, cls) => {
+        if (!ref.current) return;
+        const el = ref.current.querySelector('.' + cls);
+        if (el) ref.current.scrollTop = el.offsetTop - ref.current.clientHeight / 2 + el.clientHeight / 2;
+      };
+      scrollActive(hRef, 'active-h');
+      scrollActive(mRef, 'active-m');
+    });
+  }, [isOpen, tempH, tempM]);
+
+  const hours24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
+  const displayValue = value ? `${parseTime(value).hh}:${parseTime(value).mm}` : '';
+
+  const handleSave = () => {
+    onChange(`${tempH}:${tempM}`);
+    setIsOpen(false);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+      {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+
+      <div
+        onClick={() => setIsOpen(true)}
+        className="form-control"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fff' }}
+      >
+        <span style={{ fontSize: '15px', fontWeight: '700', color: displayValue ? 'var(--primary)' : 'var(--text-muted)' }}>
+          {displayValue || 'בחר שעה...'}
+        </span>
+        <Clock size={18} style={{ color: 'var(--text-muted)' }} />
+      </div>
+
+      {isOpen && (
+        <div
+          onClick={() => setIsOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(11,11,48,0.4)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '360px', background: '#fff', borderRadius: '24px', boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)', border: '1px solid rgba(11, 11, 48, 0.08)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
+              <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
+              <button type="button" onClick={() => setIsOpen(false)} style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Hour + Minute columns (24-hour) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'rtl' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
+                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {hours24.map(h => {
+                    const isActive = h === tempH;
+                    return (
+                      <button
+                        key={h} type="button"
+                        className={isActive ? 'active-h' : ''}
+                        onClick={() => setTempH(h)}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}
+                      >{h}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
+                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {minutes.map(m => {
+                    const isActive = m === tempM;
+                    return (
+                      <button
+                        key={m} type="button"
+                        className={isActive ? 'active-m' : ''}
+                        onClick={() => setTempM(m)}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}
+                      >{m}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: 12, padding: '10px 14px', fontSize: '13.5px', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
+              {tempH}:{tempM}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={handleSave} className="btn-primary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>בחירה</button>
+              <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>ביטול</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
    CUSTOM DATE TIME PICKER
    ══════════════════════════════════════════════════════════ */
 export function CustomDateTimePicker({ value, onChange, label }) {
@@ -604,7 +752,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
 
             {/* Tab content */}
-            <div style={{ minHeight: '240px' }}>
+            <div style={{ height: 280, display: 'flex', flexDirection: 'column' }}>
               {activeTab === 'date' ? (
                 <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
               ) : (
@@ -638,6 +786,229 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   CUSTOM DROPDOWN — fully styled select replacement
+   ══════════════════════════════════════════════════════════ */
+export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [popupRect, setPopupRect] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const triggerRef = useRef(null);
+  const popupRef = useRef(null);
+  const draftInputRef = useRef(null);
+
+  const normalized = (options || []).map(o => (
+    typeof o === 'string' ? { value: o, label: o } : o
+  ));
+  const current = normalized.find(o => o.value === value);
+
+  // Compute popup position relative to viewport. Anchor the popup so its
+  // right edge lines up with the trigger's right edge (natural for RTL
+  // Hebrew layout) and clamp to the viewport so we never spill off-screen.
+  useEffect(() => {
+    if (!isOpen) return;
+    const update = () => {
+      if (!triggerRef.current) return;
+      const r = triggerRef.current.getBoundingClientRect();
+      const gutter = 8;
+      const desiredWidth = Math.max(r.width, 220);
+      let left = r.right - desiredWidth;
+      if (left < gutter) left = gutter;
+      if (left + desiredWidth > window.innerWidth - gutter) {
+        left = window.innerWidth - desiredWidth - gutter;
+      }
+      const spaceBelow = window.innerHeight - r.bottom;
+      const openAbove = spaceBelow < 220 && r.top > 220;
+      setPopupRect({
+        top: openAbove ? undefined : r.bottom + 6,
+        bottom: openAbove ? (window.innerHeight - r.top + 6) : undefined,
+        left,
+        width: desiredWidth,
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onDocClick = (e) => {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        popupRef.current && !popupRef.current.contains(e.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') setIsOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (val) => {
+    onChange(val);
+    setIsOpen(false);
+    setAdding(false);
+    setDraft('');
+  };
+
+  const handleStartAdd = () => {
+    setAdding(true);
+    setDraft('');
+    requestAnimationFrame(() => draftInputRef.current?.focus());
+  };
+
+  const handleCommitAdd = () => {
+    const val = draft.trim();
+    if (!val) { setAdding(false); return; }
+    handleSelect(val);
+  };
+
+  // Reset adding mode when closing
+  useEffect(() => {
+    if (!isOpen) { setAdding(false); setDraft(''); }
+  }, [isOpen]);
+
+  return (
+    <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
+      {label && <label style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(o => !o)}
+        className="custom-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span style={{
+          flex: 1,
+          textAlign: 'right',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: current ? 'var(--primary)' : 'var(--text-muted)',
+          fontWeight: current ? 700 : 600
+        }}>
+          {current ? current.label : placeholder}
+        </span>
+        <ChevronDown
+          size={18}
+          style={{
+            color: 'var(--accent)',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      </button>
+
+      {isOpen && popupRect && createPortal(
+        <div
+          ref={popupRef}
+          role="listbox"
+          className="custom-dropdown-popup"
+          style={{
+            position: 'fixed',
+            top: popupRect.top,
+            bottom: popupRect.bottom,
+            left: popupRect.left,
+            width: popupRect.width
+          }}
+        >
+          {normalized.map((opt) => {
+            const isActive = opt.value === value;
+            return (
+              <button
+                key={String(opt.value)}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                onClick={() => handleSelect(opt.value)}
+                className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
+              >
+                {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
+                <span style={{ flex: 1, textAlign: 'right' }}>{opt.label}</span>
+                {isActive && <Check size={16} style={{ color: 'var(--accent)' }} />}
+              </button>
+            );
+          })}
+
+          {addable && !adding && (
+            <button
+              type="button"
+              onClick={handleStartAdd}
+              className="custom-dropdown-option custom-dropdown-add"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>
+                <ChevronDown size={1} style={{ display: 'none' }} />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </span>
+              <span style={{ flex: 1, textAlign: 'right', color: 'var(--accent)', fontWeight: 800 }}>{addLabel}</span>
+            </button>
+          )}
+
+          {addable && adding && (
+            <div className="custom-dropdown-add-row" onClick={(e) => e.stopPropagation()}>
+              <input
+                ref={draftInputRef}
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleCommitAdd(); }
+                  if (e.key === 'Escape') { e.preventDefault(); setAdding(false); setDraft(''); }
+                }}
+                placeholder="שם הקטגוריה החדשה"
+                style={{
+                  flex: 1, minHeight: 36, padding: '6px 10px',
+                  border: '1.5px solid var(--accent)', borderRadius: 8,
+                  fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                  color: 'var(--primary)', outline: 'none', background: '#fff',
+                  textAlign: 'right'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCommitAdd}
+                className="btn-primary"
+                style={{ minHeight: 36, padding: '6px 12px', fontSize: 13 }}
+              >
+                הוסף
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAdding(false); setDraft(''); }}
+                style={{
+                  minHeight: 36, padding: '6px 10px', fontSize: 12,
+                  background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                  cursor: 'pointer', fontWeight: 700
+                }}
+              >
+                בטל
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );

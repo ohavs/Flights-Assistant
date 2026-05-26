@@ -1,14 +1,40 @@
 // Flight status simulator and coordinate generator
 const airportDatabase = {
-  NUE: { code: 'NUE', city: 'נירנברג', name: 'Nuremberg Airport', lat: 49.4987, lng: 11.0780, timezone: 'UTC +02:00' },
-  GRO: { code: 'GRO', city: 'ז\'ירונה', name: 'Girona-Costa Brava Airport', lat: 41.9010, lng: 2.7606, timezone: 'UTC +02:00' },
+  // Israel
   TLV: { code: 'TLV', city: 'תל אביב', name: 'נמל התעופה בן גוריון', lat: 32.0055, lng: 34.8854, timezone: 'UTC +03:00' },
+  // Europe
+  NUE: { code: 'NUE', city: 'נירנברג', name: 'Nuremberg Airport', lat: 49.4987, lng: 11.0780, timezone: 'UTC +02:00' },
+  GRO: { code: 'GRO', city: "ז'ירונה", name: 'Girona-Costa Brava Airport', lat: 41.9010, lng: 2.7606, timezone: 'UTC +02:00' },
   FCO: { code: 'FCO', city: 'רומא', name: 'Leonardo da Vinci-Fiumicino Airport', lat: 41.7999, lng: 12.2462, timezone: 'UTC +02:00' },
+  MXP: { code: 'MXP', city: 'מילאנו', name: 'Milan Malpensa', lat: 45.6306, lng: 8.7281, timezone: 'UTC +02:00' },
   FRA: { code: 'FRA', city: 'פרנקפורט', name: 'Frankfurt Airport', lat: 50.0379, lng: 8.5622, timezone: 'UTC +02:00' },
+  MUC: { code: 'MUC', city: 'מינכן', name: 'Munich Airport', lat: 48.3538, lng: 11.7861, timezone: 'UTC +02:00' },
+  BER: { code: 'BER', city: 'ברלין', name: 'Berlin Brandenburg', lat: 52.3667, lng: 13.5033, timezone: 'UTC +02:00' },
   LTN: { code: 'LTN', city: 'לונדון לוטון', name: 'London Luton Airport', lat: 51.8763, lng: -0.3717, timezone: 'UTC +01:00' },
+  LHR: { code: 'LHR', city: 'לונדון הית\'רו', name: 'London Heathrow', lat: 51.4700, lng: -0.4543, timezone: 'UTC +01:00' },
+  LGW: { code: 'LGW', city: 'לונדון גטוויק', name: 'London Gatwick', lat: 51.1481, lng: -0.1903, timezone: 'UTC +01:00' },
   CDG: { code: 'CDG', city: 'פריז', name: 'Charles de Gaulle Airport', lat: 49.0097, lng: 2.5479, timezone: 'UTC +02:00' },
-  JFK: { code: 'JFK', city: 'ניו יורק', name: 'John F. Kennedy International Airport', lat: 40.6413, lng: -73.7781, timezone: 'UTC -04:00' },
+  ORY: { code: 'ORY', city: 'פריז אורלי', name: 'Paris Orly', lat: 48.7233, lng: 2.3795, timezone: 'UTC +02:00' },
+  AMS: { code: 'AMS', city: 'אמסטרדם', name: 'Amsterdam Schiphol', lat: 52.3105, lng: 4.7683, timezone: 'UTC +02:00' },
+  BCN: { code: 'BCN', city: 'ברצלונה', name: 'Barcelona-El Prat', lat: 41.2974, lng: 2.0833, timezone: 'UTC +02:00' },
+  MAD: { code: 'MAD', city: 'מדריד', name: 'Madrid Barajas', lat: 40.4936, lng: -3.5668, timezone: 'UTC +02:00' },
   ATH: { code: 'ATH', city: 'אתונה', name: 'Athens International Airport', lat: 37.9356, lng: 23.9484, timezone: 'UTC +03:00' },
+  PRG: { code: 'PRG', city: 'פראג', name: 'Václav Havel Airport Prague', lat: 50.1008, lng: 14.2600, timezone: 'UTC +02:00' },
+  VIE: { code: 'VIE', city: 'וינה', name: 'Vienna International', lat: 48.1102, lng: 16.5697, timezone: 'UTC +02:00' },
+  BUD: { code: 'BUD', city: 'בודפשט', name: 'Budapest Ferenc Liszt', lat: 47.4369, lng: 19.2556, timezone: 'UTC +02:00' },
+  WAW: { code: 'WAW', city: 'ורשה', name: 'Warsaw Chopin', lat: 52.1657, lng: 20.9671, timezone: 'UTC +02:00' },
+  IST: { code: 'IST', city: 'איסטנבול', name: 'Istanbul Airport', lat: 41.2753, lng: 28.7519, timezone: 'UTC +03:00' },
+  // Americas
+  JFK: { code: 'JFK', city: 'ניו יורק JFK', name: 'John F. Kennedy International', lat: 40.6413, lng: -73.7781, timezone: 'UTC -04:00' },
+  EWR: { code: 'EWR', city: 'ניוארק', name: 'Newark Liberty', lat: 40.6895, lng: -74.1745, timezone: 'UTC -04:00' },
+  LAX: { code: 'LAX', city: 'לוס אנג\'לס', name: 'Los Angeles International', lat: 33.9416, lng: -118.4085, timezone: 'UTC -07:00' },
+  MIA: { code: 'MIA', city: 'מיאמי', name: 'Miami International', lat: 25.7959, lng: -80.2870, timezone: 'UTC -04:00' },
+  YYZ: { code: 'YYZ', city: 'טורונטו', name: 'Toronto Pearson', lat: 43.6777, lng: -79.6248, timezone: 'UTC -04:00' },
+  // Asia / other
+  DXB: { code: 'DXB', city: 'דובאי', name: 'Dubai International', lat: 25.2532, lng: 55.3657, timezone: 'UTC +04:00' },
+  BKK: { code: 'BKK', city: 'בנגקוק', name: 'Suvarnabhumi', lat: 13.6900, lng: 100.7501, timezone: 'UTC +07:00' },
+  HKG: { code: 'HKG', city: 'הונג קונג', name: 'Hong Kong International', lat: 22.3080, lng: 113.9185, timezone: 'UTC +08:00' },
+  NRT: { code: 'NRT', city: 'טוקיו נריטה', name: 'Narita International', lat: 35.7720, lng: 140.3929, timezone: 'UTC +09:00' },
 };
 
 const flightPresetDatabase = {
@@ -131,7 +157,34 @@ const flightPresetDatabase = {
     registration: 'G-EZWM',
     serialNumber: '6161',
     country: 'בריטניה',
-  }
+  },
+  // El Al common flights from TLV
+  LY1:  { flightNumber: 'LY1',  airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.JFK, scheduledDep: '12:20 AM', actualDep: '12:25 AM', scheduledArr: '06:10 AM', estimatedArr: '06:00 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDA', serialNumber: '42112', country: 'ישראל' },
+  LY2:  { flightNumber: 'LY2',  airline: 'אל על', depAirport: airportDatabase.JFK, arrAirport: airportDatabase.TLV, scheduledDep: '04:30 PM', actualDep: '04:45 PM', scheduledArr: '10:30 AM', estimatedArr: '10:25 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDA', serialNumber: '42112', country: 'ישראל' },
+  LY15: { flightNumber: 'LY15', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.EWR, scheduledDep: '11:00 PM', actualDep: '11:05 PM', scheduledArr: '04:30 AM', estimatedArr: '04:25 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDB', serialNumber: '42113', country: 'ישראל' },
+  LY16: { flightNumber: 'LY16', airline: 'אל על', depAirport: airportDatabase.EWR, arrAirport: airportDatabase.TLV, scheduledDep: '11:30 PM', actualDep: '11:35 PM', scheduledArr: '04:45 PM', estimatedArr: '04:40 PM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDB', serialNumber: '42113', country: 'ישראל' },
+  LY315: { flightNumber: 'LY315', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.CDG, scheduledDep: '07:45 AM', actualDep: '07:50 AM', scheduledArr: '11:10 AM', estimatedArr: '11:05 AM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHC', serialNumber: '41554', country: 'ישראל' },
+  LY316: { flightNumber: 'LY316', airline: 'אל על', depAirport: airportDatabase.CDG, arrAirport: airportDatabase.TLV, scheduledDep: '01:15 PM', actualDep: '01:20 PM', scheduledArr: '06:30 PM', estimatedArr: '06:25 PM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHC', serialNumber: '41554', country: 'ישראל' },
+  LY335: { flightNumber: 'LY335', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.LHR, scheduledDep: '06:30 AM', actualDep: '06:35 AM', scheduledArr: '10:25 AM', estimatedArr: '10:20 AM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDC', serialNumber: '42114', country: 'ישראל' },
+  LY336: { flightNumber: 'LY336', airline: 'אל על', depAirport: airportDatabase.LHR, arrAirport: airportDatabase.TLV, scheduledDep: '12:30 PM', actualDep: '12:35 PM', scheduledArr: '07:35 PM', estimatedArr: '07:30 PM', status: 'בזמן', aircraftType: 'Boeing 787-9', registration: '4X-EDC', serialNumber: '42114', country: 'ישראל' },
+  LY385: { flightNumber: 'LY385', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.BCN, scheduledDep: '07:00 AM', actualDep: '07:05 AM', scheduledArr: '10:50 AM', estimatedArr: '10:45 AM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKO', serialNumber: '36433', country: 'ישראל' },
+  LY386: { flightNumber: 'LY386', airline: 'אל על', depAirport: airportDatabase.BCN, arrAirport: airportDatabase.TLV, scheduledDep: '12:45 PM', actualDep: '12:50 PM', scheduledArr: '06:20 PM', estimatedArr: '06:15 PM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKO', serialNumber: '36433', country: 'ישראל' },
+  LY395: { flightNumber: 'LY395', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.AMS, scheduledDep: '07:25 AM', actualDep: '07:30 AM', scheduledArr: '11:25 AM', estimatedArr: '11:20 AM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHE', serialNumber: '41556', country: 'ישראל' },
+  LY396: { flightNumber: 'LY396', airline: 'אל על', depAirport: airportDatabase.AMS, arrAirport: airportDatabase.TLV, scheduledDep: '01:00 PM', actualDep: '01:05 PM', scheduledArr: '06:55 PM', estimatedArr: '06:50 PM', status: 'בזמן', aircraftType: 'Boeing 737-900', registration: '4X-EHE', serialNumber: '41556', country: 'ישראל' },
+  LY551: { flightNumber: 'LY551', airline: 'אל על', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.PRG, scheduledDep: '07:50 AM', actualDep: '07:55 AM', scheduledArr: '10:55 AM', estimatedArr: '10:50 AM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKB', serialNumber: '29959', country: 'ישראל' },
+  LY552: { flightNumber: 'LY552', airline: 'אל על', depAirport: airportDatabase.PRG, arrAirport: airportDatabase.TLV, scheduledDep: '12:15 PM', actualDep: '12:20 PM', scheduledArr: '05:00 PM', estimatedArr: '04:55 PM', status: 'בזמן', aircraftType: 'Boeing 737-800', registration: '4X-EKB', serialNumber: '29959', country: 'ישראל' },
+  // Lufthansa TLV
+  LH685: { flightNumber: 'LH685', airline: 'Lufthansa', depAirport: airportDatabase.FRA, arrAirport: airportDatabase.TLV, scheduledDep: '10:25 AM', actualDep: '10:35 AM', scheduledArr: '03:30 PM', estimatedArr: '03:35 PM', status: 'בזמן', aircraftType: 'Airbus A321', registration: 'D-AIDX', serialNumber: '5256', country: 'גרמניה' },
+  LH690: { flightNumber: 'LH690', airline: 'Lufthansa', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.MUC, scheduledDep: '04:30 PM', actualDep: '04:35 PM', scheduledArr: '07:50 PM', estimatedArr: '07:45 PM', status: 'בזמן', aircraftType: 'Airbus A321neo', registration: 'D-AIEH', serialNumber: '11020', country: 'גרמניה' },
+  // Czech Airlines (defaultTrip uses OK983/OK984)
+  OK983: { flightNumber: 'OK983', airline: 'Czech Airlines', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.PRG, scheduledDep: '07:30 AM', actualDep: '07:35 AM', scheduledArr: '10:45 AM', estimatedArr: '10:40 AM', status: 'בזמן', aircraftType: 'Airbus A320-214', registration: 'OK-HEU', serialNumber: '5421', country: "צ'כיה" },
+  OK984: { flightNumber: 'OK984', airline: 'Czech Airlines', depAirport: airportDatabase.PRG, arrAirport: airportDatabase.TLV, scheduledDep: '11:55 AM', actualDep: '12:00 PM', scheduledArr: '04:50 PM', estimatedArr: '04:45 PM', status: 'בזמן', aircraftType: 'Airbus A320-214', registration: 'OK-HEU', serialNumber: '5421', country: "צ'כיה" },
+  // Turkish Airlines
+  TK787: { flightNumber: 'TK787', airline: 'Turkish Airlines', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.IST, scheduledDep: '06:30 PM', actualDep: '06:35 PM', scheduledArr: '09:00 PM', estimatedArr: '08:55 PM', status: 'בזמן', aircraftType: 'Airbus A321', registration: 'TC-JTP', serialNumber: '7124', country: 'טורקיה' },
+  TK788: { flightNumber: 'TK788', airline: 'Turkish Airlines', depAirport: airportDatabase.IST, arrAirport: airportDatabase.TLV, scheduledDep: '02:10 PM', actualDep: '02:15 PM', scheduledArr: '03:55 PM', estimatedArr: '03:50 PM', status: 'בזמן', aircraftType: 'Airbus A321', registration: 'TC-JTP', serialNumber: '7124', country: 'טורקיה' },
+  // Wizz Air
+  W61783: { flightNumber: 'W61783', airline: 'Wizz Air', depAirport: airportDatabase.TLV, arrAirport: airportDatabase.BUD, scheduledDep: '03:50 AM', actualDep: '03:55 AM', scheduledArr: '06:40 AM', estimatedArr: '06:35 AM', status: 'בזמן', aircraftType: 'Airbus A321neo', registration: 'HA-LVH', serialNumber: '8941', country: 'הונגריה' },
+  W61784: { flightNumber: 'W61784', airline: 'Wizz Air', depAirport: airportDatabase.BUD, arrAirport: airportDatabase.TLV, scheduledDep: '10:30 PM', actualDep: '10:35 PM', scheduledArr: '02:50 AM', estimatedArr: '02:45 AM', status: 'בזמן', aircraftType: 'Airbus A321neo', registration: 'HA-LVH', serialNumber: '8941', country: 'הונגריה' },
 };
 
 const airlinePrefixes = [
@@ -155,6 +208,56 @@ const aircraftTypes = [
   { type: 'Airbus A321neo', regPrefix: 'G-NE', country: 'בריטניה' },
 ];
 
+// Normalize any time string ("07:30 AM", "19:30", "7:30 pm") → "HH:MM" 24h.
+export function toTime24(s) {
+  if (!s) return '';
+  const trimmed = String(s).trim();
+  const m12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10) % 12;
+    if (m12[3].toUpperCase() === 'PM') h += 12;
+    return `${String(h).padStart(2, '0')}:${m12[2]}`;
+  }
+  const m24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    return `${String(h).padStart(2, '0')}:${m24[2]}`;
+  }
+  return trimmed;
+}
+
+// Format 24-hour HH:MM from minutes-since-midnight integer.
+function fmt24(totalMins) {
+  const h = Math.floor(((totalMins % 1440) + 1440) % 1440 / 60);
+  const m = ((totalMins % 60) + 60) % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// Parse a "UTC +03:00" / "UTC -04:00" string into a numeric offset in hours.
+export function parseUtcOffset(tzStr) {
+  if (!tzStr) return 0;
+  const m = String(tzStr).match(/UTC\s*([+-])\s*(\d{1,2}):(\d{2})/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  return sign * (parseInt(m[2], 10) + parseInt(m[3], 10) / 60);
+}
+
+// Israel is UTC+3 year-round (IST is UTC+2, IDT is UTC+3). Using +3 as the user's reference.
+const ISRAEL_UTC_OFFSET = 3;
+
+// Format the time-zone difference vs. Israel — e.g. "−1 שעה מישראל", "אותה שעה".
+export function formatOffsetFromIsrael(tzStr) {
+  if (!tzStr) return '';
+  const diff = parseUtcOffset(tzStr) - ISRAEL_UTC_OFFSET;
+  if (diff === 0) return 'אותה שעה כמו בישראל';
+  const abs = Math.abs(diff);
+  const sign = diff > 0 ? '+' : '−';
+  const noun = abs === 1 ? 'שעה' : 'שעות';
+  // Show .5 only if non-integer
+  const num = Number.isInteger(abs) ? abs : abs.toFixed(1);
+  return `${sign}${num} ${noun} מישראל`;
+}
+
 // Helper to calculate distance in km between two lat/lng points (Haversine formula)
 export function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the earth in km
@@ -177,10 +280,28 @@ export function getIntermediatePoint(lat1, lon1, lat2, lon2, fraction) {
   return [lat, lng];
 }
 
-// Main lookup function
-export function lookupFlight(flightNumInput) {
-  const flightNumber = flightNumInput.trim().toUpperCase();
-  
+// Main lookup function. Deterministic: same flightNumber + date will always return
+// the same data so the UI stops "changing its mind" between renders.
+export function lookupFlight(flightNumInput, dateInput) {
+  const flightNumber = String(flightNumInput || '').trim().toUpperCase();
+  const dateStr = String(dateInput || '').trim();
+  if (!flightNumber) return null;
+
+  // Simple string hash → 32-bit unsigned integer. Stable across calls/runs.
+  const hash = (s) => {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h = (h ^ s.charCodeAt(i)) >>> 0;
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h;
+  };
+  const seed = hash(flightNumber + '|' + dateStr);
+  // Deterministic pseudo-random helpers using the seed
+  let s = seed || 1;
+  const next = () => { s = (Math.imul(s, 48271) ^ (s >>> 0)) >>> 0; return s; };
+  const intIn = (min, max) => min + (next() % (max - min + 1));
+
   const generateGate = (numStr) => {
     const gates = ['A', 'B', 'C', 'D', 'E'];
     const gateLetter = gates[numStr.charCodeAt(0) % gates.length];
@@ -193,11 +314,21 @@ export function lookupFlight(flightNumInput) {
     if (!preset.gate) {
       preset.gate = generateGate(flightNumber);
     }
+    // Convert any legacy 12-hour preset times to 24-hour
+    preset.scheduledDep = toTime24(preset.scheduledDep);
+    preset.scheduledArr = toTime24(preset.scheduledArr);
+    // Presets are demo data — never invent delays. The live API path
+    // is the only source allowed to produce a different actualDep /
+    // estimatedArr than the scheduled times. Without this, future
+    // flights show fake "+X דק'" chips for no reason.
+    preset.actualDep = preset.scheduledDep;
+    preset.estimatedArr = preset.scheduledArr;
+    preset.status = 'בזמן';
+    preset.matched = true;
     return preset;
   }
 
-  // If not found, generate dynamically
-  // Find airline
+  // Generate deterministically from seeded RNG
   let airline = 'חברת תעופה גלובלית';
   for (const item of airlinePrefixes) {
     if (flightNumber.startsWith(item.prefix)) {
@@ -206,20 +337,9 @@ export function lookupFlight(flightNumInput) {
     }
   }
 
-  // Select departure and arrival
   const keys = Object.keys(airportDatabase);
-  let depKey = 'TLV';
-  let arrKey = 'CDG';
-
-  // Make sure dep != arr
-  if (flightNumber.charCodeAt(0) % 2 === 0) {
-    depKey = keys[flightNumber.charCodeAt(0) % keys.length];
-    arrKey = keys[(flightNumber.charCodeAt(1) || 0) % keys.length];
-  } else {
-    depKey = keys[(flightNumber.charCodeAt(1) || 0) % keys.length];
-    arrKey = keys[flightNumber.charCodeAt(0) % keys.length];
-  }
-
+  let depKey = keys[intIn(0, keys.length - 1)];
+  let arrKey = keys[intIn(0, keys.length - 1)];
   if (depKey === arrKey) {
     arrKey = keys[(keys.indexOf(depKey) + 1) % keys.length];
   }
@@ -227,36 +347,27 @@ export function lookupFlight(flightNumInput) {
   const depAirport = airportDatabase[depKey];
   const arrAirport = airportDatabase[arrKey];
 
-  // Select aircraft
+  // Aircraft picked deterministically from the flight number
   const acIdx = (flightNumber.charCodeAt(flightNumber.length - 1) || 0) % aircraftTypes.length;
   const ac = aircraftTypes[acIdx];
-  const randNum = Math.floor(100 + Math.random() * 900);
-  const registration = `${ac.regPrefix}${String.fromCharCode(65 + (randNum % 26))}${String.fromCharCode(65 + ((randNum + 3) % 26))}`;
-  const serialNumber = String(10000 + Math.floor(Math.random() * 40000));
+  const regSeed = intIn(100, 999);
+  const registration = `${ac.regPrefix}${String.fromCharCode(65 + (regSeed % 26))}${String.fromCharCode(65 + ((regSeed + 3) % 26))}`;
+  const serialNumber = String(10000 + intIn(0, 39999));
 
-  // Generate times
-  const scheduledDepHours = 6 + Math.floor(Math.random() * 14);
-  const scheduledDepMins = Math.floor(Math.random() * 4) * 15;
-  const scheduledDepStr = `${String(scheduledDepHours % 12 || 12).padStart(2, '0')}:${String(scheduledDepMins).padStart(2, '0')} ${scheduledDepHours >= 12 ? 'PM' : 'AM'}`;
+  // Times. For locally-generated data we set actual = scheduled and
+  // estimated = scheduled — we have no real info, so we should not
+  // fabricate delays. The UI compares scheduled vs actual/estimated to
+  // show "+X דק'" chips; with them equal, nothing extra is rendered.
+  const scheduledDepHours = intIn(6, 19);
+  const scheduledDepMins = intIn(0, 3) * 15;
+  const scheduledDepTotal = scheduledDepHours * 60 + scheduledDepMins;
+  const durationMins = intIn(90, 270);
+  const scheduledArrTotal = scheduledDepTotal + durationMins;
 
-  const actualDelay = Math.random() > 0.5 ? Math.floor(Math.random() * 15) : 0;
-  const actualDepMinsTotal = scheduledDepHours * 60 + scheduledDepMins + actualDelay;
-  const actualDepHours = Math.floor(actualDepMinsTotal / 60);
-  const actualDepMins = actualDepMinsTotal % 60;
-  const actualDepStr = `${String(actualDepHours % 12 || 12).padStart(2, '0')}:${String(actualDepMins).padStart(2, '0')} ${actualDepHours >= 12 ? 'PM' : 'AM'}`;
-
-  const durationMins = 90 + Math.floor(Math.random() * 180);
-  const scheduledArrMinsTotal = scheduledDepHours * 60 + scheduledDepMins + durationMins;
-  const scheduledArrHours = Math.floor(scheduledArrMinsTotal / 60);
-  const scheduledArrMins = scheduledArrMinsTotal % 60;
-  const scheduledArrStr = `${String(scheduledArrHours % 12 || 12).padStart(2, '0')}:${String(scheduledArrMins).padStart(2, '0')} ${scheduledArrHours >= 12 ? 'PM' : 'AM'}`;
-
-  const estimatedArrMinsTotal = actualDepMinsTotal + durationMins - (Math.random() > 0.6 ? 5 : 0);
-  const estimatedArrHours = Math.floor(estimatedArrMinsTotal / 60);
-  const estimatedArrMins = estimatedArrMinsTotal % 60;
-  const estimatedArrStr = `${String(estimatedArrHours % 12 || 12).padStart(2, '0')}:${String(estimatedArrMins).padStart(2, '0')} ${estimatedArrHours >= 12 ? 'PM' : 'AM'}`;
-
-  const gate = generateGate(flightNumber);
+  const scheduledDepStr = fmt24(scheduledDepTotal);
+  const actualDepStr = scheduledDepStr;
+  const scheduledArrStr = fmt24(scheduledArrTotal);
+  const estimatedArrStr = scheduledArrStr;
 
   return {
     flightNumber,
@@ -267,12 +378,13 @@ export function lookupFlight(flightNumInput) {
     actualDep: actualDepStr,
     scheduledArr: scheduledArrStr,
     estimatedArr: estimatedArrStr,
-    status: actualDelay > 10 ? 'באיחור קל' : 'בזמן',
+    status: 'בזמן',
     aircraftType: ac.type,
     registration,
     serialNumber,
     country: ac.country,
-    gate,
+    gate: generateGate(flightNumber),
+    matched: false,
   };
 }
 
