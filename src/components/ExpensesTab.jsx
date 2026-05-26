@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import {
-  Plus, Trash2, Search, Check, X, TrendingUp,
-  Wallet, Receipt, Pencil, ChevronDown, Link2, ArrowLeft
+  Plus, Trash2, Search, X, TrendingUp,
+  Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin
 } from 'lucide-react';
 
 const ALL_CURRENCIES = [
@@ -29,7 +29,6 @@ const ALL_CURRENCIES = [
   { code: 'BRL', symbol: 'R$', name: 'ריאל ברזילאי' },
   { code: 'CNY', symbol: '¥', name: 'יואן סיני' },
   { code: 'RON', symbol: 'lei', name: 'לאו רומני' },
-  { code: 'HRK', symbol: '€', name: 'יורו (קרואטיה)' },
   { code: 'ZAR', symbol: 'R', name: 'רנד דרום אפריקאי' },
 ];
 
@@ -44,7 +43,6 @@ export default function ExpensesTab({ tripId }) {
   const [loading, setLoading] = useState(true);
   const [showSummary, setShowSummary] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
 
   // Form state
   const [editingId, setEditingId] = useState(null);
@@ -52,7 +50,17 @@ export default function ExpensesTab({ tripId }) {
   const [currency, setCurrency] = useState('ILS');
   const [description, setDescription] = useState('');
   const [linkedPlanId, setLinkedPlanId] = useState('');
-  const [planSearch, setPlanSearch] = useState('');
+  const [customPlace, setCustomPlace] = useState('');
+
+  // Currency selector in form
+  const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
+  const [showCurrencyList, setShowCurrencyList] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
+
+  // Planning items dropdown
+  const [showPlanDropdown, setShowPlanDropdown] = useState(false);
+  const [planFilter, setPlanFilter] = useState('');
+  const [showCustomPlaceInput, setShowCustomPlaceInput] = useState(false);
 
   // Load expenses
   useEffect(() => {
@@ -75,34 +83,37 @@ export default function ExpensesTab({ tripId }) {
     return () => unsub();
   }, [tripId]);
 
-  // Derive quick-select currencies: defaults + any currency used in expenses
-  const quickCurrencies = useMemo(() => {
+  // Derive persistent quick currencies: defaults + ever-used in expenses
+  const persistentQuickCurrencies = useMemo(() => {
     const used = [...new Set(expenses.map(e => e.currency))];
-    const merged = [...new Set([...DEFAULT_CURRENCIES, ...used])];
-    return merged;
+    return [...new Set([...DEFAULT_CURRENCIES, ...used])];
   }, [expenses]);
 
-  // Currencies not yet in quick-select (for the "add" modal)
-  const addableCurrencies = useMemo(
-    () => ALL_CURRENCIES.filter(c => !quickCurrencies.includes(c.code)),
-    [quickCurrencies]
-  );
-
   const openForm = (expense = null) => {
+    const base = [...new Set([...persistentQuickCurrencies])];
     if (expense) {
       setEditingId(expense.id);
       setAmount(String(expense.amount));
       setCurrency(expense.currency);
       setDescription(expense.description || '');
       setLinkedPlanId(expense.linkedPlanId || '');
+      setCustomPlace(expense.customPlace || '');
+      // make sure editing currency is in the chips
+      if (!base.includes(expense.currency)) base.push(expense.currency);
     } else {
       setEditingId(null);
       setAmount('');
-      setCurrency(expenses[0]?.currency || 'ILS');
+      setCurrency(persistentQuickCurrencies[0] || 'ILS');
       setDescription('');
       setLinkedPlanId('');
+      setCustomPlace('');
     }
-    setPlanSearch('');
+    setFormQuickCurrencies(base);
+    setShowCurrencyList(false);
+    setCurrencySearch('');
+    setShowPlanDropdown(false);
+    setPlanFilter('');
+    setShowCustomPlaceInput(false);
     setShowForm(true);
   };
 
@@ -116,6 +127,7 @@ export default function ExpensesTab({ tripId }) {
       currency,
       description: description.trim(),
       linkedPlanId: linkedPlanId || null,
+      customPlace: customPlace.trim() || null,
       createdAt: existing?.createdAt || new Date().toISOString(),
     });
     setShowForm(false);
@@ -127,23 +139,33 @@ export default function ExpensesTab({ tripId }) {
     await deleteDoc(doc(db, 'trips', tripId, 'expenses', id));
   };
 
-  // Summary: total per currency
   const summary = useMemo(() => {
     const totals = {};
     expenses.forEach(e => {
       totals[e.currency] = (totals[e.currency] || 0) + e.amount;
     });
     return Object.entries(totals).map(([code, total]) => ({
-      ...getCurrencyInfo(code),
-      total,
+      ...getCurrencyInfo(code), total,
     })).sort((a, b) => b.total - a.total);
   }, [expenses]);
 
-  const filteredPlans = planSearch.trim()
-    ? plans.filter(p => p.title.toLowerCase().includes(planSearch.toLowerCase()) || p.category?.includes(planSearch))
+  // Currencies available to add (not yet in formQuickCurrencies)
+  const addableCurrencies = useMemo(
+    () => ALL_CURRENCIES.filter(c => !formQuickCurrencies.includes(c.code) &&
+      (currencySearch === '' || c.name.includes(currencySearch) || c.code.toLowerCase().includes(currencySearch.toLowerCase()))
+    ),
+    [formQuickCurrencies, currencySearch]
+  );
+
+  const filteredDropdownPlans = planFilter.trim()
+    ? plans.filter(p =>
+        p.title.toLowerCase().includes(planFilter.toLowerCase()) ||
+        (p.category || '').includes(planFilter)
+      )
     : plans;
 
   const linkedPlan = plans.find(p => p.id === linkedPlanId);
+  const linkedLabel = linkedPlan?.title || customPlace || '';
 
   if (loading) {
     return (
@@ -156,7 +178,7 @@ export default function ExpensesTab({ tripId }) {
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* Header row */}
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>מעקב הוצאות</span>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -215,6 +237,7 @@ export default function ExpensesTab({ tripId }) {
           {expenses.map(expense => {
             const curr = getCurrencyInfo(expense.currency);
             const linked = plans.find(p => p.id === expense.linkedPlanId);
+            const placeLabel = linked?.title || expense.customPlace || null;
             return (
               <div key={expense.id} className="glass-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(79,70,229,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -230,10 +253,10 @@ export default function ExpensesTab({ tripId }) {
                       {expense.description}
                     </div>
                   ) : null}
-                  {linked ? (
+                  {placeLabel ? (
                     <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Link2 size={10} />
-                      {linked.title}
+                      {placeLabel}
                     </div>
                   ) : null}
                 </div>
@@ -254,13 +277,13 @@ export default function ExpensesTab({ tripId }) {
       {/* Add/Edit Expense Modal */}
       {showForm && createPortal(
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingId ? 'עריכת הוצאה' : 'הוצאה חדשה'}</h2>
               <button className="btn-close" onClick={() => setShowForm(false)}>✕</button>
             </div>
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
 
               {/* Amount */}
               <div className="form-group">
@@ -276,11 +299,11 @@ export default function ExpensesTab({ tripId }) {
                 />
               </div>
 
-              {/* Currency quick-select */}
+              {/* Currency — inline chips + expandable full list */}
               <div className="form-group">
                 <label>מטבע</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {quickCurrencies.map(code => {
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {formQuickCurrencies.map(code => {
                     const c = getCurrencyInfo(code);
                     return (
                       <button key={code} type="button" onClick={() => setCurrency(code)}
@@ -289,22 +312,62 @@ export default function ExpensesTab({ tripId }) {
                           background: currency === code ? 'var(--accent)' : 'rgba(11,11,48,0.06)',
                           color: currency === code ? '#fff' : 'var(--primary)',
                           fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 4
                         }}>
                         {c.symbol} {code}
                       </button>
                     );
                   })}
                   <button type="button"
-                    onClick={() => setShowAddCurrencyModal(true)}
+                    onClick={() => { setShowCurrencyList(s => !s); setCurrencySearch(''); }}
                     style={{
                       padding: '6px 14px', borderRadius: 20, fontFamily: 'inherit',
                       border: '1.5px dashed rgba(79,70,229,0.3)', background: 'transparent',
-                      color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer'
+                      color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 4
                     }}>
-                    + הוסף מטבע
+                    <Plus size={13} /> מטבע
                   </button>
                 </div>
+
+                {/* Inline currency list — no nested modal */}
+                {showCurrencyList && (
+                  <div style={{ marginTop: 8, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', position: 'sticky', top: 0, background: '#fff' }}>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="חפש מטבע..."
+                          value={currencySearch}
+                          onChange={e => setCurrencySearch(e.target.value)}
+                          style={{ minHeight: 36, fontSize: 13, paddingRight: 36 }}
+                          autoFocus
+                        />
+                        <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                      </div>
+                    </div>
+                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {addableCurrencies.length === 0 ? (
+                        <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+                          {currencySearch ? 'לא נמצאו תוצאות' : 'כל המטבעות כבר נוספו'}
+                        </p>
+                      ) : addableCurrencies.map(c => (
+                        <button key={c.code} type="button"
+                          onClick={() => {
+                            setFormQuickCurrencies(prev => [...prev, c.code]);
+                            setCurrency(c.code);
+                            setShowCurrencyList(false);
+                            setCurrencySearch('');
+                          }}
+                          style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                        >
+                          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--primary)' }}>{c.name}</span>
+                          <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>{c.symbol} {c.code}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Description */}
@@ -315,87 +378,128 @@ export default function ExpensesTab({ tripId }) {
                   placeholder="למשל: ארוחת ערב, כרטיסי כניסה, תחבורה..." />
               </div>
 
-              {/* Link to plan item */}
+              {/* Link to plan item — dropdown */}
               <div className="form-group">
                 <label>קישור לאטרקציה / מסעדה (אופציונלי)</label>
-                {linkedPlan ? (
+
+                {/* Linked badge */}
+                {linkedLabel ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(79,70,229,0.06)', borderRadius: 10, marginBottom: 8 }}>
                     <Link2 size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 13, color: 'var(--accent)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {linkedPlan.title}
+                      {linkedLabel}
                     </span>
-                    <button type="button" onClick={() => setLinkedPlanId('')}
+                    <button type="button" onClick={() => { setLinkedPlanId(''); setCustomPlace(''); setShowPlanDropdown(false); setShowCustomPlaceInput(false); }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2 }}>
                       <X size={14} />
                     </button>
                   </div>
-                ) : null}
-                <div style={{ position: 'relative' }}>
-                  <input type="text" className="form-control"
-                    placeholder="חפש מתוך רשימת האטרקציות..."
-                    value={planSearch}
-                    onChange={e => setPlanSearch(e.target.value)}
-                    style={{ paddingRight: 40 }}
-                  />
-                  <Search size={16} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                  {planSearch && (
-                    <button type="button" onClick={() => setPlanSearch('')}
-                      style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                {planSearch && (
-                  <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 4px 20px rgba(11,11,48,0.12)', border: '1px solid rgba(11,11,48,0.06)', marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
-                    {filteredPlans.length === 0 ? (
-                      <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>לא נמצאו תוצאות</p>
-                    ) : filteredPlans.map(p => (
-                      <button key={p.id} type="button"
-                        onClick={() => { setLinkedPlanId(p.id); setPlanSearch(''); }}
-                        style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--primary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>{p.category}</span>
-                      </button>
-                    ))}
+                ) : (
+                  /* Dropdown toggle */
+                  <button type="button"
+                    onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); setShowCustomPlaceInput(false); }}
+                    className="form-control"
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 14, color: 'var(--text-muted)' }}
+                  >
+                    <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מרשימת האטרקציות...'}</span>
+                    <ChevronDown size={16} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
+                  </button>
+                )}
+
+                {/* Dropdown content */}
+                {showPlanDropdown && !linkedLabel && (
+                  <div style={{ marginTop: 4, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
+
+                    {/* Search filter */}
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: '#fff' }}>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="חפש אטרקציה, מסעדה..."
+                          value={planFilter}
+                          onChange={e => setPlanFilter(e.target.value)}
+                          style={{ minHeight: 36, fontSize: 13, paddingRight: 36 }}
+                        />
+                        <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        {planFilter && (
+                          <button type="button" onClick={() => setPlanFilter('')}
+                            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Items list */}
+                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {plans.length === 0 ? (
+                        <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+                          אין פריטים בתכנון הטיול עדיין
+                        </p>
+                      ) : filteredDropdownPlans.length === 0 ? (
+                        <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>לא נמצאו תוצאות</p>
+                      ) : filteredDropdownPlans.map(p => (
+                        <button key={p.id} type="button"
+                          onClick={() => { setLinkedPlanId(p.id); setCustomPlace(''); setShowPlanDropdown(false); setPlanFilter(''); }}
+                          style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                        >
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'rgba(11,11,48,0.05)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Add custom place */}
+                    <div style={{ borderTop: '1px solid rgba(11,11,48,0.07)', padding: '10px 12px' }}>
+                      {showCustomPlaceInput ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="שם המקום..."
+                            value={customPlace}
+                            onChange={e => setCustomPlace(e.target.value)}
+                            style={{ flex: 1, minHeight: 36, fontSize: 13 }}
+                            autoFocus
+                          />
+                          <button type="button"
+                            onClick={() => { if (customPlace.trim()) { setLinkedPlanId(''); setShowPlanDropdown(false); setShowCustomPlaceInput(false); } }}
+                            className="btn-primary"
+                            style={{ padding: '6px 14px', fontSize: 13, minHeight: 36 }}>
+                            אישור
+                          </button>
+                          <button type="button"
+                            onClick={() => { setShowCustomPlaceInput(false); setCustomPlace(''); }}
+                            className="btn-secondary"
+                            style={{ padding: '6px 10px', fontSize: 13, minHeight: 36 }}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button"
+                          onClick={() => setShowCustomPlaceInput(true)}
+                          style={{ width: '100%', border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '4px 0', textAlign: 'right', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <MapPin size={13} />
+                          הוסף מקום שלא ברשימה
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                  ניתן להוסיף הוצאה גם ללא קישור לפריט בתכנון
-                </p>
+
+                {!linkedLabel && (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                    ניתן להוסיף הוצאה גם ללא קישור לפריט בתכנון
+                  </p>
+                )}
               </div>
 
-              <div style={{ display: 'flex', gap: 12, paddingBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 12, paddingBottom: 20, flexShrink: 0 }}>
                 <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור הוצאה</button>
                 <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">ביטול</button>
               </div>
             </form>
-          </div>
-        </div>,
-        document.querySelector('.app-container') || document.body
-      )}
-
-      {/* Add Currency Modal */}
-      {showAddCurrencyModal && createPortal(
-        <div className="modal-overlay" onClick={() => setShowAddCurrencyModal(false)}>
-          <div className="modal-content" style={{ height: 'auto', maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>בחר מטבע להוסיף</h2>
-              <button className="btn-close" onClick={() => setShowAddCurrencyModal(false)}>✕</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 20 }}>
-              {addableCurrencies.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>כל המטבעות כבר נוספו</p>
-              ) : addableCurrencies.map(c => (
-                <button key={c.code} type="button"
-                  onClick={() => { setCurrency(c.code); setShowAddCurrencyModal(false); }}
-                  style={{ padding: '12px 16px', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: '#fff', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'background 0.15s' }}
-                >
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary)' }}>{c.name}</span>
-                  <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>{c.symbol} {c.code}</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>,
         document.querySelector('.app-container') || document.body
