@@ -789,7 +789,7 @@ export default function PlanningTab({ tripId }) {
               <div style={{
                 position: 'fixed',
                 top: catDropRect.bottom + 4,
-                right: window.innerWidth - catDropRect.right,
+                left: catDropRect.left,
                 width: catDropRect.width,
                 background: '#fff',
                 borderRadius: 14,
