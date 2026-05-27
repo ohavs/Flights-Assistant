@@ -31,8 +31,46 @@ import {
   Calendar,
   ChevronDown,
   Link2,
-  X
+  X,
+  Settings,
+  Camera,
+  Coffee,
+  ShoppingBag,
+  Plane,
+  Star,
+  Bike,
+  Car,
+  Landmark,
+  Mountain,
+  Tent,
 } from 'lucide-react';
+
+const ICON_OPTIONS = [
+  { key: 'Compass',        Icon: Compass },
+  { key: 'UtensilsCrossed',Icon: UtensilsCrossed },
+  { key: 'Train',          Icon: Train },
+  { key: 'Info',           Icon: Info },
+  { key: 'MapPin',         Icon: MapPin },
+  { key: 'Camera',         Icon: Camera },
+  { key: 'Coffee',         Icon: Coffee },
+  { key: 'ShoppingBag',   Icon: ShoppingBag },
+  { key: 'Plane',          Icon: Plane },
+  { key: 'Star',           Icon: Star },
+  { key: 'Bike',           Icon: Bike },
+  { key: 'Car',            Icon: Car },
+  { key: 'Landmark',       Icon: Landmark },
+  { key: 'Mountain',       Icon: Mountain },
+  { key: 'Tent',           Icon: Tent },
+  { key: 'Calendar',       Icon: Calendar },
+];
+
+const ICON_MAP = Object.fromEntries(ICON_OPTIONS.map(({ key, Icon }) => [key, Icon]));
+
+const COLOR_OPTIONS = [
+  '#4f46e5', '#7c3aed', '#db2777', '#dc2626',
+  '#ea580c', '#d97706', '#16a34a', '#0f766e',
+  '#0891b2', '#1d4ed8', '#64748b', '#334155',
+];
 
 export const defaultGironaPlans = [
   {
@@ -195,6 +233,10 @@ export default function PlanningTab({ tripId }) {
   // Expanded plan cards (default: collapsed)
   const [expandedPlanIds, setExpandedPlanIds] = useState({});
 
+  // Category customisation (icon + color), synced with Firestore
+  const [categorySettings, setCategorySettings] = useState({});
+  const [showCategorySettings, setShowCategorySettings] = useState(false);
+
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState('');
@@ -225,6 +267,20 @@ export default function PlanningTab({ tripId }) {
     ...plans.map(p => p.category).filter(Boolean),
     ...days.flatMap(d => (d.activities || []).map(a => a.category).filter(Boolean)),
   ]));
+
+  // Load category customisation settings
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
+      setCategorySettings(snap.exists() ? (snap.data() || {}) : {});
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  const saveCategorySettings = async (updated) => {
+    if (!tripId) return;
+    await setDoc(doc(db, 'trips', tripId, 'settings', 'categories'), updated);
+  };
 
   // Listen to Firestore planning items (pool)
   useEffect(() => {
@@ -385,19 +441,18 @@ export default function PlanningTab({ tripId }) {
     setShowAddForm(false);
   };
 
-  // Helper to resolve category icons
-  const getCategoryIcon = (cat) => {
+  const getCategoryColor = (cat) => categorySettings[cat]?.color || '#4f46e5';
+
+  const getCategoryIcon = (cat, size = 18) => {
+    const iconKey = categorySettings[cat]?.iconKey;
+    const Icon = iconKey ? ICON_MAP[iconKey] : null;
+    if (Icon) return <Icon size={size} />;
     switch (cat) {
-      case 'אטרקציות ודברים לעשות':
-        return <Compass size={18} />;
-      case 'מסעדות ומקומות אכילה':
-        return <UtensilsCrossed size={18} />;
-      case 'תחבורה ציבורית':
-        return <Train size={18} />;
-      case 'מידע כללי וטיפים':
-        return <Info size={18} />;
-      default:
-        return <MapPin size={18} />;
+      case 'אטרקציות ודברים לעשות': return <Compass size={size} />;
+      case 'מסעדות ומקומות אכילה': return <UtensilsCrossed size={size} />;
+      case 'תחבורה ציבורית':       return <Train size={size} />;
+      case 'מידע כללי וטיפים':     return <Info size={size} />;
+      default:                      return <MapPin size={size} />;
     }
   };
 
@@ -781,42 +836,63 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Category Horizontal Filter Chips — sticky, larger touch targets */}
-          <div
-            className="horizontal-scroll filter-chips-row"
-            style={{
-              marginRight: '-10px',
-              marginLeft: '-10px',
-              paddingRight: '10px',
-              paddingLeft: '10px',
-              paddingTop: '8px',
-              paddingBottom: '10px',
-              position: 'sticky',
-              top: 0,
-              zIndex: 5,
-              gap: 10,
-              background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
-              backdropFilter: 'blur(6px)',
-              WebkitBackdropFilter: 'blur(6px)'
-            }}
-          >
-            {['הכל', ...categories].map((filter, idx) => {
-              const active = filter === selectedFilter;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedFilter(filter)}
-                  className={`filter-chip ${active ? 'active' : ''}`}
-                >
-                  {filter !== 'הכל' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      {getCategoryIcon(filter)}
-                    </span>
-                  )}
-                  <span>{filter}</span>
-                </button>
-              );
-            })}
+          {/* Filter chips row + settings gear */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+            <div
+              className="horizontal-scroll filter-chips-row"
+              style={{
+                marginRight: '-10px',
+                marginLeft: '-10px',
+                paddingRight: '10px',
+                paddingLeft: '44px',
+                paddingTop: '8px',
+                paddingBottom: '10px',
+                gap: 10,
+                background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
+                backdropFilter: 'blur(6px)',
+                WebkitBackdropFilter: 'blur(6px)'
+              }}
+            >
+              {['הכל', ...categories].map((filter, idx) => {
+                const active = filter === selectedFilter;
+                const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedFilter(filter)}
+                    className={`filter-chip ${active ? 'active' : ''}`}
+                    style={active && filter !== 'הכל' ? {
+                      background: color,
+                      borderColor: color,
+                      color: '#fff',
+                    } : {}}
+                  >
+                    {filter !== 'הכל' && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
+                        {getCategoryIcon(filter, 14)}
+                      </span>
+                    )}
+                    <span>{filter}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Settings gear button — floats on the left end of the chips bar */}
+            {canEdit && (
+              <button
+                onClick={() => setShowCategorySettings(true)}
+                title="הגדרות קטגוריות"
+                style={{
+                  position: 'absolute', top: '50%', left: 4, transform: 'translateY(-50%)',
+                  width: 30, height: 30, borderRadius: '50%', border: 'none',
+                  background: 'rgba(11,11,48,0.07)', color: 'var(--text-muted)',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 10,
+                }}
+              >
+                <Settings size={14} />
+              </button>
+            )}
           </div>
 
           {/* Planning Cards List */}
@@ -916,8 +992,8 @@ export default function PlanningTab({ tripId }) {
 
                       <span style={{
                         width: 32, height: 32, borderRadius: 10,
-                        background: 'rgba(11, 11, 48, 0.05)',
-                        color: 'var(--primary-color)',
+                        background: `${getCategoryColor(plan.category)}18`,
+                        color: getCategoryColor(plan.category),
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
                       }}>
@@ -948,7 +1024,14 @@ export default function PlanningTab({ tripId }) {
                             }}>נצפה</span>
                           )}
                         </h3>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{plan.category}</span>
+                        <span style={{
+                          fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
+                        }}>
+                          {plan.description
+                            ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
+                            : plan.category}
+                        </span>
                       </div>
 
                       <ChevronDown
@@ -1150,12 +1233,13 @@ export default function PlanningTab({ tripId }) {
                           }}>
                             <div style={{
                               width: 28, height: 28, borderRadius: '50%',
-                              background: 'rgba(79,70,229,0.08)', color: 'var(--accent)',
+                              background: `${getCategoryColor(act.category)}18`,
+                              color: getCategoryColor(act.category),
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               zIndex: 2,
-                              border: '1.5px solid rgba(79,70,229,0.15)'
+                              border: `1.5px solid ${getCategoryColor(act.category)}40`
                             }}>
-                              {getCategoryIcon(act.category)}
+                              {getCategoryIcon(act.category, 15)}
                             </div>
                             {!isLast && (
                               <div style={{
@@ -1309,6 +1393,92 @@ export default function PlanningTab({ tripId }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Category Settings Modal */}
+      {showCategorySettings && (
+        <div className="modal-overlay" onClick={() => setShowCategorySettings(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+              <h2>התאמת קטגוריות</h2>
+              <button className="btn-close" onClick={() => setShowCategorySettings(false)}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 16 }}>
+              {categories.map(cat => {
+                const s = categorySettings[cat] || {};
+                const color = s.color || '#4f46e5';
+                return (
+                  <div key={cat} style={{ background: 'rgba(11,11,48,0.025)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Category label with live preview */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{
+                        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                        background: `${color}1a`, color,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        {getCategoryIcon(cat, 18)}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{cat}</span>
+                    </div>
+
+                    {/* Icon picker */}
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>אייקון</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {ICON_OPTIONS.map(({ key, Icon }) => {
+                          const selected = s.iconKey === key;
+                          return (
+                            <button key={key} type="button"
+                              onClick={() => {
+                                const updated = { ...categorySettings, [cat]: { ...s, iconKey: key } };
+                                setCategorySettings(updated);
+                                saveCategorySettings(updated);
+                              }}
+                              title={key}
+                              style={{
+                                width: 36, height: 36, borderRadius: 10, border: 'none',
+                                background: selected ? color : 'rgba(11,11,48,0.06)',
+                                color: selected ? '#fff' : 'var(--primary)',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                                boxShadow: selected ? `0 2px 8px ${color}60` : 'none',
+                              }}>
+                              <Icon size={16} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Color picker */}
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>צבע</span>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {COLOR_OPTIONS.map(c => (
+                          <button key={c} type="button"
+                            onClick={() => {
+                              const updated = { ...categorySettings, [cat]: { ...s, color: c } };
+                              setCategorySettings(updated);
+                              saveCategorySettings(updated);
+                            }}
+                            style={{
+                              width: 28, height: 28, borderRadius: '50%', padding: 0,
+                              border: color === c ? '3px solid var(--primary)' : '2px solid rgba(255,255,255,0.5)',
+                              background: c, cursor: 'pointer',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                              transform: color === c ? 'scale(1.18)' : 'scale(1)',
+                              transition: 'transform 0.15s ease',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
