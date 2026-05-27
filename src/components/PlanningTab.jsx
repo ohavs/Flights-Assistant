@@ -182,29 +182,35 @@ export default function PlanningTab({ tripId }) {
   const { canEdit } = useTrip();
   const confirm = useConfirm();
 
-  // FLIP animation: when the visited-sort changes the order, each card
-  // slides from its previous position to the new one. We record every
-  // card's bounding rect after each render in lastPositions; on the next
-  // render the layout effect compares the new position to the recorded
-  // one and plays a transform animation from the delta back to 0.
+  // FLIP animation: only fires when the sorted order of cards changes
+  // (i.e. a visited-toggle moves a card to the bottom). Expanding/collapsing
+  // a card shifts cards below it but does NOT change order — without this
+  // guard those positional shifts triggered an unwanted scroll-like animation.
   const itemRefs = useRef(new Map());
   const lastPositions = useRef(new Map());
+  const prevSortedIds = useRef([]);
   useLayoutEffect(() => {
+    const currentIds = filteredPlans.map(p => p.id);
+    const orderChanged =
+      currentIds.length !== prevSortedIds.current.length ||
+      currentIds.some((id, i) => id !== prevSortedIds.current[i]);
+    prevSortedIds.current = currentIds;
+
     for (const [id, node] of itemRefs.current.entries()) {
       if (!node) continue;
       const newRect = node.getBoundingClientRect();
-      const prev = lastPositions.current.get(id);
-      if (prev) {
-        const dy = prev.top - newRect.top;
-        if (Math.abs(dy) > 2) {
-          node.style.transition = 'none';
-          node.style.transform = `translateY(${dy}px)`;
-          // Force a reflow so the no-transition transform is committed
-          // before we apply the animated transition.
-          // eslint-disable-next-line no-unused-expressions
-          node.offsetHeight;
-          node.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
-          node.style.transform = 'translateY(0)';
+      if (orderChanged) {
+        const prev = lastPositions.current.get(id);
+        if (prev) {
+          const dy = prev.top - newRect.top;
+          if (Math.abs(dy) > 2) {
+            node.style.transition = 'none';
+            node.style.transform = `translateY(${dy}px)`;
+            // eslint-disable-next-line no-unused-expressions
+            node.offsetHeight;
+            node.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+            node.style.transform = 'translateY(0)';
+          }
         }
       }
       lastPositions.current.set(id, newRect);
