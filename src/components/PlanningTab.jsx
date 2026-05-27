@@ -43,6 +43,7 @@ import {
   Landmark,
   Mountain,
   Tent,
+  Navigation,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -242,6 +243,9 @@ export default function PlanningTab({ tripId }) {
   // Category customisation (icon + color), synced with Firestore
   const [categorySettings, setCategorySettings] = useState({});
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+
+  // Locations modal: when a card has multiple navigation targets
+  const [locationsModal, setLocationsModal] = useState(null);
 
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -460,6 +464,21 @@ export default function PlanningTab({ tripId }) {
       case 'מידע כללי וטיפים':     return <Info size={size} />;
       default:                      return <MapPin size={size} />;
     }
+  };
+
+  const getPlanLocations = (plan) => {
+    const locs = [];
+    if (plan.address) {
+      const isUrl = /^https?:\/\//i.test(plan.address);
+      locs.push({
+        label: plan.address,
+        url: isUrl ? plan.address : `https://maps.google.com/?q=${encodeURIComponent(plan.address)}`,
+      });
+    }
+    if (Array.isArray(plan.links)) {
+      plan.links.forEach(link => locs.push({ label: link.label || link.url, url: link.url }));
+    }
+    return locs;
   };
 
   // Filter plans + sort visited ones to the bottom
@@ -1036,6 +1055,35 @@ export default function PlanningTab({ tripId }) {
                         </span>
                       </div>
 
+                      {(() => {
+                        const locs = getPlanLocations(plan);
+                        if (!locs.length) return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (locs.length === 1) {
+                                window.open(locs[0].url, '_blank', 'noreferrer');
+                              } else {
+                                setLocationsModal(plan);
+                              }
+                            }}
+                            title="נווט למיקום"
+                            style={{
+                              width: 32, height: 32, borderRadius: '50%',
+                              background: `${getCategoryColor(plan.category)}18`,
+                              color: getCategoryColor(plan.category),
+                              border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Navigation size={15} />
+                          </button>
+                        );
+                      })()}
+
                       <ChevronDown
                         size={18}
                         style={{
@@ -1395,6 +1443,56 @@ export default function PlanningTab({ tripId }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Locations Modal — multiple navigation targets for a card */}
+      {locationsModal && (
+        <div className="modal-overlay" onClick={() => setLocationsModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: 15 }}>{locationsModal.title}</h2>
+              <button className="btn-close" onClick={() => setLocationsModal(null)}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 8 }}>
+              {getPlanLocations(locationsModal).map((loc, i) => (
+                <a
+                  key={i}
+                  href={loc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setLocationsModal(null)}
+                  style={{ textDecoration: 'none' }}
+                >
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '13px 14px',
+                    background: 'rgba(79,70,229,0.05)',
+                    borderRadius: 14,
+                    border: '1px solid rgba(79,70,229,0.12)',
+                    transition: 'background 0.15s ease',
+                  }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                      background: 'var(--accent)', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Navigation size={16} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {loc.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">
+                        {loc.url}
+                      </div>
+                    </div>
+                    <ExternalLink size={14} style={{ color: 'var(--accent)', flexShrink: 0, opacity: 0.7 }} />
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
