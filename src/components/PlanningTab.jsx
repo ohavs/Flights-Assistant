@@ -836,61 +836,57 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Filter chips row + settings gear */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 5 }}>
-            <div
-              className="horizontal-scroll filter-chips-row"
-              style={{
-                marginRight: '-10px',
-                marginLeft: '-10px',
-                paddingRight: '10px',
-                paddingLeft: '44px',
-                paddingTop: '8px',
-                paddingBottom: '10px',
-                gap: 10,
-                background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
-                backdropFilter: 'blur(6px)',
-                WebkitBackdropFilter: 'blur(6px)'
-              }}
-            >
-              {['הכל', ...categories].map((filter, idx) => {
-                const active = filter === selectedFilter;
-                const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedFilter(filter)}
-                    className={`filter-chip ${active ? 'active' : ''}`}
-                    style={active && filter !== 'הכל' ? {
-                      background: color,
-                      borderColor: color,
-                      color: '#fff',
-                    } : {}}
-                  >
-                    {filter !== 'הכל' && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
-                        {getCategoryIcon(filter, 14)}
-                      </span>
-                    )}
-                    <span>{filter}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {/* Settings gear button — floats on the left end of the chips bar */}
+          {/* Filter chips row — only categories that have at least one plan item */}
+          <div
+            className="horizontal-scroll filter-chips-row"
+            style={{
+              marginRight: '-10px',
+              marginLeft: '-10px',
+              paddingRight: '10px',
+              paddingLeft: '10px',
+              paddingTop: '8px',
+              paddingBottom: '10px',
+              position: 'sticky',
+              top: 0,
+              zIndex: 5,
+              gap: 10,
+              background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)'
+            }}
+          >
+            {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
+              const active = filter === selectedFilter;
+              const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedFilter(filter)}
+                  className={`filter-chip ${active ? 'active' : ''}`}
+                  style={active && filter !== 'הכל' ? {
+                    background: color,
+                    borderColor: color,
+                    color: '#fff',
+                  } : {}}
+                >
+                  {filter !== 'הכל' && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
+                      {getCategoryIcon(filter, 14)}
+                    </span>
+                  )}
+                  <span>{filter}</span>
+                </button>
+              );
+            })}
+            {/* Settings button as last chip in the scrollable row */}
             {canEdit && (
               <button
                 onClick={() => setShowCategorySettings(true)}
                 title="הגדרות קטגוריות"
-                style={{
-                  position: 'absolute', top: '50%', left: 4, transform: 'translateY(-50%)',
-                  width: 30, height: 30, borderRadius: '50%', border: 'none',
-                  background: 'rgba(11,11,48,0.07)', color: 'var(--text-muted)',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  zIndex: 10,
-                }}
+                className="filter-chip"
+                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'rgba(11,11,48,0.05)' }}
               >
-                <Settings size={14} />
+                <Settings size={13} />
               </button>
             )}
           </div>
