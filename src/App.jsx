@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import {
@@ -21,7 +21,7 @@ import CurrencyConverter from './components/CurrencyConverter';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet
+  Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -620,8 +620,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
-  const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [openCategories, setOpenCategories] = useState({});
   const [showAddForm, setShowAddForm] = useState(false);
+  const [quickAddCat, setQuickAddCat] = useState(null);
+  const [quickAddText, setQuickAddText] = useState('');
+  const quickAddInputRef = useRef(null);
 
   const defaultCategoryNames = [
     'מסמכים וסידורים',
@@ -630,7 +633,6 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     'תרופות ועזרה ראשונה',
     'סידורים אחרונים בארץ'
   ];
-  // Categories shown in the dropdown = defaults + any used by existing items.
   const categories = Array.from(new Set([
     ...defaultCategoryNames,
     ...(globalChecklist || []).map(i => i.category).filter(Boolean),
@@ -638,9 +640,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 
   if (!isOpen) return null;
 
-  const toggleCategory = (cat) => {
-    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
-  };
+  const toggleCategory = (cat) =>
+    setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
   const isDirty = !!newItemText.trim();
 
@@ -729,19 +730,19 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     setNewItemCategory('מסמכים וסידורים');
   };
 
-  const handleReset = async () => {
-    const ok = await confirm({
-      title: 'איפוס הרשימה הקבועה',
-      message: 'כל הפריטים האישיים יימחקו ויוחלפו ברשימת ברירת המחדל. הפעולה לא תשפיע על טיולים קיימים.',
-      confirmText: 'אפס לברירת מחדל',
-      cancelText: 'בטל',
-      danger: true,
-    });
-    if (!ok) return;
+  const handleQuickAdd = async (e, cat) => {
+    e.preventDefault();
+    if (!quickAddText.trim() || !userId) return;
+    const updatedList = [
+      ...globalChecklist,
+      { id: 'global-' + Date.now(), text: quickAddText.trim(), completed: false, category: cat },
+    ];
     try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: defaultChecklist });
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
+      setQuickAddText('');
+      setQuickAddCat(null);
     } catch (err) {
-      console.error('Error resetting global checklist:', err);
+      console.error('Error adding to global checklist:', err);
     }
   };
 
@@ -813,12 +814,12 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
           )}
         </div>
 
-        {/* Scrollable checklist items — uses the same .checklist-item-row layout as the trip tab */}
+        {/* Scrollable checklist items — all categories closed by default */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {categories.map((category, catIdx) => {
             const categoryItems = globalChecklist.filter(item => item.category === category);
             if (categoryItems.length === 0) return null;
-            const isCollapsed = !!collapsedCategories[category];
+            const isOpen = !!openCategories[category];
 
             return (
               <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -836,7 +837,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
                     size={16}
                     style={{
                       color: 'var(--text-muted)',
-                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
                       transition: 'transform 0.2s ease', flexShrink: 0
                     }}
                   />
@@ -848,19 +849,14 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
                   </span>
                 </button>
 
-                {!isCollapsed && (
+                {isOpen && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {categoryItems.map((item) => (
                       <div
                         key={item.id}
                         className="glass-card checklist-item-row"
-                        style={{
-                          padding: '12px 14px',
-                          background: 'var(--card-bg)',
-                          border: 'var(--card-border)',
-                        }}
+                        style={{ padding: '12px 14px', background: 'var(--card-bg)', border: 'var(--card-border)' }}
                       >
-                        {/* RTL grid: text(right via flex) | actions(left) — no checkbox here (this is a template, not a tracked list) */}
                         <div />
                         <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-main)', textAlign: 'right', wordBreak: 'break-word' }}>
                           {item.text}
@@ -870,21 +866,52 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
                             type="button"
                             onClick={() => handleStartEdit(item)}
                             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="ערוך"
                           >
                             <Pencil size={15} />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDelete(item.id)}
-                            style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="מחק"
+                            style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             <Trash2 size={15} />
                           </button>
                         </div>
                       </div>
                     ))}
+
+                    {/* Quick-add at bottom of open category */}
+                    {quickAddCat === category ? (
+                      <form onSubmit={e => handleQuickAdd(e, category)}
+                        style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
+                        <input
+                          ref={quickAddInputRef}
+                          type="text"
+                          className="form-control"
+                          autoFocus
+                          placeholder={`פריט ב${category}...`}
+                          value={quickAddText}
+                          onChange={e => setQuickAddText(e.target.value)}
+                          style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                        />
+                        <button type="submit" className="btn-primary"
+                          style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
+                          <Plus size={14} />
+                        </button>
+                        <button type="button"
+                          onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                          <X size={14} />
+                        </button>
+                      </form>
+                    ) : (
+                      <button type="button"
+                        onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                        <Plus size={14} />
+                        הוסף לרשימה
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -893,20 +920,9 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 
           {globalChecklist.length === 0 && (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-              <p>הרשימה ריקה. הוסף פריטים או אפס לברירת המחדל.</p>
+              <p>הרשימה ריקה. הוסף פריטים חדשים.</p>
             </div>
           )}
-
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, paddingBottom: 16 }}>
-            <button
-              onClick={handleReset}
-              className="btn-secondary"
-              style={{ fontSize: 13, padding: '10px 16px', gap: 6, color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
-            >
-              <RotateCcw size={14} />
-              <span>איפוס רשימה קבועה לברירת מחדל</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>
