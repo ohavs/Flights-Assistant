@@ -97,9 +97,9 @@ async function fetchLatestRates() {
   try {
     let rates;
     try {
-      rates = await fetchFromFrankfurter();
-    } catch {
       rates = await fetchFromCDN();
+    } catch {
+      rates = await fetchFromFrankfurter();
     }
     writeCache(rates);
     return { rates, fetchedAt: Date.now() };
