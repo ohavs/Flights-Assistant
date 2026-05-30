@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -9,7 +9,7 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -49,15 +49,17 @@ export const defaultChecklist = [
 ];
 
 export default function ChecklistTab({ tripId, globalChecklist = [] }) {
-  const { canEdit, isOwner } = useTrip();
+  const { canEdit, tripMembers } = useTrip();
   const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
-  // IDs of global items the owner explicitly removed from this trip (won't re-sync)
+  // IDs of global items explicitly removed from this trip (won't re-sync)
   const [deletedGlobalIds, setDeletedGlobalIds] = useState([]);
+  // Each trip member's globalChecklist fetched from their user doc
+  const [membersGlobalChecklists, setMembersGlobalChecklists] = useState({});
   // Collapsed by default to save space
   const [collapsedCategories, setCollapsedCategories] = useState({});
   const [showAddForm, setShowAddForm] = useState(false);
@@ -95,7 +97,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     return () => unsubscribe();
   }, [tripId]);
 
-  // Track which global items were explicitly deleted from this trip
+  // Track which global items were explicitly deleted from this trip (won't re-sync)
   useEffect(() => {
     if (!tripId) return;
     const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
@@ -104,15 +106,40 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     return () => unsub();
   }, [tripId]);
 
-  // Auto-sync: when the owner views the checklist, write any global items
-  // that are missing from this trip's Firestore checklist (respecting
-  // items the owner deliberately removed).
+  // Listen to every trip member's user doc to get their globalChecklist
   useEffect(() => {
-    if (!tripId || !isOwner || loading || !globalChecklist.length) return;
+    const uids = Object.keys(tripMembers);
+    if (uids.length === 0) return;
+    const unsubs = uids.map(uid =>
+      onSnapshot(doc(db, 'users', uid), snap => {
+        setMembersGlobalChecklists(prev => ({
+          ...prev,
+          [uid]: snap.data()?.globalChecklist || [],
+        }));
+      })
+    );
+    return () => unsubs.forEach(u => u());
+  }, [tripMembers]);
+
+  // Merged global checklist from all members (deduped by ID)
+  const mergedGlobalChecklist = useMemo(() => {
+    const seen = new Set();
+    return Object.values(membersGlobalChecklists)
+      .flat()
+      .filter(item => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+  }, [membersGlobalChecklists]);
+
+  // Auto-sync: any canEdit member viewing the checklist writes missing global items
+  useEffect(() => {
+    if (!tripId || !canEdit || loading || !mergedGlobalChecklist.length) return;
 
     const existingIds = new Set(items.map(i => i.id));
     const deletedSet = new Set(deletedGlobalIds);
-    const missing = globalChecklist.filter(
+    const missing = mergedGlobalChecklist.filter(
       item => !existingIds.has(item.id) && !deletedSet.has(item.id)
     );
     if (missing.length === 0) return;
@@ -124,7 +151,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       });
     });
     batch.commit().catch(console.error);
-  }, [globalChecklist, items, loading, tripId, isOwner, deletedGlobalIds]);
+  }, [mergedGlobalChecklist, items, loading, tripId, canEdit, deletedGlobalIds]);
 
   const handleToggle = async (item) => {
     if (!tripId) return;
@@ -181,9 +208,9 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
     await deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
 
-    // If this item originated from the global list, remember it was deleted
-    // so the auto-sync doesn't add it back on the next render.
-    if (globalChecklist.some(g => g.id === id)) {
+    // If this item originated from any member's global list, track the deletion
+    // so auto-sync doesn't add it back.
+    if (mergedGlobalChecklist.some(g => g.id === id)) {
       const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
       await setDoc(syncRef, {
         deletedGlobalIds: [...new Set([...deletedGlobalIds, id])]
@@ -191,36 +218,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     }
   };
 
-  const handleReset = async () => {
-    if (!tripId) return;
-    const ok = await confirm({
-      title: 'איפוס רשימת ציוד',
-      message: 'כל הפריטים האישיים בצ\'קליסט של הטיול יימחקו ויוחלפו ברשימת ברירת המחדל. האם להמשיך?',
-      confirmText: 'אפס לרשימת ברירת מחדל',
-      cancelText: 'בטל',
-      danger: true,
-    });
-    if (!ok) return;
-
-    setLoading(true);
-    const batch = writeBatch(db);
-    items.forEach((item) => {
-      batch.delete(doc(db, 'trips', tripId, 'checklist', item.id));
-    });
-    await batch.commit();
-
-    const batch2 = writeBatch(db);
-    defaultChecklist.forEach((item) => {
-      const docRef = doc(collection(db, 'trips', tripId, 'checklist'), item.id);
-      batch2.set(docRef, {
-        text: item.text,
-        completed: item.completed,
-        category: item.category
-      });
-    });
-    await batch2.commit();
-    setLoading(false);
-  };
 
   // Calculations for progress bar
   const totalCount = items.length;
@@ -429,19 +426,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         );
       })}
 
-      {/* Reset button — owner/editor only */}
-      {canEdit && (
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-        <button
-          onClick={handleReset}
-          className="btn-secondary"
-          style={{ fontSize: '13px', padding: '10px 16px', gap: '6px', color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
-        >
-          <RotateCcw size={14} />
-          <span>איפוס לרשימת ברירת המחדל</span>
-        </button>
-      </div>
-      )}
 
     </div>
   );
