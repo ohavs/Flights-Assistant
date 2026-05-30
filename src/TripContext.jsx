@@ -8,6 +8,10 @@ const TripContext = createContext({
   canEdit: false,
   isOwner: false,
   ownerProfile: null,
+  currentUid: null,
+  currentUserProfile: null,
+  memberProfiles: {},
+  tripMembers: {},
 });
 
 export const TripProvider = TripContext.Provider;

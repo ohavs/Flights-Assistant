@@ -1449,6 +1449,10 @@ export default function App() {
             const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
             return ownerUid && ownerUid !== user.uid ? memberProfiles[ownerUid] : null;
           })(),
+          currentUid: user.uid,
+          currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
+          memberProfiles: memberProfiles,
+          tripMembers: selectedTrip?.members || {},
         }}>
           {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
           {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}

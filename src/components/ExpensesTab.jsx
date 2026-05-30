@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -9,6 +9,7 @@ import {
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
 import { CustomDropdown } from './CustomDatePicker';
+import { useTrip } from '../TripContext';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
@@ -27,6 +28,28 @@ const getCurrencyInfo = (code) => {
   const meta = CURRENCY_META[code];
   return meta ? { code, ...meta } : { code, symbol: code, name: code, flag: '' };
 };
+
+function MemberAvatar({ profile, size = 22 }) {
+  if (profile?.photoURL) {
+    return (
+      <img src={profile.photoURL} alt="" referrerPolicy="no-referrer"
+        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+    );
+  }
+  const name = profile?.displayName || profile?.email || '?';
+  const initials = name.charAt(0).toUpperCase();
+  const hue = name.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      background: `hsl(${hue},55%,82%)`, color: `hsl(${hue},55%,28%)`,
+      fontSize: Math.round(size * 0.46), fontWeight: 800,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    }}>
+      {initials}
+    </div>
+  );
+}
 
 export default function ExpensesTab({ tripId }) {
   const [expenses, setExpenses] = useState([]);
@@ -60,6 +83,19 @@ export default function ExpensesTab({ tripId }) {
   const [rates, setRates] = useState(null);
 
   const confirm = useConfirm();
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
+
+  // Payer state
+  const [paidBy, setPaidBy] = useState('');
+  const [showPayerDropdown, setShowPayerDropdown] = useState(false);
+
+  const getPayerProfile = useCallback((uid) => {
+    if (!uid) return null;
+    return uid === currentUid ? currentUserProfile : (memberProfiles?.[uid] || null);
+  }, [currentUid, currentUserProfile, memberProfiles]);
+
+  const memberUids = useMemo(() => Object.keys(tripMembers), [tripMembers]);
+  const isSharedTrip = memberUids.length > 1;
 
   // Load expenses
   useEffect(() => {
@@ -102,6 +138,7 @@ export default function ExpensesTab({ tripId }) {
       setDescription(expense.description || '');
       setLinkedPlanId(expense.linkedPlanId || '');
       setCustomPlace(expense.customPlace || '');
+      setPaidBy(expense.paidBy || currentUid || '');
       if (!base.includes(expense.currency)) base.push(expense.currency);
     } else {
       setEditingId(null);
@@ -111,12 +148,14 @@ export default function ExpensesTab({ tripId }) {
       setDescription('');
       setLinkedPlanId('');
       setCustomPlace('');
+      setPaidBy(currentUid || '');
     }
     setFormQuickCurrencies(base);
     setShowCurrencyList(false);
     setCurrencySearch('');
     setShowPlanDropdown(false);
     setPlanFilter('');
+    setShowPayerDropdown(false);
     setShowForm(true);
   };
 
@@ -145,6 +184,7 @@ export default function ExpensesTab({ tripId }) {
       linkedPlanId: linkedPlanId || null,
       customPlace: customPlace.trim() || null,
       ilsSnapshot: ilsSnapshot,
+      paidBy: paidBy || currentUid || null,
       createdAt: existing?.createdAt || new Date().toISOString(),
     });
     setShowForm(false);
@@ -386,6 +426,16 @@ export default function ExpensesTab({ tripId }) {
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLabel}</span>
                               </div>
                             ) : null}
+                            {isSharedTrip && expense.paidBy && (() => {
+                              const profile = getPayerProfile(expense.paidBy);
+                              const name = profile?.displayName || profile?.email || '';
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                  <MemberAvatar profile={profile} size={14} />
+                                  {name && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {/* Action buttons — LEFT side in RTL */}
@@ -503,6 +553,51 @@ export default function ExpensesTab({ tripId }) {
                   </div>
                 )}
               </div>
+
+              {/* ── Payer picker (shared trips only) ─────────────────── */}
+              {isSharedTrip && (
+                <div className="form-group" style={{ position: 'relative' }}>
+                  <label>מי שילם</label>
+                  <button type="button"
+                    onClick={() => setShowPayerDropdown(s => !s)}
+                    className="form-control"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontFamily: 'inherit', paddingTop: 8, paddingBottom: 8 }}
+                  >
+                    <MemberAvatar profile={getPayerProfile(paidBy)} size={24} />
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--primary)', textAlign: 'right' }}>
+                      {getPayerProfile(paidBy)?.displayName || getPayerProfile(paidBy)?.email || paidBy}
+                      {paidBy === currentUid && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
+                    </span>
+                    <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showPayerDropdown ? 'rotate(180deg)' : 'none' }} />
+                  </button>
+                  {showPayerDropdown && (
+                    <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: '#fff', border: '1px solid rgba(11,11,48,0.1)', borderRadius: 12, boxShadow: '0 8px 24px rgba(11,11,48,0.12)', overflow: 'hidden', marginTop: 4 }}>
+                      {memberUids.map(uid => {
+                        const profile = getPayerProfile(uid);
+                        return (
+                          <button key={uid} type="button"
+                            onClick={() => { setPaidBy(uid); setShowPayerDropdown(false); }}
+                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: uid === paidBy ? 'rgba(79,70,229,0.06)' : 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                          >
+                            <MemberAvatar profile={profile} size={30} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {profile?.displayName || profile?.email || uid}
+                              </div>
+                              {uid === currentUid && (
+                                <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>אני</div>
+                              )}
+                            </div>
+                            {uid === paidBy && (
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── Section A: link to planning item ─────────────────── */}
               <div style={{
