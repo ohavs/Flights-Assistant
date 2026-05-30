@@ -60,6 +60,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // Long-press to reveal category delete
   const [longPressedCat, setLongPressedCat] = useState(null);
   const longPressTimer = useRef(null);
+  const longPressActive = useRef(false); // ref avoids stale-closure in onClick
 
   // Two-tap delete for items
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
@@ -147,9 +148,15 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
   const startLongPress = (cat) => {
-    longPressTimer.current = setTimeout(() => setLongPressedCat(cat), 550);
+    longPressActive.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressActive.current = true;
+      setLongPressedCat(cat);
+    }, 550);
   };
-  const cancelLongPress = () => clearTimeout(longPressTimer.current);
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer.current);
+  };
 
   const handleDeleteCategory = async (cat) => {
     const catItems = items.filter(i => i.category === cat);
@@ -326,12 +333,15 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <button
                 type="button"
-                onClick={() => { if (!isLongPressed) toggleCategory(category); }}
+                onClick={() => {
+                  if (longPressActive.current) { longPressActive.current = false; return; }
+                  toggleCategory(category);
+                }}
                 onMouseDown={() => canEdit && startLongPress(category)}
                 onMouseUp={cancelLongPress}
-                onMouseLeave={cancelLongPress}
-                onTouchStart={() => canEdit && startLongPress(category)}
+                onTouchStart={e => { e.stopPropagation(); canEdit && startLongPress(category); }}
                 onTouchEnd={cancelLongPress}
+                onTouchMove={cancelLongPress}
                 style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
               >
                 <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />

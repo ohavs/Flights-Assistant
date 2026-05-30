@@ -625,6 +625,9 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
   const [quickAddCat, setQuickAddCat] = useState(null);
   const [quickAddText, setQuickAddText] = useState('');
   const quickAddInputRef = useRef(null);
+  const [longPressedCat, setLongPressedCat] = useState(null);
+  const longPressTimer = useRef(null);
+  const longPressActive = useRef(false);
 
   const defaultCategoryNames = [
     'מסמכים וסידורים',
@@ -642,6 +645,34 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 
   const toggleCategory = (cat) =>
     setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+
+  const startLongPress = (cat) => {
+    longPressActive.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressActive.current = true;
+      setLongPressedCat(cat);
+    }, 550);
+  };
+  const cancelLongPress = () => clearTimeout(longPressTimer.current);
+
+  const handleDeleteCategory = async (cat) => {
+    const catItems = (globalChecklist || []).filter(i => i.category === cat);
+    const ok = await confirm({
+      title: 'מחיקת קטגוריה',
+      message: catItems.length > 0
+        ? `האם למחוק את "${cat}" ואת ${catItems.length} הפריטים שבה?`
+        : `האם למחוק את הקטגוריה "${cat}"?`,
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
+    setLongPressedCat(null);
+    if (!ok) return;
+    const updatedList = (globalChecklist || []).filter(i => i.category !== cat);
+    try {
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
+    } catch (err) {
+      console.error('Error deleting category:', err);
+    }
+  };
 
   const isDirty = !!newItemText.trim();
 
@@ -823,31 +854,55 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 
             return (
               <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  style={{
-                    background: 'transparent', border: 'none',
-                    padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
-                    cursor: 'pointer', width: '100%',
-                    fontFamily: 'var(--font-hebrew)'
-                  }}
-                >
-                  <ChevronDown
-                    size={16}
-                    style={{
-                      color: 'var(--text-muted)',
-                      transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
-                      transition: 'transform 0.2s ease', flexShrink: 0
+                {/* Category header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (longPressActive.current) { longPressActive.current = false; return; }
+                      toggleCategory(category);
                     }}
-                  />
-                  <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
-                    {category}
-                  </h3>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-                    {categoryItems.length}
-                  </span>
-                </button>
+                    onMouseDown={() => startLongPress(category)}
+                    onMouseUp={cancelLongPress}
+                    onTouchStart={e => { e.stopPropagation(); startLongPress(category); }}
+                    onTouchEnd={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                    style={{
+                      flex: 1, background: 'transparent', border: 'none',
+                      padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
+                      cursor: 'pointer', fontFamily: 'var(--font-hebrew)'
+                    }}
+                  >
+                    <ChevronDown
+                      size={16}
+                      style={{
+                        color: 'var(--text-muted)',
+                        transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                        transition: 'transform 0.2s ease', flexShrink: 0
+                      }}
+                    />
+                    <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                      {category}
+                    </h3>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      {categoryItems.length}
+                    </span>
+                  </button>
+
+                  {longPressedCat === category && (
+                    <>
+                      <button type="button" onClick={() => handleDeleteCategory(category)}
+                        style={{ padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                        <Trash2 size={12} />
+                        מחק קטגוריה
+                      </button>
+                      <button type="button" onClick={() => setLongPressedCat(null)}
+                        style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                        <X size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
 
                 {isOpen && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
