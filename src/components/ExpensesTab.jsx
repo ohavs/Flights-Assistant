@@ -229,6 +229,14 @@ export default function ExpensesTab({ tripId }) {
                 </span>
               </div>
             )}
+            {ilsTotal !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: 'rgba(22,163,74,0.04)', borderRadius: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'rgb(22,163,74)', opacity: 0.85 }}>לאדם (÷2)</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'rgb(22,163,74)', opacity: 0.85 }}>
+                  ₪{(ilsTotal / 2).toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 4, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>סה"כ רשומות</span>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{expenses.length}</span>
@@ -251,35 +259,42 @@ export default function ExpensesTab({ tripId }) {
             const linked = plans.find(p => p.id === expense.linkedPlanId);
             const placeLabel = linked?.title || expense.customPlace || null;
             return (
-              <div key={expense.id} className="glass-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(79,70,229,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Receipt size={18} style={{ color: 'var(--accent)' }} />
+              <div key={expense.id} className="glass-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {/* Icon badge */}
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(79,70,229,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Receipt size={16} style={{ color: 'var(--accent)' }} />
                 </div>
+
+                {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)' }}>
-                    {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)' }}>
+                      {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
                       {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
                     </span>
                   </div>
                   {expense.description ? (
-                    <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {expense.description}
                     </div>
                   ) : null}
                   {placeLabel ? (
-                    <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Link2 size={10} />
-                      {placeLabel}
+                    <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Link2 size={9} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLabel}</span>
                     </div>
                   ) : null}
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => openForm(expense)} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(11,11,48,0.04)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Pencil size={13} />
+
+                {/* Action buttons — appear on the LEFT in RTL */}
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => openForm(expense)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(11,11,48,0.04)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Pencil size={12} />
                   </button>
-                  <button onClick={() => handleDelete(expense.id)} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.06)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Trash2 size={13} />
+                  <button onClick={() => handleDelete(expense.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.06)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trash2 size={12} />
                   </button>
                 </div>
               </div>
