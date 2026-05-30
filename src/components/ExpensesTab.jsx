@@ -363,11 +363,17 @@ export default function ExpensesTab({ tripId }) {
                               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
                                 {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
                               </span>
-                              {expense.currency !== 'ILS' && expense.ilsSnapshot != null && (
-                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', opacity: 0.75 }}>
-                                  ≈ ₪{expense.ilsSnapshot.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                                </span>
-                              )}
+                              {expense.currency !== 'ILS' && (() => {
+                                const ils = expense.ilsSnapshot != null
+                                  ? expense.ilsSnapshot
+                                  : (rates ? convert(expense.amount, expense.currency, 'ILS', rates) : null);
+                                if (ils == null) return null;
+                                return (
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', opacity: 0.7 }}>
+                                    ≈ ₪{ils.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             {expense.description ? (
                               <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
