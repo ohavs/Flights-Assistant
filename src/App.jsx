@@ -1452,7 +1452,7 @@ export default function App() {
         }}>
           {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
           {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
-          {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+          {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
           {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
           {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
         </TripProvider>

@@ -48,14 +48,16 @@ export const defaultChecklist = [
   { id: 'chk-4', text: 'הפעלת חבילת גלישה / סים בינלאומי', completed: false, category: 'סידורים אחרונים בארץ' },
 ];
 
-export default function ChecklistTab({ tripId }) {
-  const { canEdit } = useTrip();
+export default function ChecklistTab({ tripId, globalChecklist = [] }) {
+  const { canEdit, isOwner } = useTrip();
   const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
+  // IDs of global items the owner explicitly removed from this trip (won't re-sync)
+  const [deletedGlobalIds, setDeletedGlobalIds] = useState([]);
   // Collapsed by default to save space
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
@@ -91,6 +93,37 @@ export default function ChecklistTab({ tripId }) {
 
     return () => unsubscribe();
   }, [tripId]);
+
+  // Track which global items were explicitly deleted from this trip
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
+      setDeletedGlobalIds(snap.exists() ? (snap.data()?.deletedGlobalIds || []) : []);
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  // Auto-sync: when the owner views the checklist, write any global items
+  // that are missing from this trip's Firestore checklist (respecting
+  // items the owner deliberately removed).
+  useEffect(() => {
+    if (!tripId || !isOwner || loading || !globalChecklist.length) return;
+
+    const existingIds = new Set(items.map(i => i.id));
+    const deletedSet = new Set(deletedGlobalIds);
+    const missing = globalChecklist.filter(
+      item => !existingIds.has(item.id) && !deletedSet.has(item.id)
+    );
+    if (missing.length === 0) return;
+
+    const batch = writeBatch(db);
+    missing.forEach(item => {
+      batch.set(doc(db, 'trips', tripId, 'checklist', item.id), {
+        text: item.text, completed: false, category: item.category,
+      });
+    });
+    batch.commit().catch(console.error);
+  }, [globalChecklist, items, loading, tripId, isOwner, deletedGlobalIds]);
 
   const handleToggle = async (item) => {
     if (!tripId) return;
@@ -153,8 +186,17 @@ export default function ChecklistTab({ tripId }) {
       danger: true,
     });
     if (!ok) return;
-    const docRef = doc(db, 'trips', tripId, 'checklist', id);
-    await deleteDoc(docRef);
+
+    await deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
+
+    // If this item originated from the global list, remember it was deleted
+    // so the auto-sync doesn't add it back on the next render.
+    if (globalChecklist.some(g => g.id === id)) {
+      const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+      await setDoc(syncRef, {
+        deletedGlobalIds: [...new Set([...deletedGlobalIds, id])]
+      }, { merge: true });
+    }
   };
 
   const handleReset = async () => {
