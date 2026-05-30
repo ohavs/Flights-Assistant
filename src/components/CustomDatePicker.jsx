@@ -794,7 +794,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
 /* ══════════════════════════════════════════════════════════
    CUSTOM DROPDOWN — fully styled select replacement
    ══════════════════════════════════════════════════════════ */
-export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש' }) {
+export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש', onCommit }) {
   const [isOpen, setIsOpen] = useState(false);
   const [popupRect, setPopupRect] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -873,6 +873,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
     const val = draft.trim();
     if (!val) { setAdding(false); return; }
     handleSelect(val);
+    onCommit?.(val);
   };
 
   // Reset adding mode when closing

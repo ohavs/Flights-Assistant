@@ -9,7 +9,7 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
+import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -60,6 +60,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [deletedGlobalIds, setDeletedGlobalIds] = useState([]);
   // Collapsed by default to save space
   const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const toggleCategory = (cat) => {
     setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -133,28 +134,22 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     });
   };
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!newItemText.trim() || !tripId) return;
-
+  const doAdd = async (overrideCategory) => {
+    const text = newItemText.trim();
+    if (!text || !tripId) return;
+    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
     if (editingItemId) {
-      const docRef = doc(db, 'trips', tripId, 'checklist', editingItemId);
-      await updateDoc(docRef, {
-        text: newItemText.trim(),
-        category: newItemCategory
-      });
+      await updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat });
       setEditingItemId(null);
     } else {
-      const id = 'custom-' + Date.now();
-      const docRef = doc(db, 'trips', tripId, 'checklist', id);
-      await setDoc(docRef, {
-        text: newItemText.trim(),
-        completed: false,
-        category: newItemCategory
-      });
+      await setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), { text, completed: false, category: cat });
     }
-
     setNewItemText('');
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    await doAdd();
   };
 
   const handleCancelEdit = () => {
@@ -167,12 +162,9 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
-    
-    // Smooth scroll the app-content container to the top
+    setShowAddForm(true);
     const container = document.querySelector('.app-content');
-    if (container) {
-      container.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (id) => {
@@ -269,47 +261,62 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         </div>
       </div>
 
-      {/* Add New Item form — owner/editor only */}
+      {/* Add New Item — collapsible card, owner/editor only */}
       {canEdit && (
-      <form onSubmit={handleAdd} className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h4 style={{ fontSize: '15px', fontWeight: '800', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
-          {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
-        </h4>
-        
-        <div className="row-2" style={{ gap: '10px' }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>מה להביא?</label>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="למשל: סוודר, מטען" 
-              value={newItemText}
-              onChange={(e) => setNewItemText(e.target.value)}
-              required
-            />
-          </div>
-          <CustomDropdown
-            label="קטגוריה"
-            value={newItemCategory}
-            onChange={setNewItemCategory}
-            options={categories}
-            addable
-            addLabel="הוסף קטגוריה חדשה"
-          />
-        </div>
-
-        {editingItemId ? (
-          <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-            <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-            <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
-          </div>
-        ) : (
-          <button type="submit" className="btn-primary" style={{ marginTop: '4px', width: '100%' }}>
-            <Plus size={18} />
-            <span>הוסף פריט לרשימה</span>
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <button
+            type="button"
+            onClick={() => setShowAddForm(s => !s)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}
+          >
+            {showAddForm
+              ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+              {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
+            </span>
+            {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
           </button>
-        )}
-      </form>
+
+          {showAddForm && (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מה להביא?</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="למשל: סוודר, מטען"
+                    value={newItemText}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    required
+                  />
+                </div>
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={newItemCategory}
+                  onChange={setNewItemCategory}
+                  options={categories}
+                  addable
+                  addLabel="הוסף קטגוריה חדשה"
+                  onCommit={(cat) => { if (newItemText.trim()) doAdd(cat); }}
+                />
+              </div>
+
+              {editingItemId ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+                  <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
+                </div>
+              ) : (
+                <button type="submit" className="btn-primary" style={{ width: '100%' }}>
+                  <Plus size={18} />
+                  <span>הוסף פריט לרשימה</span>
+                </button>
+              )}
+            </form>
+          )}
+        </div>
       )}
 
       {/* Checklist categories — collapsible by default */}

@@ -21,7 +21,7 @@ import CurrencyConverter from './components/CurrencyConverter';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw, ChevronDown, AlertCircle, Coins, Wallet
+  Check, RotateCcw, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -621,6 +621,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
   const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const defaultCategoryNames = [
     'מסמכים וסידורים',
@@ -660,35 +661,30 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     onClose();
   };
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!newItemText.trim() || !userId) return;
-
+  const doAdd = async (overrideCategory) => {
+    const text = newItemText.trim();
+    if (!text || !userId) return;
+    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
     let updatedList;
     if (editingItemId) {
       updatedList = globalChecklist.map(item =>
-        item.id === editingItemId
-          ? { ...item, text: newItemText.trim(), category: newItemCategory }
-          : item
+        item.id === editingItemId ? { ...item, text, category: cat } : item
       );
       setEditingItemId(null);
     } else {
-      const newItem = {
-        id: 'global-' + Date.now(),
-        text: newItemText.trim(),
-        completed: false,
-        category: newItemCategory
-      };
-      updatedList = [...globalChecklist, newItem];
+      updatedList = [...globalChecklist, { id: 'global-' + Date.now(), text, completed: false, category: cat }];
     }
-
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: updatedList });
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
       setNewItemText('');
     } catch (err) {
       console.error('Error updating global checklist:', err);
     }
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    await doAdd();
   };
 
   const handleDelete = async (id) => {
@@ -714,6 +710,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
+    setShowAddForm(true);
   };
 
   const handleCancelEdit = async () => {
@@ -760,46 +757,61 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
           נהל כאן את רשימת הציוד הקבועה שלך. פריטים אלו יועתקו אוטומטית לכל טיול חדש שתפתח, ותוכל להתאים אותם אישית לכל טיול בנפרד.
         </p>
 
-        {/* Form Container — inputs share the same height as the trip checklist */}
-        <form onSubmit={handleAdd} className="glass-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
-          <h4 style={{ fontSize: 15, fontWeight: 800, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 6, margin: 0 }}>
-            {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
-          </h4>
+        {/* Form Container — collapsible */}
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
+          <button
+            type="button"
+            onClick={() => setShowAddForm(s => !s)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}
+          >
+            {showAddForm
+              ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+              {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
+            </span>
+            {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+          </button>
 
-          <div className="row-2" style={{ gap: 10 }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>מה להביא?</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="למשל: רישיון נהיגה, כפכפים"
-                value={newItemText}
-                onChange={(e) => setNewItemText(e.target.value)}
-                required
-              />
-            </div>
-            <CustomDropdown
-              label="קטגוריה"
-              value={newItemCategory}
-              onChange={setNewItemCategory}
-              options={categories}
-              addable
-              addLabel="הוסף קטגוריה חדשה"
-            />
-          </div>
+          {showAddForm && (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מה להביא?</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="למשל: רישיון נהיגה, כפכפים"
+                    value={newItemText}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    required
+                  />
+                </div>
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={newItemCategory}
+                  onChange={setNewItemCategory}
+                  options={categories}
+                  addable
+                  addLabel="הוסף קטגוריה חדשה"
+                  onCommit={(cat) => { if (newItemText.trim()) doAdd(cat); }}
+                />
+              </div>
 
-          {editingItemId ? (
-            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-              <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
-            </div>
-          ) : (
-            <button type="submit" className="btn-primary" style={{ marginTop: 4, width: '100%' }}>
-              <Plus size={18} />
-              <span>הוסף פריט לרשימה</span>
-            </button>
+              {editingItemId ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+                  <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
+                </div>
+              ) : (
+                <button type="submit" className="btn-primary" style={{ width: '100%' }}>
+                  <Plus size={18} />
+                  <span>הוסף פריט לרשימה</span>
+                </button>
+              )}
+            </form>
           )}
-        </form>
+        </div>
 
         {/* Scrollable checklist items — uses the same .checklist-item-row layout as the trip tab */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
