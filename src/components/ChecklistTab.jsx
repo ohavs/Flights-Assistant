@@ -20,8 +20,9 @@ function RemindersCard({ tripId, canEdit }) {
   const [idx, setIdx] = useState(0);
   const [mode, setMode] = useState(null); // null | 'add' | 'edit'
   const [inputText, setInputText] = useState('');
-  const touchStartX = useRef(null);
+  const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const ignoreScroll = useRef(false);
 
   useEffect(() => {
     if (!tripId) return;
@@ -38,23 +39,23 @@ function RemindersCard({ tripId, canEdit }) {
     if (mode && inputRef.current) inputRef.current.focus();
   }, [mode]);
 
+  // Scroll to idx programmatically (dot click / after add)
+  const scrollTo = (i) => {
+    if (!scrollRef.current) return;
+    ignoreScroll.current = true;
+    scrollRef.current.scrollTo({ left: i * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    setIdx(i);
+    setTimeout(() => { ignoreScroll.current = false; }, 400);
+  };
+
+  const handleScroll = () => {
+    if (ignoreScroll.current || !scrollRef.current) return;
+    const { scrollLeft, offsetWidth } = scrollRef.current;
+    const newIdx = Math.round(scrollLeft / offsetWidth);
+    if (newIdx !== idx) setIdx(newIdx);
+  };
+
   const cur = reminders[idx] ?? null;
-
-  const navigate = (dir) => {
-    setMode(null);
-    setIdx(i => dir === 'left'
-      ? Math.min(i + 1, reminders.length - 1)
-      : Math.max(i - 1, 0));
-  };
-
-  const onTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
-  const onTouchEnd = e => {
-    if (touchStartX.current === null) return;
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    touchStartX.current = null;
-    if (dx < -50) navigate('left');
-    else if (dx > 50) navigate('right');
-  };
 
   const handleSave = async () => {
     const text = inputText.trim();
@@ -62,12 +63,15 @@ function RemindersCard({ tripId, canEdit }) {
     if (mode === 'add') {
       const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
       await setDoc(newRef, { text, createdAt: Date.now() });
-      setIdx(reminders.length);
+      const newIdx = reminders.length;
+      setMode(null);
+      setInputText('');
+      setTimeout(() => scrollTo(newIdx), 50);
     } else if (mode === 'edit' && cur) {
       await updateDoc(doc(db, 'trips', tripId, 'reminders', cur.id), { text });
+      setMode(null);
+      setInputText('');
     }
-    setMode(null);
-    setInputText('');
   };
 
   const handleDelete = async () => {
@@ -79,8 +83,11 @@ function RemindersCard({ tripId, canEdit }) {
   return (
     <div className="glass-card" style={{
       flex: 1, padding: '12px 14px',
-      display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', minWidth: 0,
+      display: 'flex', flexDirection: 'column', gap: 6,
+      overflow: 'hidden', minWidth: 0,
     }}>
+      <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
@@ -93,15 +100,11 @@ function RemindersCard({ tripId, canEdit }) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', minWidth: 0 }}>
         {mode !== null ? (
           <div style={{ width: '100%', display: 'flex', gap: 5, alignItems: 'center' }}>
-            <input
-              ref={inputRef}
-              type="text"
-              className="form-control"
-              value={inputText}
-              onChange={e => setInputText(e.target.value)}
+            <input ref={inputRef} type="text" className="form-control"
+              value={inputText} onChange={e => setInputText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setMode(null); }}
               placeholder="כתוב תזכורת..."
               style={{ flex: 1, minHeight: 32, fontSize: 13 }}
@@ -119,35 +122,49 @@ function RemindersCard({ tripId, canEdit }) {
             {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
           </span>
         ) : (
-          <p
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
+          /* Scroll-snap carousel — browser handles physics */
+          <div
+            ref={scrollRef}
+            className="rc-scroll"
+            onScroll={handleScroll}
             style={{
-              fontSize: 13, fontWeight: 600, color: 'var(--text-main)',
-              textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
-              display: '-webkit-box', WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical', overflow: 'hidden',
-              cursor: reminders.length > 1 ? 'grab' : 'default',
-              userSelect: 'none',
+              display: 'flex', width: '100%', height: '100%',
+              overflowX: 'auto', overflowY: 'hidden',
+              scrollSnapType: 'x mandatory',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none', msOverflowStyle: 'none',
+              direction: 'ltr', // avoid RTL scroll quirks
             }}
           >
-            {cur?.text}
-          </p>
+            {reminders.map(r => (
+              <div key={r.id} style={{
+                flex: '0 0 100%', scrollSnapAlign: 'start',
+                direction: 'rtl', display: 'flex', alignItems: 'center',
+              }}>
+                <p style={{
+                  fontSize: 13, fontWeight: 600, color: 'var(--text-main)',
+                  textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
+                  display: '-webkit-box', WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  userSelect: 'none',
+                }}>{r.text}</p>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Bottom: dots + edit/delete */}
+      {/* Bottom: dots + actions */}
       {mode === null && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 18 }}>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {reminders.map((_, i) => (
-              <button key={i} onClick={() => setIdx(i)}
-                style={{
-                  width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
-                  border: 'none', padding: 0, flexShrink: 0,
-                  background: i === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
-                  cursor: 'pointer', transition: 'all 0.2s ease',
-                }} />
+              <button key={i} onClick={() => scrollTo(i)} style={{
+                width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
+                border: 'none', padding: 0, flexShrink: 0,
+                background: i === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
+                cursor: 'pointer', transition: 'all 0.2s ease',
+              }} />
             ))}
           </div>
           {canEdit && cur && (
@@ -443,15 +460,23 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
       {/* Progress + Reminders Row */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-        {/* Compact Progress Card */}
-        <div className="glass-card" style={{ flex: '0 0 38%', padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary-color)', margin: 0, lineHeight: 1.3 }}>מוכנות לטיסה</h3>
-            <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1, flexShrink: 0 }}>{progressPercent}%</span>
-          </div>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, fontWeight: 600 }}>{completedCount}/{totalCount} פריטים</p>
-          <div style={{ width: '100%', height: 6, background: 'rgba(11,11,48,0.06)', borderRadius: 50, overflow: 'hidden' }}>
-            <div style={{ width: `${progressPercent}%`, height: '100%', background: 'var(--primary-color)', borderRadius: 50, transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)' }} />
+        {/* Compact Progress Card — circular ring */}
+        <div className="glass-card" style={{ flex: '0 0 36%', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
+          <div style={{ position: 'relative', width: 74, height: 74, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width={74} height={74} viewBox="0 0 74 74" style={{ position: 'absolute', top: 0, left: 0 }}>
+              <circle cx={37} cy={37} r={29} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={7} />
+              <circle cx={37} cy={37} r={29} fill="none" stroke="var(--primary-color)" strokeWidth={7}
+                strokeLinecap="round"
+                strokeDasharray="182.21"
+                strokeDashoffset={`${(182.21 * (1 - progressPercent / 100)).toFixed(2)}`}
+                transform="rotate(-90 37 37)"
+                style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
+              />
+            </svg>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, lineHeight: 1 }}>
+              <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+              <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', marginTop: 2 }}>{completedCount}/{totalCount}</span>
+            </div>
           </div>
         </div>
 
