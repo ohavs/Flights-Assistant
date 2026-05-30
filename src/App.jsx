@@ -628,6 +628,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
   const [longPressedCat, setLongPressedCat] = useState(null);
   const longPressTimer = useRef(null);
   const longPressActive = useRef(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [editCatText, setEditCatText] = useState('');
 
   const defaultCategoryNames = [
     'מסמכים וסידורים',
@@ -671,6 +673,20 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
       await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
     } catch (err) {
       console.error('Error deleting category:', err);
+    }
+  };
+
+  const handleRenameCategory = async (oldCat, newCat) => {
+    const trimmed = newCat.trim();
+    setEditingCat(null);
+    if (!trimmed || trimmed === oldCat) return;
+    const updatedList = (globalChecklist || []).map(item =>
+      item.category === oldCat ? { ...item, category: trimmed } : item
+    );
+    try {
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
+    } catch (err) {
+      console.error('Error renaming category:', err);
     }
   };
 
@@ -856,50 +872,74 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
               <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* Category header row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (longPressActive.current) { longPressActive.current = false; return; }
-                      toggleCategory(category);
-                    }}
-                    onMouseDown={() => startLongPress(category)}
-                    onMouseUp={cancelLongPress}
-                    onTouchStart={e => { e.stopPropagation(); startLongPress(category); }}
-                    onTouchEnd={cancelLongPress}
-                    onTouchMove={cancelLongPress}
-                    style={{
-                      flex: 1, background: 'transparent', border: 'none',
-                      padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
-                      cursor: 'pointer', fontFamily: 'var(--font-hebrew)'
-                    }}
-                  >
-                    <ChevronDown
-                      size={16}
-                      style={{
-                        color: 'var(--text-muted)',
-                        transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
-                        transition: 'transform 0.2s ease', flexShrink: 0
-                      }}
-                    />
-                    <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
-                      {category}
-                    </h3>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-                      {categoryItems.length}
-                    </span>
-                  </button>
-
-                  {longPressedCat === category && (
-                    <>
-                      <button type="button" onClick={() => handleDeleteCategory(category)}
-                        style={{ padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                        <Trash2 size={12} />
-                        מחק קטגוריה
+                  {editingCat === category ? (
+                    <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
+                      style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="text" autoFocus className="form-control"
+                        value={editCatText} onChange={e => setEditCatText(e.target.value)}
+                        style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+                      />
+                      <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
+                        <Check size={13} />
                       </button>
-                      <button type="button" onClick={() => setLongPressedCat(null)}
-                        style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                      <button type="button" onClick={() => setEditingCat(null)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
                         <X size={14} />
                       </button>
+                    </form>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (longPressActive.current) { longPressActive.current = false; return; }
+                          toggleCategory(category);
+                        }}
+                        onMouseDown={() => startLongPress(category)}
+                        onMouseUp={cancelLongPress}
+                        onTouchStart={e => { e.stopPropagation(); startLongPress(category); }}
+                        onTouchEnd={cancelLongPress}
+                        onTouchMove={cancelLongPress}
+                        style={{
+                          flex: 1, background: 'transparent', border: 'none',
+                          padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
+                          cursor: 'pointer', fontFamily: 'var(--font-hebrew)'
+                        }}
+                      >
+                        <ChevronDown
+                          size={16}
+                          style={{
+                            color: 'var(--text-muted)',
+                            transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                            transition: 'transform 0.2s ease', flexShrink: 0
+                          }}
+                        />
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                          {category}
+                        </h3>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                          {categoryItems.length}
+                        </span>
+                      </button>
+
+                      {longPressedCat === category && (
+                        <>
+                          <button type="button"
+                            onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteCategory(category)}
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            <Trash2 size={13} />
+                          </button>
+                          <button type="button" onClick={() => setLongPressedCat(null)}
+                            style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                            <X size={14} />
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
