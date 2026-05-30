@@ -95,7 +95,11 @@ export default function ExpensesTab({ tripId }) {
   }, [currentUid, currentUserProfile, memberProfiles]);
 
   const memberUids = useMemo(() => Object.keys(tripMembers), [tripMembers]);
-  const isSharedTrip = memberUids.length > 1;
+  // Effective payer list: trip members or, for new trips, just the current user
+  const payerUids = useMemo(
+    () => memberUids.length > 0 ? memberUids : (currentUid ? [currentUid] : []),
+    [memberUids, currentUid]
+  );
 
   // Load expenses
   useEffect(() => {
@@ -243,6 +247,19 @@ export default function ExpensesTab({ tripId }) {
     })).sort((a, b) => b.total - a.total);
   }, [expenses]);
 
+  // Per-payer ILS totals for the summary breakdown
+  const summaryByPayer = useMemo(() => {
+    if (!rates) return [];
+    const totals = {};
+    expenses.forEach(e => {
+      const uid = e.paidBy || currentUid || 'unknown';
+      totals[uid] = (totals[uid] || 0) + convert(e.amount, e.currency, 'ILS', rates);
+    });
+    return Object.entries(totals)
+      .map(([uid, total]) => ({ uid, total, profile: getPayerProfile(uid) }))
+      .sort((a, b) => b.total - a.total);
+  }, [expenses, rates, currentUid, getPayerProfile]);
+
   // Currencies available to add (not yet in formQuickCurrencies)
   const addableCurrencies = useMemo(
     () => ALL_CURRENCIES.filter(c => !formQuickCurrencies.includes(c.code) &&
@@ -325,6 +342,26 @@ export default function ExpensesTab({ tripId }) {
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'rgb(22,163,74)', opacity: 0.85 }}>
                   ₪{(ilsTotal / 2).toLocaleString('he-IL', { maximumFractionDigits: 2 })}
                 </span>
+              </div>
+            )}
+            {/* Per-payer breakdown — shown when at least one expense has paidBy */}
+            {summaryByPayer.length > 0 && expenses.some(e => e.paidBy) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, marginTop: 2, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
+                <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0, marginBottom: 2 }}>פירוט לפי משלם</p>
+                {summaryByPayer.map(({ uid, total, profile }) => (
+                  <div key={uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'rgba(79,70,229,0.04)', borderRadius: 9 }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
+                      ₪{total.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
+                        {profile?.displayName || profile?.email || uid}
+                        {uid === currentUid && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
+                      </span>
+                      <MemberAvatar profile={profile} size={20} />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 4, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
@@ -426,7 +463,7 @@ export default function ExpensesTab({ tripId }) {
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLabel}</span>
                               </div>
                             ) : null}
-                            {isSharedTrip && expense.paidBy && (() => {
+                            {expense.paidBy && (() => {
                               const profile = getPayerProfile(expense.paidBy);
                               const name = profile?.displayName || profile?.email || '';
                               return (
@@ -554,30 +591,32 @@ export default function ExpensesTab({ tripId }) {
                 )}
               </div>
 
-              {/* ── Payer picker (shared trips only) ─────────────────── */}
-              {isSharedTrip && (
+              {/* ── Payer picker ──────────────────────────────────────── */}
+              {payerUids.length > 0 && (
                 <div className="form-group" style={{ position: 'relative' }}>
                   <label>מי שילם</label>
                   <button type="button"
-                    onClick={() => setShowPayerDropdown(s => !s)}
+                    onClick={() => payerUids.length > 1 && setShowPayerDropdown(s => !s)}
                     className="form-control"
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontFamily: 'inherit', paddingTop: 8, paddingBottom: 8 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: payerUids.length > 1 ? 'pointer' : 'default', fontFamily: 'inherit', paddingTop: 8, paddingBottom: 8 }}
                   >
-                    <MemberAvatar profile={getPayerProfile(paidBy)} size={24} />
+                    <MemberAvatar profile={getPayerProfile(paidBy || currentUid)} size={24} />
                     <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--primary)', textAlign: 'right' }}>
-                      {getPayerProfile(paidBy)?.displayName || getPayerProfile(paidBy)?.email || paidBy}
-                      {paidBy === currentUid && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
+                      {getPayerProfile(paidBy || currentUid)?.displayName || getPayerProfile(paidBy || currentUid)?.email || 'אני'}
+                      {(paidBy || currentUid) === currentUid && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
                     </span>
-                    <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showPayerDropdown ? 'rotate(180deg)' : 'none' }} />
+                    {payerUids.length > 1 && (
+                      <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showPayerDropdown ? 'rotate(180deg)' : 'none' }} />
+                    )}
                   </button>
-                  {showPayerDropdown && (
+                  {showPayerDropdown && payerUids.length > 1 && (
                     <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: '#fff', border: '1px solid rgba(11,11,48,0.1)', borderRadius: 12, boxShadow: '0 8px 24px rgba(11,11,48,0.12)', overflow: 'hidden', marginTop: 4 }}>
-                      {memberUids.map(uid => {
+                      {payerUids.map(uid => {
                         const profile = getPayerProfile(uid);
                         return (
                           <button key={uid} type="button"
                             onClick={() => { setPaidBy(uid); setShowPayerDropdown(false); }}
-                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: uid === paidBy ? 'rgba(79,70,229,0.06)' : 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: uid === (paidBy || currentUid) ? 'rgba(79,70,229,0.06)' : 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
                           >
                             <MemberAvatar profile={profile} size={30} />
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -588,7 +627,7 @@ export default function ExpensesTab({ tripId }) {
                                 <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>אני</div>
                               )}
                             </div>
-                            {uid === paidBy && (
+                            {uid === (paidBy || currentUid) && (
                               <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
                             )}
                           </button>
