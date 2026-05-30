@@ -125,13 +125,26 @@ export default function ExpensesTab({ tripId }) {
     if (!amount || !tripId) return;
     const id = editingId || 'exp-' + Date.now();
     const existing = editingId ? expenses.find(x => x.id === editingId) : null;
+    const parsedAmount = parseFloat(amount);
+
+    // Snapshot the ILS equivalent at the moment of saving — stored permanently,
+    // not recalculated on later rate changes.
+    let ilsSnapshot = null;
+    if (currency !== 'ILS' && rates) {
+      ilsSnapshot = convert(parsedAmount, currency, 'ILS', rates);
+    } else if (currency !== 'ILS' && existing?.ilsSnapshot) {
+      // Preserve existing snapshot if rates unavailable
+      ilsSnapshot = existing.ilsSnapshot;
+    }
+
     await setDoc(doc(db, 'trips', tripId, 'expenses', id), {
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       currency,
       category: category || 'כללי',
       description: description.trim(),
       linkedPlanId: linkedPlanId || null,
       customPlace: customPlace.trim() || null,
+      ilsSnapshot: ilsSnapshot,
       createdAt: existing?.createdAt || new Date().toISOString(),
     });
     setShowForm(false);
@@ -343,13 +356,18 @@ export default function ExpensesTab({ tripId }) {
 
                           {/* Content */}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)' }}>
                                 {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
                               </span>
                               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
                                 {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
                               </span>
+                              {expense.currency !== 'ILS' && expense.ilsSnapshot != null && (
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', opacity: 0.75 }}>
+                                  ≈ ₪{expense.ilsSnapshot.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
+                                </span>
+                              )}
                             </div>
                             {expense.description ? (
                               <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
