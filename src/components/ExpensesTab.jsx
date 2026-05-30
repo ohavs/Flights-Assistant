@@ -8,10 +8,20 @@ import {
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
+import { CustomDropdown } from './CustomDatePicker';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
 const DEFAULT_CURRENCIES = ['ILS', 'EUR', 'USD'];
+
+const DEFAULT_EXPENSE_CATEGORIES = [
+  'אוכל ושתייה',
+  'תחבורה',
+  'לינה',
+  'בידור ותיירות',
+  'קניות',
+  'כללי',
+];
 
 const getCurrencyInfo = (code) => {
   const meta = CURRENCY_META[code];
@@ -29,9 +39,13 @@ export default function ExpensesTab({ tripId }) {
   const [editingId, setEditingId] = useState(null);
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('ILS');
+  const [category, setCategory] = useState('כללי');
   const [description, setDescription] = useState('');
   const [linkedPlanId, setLinkedPlanId] = useState('');
   const [customPlace, setCustomPlace] = useState('');
+
+  // Collapsed state per expense category group
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   // Currency selector in form
   const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
@@ -84,15 +98,16 @@ export default function ExpensesTab({ tripId }) {
       setEditingId(expense.id);
       setAmount(String(expense.amount));
       setCurrency(expense.currency);
+      setCategory(expense.category || 'כללי');
       setDescription(expense.description || '');
       setLinkedPlanId(expense.linkedPlanId || '');
       setCustomPlace(expense.customPlace || '');
-      // make sure editing currency is in the chips
       if (!base.includes(expense.currency)) base.push(expense.currency);
     } else {
       setEditingId(null);
       setAmount('');
       setCurrency(persistentQuickCurrencies[0] || 'ILS');
+      setCategory('כללי');
       setDescription('');
       setLinkedPlanId('');
       setCustomPlace('');
@@ -113,6 +128,7 @@ export default function ExpensesTab({ tripId }) {
     await setDoc(doc(db, 'trips', tripId, 'expenses', id), {
       amount: parseFloat(amount),
       currency,
+      category: category || 'כללי',
       description: description.trim(),
       linkedPlanId: linkedPlanId || null,
       customPlace: customPlace.trim() || null,
@@ -142,6 +158,26 @@ export default function ExpensesTab({ tripId }) {
     if (!rates) return null;
     return expenses.reduce((sum, e) => sum + convert(e.amount, e.currency, 'ILS', rates), 0);
   }, [expenses, rates]);
+
+  // All categories: defaults + any custom ones used in existing expenses
+  const expenseCategories = useMemo(() => Array.from(new Set([
+    ...DEFAULT_EXPENSE_CATEGORIES,
+    ...expenses.map(e => e.category || 'כללי'),
+  ])), [expenses]);
+
+  // Expenses grouped by category, only categories with items
+  const expensesByCategory = useMemo(() => {
+    const groups = {};
+    expenses.forEach(e => {
+      const cat = e.category || 'כללי';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(e);
+    });
+    return groups;
+  }, [expenses]);
+
+  const toggleCategory = (cat) =>
+    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
   const summary = useMemo(() => {
     const totals = {};
@@ -245,7 +281,7 @@ export default function ExpensesTab({ tripId }) {
         </div>
       )}
 
-      {/* Expense list */}
+      {/* Expense list — grouped by category */}
       {expenses.length === 0 ? (
         <div className="glass-card" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
           <Wallet size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
@@ -253,50 +289,94 @@ export default function ExpensesTab({ tripId }) {
           <p style={{ fontSize: 13, marginTop: 4 }}>לחץ על "הוצאה חדשה" כדי להתחיל לעקוב</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {expenses.map(expense => {
-            const curr = getCurrencyInfo(expense.currency);
-            const linked = plans.find(p => p.id === expense.linkedPlanId);
-            const placeLabel = linked?.title || expense.customPlace || null;
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {Object.entries(expensesByCategory).map(([cat, catExpenses]) => {
+            const isCollapsed = !!collapsedCategories[cat];
+            const catIlsTotal = rates
+              ? catExpenses.reduce((s, e) => s + convert(e.amount, e.currency, 'ILS', rates), 0)
+              : null;
+
             return (
-              <div key={expense.id} className="glass-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                {/* Icon badge */}
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(79,70,229,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Receipt size={16} style={{ color: 'var(--accent)' }} />
-                </div>
+              <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Category header */}
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(cat)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    width: '100%', background: 'transparent', border: 'none',
+                    padding: '2px 4px', cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  <ChevronDown
+                    size={15}
+                    style={{
+                      color: 'var(--text-muted)', flexShrink: 0,
+                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)',
+                      transition: 'transform 0.2s ease',
+                    }}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+                    {cat}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>
+                    {catIlsTotal !== null
+                      ? `₪${catIlsTotal.toLocaleString('he-IL', { maximumFractionDigits: 0 })} · ${catExpenses.length}`
+                      : catExpenses.length}
+                  </span>
+                </button>
 
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)' }}>
-                      {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
-                      {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
-                    </span>
+                {/* Expense rows */}
+                {!isCollapsed && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {catExpenses.map(expense => {
+                      const curr = getCurrencyInfo(expense.currency);
+                      const linked = plans.find(p => p.id === expense.linkedPlanId);
+                      const placeLabel = linked?.title || expense.customPlace || null;
+                      return (
+                        <div key={expense.id} className="glass-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          {/* Icon badge */}
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(79,70,229,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Receipt size={15} style={{ color: 'var(--accent)' }} />
+                          </div>
+
+                          {/* Content */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                              <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)' }}>
+                                {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                              </span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+                                {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
+                              </span>
+                            </div>
+                            {expense.description ? (
+                              <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {expense.description}
+                              </div>
+                            ) : null}
+                            {placeLabel ? (
+                              <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <Link2 size={9} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLabel}</span>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {/* Action buttons — LEFT side in RTL */}
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            <button onClick={() => openForm(expense)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(11,11,48,0.04)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => handleDelete(expense.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.06)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {expense.description ? (
-                    <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {expense.description}
-                    </div>
-                  ) : null}
-                  {placeLabel ? (
-                    <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <Link2 size={9} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLabel}</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Action buttons — appear on the LEFT in RTL */}
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  <button onClick={() => openForm(expense)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(11,11,48,0.04)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Pencil size={12} />
-                  </button>
-                  <button onClick={() => handleDelete(expense.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.06)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Trash2 size={12} />
-                  </button>
-                </div>
+                )}
               </div>
             );
           })}
@@ -406,6 +486,16 @@ export default function ExpensesTab({ tripId }) {
                   onChange={e => setDescription(e.target.value)}
                   placeholder="למשל: ארוחת ערב, כרטיסי כניסה, תחבורה..." />
               </div>
+
+              {/* Category */}
+              <CustomDropdown
+                label="קטגוריה"
+                value={category}
+                onChange={setCategory}
+                options={expenseCategories}
+                addable
+                addLabel="הוסף קטגוריה חדשה"
+              />
 
               {/* Link to plan item — dropdown */}
               <div className="form-group">
