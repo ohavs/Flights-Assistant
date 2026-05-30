@@ -46,6 +46,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletedGlobalIds, setDeletedGlobalIds] = useState([]);
+  const [extraCategories, setExtraCategories] = useState([]);
   const [membersGlobalChecklists, setMembersGlobalChecklists] = useState({});
 
   // Form state
@@ -85,6 +86,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   ];
   const categories = Array.from(new Set([
     ...defaultCategoryNames,
+    ...extraCategories,
     ...items.map(i => i.category).filter(Boolean),
   ]));
 
@@ -101,6 +103,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     if (!tripId) return;
     return onSnapshot(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
       setDeletedGlobalIds(snap.exists() ? (snap.data()?.deletedGlobalIds || []) : []);
+      setExtraCategories(snap.exists() ? (snap.data()?.extraCategories || []) : []);
     });
   }, [tripId]);
 
@@ -160,6 +163,12 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     clearTimeout(longPressTimer.current);
   };
 
+  const saveExtraCategory = async (cat) => {
+    if (!cat || !tripId || categories.includes(cat)) return;
+    const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+    await setDoc(syncRef, { extraCategories: [...new Set([...extraCategories, cat])] }, { merge: true });
+  };
+
   const handleDeleteCategory = async (cat) => {
     const catItems = items.filter(i => i.category === cat);
     const ok = await confirm({
@@ -170,10 +179,12 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
     setLongPressedCat(null);
-    if (!ok || catItems.length === 0) return;
+    if (!ok) return;
+    const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
     const batch = writeBatch(db);
     catItems.forEach(item => batch.delete(doc(db, 'trips', tripId, 'checklist', item.id)));
     await batch.commit();
+    await setDoc(syncRef, { extraCategories: extraCategories.filter(c => c !== cat) }, { merge: true });
   };
 
   const handleRenameCategory = async (oldCat, newCat) => {
@@ -314,7 +325,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                 <CustomDropdown
                   label="קטגוריה" value={newItemCategory} onChange={setNewItemCategory}
                   options={categories} addable addLabel="הוסף קטגוריה חדשה"
-                  onCommit={cat => { if (newItemText.trim()) doAdd(cat); }}
+                  onCommit={cat => saveExtraCategory(cat)}
                 />
               </div>
               {editingItemId ? (
@@ -335,7 +346,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       {/* Checklist categories — all closed by default */}
       {categories.map((category, catIdx) => {
         const categoryItems = items.filter(item => item.category === category);
-        if (categoryItems.length === 0) return null;
+        if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
         const isOpen = !!openCategories[category];
         const isLongPressed = longPressedCat === category;
         const doneCount = categoryItems.filter(i => i.completed).length;

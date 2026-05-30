@@ -615,7 +615,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
 /* ══════════════════════════════════════════════════════════
    GLOBAL CHECKLIST MODAL
    ══════════════════════════════════════════════════════════ */
-function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
+function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategories = [], userId }) {
   const confirm = useConfirm();
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
@@ -640,6 +640,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
   ];
   const categories = Array.from(new Set([
     ...defaultCategoryNames,
+    ...extraCategories,
     ...(globalChecklist || []).map(i => i.category).filter(Boolean),
   ]));
 
@@ -657,6 +658,17 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
   };
   const cancelLongPress = () => clearTimeout(longPressTimer.current);
 
+  const saveExtraCategory = async (cat) => {
+    if (!cat || !userId || categories.includes(cat)) return;
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        globalExtraCategories: [...new Set([...extraCategories, cat])],
+      });
+    } catch (err) {
+      console.error('Error saving extra category:', err);
+    }
+  };
+
   const handleDeleteCategory = async (cat) => {
     const catItems = (globalChecklist || []).filter(i => i.category === cat);
     const ok = await confirm({
@@ -670,7 +682,10 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     if (!ok) return;
     const updatedList = (globalChecklist || []).filter(i => i.category !== cat);
     try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
+      await updateDoc(doc(db, 'users', userId), {
+        globalChecklist: updatedList,
+        globalExtraCategories: extraCategories.filter(c => c !== cat),
+      });
     } catch (err) {
       console.error('Error deleting category:', err);
     }
@@ -842,7 +857,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
                   options={categories}
                   addable
                   addLabel="הוסף קטגוריה חדשה"
-                  onCommit={(cat) => { if (newItemText.trim()) doAdd(cat); }}
+                  onCommit={(cat) => saveExtraCategory(cat)}
                 />
               </div>
 
@@ -865,7 +880,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {categories.map((category, catIdx) => {
             const categoryItems = globalChecklist.filter(item => item.category === category);
-            if (categoryItems.length === 0) return null;
+            if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
             const isOpen = !!openCategories[category];
 
             return (
@@ -1037,6 +1052,7 @@ export default function App() {
   const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
+  const [globalExtraCategories, setGlobalExtraCategories] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
 
   // Save user profile to Firestore on first login
@@ -1168,6 +1184,7 @@ export default function App() {
     const userRef = doc(db, 'users', user.uid);
     return onSnapshot(userRef, (snap) => {
       setGlobalChecklist(snap.data()?.globalChecklist || []);
+      setGlobalExtraCategories(snap.data()?.globalExtraCategories || []);
     });
   }, [user]);
 
@@ -1469,6 +1486,7 @@ export default function App() {
           isOpen={showGlobalChecklistModal}
           onClose={() => setShowGlobalChecklistModal(false)}
           globalChecklist={globalChecklist}
+          extraCategories={globalExtraCategories}
           userId={user.uid}
         />
 
