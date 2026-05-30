@@ -14,6 +14,160 @@ import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 
+/* ── RemindersCard ──────────────────────────────────────────────────────── */
+function RemindersCard({ tripId, canEdit }) {
+  const [reminders, setReminders] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [mode, setMode] = useState(null); // null | 'add' | 'edit'
+  const [inputText, setInputText] = useState('');
+  const touchStartX = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(collection(db, 'trips', tripId, 'reminders'), snap => {
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      setReminders(docs);
+      setIdx(i => Math.min(i, Math.max(0, docs.length - 1)));
+    });
+  }, [tripId]);
+
+  useEffect(() => {
+    if (mode && inputRef.current) inputRef.current.focus();
+  }, [mode]);
+
+  const cur = reminders[idx] ?? null;
+
+  const navigate = (dir) => {
+    setMode(null);
+    setIdx(i => dir === 'left'
+      ? Math.min(i + 1, reminders.length - 1)
+      : Math.max(i - 1, 0));
+  };
+
+  const onTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
+  const onTouchEnd = e => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (dx < -50) navigate('left');
+    else if (dx > 50) navigate('right');
+  };
+
+  const handleSave = async () => {
+    const text = inputText.trim();
+    if (!text) { setMode(null); return; }
+    if (mode === 'add') {
+      const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
+      await setDoc(newRef, { text, createdAt: Date.now() });
+      setIdx(reminders.length);
+    } else if (mode === 'edit' && cur) {
+      await updateDoc(doc(db, 'trips', tripId, 'reminders', cur.id), { text });
+    }
+    setMode(null);
+    setInputText('');
+  };
+
+  const handleDelete = async () => {
+    if (!cur) return;
+    await deleteDoc(doc(db, 'trips', tripId, 'reminders', cur.id));
+    setIdx(i => Math.max(0, i - 1));
+  };
+
+  return (
+    <div className="glass-card" style={{
+      flex: 1, padding: '12px 14px',
+      display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', minWidth: 0,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
+        {canEdit && mode === null && (
+          <button onClick={() => { setInputText(''); setMode('add'); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 2, display: 'flex' }}>
+            <Plus size={15} />
+          </button>
+        )}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', overflow: 'hidden', minWidth: 0 }}>
+        {mode !== null ? (
+          <div style={{ width: '100%', display: 'flex', gap: 5, alignItems: 'center' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              className="form-control"
+              value={inputText}
+              onChange={e => setInputText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setMode(null); }}
+              placeholder="כתוב תזכורת..."
+              style={{ flex: 1, minHeight: 32, fontSize: 13 }}
+            />
+            <button onClick={handleSave} className="btn-primary" style={{ padding: '4px 8px', flexShrink: 0 }}>
+              <Check size={13} />
+            </button>
+            <button onClick={() => setMode(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 3, display: 'flex', flexShrink: 0 }}>
+              <X size={13} />
+            </button>
+          </div>
+        ) : reminders.length === 0 ? (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, width: '100%', textAlign: 'center' }}>
+            {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
+          </span>
+        ) : (
+          <p
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+            style={{
+              fontSize: 13, fontWeight: 600, color: 'var(--text-main)',
+              textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
+              display: '-webkit-box', WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              cursor: reminders.length > 1 ? 'grab' : 'default',
+              userSelect: 'none',
+            }}
+          >
+            {cur?.text}
+          </p>
+        )}
+      </div>
+
+      {/* Bottom: dots + edit/delete */}
+      {mode === null && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 18 }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {reminders.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)}
+                style={{
+                  width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
+                  border: 'none', padding: 0, flexShrink: 0,
+                  background: i === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
+                  cursor: 'pointer', transition: 'all 0.2s ease',
+                }} />
+            ))}
+          </div>
+          {canEdit && cur && (
+            <div style={{ display: 'flex' }}>
+              <button onClick={() => { setInputText(cur.text); setMode('edit'); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
+                <Pencil size={12} />
+              </button>
+              <button onClick={handleDelete}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex' }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const defaultChecklist = [
   { id: 'doc-1', text: 'דרכון בתוקף (לפחות חצי שנה)', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-2', text: 'כרטיסי טיסה מודפסים / בנייד', completed: false, category: 'מסמכים וסידורים' },
@@ -287,18 +441,22 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Progress Card */}
-      <div className="glass-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary-color)' }}>מוכנות לטיסה</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>נארזו {completedCount} מתוך {totalCount} פריטים</p>
+      {/* Progress + Reminders Row */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+        {/* Compact Progress Card */}
+        <div className="glass-card" style={{ flex: '0 0 38%', padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary-color)', margin: 0, lineHeight: 1.3 }}>מוכנות לטיסה</h3>
+            <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1, flexShrink: 0 }}>{progressPercent}%</span>
           </div>
-          <span style={{ fontSize: 28, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, fontWeight: 600 }}>{completedCount}/{totalCount} פריטים</p>
+          <div style={{ width: '100%', height: 6, background: 'rgba(11,11,48,0.06)', borderRadius: 50, overflow: 'hidden' }}>
+            <div style={{ width: `${progressPercent}%`, height: '100%', background: 'var(--primary-color)', borderRadius: 50, transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)' }} />
+          </div>
         </div>
-        <div style={{ width: '100%', height: 8, background: 'rgba(11,11,48,0.06)', borderRadius: 50, overflow: 'hidden' }}>
-          <div style={{ width: `${progressPercent}%`, height: '100%', background: 'var(--primary-color)', borderRadius: 50, transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)' }} />
-        </div>
+
+        {/* Reminders carousel */}
+        <RemindersCard tripId={tripId} canEdit={canEdit} />
       </div>
 
       {/* Add New Item — collapsible, editor only */}
