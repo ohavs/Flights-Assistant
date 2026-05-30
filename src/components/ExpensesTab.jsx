@@ -159,11 +159,12 @@ export default function ExpensesTab({ tripId }) {
     return expenses.reduce((sum, e) => sum + convert(e.amount, e.currency, 'ILS', rates), 0);
   }, [expenses, rates]);
 
-  // All categories: defaults + any custom ones used in existing expenses
+  // All categories: defaults + used in expenses + all planning item categories
   const expenseCategories = useMemo(() => Array.from(new Set([
     ...DEFAULT_EXPENSE_CATEGORIES,
     ...expenses.map(e => e.category || 'כללי'),
-  ])), [expenses]);
+    ...plans.map(p => p.category).filter(Boolean),
+  ])), [expenses, plans]);
 
   // Expenses grouped by category, only categories with items
   const expensesByCategory = useMemo(() => {
@@ -479,56 +480,56 @@ export default function ExpensesTab({ tripId }) {
                 )}
               </div>
 
-              {/* Description */}
-              <div className="form-group">
-                <label>תיאור</label>
-                <input type="text" className="form-control" value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  placeholder="למשל: ארוחת ערב, כרטיסי כניסה, תחבורה..." />
-              </div>
-
-              {/* Category */}
-              <CustomDropdown
-                label="קטגוריה"
-                value={category}
-                onChange={setCategory}
-                options={expenseCategories}
-                addable
-                addLabel="הוסף קטגוריה חדשה"
-              />
-
-              {/* Link to plan item — dropdown */}
-              <div className="form-group">
-                <label>קישור לפריט מרשימת הטיול (אופציונלי)</label>
+              {/* ── Section A: link to planning item ─────────────────── */}
+              <div style={{
+                padding: '14px', borderRadius: 14,
+                background: linkedPlanId ? 'rgba(79,70,229,0.06)' : 'rgba(79,70,229,0.03)',
+                border: `1.5px solid ${linkedPlanId ? 'rgba(79,70,229,0.22)' : 'rgba(79,70,229,0.12)'}`,
+                display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Link2 size={13} style={{ color: 'var(--accent)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent)' }}>בחירה מרשימת הטיול</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>— קטגוריה תמולא אוטומטית</span>
+                </div>
 
                 {linkedPlanId ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(79,70,229,0.06)', borderRadius: 10 }}>
-                    <Link2 size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 13, color: 'var(--accent)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {plans.find(p => p.id === linkedPlanId)?.title || linkedPlanId}
-                    </span>
-                    <button type="button" onClick={() => { setLinkedPlanId(''); setShowPlanDropdown(false); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2 }}>
-                      <X size={14} />
-                    </button>
-                  </div>
+                  (() => {
+                    const linked = plans.find(p => p.id === linkedPlanId);
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.08)', borderRadius: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {linked?.title || linkedPlanId}
+                          </div>
+                          {linked?.category && (
+                            <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 2, opacity: 0.75 }}>{linked.category}</div>
+                          )}
+                        </div>
+                        <button type="button"
+                          onClick={() => { setLinkedPlanId(''); setShowPlanDropdown(false); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2, flexShrink: 0 }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    );
+                  })()
                 ) : (
                   <>
                     <button type="button"
                       onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); }}
                       className="form-control"
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 14, color: 'var(--text-muted)' }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-muted)', background: '#fff' }}
                     >
-                      <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מרשימת האטרקציות...'}</span>
-                      <ChevronDown size={16} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
+                      <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מהרשימה...'}</span>
+                      <ChevronDown size={15} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
                     </button>
 
                     {showPlanDropdown && (
-                      <div style={{ marginTop: 4, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
+                      <div style={{ border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
                         <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: '#fff' }}>
                           <div style={{ position: 'relative' }}>
-                            <input
-                              type="text" className="form-control"
+                            <input type="text" className="form-control"
                               placeholder="חפש אטרקציה, מסעדה..."
                               value={planFilter}
                               onChange={e => setPlanFilter(e.target.value)}
@@ -545,14 +546,18 @@ export default function ExpensesTab({ tripId }) {
                         </div>
                         <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                           {plans.length === 0 ? (
-                            <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
-                              אין פריטים בתכנון הטיול עדיין
-                            </p>
+                            <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>אין פריטים בתכנון הטיול עדיין</p>
                           ) : filteredDropdownPlans.length === 0 ? (
                             <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>לא נמצאו תוצאות</p>
                           ) : filteredDropdownPlans.map(p => (
                             <button key={p.id} type="button"
-                              onClick={() => { setLinkedPlanId(p.id); setCustomPlace(''); setShowPlanDropdown(false); setPlanFilter(''); }}
+                              onClick={() => {
+                                setLinkedPlanId(p.id);
+                                setCategory(p.category || 'כללי'); // auto-fill category
+                                setCustomPlace('');
+                                setShowPlanDropdown(false);
+                                setPlanFilter('');
+                              }}
                               style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
                             >
                               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
@@ -566,24 +571,73 @@ export default function ExpensesTab({ tripId }) {
                 )}
               </div>
 
-              {/* Custom place — separate field */}
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <MapPin size={13} style={{ color: 'var(--accent)' }} />
-                  מקום ידנית (אופציונלי)
-                </label>
-                <input
-                  type="text" className="form-control"
-                  placeholder="שם מקום שלא נמצא ברשימה..."
-                  value={customPlace}
-                  onChange={e => { setCustomPlace(e.target.value); if (e.target.value.trim()) setLinkedPlanId(''); }}
-                />
-                {customPlace && linkedPlanId === '' && (
-                  <p style={{ fontSize: 11, color: 'var(--accent)', marginTop: 4, fontWeight: 600 }}>
-                    מקום ידנית פעיל — בחירה מהרשימה תבטל אותו
-                  </p>
-                )}
+              {/* ── OR separator ─────────────────────────────────────── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.08)' }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1 }}>— או —</span>
+                <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.08)' }} />
               </div>
+
+              {/* ── Section B: manual entry ───────────────────────────── */}
+              <div style={{
+                padding: '14px', borderRadius: 14,
+                background: (description.trim() || customPlace.trim()) ? 'rgba(11,11,48,0.04)' : 'rgba(11,11,48,0.02)',
+                border: `1.5px solid ${(description.trim() || customPlace.trim()) ? 'rgba(11,11,48,0.12)' : 'rgba(11,11,48,0.07)'}`,
+                display: 'flex', flexDirection: 'column', gap: 12,
+                opacity: linkedPlanId ? 0.5 : 1,
+                pointerEvents: linkedPlanId ? 'none' : 'auto',
+                transition: 'opacity 0.2s ease',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Pencil size={12} style={{ color: 'var(--text-muted)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)' }}>הוספה ידנית</span>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12 }}>תיאור ההוצאה</label>
+                  <input type="text" className="form-control"
+                    value={description}
+                    onChange={e => { setDescription(e.target.value); if (e.target.value.trim()) setLinkedPlanId(''); }}
+                    placeholder="למשל: ארוחת ערב, כרטיסי כניסה..."
+                    style={{ fontSize: 14 }}
+                  />
+                </div>
+
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={category}
+                  onChange={setCategory}
+                  options={expenseCategories}
+                  addable
+                  addLabel="הוסף קטגוריה חדשה"
+                />
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <MapPin size={11} style={{ color: 'var(--text-muted)' }} />
+                    מיקום (אופציונלי)
+                  </label>
+                  <input type="text" className="form-control"
+                    placeholder="שם מקום שלא נמצא ברשימה..."
+                    value={customPlace}
+                    onChange={e => { setCustomPlace(e.target.value); if (e.target.value.trim()) setLinkedPlanId(''); }}
+                    style={{ fontSize: 14 }}
+                  />
+                </div>
+              </div>
+
+              {/* ── Shared notes field ────────────────────────────────── */}
+              {linkedPlanId && (
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12 }}>הערות (אופציונלי)</label>
+                  <input type="text" className="form-control"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    placeholder="הערות לתשלום זה..."
+                    style={{ fontSize: 14 }}
+                  />
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: 12, paddingBottom: 20, flexShrink: 0 }}>
                 <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור הוצאה</button>
