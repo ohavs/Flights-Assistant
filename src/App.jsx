@@ -659,11 +659,12 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
   const cancelLongPress = () => clearTimeout(longPressTimer.current);
 
   const saveExtraCategory = async (cat) => {
-    if (!cat || !userId || categories.includes(cat)) return;
+    if (!cat || !userId || extraCategories.includes(cat)) return;
     try {
-      await updateDoc(doc(db, 'users', userId), {
+      await setDoc(doc(db, 'users', userId), {
         globalExtraCategories: [...new Set([...extraCategories, cat])],
-      });
+      }, { merge: true });
+      setOpenCategories(prev => ({ ...prev, [cat]: true }));
     } catch (err) {
       console.error('Error saving extra category:', err);
     }

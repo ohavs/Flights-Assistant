@@ -164,9 +164,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   };
 
   const saveExtraCategory = async (cat) => {
-    if (!cat || !tripId || categories.includes(cat)) return;
+    if (!cat || !tripId || extraCategories.includes(cat)) return;
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
     await setDoc(syncRef, { extraCategories: [...new Set([...extraCategories, cat])] }, { merge: true });
+    setOpenCategories(prev => ({ ...prev, [cat]: true }));
   };
 
   const handleDeleteCategory = async (cat) => {
