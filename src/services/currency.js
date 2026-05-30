@@ -2,18 +2,18 @@
 // Rates are cached in localStorage so the converter keeps working offline.
 // Reference base = EUR. amount_to = amount_from * (rate[to] / rate[from]).
 
-const STORAGE_KEY = 'currencyRatesV1';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // refresh after 6 hours
+const STORAGE_KEY = 'currencyRatesV2';
+const CACHE_TTL_MS = 60 * 60 * 1000; // refresh after 1 hour
 
 // Seeded fallback so even a first-visit-while-offline gets a reasonable
 // number. Overwritten by the first successful network fetch.
 const FALLBACK_RATES = {
-  EUR: 1,    USD: 1.07, ILS: 4.0,  GBP: 0.85, JPY: 165,  AUD: 1.62,
-  CAD: 1.47, CHF: 0.97, CNY: 7.75, SEK: 11.5, NOK: 11.7, DKK: 7.46,
-  PLN: 4.3,  CZK: 25.2, HUF: 390,  TRY: 36,   RUB: 100,  INR: 90,
-  BRL: 5.5,  ZAR: 19.8, MXN: 19.0, THB: 39,   SGD: 1.45, HKD: 8.35,
-  KRW: 1500, AED: 3.93, SAR: 4.01, EGP: 53,   NZD: 1.78, RON: 4.97,
-  BGN: 1.96, ISK: 150,
+  EUR: 1,    USD: 1.10, ILS: 4.05, GBP: 0.84, JPY: 162,  AUD: 1.65,
+  CAD: 1.50, CHF: 0.96, CNY: 7.90, SEK: 11.4, NOK: 11.8, DKK: 7.46,
+  PLN: 4.25, CZK: 25.0, HUF: 395,  TRY: 38,   RUB: 105,  INR: 92,
+  BRL: 5.8,  ZAR: 20.5, MXN: 20.0, THB: 40,   SGD: 1.47, HKD: 8.60,
+  KRW: 1490, AED: 4.04, SAR: 4.13, EGP: 55,   NZD: 1.82, RON: 4.97,
+  BGN: 1.96, ISK: 148,
 };
 
 export const CURRENCY_META = {
@@ -71,13 +71,36 @@ export function getInitialRates() {
   return readCache() || { rates: FALLBACK_RATES, fetchedAt: 0 };
 }
 
+async function fetchFromFrankfurter() {
+  const list = Object.keys(CURRENCY_META).filter(c => c !== 'EUR').join(',');
+  const res = await fetch(`https://api.frankfurter.app/latest?from=EUR&to=${list}`);
+  if (!res.ok) throw new Error('frankfurter error');
+  const data = await res.json();
+  return { EUR: 1, ...data.rates };
+}
+
+async function fetchFromCDN() {
+  const res = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json');
+  if (!res.ok) throw new Error('cdn error');
+  const data = await res.json();
+  const raw = data.eur || {};
+  const supported = new Set(Object.keys(CURRENCY_META).map(c => c.toLowerCase()));
+  const rates = { EUR: 1 };
+  for (const [k, v] of Object.entries(raw)) {
+    const upper = k.toUpperCase();
+    if (supported.has(k)) rates[upper] = v;
+  }
+  return rates;
+}
+
 async function fetchLatestRates() {
   try {
-    const list = Object.keys(CURRENCY_META).filter(c => c !== 'EUR').join(',');
-    const res = await fetch(`https://api.frankfurter.app/latest?from=EUR&to=${list}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const rates = { EUR: 1, ...data.rates };
+    let rates;
+    try {
+      rates = await fetchFromFrankfurter();
+    } catch {
+      rates = await fetchFromCDN();
+    }
     writeCache(rates);
     return { rates, fetchedAt: Date.now() };
   } catch { return null; }
