@@ -128,7 +128,7 @@ function RemindersCard({ tripId, canEdit }) {
 
       {/* Input overlay (add / edit) */}
       {mode !== null && (
-        <div className="glass-card" style={{ direction: 'rtl', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="glass-card" style={{ direction: 'rtl', padding: '14px 16px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>
             {mode === 'add' ? 'תזכורת חדשה' : 'עריכה'}
           </span>
@@ -138,12 +138,14 @@ function RemindersCard({ tripId, canEdit }) {
             placeholder="כתוב תזכורת..."
             style={{ flex: 1, minHeight: 36, fontSize: 14 }}
           />
-          <button onClick={handleSave} className="btn-primary" style={{ padding: '6px 10px', flexShrink: 0 }}>
-            <Check size={14} />
-          </button>
-          <button onClick={() => { setMode(null); setEditId(null); }} style={btnStyle()}>
-            <X size={14} />
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'row', gap: 4, flexShrink: 0 }}>
+            <button onClick={handleSave} className="btn-primary" style={{ padding: '6px 10px' }}>
+              <Check size={14} />
+            </button>
+            <button onClick={() => { setMode(null); setEditId(null); }} style={btnStyle()}>
+              <X size={14} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -510,47 +512,49 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
       {/* Add New Item + Progress Ring */}
       {canEdit && (
-        <div className="glass-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', direction: 'ltr' }}>
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, direction: 'rtl' }}>
 
-          {/* LEFT: compact progress ring */}
-          <div style={{
-            width: 78, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            borderRight: '1px solid rgba(11,11,48,0.08)',
-          }}>
-            <div style={{ position: 'relative', width: 54, height: 54, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width={54} height={54} viewBox="0 0 54 54" style={{ position: 'absolute', top: 0, left: 0 }}>
-                <circle cx={27} cy={27} r={21} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={5} />
-                <circle cx={27} cy={27} r={21} fill="none" stroke="var(--primary-color)" strokeWidth={5}
-                  strokeLinecap="round"
-                  strokeDasharray="131.95"
-                  strokeDashoffset={`${(131.95 * (1 - progressPercent / 100)).toFixed(2)}`}
-                  transform="rotate(-90 27 27)"
-                  style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
-                />
-              </svg>
-              <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
-                <span style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>{completedCount}/{totalCount}</span>
+          {/* Title row: ring on left, title on right */}
+          <div style={{ display: 'flex', flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 0 }}>
+
+            {/* Progress ring */}
+            <div style={{ width: 54, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+              <div style={{ position: 'relative', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width={44} height={44} viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
+                  <circle cx={22} cy={22} r={17} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={4} />
+                  <circle cx={22} cy={22} r={17} fill="none" stroke="var(--primary-color)" strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeDasharray="106.81"
+                    strokeDashoffset={`${(106.81 * (1 - progressPercent / 100)).toFixed(2)}`}
+                    transform="rotate(-90 22 22)"
+                    style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
+                  />
+                </svg>
+                <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+                  <span style={{ fontSize: 7, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>{completedCount}/{totalCount}</span>
+                </div>
               </div>
+            </div>
+
+            {/* Title button */}
+            <div style={{ flex: 1, direction: 'rtl' }}>
+              <button type="button" onClick={() => setShowAddForm(s => !s)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}>
+                {showAddForm
+                  ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+                  {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
+                </span>
+                {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+              </button>
             </div>
           </div>
 
-          {/* RIGHT: add item form */}
-          <div style={{ flex: 1, direction: 'rtl', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-            <button type="button" onClick={() => setShowAddForm(s => !s)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}>
-              {showAddForm
-                ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
-                {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
-              </span>
-              {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
-            </button>
-
-            {showAddForm && (
-              <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+          {/* Form — full width below the title row */}
+          {showAddForm && (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>מה להביא?</label>
@@ -575,7 +579,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
               )}
             </form>
           )}
-          </div>
         </div>
       )}
 
