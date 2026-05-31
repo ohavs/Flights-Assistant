@@ -180,11 +180,12 @@ function RemindersCard({ tripId, canEdit }) {
             style={{ flex: 1, minHeight: 36, fontSize: 14 }}
           />
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <button onClick={handleSave} className="btn-primary" style={{ padding: '7px 12px', height: 36, display: 'flex', alignItems: 'center' }}>
+            <button onClick={handleSave}
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'var(--primary-color)', color: '#fff' }}>
               <Check size={15} />
             </button>
             <button onClick={() => { setMode(null); setEditId(null); }}
-              style={{ padding: '7px 12px', height: 36, display: 'flex', alignItems: 'center', background: 'rgba(11,11,48,0.07)', border: 'none', borderRadius: 10, cursor: 'pointer', color: 'var(--text-muted)' }}>
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'rgba(11,11,48,0.07)', color: 'var(--text-muted)' }}>
               <X size={15} />
             </button>
           </div>
