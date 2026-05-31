@@ -15,13 +15,15 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 
 /* ── RemindersCard ──────────────────────────────────────────────────────── */
-// Full-width One UI-style widget: each reminder IS its own sliding glass-card
 function RemindersCard({ tripId, canEdit }) {
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
+  const confirm = useConfirm();
   const [reminders, setReminders] = useState([]);
   const [idx, setIdx] = useState(0);
-  const [mode, setMode] = useState(null); // null | 'add' | 'edit'
+  const [mode, setMode] = useState(null); // null | 'add' | 'edit' | 'pickUser'
   const [inputText, setInputText] = useState('');
   const [editId, setEditId] = useState(null);
+  const [userPickRemId, setUserPickRemId] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const ignoreScroll = useRef(false);
@@ -39,7 +41,7 @@ function RemindersCard({ tripId, canEdit }) {
   }, [tripId]);
 
   useEffect(() => {
-    if (mode && inputRef.current) inputRef.current.focus();
+    if (mode === 'add' || mode === 'edit') inputRef.current?.focus();
   }, [mode]);
 
   useEffect(() => {
@@ -56,6 +58,20 @@ function RemindersCard({ tripId, canEdit }) {
     }, 0);
     return () => clearTimeout(t);
   }, [reminders.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // All trip members with their profiles for the user picker
+  const allMembers = useMemo(() => {
+    const list = [];
+    if (currentUid && currentUserProfile) {
+      list.push({ uid: currentUid, displayName: currentUserProfile.displayName || currentUserProfile.email || '', photoURL: currentUserProfile.photoURL || '' });
+    }
+    Object.keys(tripMembers || {}).forEach(uid => {
+      if (uid === currentUid) return;
+      const p = memberProfiles?.[uid] || {};
+      list.push({ uid, displayName: p.displayName || p.email || uid, photoURL: p.photoURL || '' });
+    });
+    return list;
+  }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
 
   const looping = reminders.length > 1;
   const extended = looping
@@ -102,7 +118,12 @@ function RemindersCard({ tripId, canEdit }) {
     if (!text) { setMode(null); return; }
     if (mode === 'add') {
       const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
-      await setDoc(newRef, { text, createdAt: Date.now() });
+      await setDoc(newRef, {
+        text, createdAt: Date.now(),
+        addedByUid: currentUid || '',
+        addedByName: currentUserProfile?.displayName || currentUserProfile?.email || '',
+        addedByPhoto: currentUserProfile?.photoURL || '',
+      });
       const newIdx = reminders.length;
       setMode(null); setInputText('');
       setTimeout(() => scrollTo(newIdx), 50);
@@ -113,22 +134,42 @@ function RemindersCard({ tripId, canEdit }) {
   };
 
   const handleDeleteById = async (id) => {
+    const ok = await confirm({ message: 'למחוק את התזכורת?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
+    if (!ok) return;
     await deleteDoc(doc(db, 'trips', tripId, 'reminders', id));
     setIdx(i => Math.max(0, i - 1));
   };
 
-  const btnStyle = (color = 'var(--text-muted)') => ({
+  const handlePickUser = async (remId, member) => {
+    await updateDoc(doc(db, 'trips', tripId, 'reminders', remId), {
+      addedByUid: member.uid,
+      addedByName: member.displayName,
+      addedByPhoto: member.photoURL,
+    });
+    setUserPickRemId(null);
+    setMode(null);
+  };
+
+  const iconBtn = (color = 'var(--text-muted)') => ({
     background: 'none', border: 'none', cursor: 'pointer',
-    color, padding: '4px 8px', display: 'flex', flexShrink: 0,
+    color, padding: '6px 8px', display: 'flex', alignItems: 'center', flexShrink: 0,
   });
+
+  const Avatar = ({ photoURL, name, size = 26 }) => (
+    <div style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {photoURL
+        ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
+        : <span style={{ fontSize: size * 0.38, fontWeight: 700, color: '#fff' }}>{(name || '?')[0]}</span>}
+    </div>
+  );
 
   return (
     <div>
       <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
 
-      {/* Input overlay (add / edit) */}
-      {mode !== null && (
-        <div className="glass-card" style={{ direction: 'rtl', padding: '14px 16px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {/* Text input overlay (add / edit) */}
+      {(mode === 'add' || mode === 'edit') && (
+        <div className="glass-card" style={{ direction: 'rtl', padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>
             {mode === 'add' ? 'תזכורת חדשה' : 'עריכה'}
           </span>
@@ -138,18 +179,38 @@ function RemindersCard({ tripId, canEdit }) {
             placeholder="כתוב תזכורת..."
             style={{ flex: 1, minHeight: 36, fontSize: 14 }}
           />
-          <div style={{ display: 'flex', flexDirection: 'row', gap: 4, flexShrink: 0 }}>
-            <button onClick={handleSave} className="btn-primary" style={{ padding: '6px 10px' }}>
-              <Check size={14} />
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button onClick={handleSave} className="btn-primary" style={{ padding: '7px 12px', height: 36, display: 'flex', alignItems: 'center' }}>
+              <Check size={15} />
             </button>
-            <button onClick={() => { setMode(null); setEditId(null); }} style={btnStyle()}>
-              <X size={14} />
+            <button onClick={() => { setMode(null); setEditId(null); }}
+              style={{ padding: '7px 12px', height: 36, display: 'flex', alignItems: 'center', background: 'rgba(11,11,48,0.07)', border: 'none', borderRadius: 10, cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={15} />
             </button>
           </div>
         </div>
       )}
 
-      {/* Carousel — hidden while input is open */}
+      {/* User picker overlay */}
+      {mode === 'pickUser' && (
+        <div className="glass-card" style={{ direction: 'rtl', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)' }}>שנה משתמש</span>
+            <button onClick={() => { setMode(null); setUserPickRemId(null); }} style={iconBtn()}>
+              <X size={15} />
+            </button>
+          </div>
+          {allMembers.map(m => (
+            <button key={m.uid} onClick={() => handlePickUser(userPickRemId, m)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'right' }}>
+              <Avatar photoURL={m.photoURL} name={m.displayName} size={30} />
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>{m.displayName}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Carousel — visible only when no overlay is active */}
       {mode === null && (
         reminders.length === 0 ? (
           <div className="glass-card" style={{ direction: 'rtl', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -158,13 +219,12 @@ function RemindersCard({ tripId, canEdit }) {
               {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
             </span>
             {canEdit && (
-              <button onClick={() => { setInputText(''); setMode('add'); }} style={btnStyle('var(--accent)')}>
+              <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
                 <Plus size={15} />
               </button>
             )}
           </div>
         ) : (
-          // Scroll-snap carousel — each item IS a full glass-card (One UI widget style)
           <div ref={scrollRef} className="rc-scroll" onScroll={handleScroll}
             style={{
               display: 'flex', direction: 'ltr', alignItems: 'stretch',
@@ -178,52 +238,63 @@ function RemindersCard({ tripId, canEdit }) {
               <div key={`${r.id}-${i}`} style={{ flex: '0 0 100%', scrollSnapAlign: 'start', direction: 'rtl' }}>
                 <div className="glass-card" style={{
                   display: 'flex', flexDirection: 'column',
-                  padding: '12px 18px', gap: 6,
-                  height: 140, boxSizing: 'border-box',
+                  padding: '14px 18px 12px', gap: 10,
+                  height: 160, boxSizing: 'border-box',
                 }}>
 
-                  {/* Header: label left, actions right */}
+                  {/* Header: label + actions */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                     <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
                     {canEdit && (
-                      <div style={{ display: 'flex', gap: 0 }}>
-                        <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={btnStyle()}>
+                      <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
+                        <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={iconBtn()}>
                           <Pencil size={14} />
                         </button>
-                        <button onClick={() => handleDeleteById(r.id)} style={btnStyle('rgba(239,68,68,0.75)')}>
+                        <button onClick={() => handleDeleteById(r.id)} style={iconBtn('rgba(239,68,68,0.75)')}>
                           <Trash2 size={14} />
                         </button>
-                        <button onClick={() => { setInputText(''); setMode('add'); }} style={btnStyle('var(--accent)')}>
+                        <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
                           <Plus size={14} />
                         </button>
                       </div>
                     )}
                   </div>
 
-                  {/* Reminder text — large, fills remaining space */}
+                  {/* Reminder text */}
                   <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
                     <p style={{
-                      fontSize: 16, fontWeight: 600, color: 'var(--text-main)',
-                      textAlign: 'right', lineHeight: 1.55, margin: 0, width: '100%',
-                      display: '-webkit-box', WebkitLineClamp: 3,
+                      fontSize: 18, fontWeight: 600, color: 'var(--text-main)',
+                      textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
+                      display: '-webkit-box', WebkitLineClamp: 2,
                       WebkitBoxOrient: 'vertical', overflow: 'hidden',
                       userSelect: 'none',
                     }}>{r.text}</p>
                   </div>
 
-                  {/* Dots — centered at bottom */}
-                  {reminders.length > 1 && (
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 5, flexShrink: 0 }}>
-                      {reminders.map((_, j) => (
-                        <button key={j} onClick={() => scrollTo(j)} style={{
-                          width: j === idx ? 16 : 6, height: 6, borderRadius: 3,
-                          border: 'none', padding: 0, flexShrink: 0,
-                          background: j === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
-                          cursor: 'pointer', transition: 'all 0.2s ease',
-                        }} />
-                      ))}
-                    </div>
-                  )}
+                  {/* Footer: user avatar + dots */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    {/* User */}
+                    <button onClick={() => canEdit && (setUserPickRemId(r.id), setMode('pickUser'))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: canEdit ? 'pointer' : 'default' }}>
+                      <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={24} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{r.addedByName || ''}</span>
+                      {canEdit && <ChevronDown size={10} style={{ color: 'var(--text-muted)' }} />}
+                    </button>
+                    {/* Dots */}
+                    {reminders.length > 1 && (
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                        {reminders.map((_, j) => (
+                          <button key={j} onClick={() => scrollTo(j)} style={{
+                            width: j === idx ? 16 : 6, height: 6, borderRadius: 3,
+                            border: 'none', padding: 0, flexShrink: 0,
+                            background: j === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
+                            cursor: 'pointer', transition: 'all 0.2s ease',
+                          }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               </div>
             ))}
