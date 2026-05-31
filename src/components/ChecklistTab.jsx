@@ -15,11 +15,10 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 
 /* ── RemindersCard ──────────────────────────────────────────────────────── */
-// Unified card: circular progress ring (left) + infinite-loop reminders carousel (right)
 function RemindersCard({ tripId, canEdit, progressPercent, completedCount, totalCount }) {
   const [reminders, setReminders] = useState([]);
   const [idx, setIdx] = useState(0);
-  const [mode, setMode] = useState(null); // null | 'add' | 'edit'
+  const [mode, setMode] = useState(null);
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -40,14 +39,15 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     if (mode && inputRef.current) inputRef.current.focus();
   }, [mode]);
 
-  // Re-sync scroll to correct physical position after reminders array length changes
+  // Re-sync scroll position whenever the reminders array length changes
   useEffect(() => {
     const t = setTimeout(() => {
       if (!scrollRef.current) return;
       const w = scrollRef.current.offsetWidth;
       if (!w) return;
       const n = reminders.length;
-      const phys = n > 1 ? Math.min(idx, n - 1) + 1 : Math.min(idx, Math.max(0, n - 1));
+      const safeIdx = Math.min(idx, Math.max(0, n - 1));
+      const phys = n > 1 ? safeIdx + 1 : safeIdx;
       ignoreScroll.current = true;
       scrollRef.current.scrollTo({ left: phys * w, behavior: 'instant' });
       setTimeout(() => { ignoreScroll.current = false; }, 100);
@@ -55,7 +55,6 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     return () => clearTimeout(t);
   }, [reminders.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Infinite-loop: wrap with clones when > 1 reminder
   const looping = reminders.length > 1;
   const extended = looping
     ? [reminders[reminders.length - 1], ...reminders, reminders[0]]
@@ -76,13 +75,11 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     const phys = Math.round(scrollLeft / offsetWidth);
     if (looping) {
       if (phys === 0) {
-        // Landed on clone-of-last → jump to real last
         ignoreScroll.current = true;
         scrollRef.current.scrollTo({ left: reminders.length * offsetWidth, behavior: 'instant' });
         setIdx(reminders.length - 1);
         setTimeout(() => { ignoreScroll.current = false; }, 100);
       } else if (phys >= extended.length - 1) {
-        // Landed on clone-of-first → jump to real first
         ignoreScroll.current = true;
         scrollRef.current.scrollTo({ left: offsetWidth, behavior: 'instant' });
         setIdx(0);
@@ -104,13 +101,11 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
       const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
       await setDoc(newRef, { text, createdAt: Date.now() });
       const newIdx = reminders.length;
-      setMode(null);
-      setInputText('');
+      setMode(null); setInputText('');
       setTimeout(() => scrollTo(newIdx), 50);
     } else if (mode === 'edit' && cur) {
       await updateDoc(doc(db, 'trips', tripId, 'reminders', cur.id), { text });
-      setMode(null);
-      setInputText('');
+      setMode(null); setInputText('');
     }
   };
 
@@ -120,22 +115,52 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     setIdx(i => Math.max(0, i - 1));
   };
 
-  // r=22 → circumference ≈ 138.23
-  const ringC = 138.23;
+  // Layout strategy:
+  // - outer card uses direction:ltr so LEFT=ring, RIGHT=reminders (predictable, no RTL tricks)
+  // - ring column: plain numbers, no direction needed
+  // - reminders column: direction:rtl for Hebrew content
+  // - fixed height so flex:1 in the reminders column is bounded
 
   return (
-    // Fixed height so the reminders flex-column has a bounded space for flex:1 to work.
-    // Natural RTL: reminders first in JSX = right side, ring last = left side.
     <div className="glass-card" style={{
-      display: 'flex', alignItems: 'stretch',
-      padding: '10px 14px', gap: 0, height: 100, overflow: 'hidden',
+      display: 'flex', flexDirection: 'row', direction: 'ltr',
+      height: 112, padding: 0, overflow: 'hidden',
     }}>
       <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
 
-      {/* Reminders column — FIRST in JSX = right side in RTL */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, overflow: 'hidden' }}>
+      {/* LEFT 25%: progress ring */}
+      <div style={{
+        width: '25%', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        borderRight: '1px solid rgba(11,11,48,0.08)',
+      }}>
+        <div style={{ position: 'relative', width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width={60} height={60} viewBox="0 0 60 60" style={{ position: 'absolute', top: 0, left: 0 }}>
+            <circle cx={30} cy={30} r={24} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={6} />
+            <circle cx={30} cy={30} r={24} fill="none" stroke="var(--primary-color)" strokeWidth={6}
+              strokeLinecap="round"
+              strokeDasharray="150.80"
+              strokeDashoffset={`${(150.80 * (1 - progressPercent / 100)).toFixed(2)}`}
+              transform="rotate(-90 30 30)"
+              style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
+            />
+          </svg>
+          <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', marginTop: 2 }}>{completedCount}/{totalCount}</span>
+          </div>
+        </div>
+      </div>
 
-        {/* Header */}
+      {/* RIGHT 75%: reminders — direction:rtl so Hebrew content aligns naturally */}
+      <div style={{
+        flex: 1, direction: 'rtl',
+        display: 'flex', flexDirection: 'column',
+        padding: '10px 14px', gap: 4,
+        overflow: 'hidden', minWidth: 0,
+      }}>
+
+        {/* Header: in RTL space-between → label on right, + on left */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
           {canEdit && mode === null && (
@@ -146,22 +171,22 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
           )}
         </div>
 
-        {/* Content — flex:1 is bounded by the card's fixed height */}
+        {/* Carousel / input — flex:1 fills remaining height */}
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {mode !== null ? (
-            <div style={{ width: '100%', display: 'flex', gap: 5, alignItems: 'center' }}>
+            <div style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center' }}>
               <input ref={inputRef} type="text" className="form-control"
                 value={inputText} onChange={e => setInputText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setMode(null); }}
                 placeholder="כתוב תזכורת..."
-                style={{ flex: 1, minHeight: 32, fontSize: 13 }}
+                style={{ flex: 1, minHeight: 34, fontSize: 13 }}
               />
-              <button onClick={handleSave} className="btn-primary" style={{ padding: '4px 8px', flexShrink: 0 }}>
+              <button onClick={handleSave} className="btn-primary" style={{ padding: '5px 9px', flexShrink: 0 }}>
                 <Check size={13} />
               </button>
               <button onClick={() => setMode(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 3, display: 'flex', flexShrink: 0 }}>
-                <X size={13} />
+                <X size={14} />
               </button>
             </div>
           ) : reminders.length === 0 ? (
@@ -169,10 +194,8 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
               {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
             </span>
           ) : (
-            <div
-              ref={scrollRef}
-              className="rc-scroll"
-              onScroll={handleScroll}
+            // scroll-snap container — must be direction:ltr to avoid RTL scroll sign issues
+            <div ref={scrollRef} className="rc-scroll" onScroll={handleScroll}
               style={{
                 display: 'flex', width: '100%', height: '100%',
                 overflowX: 'auto', overflowY: 'hidden',
@@ -200,9 +223,9 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
           )}
         </div>
 
-        {/* Dots + actions */}
+        {/* Dots + edit/delete — RTL space-between: dots on right, actions on left */}
         {mode === null && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 20 }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               {reminders.map((_, i) => (
                 <button key={i} onClick={() => scrollTo(i)} style={{
@@ -217,39 +240,16 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
               <div style={{ display: 'flex' }}>
                 <button onClick={() => { setInputText(cur.text); setMode('edit'); }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
-                  <Pencil size={12} />
+                  <Pencil size={13} />
                 </button>
                 <button onClick={handleDelete}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex' }}>
-                  <Trash2 size={12} />
+                  <Trash2 size={13} />
                 </button>
               </div>
             )}
           </div>
         )}
-      </div>
-
-      {/* Separator */}
-      <div style={{ width: 1, background: 'rgba(11,11,48,0.08)', alignSelf: 'stretch', flexShrink: 0, marginLeft: 12, marginRight: 12 }} />
-
-      {/* Progress ring — LAST in JSX = left side in RTL */}
-      <div style={{ flex: '0 0 60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <div style={{ position: 'relative', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width={56} height={56} viewBox="0 0 56 56" style={{ position: 'absolute', top: 0, left: 0 }}>
-            <circle cx={28} cy={28} r={22} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={6} />
-            <circle cx={28} cy={28} r={22} fill="none" stroke="var(--primary-color)" strokeWidth={6}
-              strokeLinecap="round"
-              strokeDasharray={`${ringC}`}
-              strokeDashoffset={`${(ringC * (1 - progressPercent / 100)).toFixed(2)}`}
-              transform="rotate(-90 28 28)"
-              style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
-            />
-          </svg>
-          <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-            <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
-            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', marginTop: 2 }}>{completedCount}/{totalCount}</span>
-          </div>
-        </div>
       </div>
     </div>
   );
