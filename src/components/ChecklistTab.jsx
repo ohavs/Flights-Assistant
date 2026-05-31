@@ -120,43 +120,20 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     setIdx(i => Math.max(0, i - 1));
   };
 
-  // r=23 → circumference ≈ 144.51
-  const ringC = 144.51;
+  // r=22 → circumference ≈ 138.23
+  const ringC = 138.23;
 
   return (
+    // Fixed height so the reminders flex-column has a bounded space for flex:1 to work.
+    // Natural RTL: reminders first in JSX = right side, ring last = left side.
     <div className="glass-card" style={{
-      display: 'flex', direction: 'ltr', padding: '10px 12px',
-      alignItems: 'stretch', overflow: 'hidden', gap: 0,
+      display: 'flex', alignItems: 'stretch',
+      padding: '10px 14px', gap: 0, height: 100, overflow: 'hidden',
     }}>
       <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
 
-      {/* Progress ring — left */}
-      <div style={{
-        flex: '0 0 auto', width: 70,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        borderRight: '1px solid rgba(11,11,48,0.07)',
-        paddingRight: 10, marginRight: 10,
-      }}>
-        <div style={{ position: 'relative', width: 58, height: 58, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width={58} height={58} viewBox="0 0 58 58" style={{ position: 'absolute', top: 0, left: 0 }}>
-            <circle cx={29} cy={29} r={23} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={6} />
-            <circle cx={29} cy={29} r={23} fill="none" stroke="var(--primary-color)" strokeWidth={6}
-              strokeLinecap="round"
-              strokeDasharray={`${ringC}`}
-              strokeDashoffset={`${(ringC * (1 - progressPercent / 100)).toFixed(2)}`}
-              transform="rotate(-90 29 29)"
-              style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
-            />
-          </svg>
-          <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-            <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
-            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', marginTop: 2 }}>{completedCount}/{totalCount}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Reminders — right, back to RTL */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, direction: 'rtl' }}>
+      {/* Reminders column — FIRST in JSX = right side in RTL */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, overflow: 'hidden' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
@@ -169,7 +146,7 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
           )}
         </div>
 
-        {/* Content */}
+        {/* Content — flex:1 is bounded by the card's fixed height */}
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {mode !== null ? (
             <div style={{ width: '100%', display: 'flex', gap: 5, alignItems: 'center' }}>
@@ -250,6 +227,29 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
             )}
           </div>
         )}
+      </div>
+
+      {/* Separator */}
+      <div style={{ width: 1, background: 'rgba(11,11,48,0.08)', alignSelf: 'stretch', flexShrink: 0, marginLeft: 12, marginRight: 12 }} />
+
+      {/* Progress ring — LAST in JSX = left side in RTL */}
+      <div style={{ flex: '0 0 60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ position: 'relative', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width={56} height={56} viewBox="0 0 56 56" style={{ position: 'absolute', top: 0, left: 0 }}>
+            <circle cx={28} cy={28} r={22} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={6} />
+            <circle cx={28} cy={28} r={22} fill="none" stroke="var(--primary-color)" strokeWidth={6}
+              strokeLinecap="round"
+              strokeDasharray={`${ringC}`}
+              strokeDashoffset={`${(ringC * (1 - progressPercent / 100)).toFixed(2)}`}
+              transform="rotate(-90 28 28)"
+              style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
+            />
+          </svg>
+          <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', marginTop: 2 }}>{completedCount}/{totalCount}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
