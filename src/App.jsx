@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
+import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
@@ -21,7 +22,8 @@ import CurrencyConverter from './components/CurrencyConverter';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet
+  Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet,
+  AlertTriangle, Upload, Archive, Loader2
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -147,7 +149,7 @@ function ConverterScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, onExportTrip, onImportTrip, exportBusyId, importBusy, importError, userName, onOpenGlobalChecklist }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -194,18 +196,39 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <span className="homepage-section-title" style={{ margin: 0 }}>טיולים מתוכננים</span>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'var(--accent)', color: '#fff', border: 'none',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
-          }}
-        >
-          <Plus size={18} />
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={onImportTrip}
+            disabled={importBusy}
+            title="ייבוא טיול מגיבוי"
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: importBusy ? 'rgba(5,150,105,0.2)' : 'rgba(5,150,105,0.1)',
+              color: 'var(--text-success)', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: importBusy ? 'default' : 'pointer'
+            }}
+          >
+            {importBusy ? <Loader2 size={16} className="spinning" /> : <Upload size={16} />}
+          </button>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'var(--accent)', color: '#fff', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
+            }}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </div>
+      {importError && (
+        <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+          {importError}
+        </div>
+      )}
 
       {/* Create trip form */}
       {showCreate && (
@@ -330,6 +353,14 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               <ChevronLeft size={16} />
             </div>
             <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => onExportTrip(trip.id)}
+                disabled={exportBusyId === trip.id}
+                style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(5,150,105,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: exportBusyId === trip.id ? 'default' : 'pointer', color: 'var(--text-success)' }}
+                title="ייצוא גיבוי JSON"
+              >
+                {exportBusyId === trip.id ? <Loader2 size={15} className="spinning" /> : <Archive size={15} />}
+              </button>
               <button
                 onClick={() => onShareTrip(trip.id)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
@@ -1336,7 +1367,7 @@ export default function App() {
     const tripRef = doc(db, 'trips', tripId);
 
     // Delete all docs in the known subcollections, batched.
-    const subcollections = ['planning', 'days', 'checklist'];
+    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'expenses', 'settings'];
     for (const name of subcollections) {
       try {
         const snap = await getDocs(collection(db, 'trips', tripId, name));
@@ -1376,6 +1407,12 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+
+  const [exportBusy, setExportBusy] = useState(null); // tripId | null
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  const importFileRef = useRef(null);
 
   const requestDeleteTrip = (tripId, isOwner) => {
     const t = trips.find(x => x.id === tripId);
@@ -1389,6 +1426,7 @@ export default function App() {
 
   const handleConfirmDelete = async () => {
     if (!user || !confirmDelete?.tripId) return;
+    if (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580') return;
     setDeleteBusy(true);
     setDeleteError('');
     try {
@@ -1402,11 +1440,46 @@ export default function App() {
         setSelectedTripId(null);
       }
       setConfirmDelete(null);
+      setDeletePasswordInput('');
     } catch (err) {
       console.error('Trip delete failed:', err);
       setDeleteError(err?.message || 'מחיקה נכשלה');
     } finally {
       setDeleteBusy(false);
+    }
+  };
+
+  const handleExportTrip = async (tripId) => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    setExportBusy(tripId);
+    try {
+      const backup = await exportTripBackup(tripId, trip);
+      downloadBackupFile(backup, trip.name);
+      localStorage.setItem(`lastExport_${tripId}`, new Date().toISOString());
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('ייצוא נכשל: ' + (err?.message || err));
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportBusy(true);
+    setImportError('');
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      await importTripBackup(backup, user.uid);
+    } catch (err) {
+      console.error('Import failed:', err);
+      setImportError(err?.message || 'ייבוא נכשל — ודא שהקובץ תקין');
+    } finally {
+      setImportBusy(false);
     }
   };
 
@@ -1465,6 +1538,13 @@ export default function App() {
         </header>
 
         <main className="app-content">
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".json"
+            style={{ display: 'none' }}
+            onChange={handleImportFile}
+          />
           <Homepage
             trips={trips}
             currentUid={user.uid}
@@ -1474,6 +1554,11 @@ export default function App() {
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={requestDeleteTrip}
             onShareTrip={(id) => setSharingTripId(id)}
+            onExportTrip={handleExportTrip}
+            onImportTrip={() => importFileRef.current?.click()}
+            exportBusyId={exportBusy}
+            importBusy={importBusy}
+            importError={importError}
             userName={user.displayName}
             onOpenGlobalChecklist={() => setShowGlobalChecklistModal(true)}
           />
@@ -1491,37 +1576,90 @@ export default function App() {
           userId={user.uid}
         />
 
-        <ConfirmModal
-          isOpen={!!confirmDelete}
-          title={confirmDelete?.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
-          message={
-            confirmDelete?.mode === 'leave' ? (
-              <>
-                האם לצאת מ-<strong>{confirmDelete?.name}</strong>?
-                <br />
-                הטיול לא יימחק — הוא פשוט יוסר מהרשימה שלך. רק הבעלים של הטיול יכול למחוק אותו לכולם.
-                {deleteError && (
-                  <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
-                )}
-              </>
-            ) : (
-              <>
-                האם למחוק את <strong>{confirmDelete?.name}</strong> לצמיתות?
-                <br />
-                כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.
-                {deleteError && (
-                  <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
-                )}
-              </>
-            )
-          }
-          confirmText={confirmDelete?.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות'}
-          cancelText="בטל"
-          onConfirm={handleConfirmDelete}
-          onClose={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); } }}
-          danger
-          busy={deleteBusy}
-        />
+        {confirmDelete && (
+          <div
+            className="modal-overlay"
+            onClick={deleteBusy ? undefined : () => { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); }}
+            style={{ alignItems: 'center' }}
+          >
+            <div
+              className="modal-content"
+              style={{ height: 'auto', maxHeight: '80%', maxWidth: 420, borderRadius: 'var(--radius-xl)', margin: 16, padding: '24px 20px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', color: 'rgb(220,38,38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <AlertTriangle size={22} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+                    {confirmDelete.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
+                  </h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600, marginBottom: 0 }}>
+                    {confirmDelete.mode === 'leave' ? (
+                      <>האם לצאת מ-<strong>{confirmDelete.name}</strong>?<br />הטיול לא יימחק — הוא פשוט יוסר מהרשימה שלך. רק הבעלים של הטיול יכול למחוק אותו לכולם.</>
+                    ) : (
+                      <>האם למחוק את <strong>{confirmDelete.name}</strong> לצמיתות?<br />כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.</>
+                    )}
+                  </p>
+                  {confirmDelete.mode === 'delete' && (
+                    <div style={{ marginTop: 14 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                        הזן סיסמת אישור למחיקה:
+                      </label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        placeholder="סיסמה"
+                        value={deletePasswordInput}
+                        onChange={e => setDeletePasswordInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && deletePasswordInput === '2580') handleConfirmDelete(); }}
+                        autoFocus
+                        style={{ fontSize: 18, letterSpacing: 6, textAlign: 'center' }}
+                      />
+                    </div>
+                  )}
+                  {deleteError && (
+                    <p style={{ color: '#dc2626', fontSize: 12, marginTop: 8, fontWeight: 700 }}>שגיאה: {deleteError}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  disabled={deleteBusy}
+                  style={{ background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: deleteBusy ? 'default' : 'pointer', color: 'var(--text-muted)', flexShrink: 0, opacity: deleteBusy ? 0.5 : 1 }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+                <button
+                  type="button"
+                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  disabled={deleteBusy}
+                  className="btn-secondary"
+                  style={{ flex: 1, opacity: deleteBusy ? 0.5 : 1 }}
+                >
+                  ביטול
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')}
+                  className="btn-primary"
+                  style={{
+                    flex: 1,
+                    background: 'rgb(220,38,38)',
+                    boxShadow: '0 4px 14px rgba(220,38,38,0.3)',
+                    opacity: (deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')) ? 0.45 : 1
+                  }}
+                >
+                  {deleteBusy ? 'פועל...' : (confirmDelete.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
