@@ -23,6 +23,7 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const ignoreScroll = useRef(false);
+  const scrollEndTimer = useRef(null);
 
   useEffect(() => {
     if (!tripId) return;
@@ -39,7 +40,6 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     if (mode && inputRef.current) inputRef.current.focus();
   }, [mode]);
 
-  // Re-sync scroll position whenever the reminders array length changes
   useEffect(() => {
     const t = setTimeout(() => {
       if (!scrollRef.current) return;
@@ -73,23 +73,31 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     if (ignoreScroll.current || !scrollRef.current) return;
     const { scrollLeft, offsetWidth } = scrollRef.current;
     const phys = Math.round(scrollLeft / offsetWidth);
-    if (looping) {
-      if (phys === 0) {
+
+    // Update dot immediately during scroll
+    if (looping && phys > 0 && phys < extended.length - 1) setIdx(phys - 1);
+    else if (!looping && phys !== idx) setIdx(phys);
+
+    if (!looping) return;
+
+    // Teleport only AFTER scroll fully settles — avoids fighting the snap physics mid-swipe
+    clearTimeout(scrollEndTimer.current);
+    scrollEndTimer.current = setTimeout(() => {
+      if (!scrollRef.current || ignoreScroll.current) return;
+      const { scrollLeft: sl, offsetWidth: ow } = scrollRef.current;
+      const p = Math.round(sl / ow);
+      if (p === 0) {
         ignoreScroll.current = true;
-        scrollRef.current.scrollTo({ left: reminders.length * offsetWidth, behavior: 'instant' });
+        scrollRef.current.scrollTo({ left: reminders.length * ow, behavior: 'instant' });
         setIdx(reminders.length - 1);
-        setTimeout(() => { ignoreScroll.current = false; }, 100);
-      } else if (phys >= extended.length - 1) {
+        setTimeout(() => { ignoreScroll.current = false; }, 50);
+      } else if (p >= extended.length - 1) {
         ignoreScroll.current = true;
-        scrollRef.current.scrollTo({ left: offsetWidth, behavior: 'instant' });
+        scrollRef.current.scrollTo({ left: ow, behavior: 'instant' });
         setIdx(0);
-        setTimeout(() => { ignoreScroll.current = false; }, 100);
-      } else {
-        setIdx(phys - 1);
+        setTimeout(() => { ignoreScroll.current = false; }, 50);
       }
-    } else {
-      if (phys !== idx) setIdx(phys);
-    }
+    }, 80);
   };
 
   const cur = reminders[idx] ?? null;
@@ -115,16 +123,10 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
     setIdx(i => Math.max(0, i - 1));
   };
 
-  // Layout strategy:
-  // - outer card uses direction:ltr so LEFT=ring, RIGHT=reminders (predictable, no RTL tricks)
-  // - ring column: plain numbers, no direction needed
-  // - reminders column: direction:rtl for Hebrew content
-  // - fixed height so flex:1 in the reminders column is bounded
-
   return (
     <div className="glass-card" style={{
       display: 'flex', flexDirection: 'row', direction: 'ltr',
-      height: 112, padding: 0, overflow: 'hidden',
+      height: 136, padding: 0, overflow: 'hidden',
     }}>
       <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
 
@@ -134,14 +136,14 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         borderRight: '1px solid rgba(11,11,48,0.08)',
       }}>
-        <div style={{ position: 'relative', width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width={60} height={60} viewBox="0 0 60 60" style={{ position: 'absolute', top: 0, left: 0 }}>
-            <circle cx={30} cy={30} r={24} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={6} />
-            <circle cx={30} cy={30} r={24} fill="none" stroke="var(--primary-color)" strokeWidth={6}
+        <div style={{ position: 'relative', width: 62, height: 62, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width={62} height={62} viewBox="0 0 62 62" style={{ position: 'absolute', top: 0, left: 0 }}>
+            <circle cx={31} cy={31} r={25} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={6} />
+            <circle cx={31} cy={31} r={25} fill="none" stroke="var(--primary-color)" strokeWidth={6}
               strokeLinecap="round"
-              strokeDasharray="150.80"
-              strokeDashoffset={`${(150.80 * (1 - progressPercent / 100)).toFixed(2)}`}
-              transform="rotate(-90 30 30)"
+              strokeDasharray="157.08"
+              strokeDashoffset={`${(157.08 * (1 - progressPercent / 100)).toFixed(2)}`}
+              transform="rotate(-90 31 31)"
               style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
             />
           </svg>
@@ -152,37 +154,37 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
         </div>
       </div>
 
-      {/* RIGHT 75%: reminders — direction:rtl so Hebrew content aligns naturally */}
+      {/* RIGHT 75%: reminders */}
       <div style={{
         flex: 1, direction: 'rtl',
         display: 'flex', flexDirection: 'column',
-        padding: '10px 14px', gap: 4,
+        padding: '8px 10px 6px', gap: 4,
         overflow: 'hidden', minWidth: 0,
       }}>
 
-        {/* Header: in RTL space-between → label on right, + on left */}
+        {/* Compact header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
+          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
           {canEdit && mode === null && (
             <button onClick={() => { setInputText(''); setMode('add'); }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 2, display: 'flex' }}>
-              <Plus size={15} />
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 0, display: 'flex' }}>
+              <Plus size={14} />
             </button>
           )}
         </div>
 
-        {/* Carousel / input — flex:1 fills remaining height */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+        {/* Main area — flex:1 fills all remaining height */}
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'stretch', minWidth: 0 }}>
           {mode !== null ? (
             <div style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center' }}>
               <input ref={inputRef} type="text" className="form-control"
                 value={inputText} onChange={e => setInputText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setMode(null); }}
                 placeholder="כתוב תזכורת..."
-                style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+                style={{ flex: 1, minHeight: 36, fontSize: 14 }}
               />
-              <button onClick={handleSave} className="btn-primary" style={{ padding: '5px 9px', flexShrink: 0 }}>
-                <Check size={13} />
+              <button onClick={handleSave} className="btn-primary" style={{ padding: '6px 10px', flexShrink: 0 }}>
+                <Check size={14} />
               </button>
               <button onClick={() => setMode(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 3, display: 'flex', flexShrink: 0 }}>
@@ -190,11 +192,13 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
               </button>
             </div>
           ) : reminders.length === 0 ? (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, width: '100%', textAlign: 'center' }}>
-              {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
-            </span>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(11,11,48,0.03)', borderRadius: 10 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
+              </span>
+            </div>
           ) : (
-            // scroll-snap container — must be direction:ltr to avoid RTL scroll sign issues
+            // Scroll-snap: direction:ltr prevents RTL scroll sign issues
             <div ref={scrollRef} className="rc-scroll" onScroll={handleScroll}
               style={{
                 display: 'flex', width: '100%', height: '100%',
@@ -205,31 +209,40 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
                 direction: 'ltr',
               }}
             >
+              {/* Each reminder rendered as its own widget card */}
               {extended.map((r, i) => (
                 <div key={`${r.id}-${i}`} style={{
                   flex: '0 0 100%', scrollSnapAlign: 'start',
-                  direction: 'rtl', display: 'flex', alignItems: 'center',
+                  direction: 'rtl', display: 'flex', alignItems: 'stretch',
                 }}>
-                  <p style={{
-                    fontSize: 13, fontWeight: 600, color: 'var(--text-main)',
-                    textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
-                    display: '-webkit-box', WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                    userSelect: 'none',
-                  }}>{r.text}</p>
+                  <div style={{
+                    flex: 1, margin: '1px 2px',
+                    background: 'rgba(11,11,48,0.045)',
+                    borderRadius: 10,
+                    display: 'flex', alignItems: 'center',
+                    padding: '8px 12px', overflow: 'hidden',
+                  }}>
+                    <p style={{
+                      fontSize: 15, fontWeight: 600, color: 'var(--text-main)',
+                      textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
+                      display: '-webkit-box', WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                      userSelect: 'none',
+                    }}>{r.text}</p>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Dots + edit/delete — RTL space-between: dots on right, actions on left */}
+        {/* Dots + actions */}
         {mode === null && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 16 }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               {reminders.map((_, i) => (
                 <button key={i} onClick={() => scrollTo(i)} style={{
-                  width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
+                  width: i === idx ? 14 : 5, height: 5, borderRadius: 3,
                   border: 'none', padding: 0, flexShrink: 0,
                   background: i === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
                   cursor: 'pointer', transition: 'all 0.2s ease',
@@ -239,12 +252,12 @@ function RemindersCard({ tripId, canEdit, progressPercent, completedCount, total
             {canEdit && cur && (
               <div style={{ display: 'flex' }}>
                 <button onClick={() => { setInputText(cur.text); setMode('edit'); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
-                  <Pencil size={13} />
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', display: 'flex' }}>
+                  <Pencil size={12} />
                 </button>
                 <button onClick={handleDelete}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex' }}>
-                  <Trash2 size={13} />
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: '2px 4px', display: 'flex' }}>
+                  <Trash2 size={12} />
                 </button>
               </div>
             )}
