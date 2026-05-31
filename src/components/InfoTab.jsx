@@ -223,22 +223,7 @@ export default function InfoTab({ tripId }) {
   }
 
   return (
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Add button */}
-      {canEdit && (
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={openAdd} className="btn-primary" style={{ flex: 1 }}>
-            <Plus size={16} />
-            <span>{editingId ? 'ערוך פריט' : 'הוסף פריט חדש'}</span>
-          </button>
-          {items.length === 0 && (
-            <button onClick={handleSeedDefaults} className="btn-secondary" style={{ minHeight: 48 }}>
-              <RotateCcw size={14} />
-              <span>טען מספרי חירום</span>
-            </button>
-          )}
-        </div>
-      )}
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: canEdit ? 80 : 0 }}>
 
       {/* Add/edit form (modal-style inline) */}
       {showForm && canEdit && (
@@ -403,6 +388,22 @@ export default function InfoTab({ tripId }) {
           </div>
         </SortableContext>
       </DndContext>
+
+      {/* Sticky bottom add button */}
+      {canEdit && (
+        <div style={{ position: 'fixed', bottom: 72, left: 0, right: 0, padding: '0 16px', zIndex: 50, display: 'flex', gap: 10 }}>
+          <button onClick={() => openAdd()} className="btn-primary" style={{ flex: 1, boxShadow: '0 4px 20px rgba(11,11,48,0.18)' }}>
+            <Plus size={16} />
+            <span>הוסף פריט חדש</span>
+          </button>
+          {items.length === 0 && (
+            <button onClick={handleSeedDefaults} className="btn-secondary" style={{ minHeight: 48, boxShadow: '0 4px 20px rgba(11,11,48,0.12)' }}>
+              <RotateCcw size={14} />
+              <span>טען מספרי חירום</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
