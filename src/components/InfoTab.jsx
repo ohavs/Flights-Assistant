@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
   Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText, Hash,
-  ChevronDown, ExternalLink, RotateCcw, AlertCircle, Globe, X
+  ChevronDown, ExternalLink, RotateCcw, Globe, X, GripVertical
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // Default items seeded for every new trip. Israeli emergency numbers
 // + the European universal 112, plus a couple of placeholders the user
@@ -63,7 +66,8 @@ export default function InfoTab({ tripId }) {
   const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [openCategories, setOpenCategories] = useState({}); // {} = all closed by default
+  const [categoryOrder, setCategoryOrder] = useState([]);
 
   // Form state
   const [showForm, setShowForm] = useState(false);
@@ -83,22 +87,51 @@ export default function InfoTab({ tripId }) {
     return unsub;
   }, [tripId]);
 
-  // Categories shown in the form dropdown = defaults + any user-added
-  const categories = Array.from(new Set([
-    ...DEFAULT_CATEGORIES,
-    ...items.map(i => i.category).filter(Boolean),
-  ]));
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(doc(db, 'trips', tripId, 'settings', 'infoSync'), snap => {
+      setCategoryOrder(snap.exists() ? (snap.data()?.categoryOrder || []) : []);
+    });
+  }, [tripId]);
+
+  // Categories sorted by saved order
+  const categories = useMemo(() => {
+    const all = Array.from(new Set([
+      ...DEFAULT_CATEGORIES,
+      ...items.map(i => i.category).filter(Boolean),
+    ]));
+    if (!categoryOrder.length) return all;
+    const ordered = categoryOrder.filter(c => all.includes(c));
+    const rest = all.filter(c => !categoryOrder.includes(c));
+    return [...ordered, ...rest];
+  }, [items, categoryOrder]);
 
   const toggleCategory = (cat) => {
-    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+    setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  const openAdd = () => {
+  // DnD
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = categories.indexOf(active.id);
+    const newIdx = categories.indexOf(over.id);
+    const newOrder = arrayMove(categories, oldIdx, newIdx);
+    setCategoryOrder(newOrder);
+    await setDoc(doc(db, 'trips', tripId, 'settings', 'infoSync'), { categoryOrder: newOrder }, { merge: true });
+  };
+
+  const openAdd = (preCategory = 'מספרי חירום') => {
     setEditingId(null);
     setFTitle('');
     setFValue('');
     setFType('phone');
-    setFCategory('מספרי חירום');
+    setFCategory(preCategory);
     setFExtraFields([]);
     setShowForm(true);
   };
@@ -343,162 +376,148 @@ export default function InfoTab({ tripId }) {
         </div>
       )}
 
-      {/* Items grouped by category */}
-      {categories.map(category => {
-        const list = items.filter(i => i.category === category);
-        if (list.length === 0) return null;
-        const isCollapsed = !!collapsedCategories[category];
-
-        return (
-          <div key={category} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button
-              type="button" onClick={() => toggleCategory(category)}
-              style={{
-                background: 'transparent', border: 'none', padding: '4px 4px',
-                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                width: '100%', fontFamily: 'var(--font-hebrew)'
-              }}
-            >
-              <ChevronDown
-                size={16}
-                style={{
-                  color: 'var(--text-muted)',
-                  transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.2s ease', flexShrink: 0
-                }}
+      {/* Items grouped by category — sortable */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={categories} strategy={verticalListSortingStrategy}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {categories.map(category => {
+            const list = items.filter(i => i.category === category);
+            if (list.length === 0) return null;
+            const isOpen = !!openCategories[category];
+            return (
+              <InfoSortableCategory
+                key={category}
+                category={category}
+                list={list}
+                isOpen={isOpen}
+                canEdit={canEdit}
+                toggleCategory={toggleCategory}
+                openAdd={openAdd}
+                startEdit={startEdit}
+                handleDelete={handleDelete}
+                iconFor={iconFor}
+                hrefFor={hrefFor}
               />
-              <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', textAlign: 'right', flex: 1, margin: 0 }}>
-                {category}
-              </h3>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-                {list.length}
-              </span>
-            </button>
-
-            {!isCollapsed && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {list.map(item => {
-                  const Icon = iconFor(item.type);
-                  const href = hrefFor(item);
-                  const hasValue = !!item.value;
-                  const valueClickable = !!href;
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="glass-card"
-                      style={{
-                        padding: '12px 14px',
-                        display: 'grid',
-                        gridTemplateColumns: 'auto 1fr auto',
-                        gap: 12,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div style={{
-                        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                        background: item.type === 'phone' && item.category === 'מספרי חירום'
-                          ? 'rgba(220, 38, 38, 0.1)' : 'rgba(79, 70, 229, 0.1)',
-                        color: item.type === 'phone' && item.category === 'מספרי חירום'
-                          ? 'rgb(220, 38, 38)' : 'var(--accent)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <Icon size={18} />
-                      </div>
-
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', textAlign: 'right' }}>
-                          {item.title}
-                        </div>
-                        {hasValue ? (
-                          valueClickable ? (
-                            <a
-                              href={href} target={item.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                fontSize: 14, fontWeight: 700, color: 'var(--accent)',
-                                textDecoration: 'none', marginTop: 2,
-                                direction: item.type === 'phone' || item.type === 'url' ? 'ltr' : 'rtl',
-                              }}
-                            >
-                              <span style={{ overflowWrap: 'anywhere' }}>{item.value}</span>
-                              {item.type !== 'phone' && <ExternalLink size={11} style={{ opacity: 0.7 }} />}
-                            </a>
-                          ) : (
-                            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2, textAlign: 'right' }}>
-                              {item.value}
-                            </div>
-                          )
-                        ) : (
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgb(180, 180, 195)', marginTop: 2, textAlign: 'right', fontStyle: 'italic' }}>
-                            לא הוגדר — לחץ עיפרון להוסיף
-                          </div>
-                        )}
-                        {/* Extra fields */}
-                        {item.extraFields && item.extraFields.length > 0 && (
-                          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                            {item.extraFields.map(field => {
-                              if (!field.label && !field.value) return null;
-                              const FieldIcon = iconFor(field.type);
-                              const fieldHref = hrefFor(field);
-                              return (
-                                <div key={field.id} style={{ display: 'flex', alignItems: 'baseline', gap: 5, textAlign: 'right' }}>
-                                  {field.label && (
-                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                      {field.label}:
-                                    </span>
-                                  )}
-                                  {field.value ? (
-                                    fieldHref ? (
-                                      <a href={fieldHref} target={field.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
-                                        style={{
-                                          fontSize: 13, fontWeight: 700, color: 'var(--accent)',
-                                          textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3,
-                                          direction: field.type === 'phone' || field.type === 'url' ? 'ltr' : 'rtl',
-                                        }}>
-                                        <FieldIcon size={11} />
-                                        <span style={{ overflowWrap: 'anywhere' }}>{field.value}</span>
-                                        {field.type !== 'phone' && <ExternalLink size={10} style={{ opacity: 0.6 }} />}
-                                      </a>
-                                    ) : (
-                                      <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, overflowWrap: 'anywhere' }}>{field.value}</span>
-                                    )
-                                  ) : (
-                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>לא הוגדר</span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {canEdit && (
-                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                          <button
-                            type="button" onClick={() => startEdit(item)}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}
-                            title="ערוך"
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            type="button" onClick={() => handleDelete(item)}
-                            style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6 }}
-                            title="מחק"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            );
+          })}
           </div>
-        );
-      })}
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
+/* ── InfoSortableCategory ────────────────────────────────────────────────── */
+function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory, openAdd, startEdit, handleDelete, iconFor, hrefFor }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+
+  return (
+    <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Category header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {canEdit && (
+          <button type="button" {...attributes} {...listeners}
+            style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
+            <GripVertical size={15} />
+          </button>
+        )}
+        <button
+          type="button" onClick={() => toggleCategory(category)}
+          style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
+        >
+          <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', textAlign: 'right', flex: 1, margin: 0 }}>
+            {category}
+          </h3>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{list.length}</span>
+        </button>
+        {canEdit && (
+          <button type="button" onClick={() => openAdd(category)}
+            style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            <Plus size={15} />
+          </button>
+        )}
+      </div>
+
+      {/* Items */}
+      {isOpen && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {list.map(item => {
+            const Icon = iconFor(item.type);
+            const href = hrefFor(item);
+            const hasValue = !!item.value;
+            const valueClickable = !!href;
+            return (
+              <div key={item.id} className="glass-card"
+                style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'center' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                  background: item.type === 'phone' && item.category === 'מספרי חירום' ? 'rgba(220,38,38,0.1)' : 'rgba(79,70,229,0.1)',
+                  color: item.type === 'phone' && item.category === 'מספרי חירום' ? 'rgb(220,38,38)' : 'var(--accent)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={18} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', textAlign: 'right' }}>{item.title}</div>
+                  {hasValue ? (
+                    valueClickable ? (
+                      <a href={href} target={item.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 14, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none', marginTop: 2, direction: item.type === 'phone' || item.type === 'url' ? 'ltr' : 'rtl' }}>
+                        <span style={{ overflowWrap: 'anywhere' }}>{item.value}</span>
+                        {item.type !== 'phone' && <ExternalLink size={11} style={{ opacity: 0.7 }} />}
+                      </a>
+                    ) : (
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2, textAlign: 'right' }}>{item.value}</div>
+                    )
+                  ) : (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'rgb(180,180,195)', marginTop: 2, textAlign: 'right', fontStyle: 'italic' }}>לא הוגדר — לחץ עיפרון להוסיף</div>
+                  )}
+                  {item.extraFields && item.extraFields.length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {item.extraFields.map(field => {
+                        if (!field.label && !field.value) return null;
+                        const FieldIcon = iconFor(field.type);
+                        const fieldHref = hrefFor(field);
+                        return (
+                          <div key={field.id} style={{ display: 'flex', alignItems: 'baseline', gap: 5, textAlign: 'right' }}>
+                            {field.label && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{field.label}:</span>}
+                            {field.value ? (
+                              fieldHref ? (
+                                <a href={fieldHref} target={field.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
+                                  style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3, direction: field.type === 'phone' || field.type === 'url' ? 'ltr' : 'rtl' }}>
+                                  <FieldIcon size={11} />
+                                  <span style={{ overflowWrap: 'anywhere' }}>{field.value}</span>
+                                  {field.type !== 'phone' && <ExternalLink size={10} style={{ opacity: 0.6 }} />}
+                                </a>
+                              ) : (
+                                <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, overflowWrap: 'anywhere' }}>{field.value}</span>
+                              )
+                            ) : (
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>לא הוגדר</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                {canEdit && (
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <button type="button" onClick={() => startEdit(item)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
+                      <Pencil size={15} />
+                    </button>
+                    <button type="button" onClick={() => handleDelete(item)}
+                      style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6 }}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
