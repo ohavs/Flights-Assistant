@@ -191,24 +191,6 @@ export default function InfoTab({ tripId }) {
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Intro / explainer card */}
-      <div className="glass-card" style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: 16 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'rgba(220, 38, 38, 0.1)', color: 'rgb(220, 38, 38)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <AlertCircle size={20} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>מידע חשוב לטיול</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4, lineHeight: 1.55 }}>
-            מספרי חירום, אנשי קשר, כתובות וקישורים שתרצה לזכור. הכל לחיץ —
-            טלפונים מתקשרים ישר, כתובות נפתחות במפה, קישורים בדפדפן.
-          </p>
-        </div>
-      </div>
-
       {/* Add button */}
       {canEdit && (
         <div style={{ display: 'flex', gap: 10 }}>
