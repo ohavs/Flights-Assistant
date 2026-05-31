@@ -9,10 +9,25 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 /* ── RemindersCard ──────────────────────────────────────────────────────── */
 function RemindersCard({ tripId, canEdit }) {
@@ -306,6 +321,187 @@ function RemindersCard({ tripId, canEdit }) {
   );
 }
 
+/* ── SortableCategoryBlock ──────────────────────────────────────────────── */
+function SortableCategoryBlock({
+  category, categoryItems, isOpen, isLongPressed, doneCount, canEdit,
+  editingCat, editCatText, setEditCatText, setEditingCat, handleRenameCategory,
+  toggleCategory, longPressActive, startLongPress, cancelLongPress,
+  setLongPressedCat, handleDeleteCategory,
+  pendingDeleteId, handleToggle, handleStartEdit, handleDeleteItem,
+  quickAddCat, setQuickAddCat, quickAddText, setQuickAddText,
+  quickAddInputRef, handleQuickAdd,
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Category header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {/* Drag handle */}
+        {canEdit && (
+          <button type="button" {...attributes} {...listeners}
+            style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
+            <GripVertical size={15} />
+          </button>
+        )}
+
+        {editingCat === category ? (
+          <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
+            style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="text" autoFocus className="form-control"
+              value={editCatText} onChange={e => setEditCatText(e.target.value)}
+              style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+            />
+            <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
+              <Check size={13} />
+            </button>
+            <button type="button" onClick={() => setEditingCat(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
+              <X size={14} />
+            </button>
+          </form>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (longPressActive.current) { longPressActive.current = false; return; }
+                toggleCategory(category);
+              }}
+              onMouseDown={() => canEdit && startLongPress(category)}
+              onMouseUp={cancelLongPress}
+              onTouchStart={e => { e.stopPropagation(); canEdit && startLongPress(category); }}
+              onTouchEnd={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
+            >
+              <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                {category}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
+                {doneCount}/{categoryItems.length}
+              </span>
+            </button>
+
+            {/* Quick-add shortcut in header */}
+            {canEdit && !isLongPressed && (
+              <button type="button"
+                onClick={() => { setQuickAddCat(category); setQuickAddText(''); if (!isOpen) toggleCategory(category); }}
+                style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <Plus size={15} />
+              </button>
+            )}
+
+            {isLongPressed && canEdit && (
+              <>
+                <button type="button"
+                  onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
+                  style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                  <Pencil size={13} />
+                </button>
+                <button type="button" onClick={() => handleDeleteCategory(category)}
+                  style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                  <Trash2 size={13} />
+                </button>
+                <button type="button" onClick={() => setLongPressedCat(null)}
+                  style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Category items + quick-add */}
+      {isOpen && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {categoryItems.map(item => {
+            const isPending = pendingDeleteId === item.id;
+            return (
+              <div key={item.id}
+                className="glass-card checklist-item-row"
+                onClick={canEdit && !isPending ? () => handleToggle(item) : undefined}
+                style={{
+                  padding: '12px 14px',
+                  cursor: canEdit && !isPending ? 'pointer' : 'default',
+                  background: isPending ? 'rgba(239,68,68,0.06)' : item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
+                  border: isPending ? '1.5px solid rgba(239,68,68,0.25)' : item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
+                  transition: 'background 0.2s, border 0.2s',
+                }}
+              >
+                <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid rgba(11,11,48,0.18)', background: item.completed ? 'var(--primary-color)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
+                  {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
+                </div>
+                <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: isPending ? 'rgb(239,68,68)' : item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
+                  {item.text}
+                </span>
+                {canEdit ? (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                    {!isPending && (
+                      <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
+                      style={{ background: isPending ? 'rgba(239,68,68,0.12)' : 'transparent', border: isPending ? '1px solid rgba(239,68,68,0.3)' : 'none', borderRadius: 7, color: isPending ? 'rgb(239,68,68)' : 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.15s' }}>
+                      <Trash2 size={14} />
+                      {isPending && <span style={{ fontSize: 11, fontWeight: 800 }}>מחק?</span>}
+                    </button>
+                  </div>
+                ) : <div />}
+              </div>
+            );
+          })}
+
+          {/* Quick-add inside open category */}
+          {canEdit && (
+            quickAddCat === category ? (
+              <form onSubmit={e => handleQuickAdd(e, category)}
+                style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
+                <input
+                  ref={quickAddInputRef}
+                  type="text"
+                  className="form-control"
+                  autoFocus
+                  placeholder={`פריט ב${category}...`}
+                  value={quickAddText}
+                  onChange={e => setQuickAddText(e.target.value)}
+                  style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                />
+                <button type="submit" className="btn-primary"
+                  style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
+                  <Plus size={14} />
+                </button>
+                <button type="button"
+                  onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                  <X size={14} />
+                </button>
+              </form>
+            ) : (
+              <button type="button"
+                onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                <Plus size={14} />
+                הוסף לרשימה
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const defaultChecklist = [
   { id: 'doc-1', text: 'דרכון בתוקף (לפחות חצי שנה)', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-2', text: 'כרטיסי טיסה מודפסים / בנייד', completed: false, category: 'מסמכים וסידורים' },
@@ -339,6 +535,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [loading, setLoading] = useState(true);
   const [deletedGlobalIds, setDeletedGlobalIds] = useState([]);
   const [extraCategories, setExtraCategories] = useState([]);
+  const [categoryOrder, setCategoryOrder] = useState([]);
   const [membersGlobalChecklists, setMembersGlobalChecklists] = useState({});
 
   // Form state
@@ -376,11 +573,17 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     'מסמכים וסידורים', 'בגדים', 'אלקטרוניקה',
     'תרופות ועזרה ראשונה', 'סידורים אחרונים בארץ',
   ];
-  const categories = Array.from(new Set([
-    ...defaultCategoryNames,
-    ...extraCategories,
-    ...items.map(i => i.category).filter(Boolean),
-  ]));
+  const categories = useMemo(() => {
+    const all = Array.from(new Set([
+      ...defaultCategoryNames,
+      ...extraCategories,
+      ...items.map(i => i.category).filter(Boolean),
+    ]));
+    if (!categoryOrder.length) return all;
+    const ordered = categoryOrder.filter(c => all.includes(c));
+    const rest = all.filter(c => !categoryOrder.includes(c));
+    return [...ordered, ...rest];
+  }, [extraCategories, items, categoryOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Firestore listeners ──────────────────────────────────────────────────
   useEffect(() => {
@@ -394,8 +597,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   useEffect(() => {
     if (!tripId) return;
     return onSnapshot(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
-      setDeletedGlobalIds(snap.exists() ? (snap.data()?.deletedGlobalIds || []) : []);
-      setExtraCategories(snap.exists() ? (snap.data()?.extraCategories || []) : []);
+      const data = snap.exists() ? snap.data() : {};
+      setDeletedGlobalIds(data.deletedGlobalIds || []);
+      setExtraCategories(data.extraCategories || []);
+      setCategoryOrder(data.categoryOrder || []);
     });
   }, [tripId]);
 
@@ -440,6 +645,23 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     batch.commit().catch(console.error);
   }, [mergedGlobalChecklist, items, loading, tripId, canEdit, deletedGlobalIds]);
 
+  // ── DnD sensors ─────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = categories.indexOf(active.id);
+    const newIdx = categories.indexOf(over.id);
+    const newOrder = arrayMove(categories, oldIdx, newIdx);
+    setCategoryOrder(newOrder);
+    const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+    await setDoc(syncRef, { categoryOrder: newOrder }, { merge: true });
+  };
+
   // ── Category helpers ─────────────────────────────────────────────────────
   const toggleCategory = (cat) =>
     setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -459,7 +681,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     if (!cat || !tripId || extraCategories.includes(cat)) return;
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
     await setDoc(syncRef, { extraCategories: [...new Set([...extraCategories, cat])] }, { merge: true });
-    setOpenCategories(prev => ({ ...prev, [cat]: true }));
   };
 
   const handleDeleteCategory = async (cat) => {
@@ -654,163 +875,52 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         </div>
       )}
 
-      {/* Checklist categories — all closed by default */}
-      {categories.map((category, catIdx) => {
-        const categoryItems = items.filter(item => item.category === category);
-        if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
-        const isOpen = !!openCategories[category];
-        const isLongPressed = longPressedCat === category;
-        const doneCount = categoryItems.filter(i => i.completed).length;
-
-        return (
-          <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-
-            {/* Category header row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {editingCat === category ? (
-                <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
-                  style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input
-                    type="text" autoFocus className="form-control"
-                    value={editCatText} onChange={e => setEditCatText(e.target.value)}
-                    style={{ flex: 1, minHeight: 34, fontSize: 13 }}
-                  />
-                  <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
-                    <Check size={13} />
-                  </button>
-                  <button type="button" onClick={() => setEditingCat(null)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
-                    <X size={14} />
-                  </button>
-                </form>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (longPressActive.current) { longPressActive.current = false; return; }
-                      toggleCategory(category);
-                    }}
-                    onMouseDown={() => canEdit && startLongPress(category)}
-                    onMouseUp={cancelLongPress}
-                    onTouchStart={e => { e.stopPropagation(); canEdit && startLongPress(category); }}
-                    onTouchEnd={cancelLongPress}
-                    onTouchMove={cancelLongPress}
-                    style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
-                  >
-                    <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
-                    <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
-                      {category}
-                    </h3>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
-                      {doneCount}/{categoryItems.length}
-                    </span>
-                  </button>
-
-                  {isLongPressed && canEdit && (
-                    <>
-                      <button type="button"
-                        onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
-                        style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                        <Pencil size={13} />
-                      </button>
-                      <button type="button" onClick={() => handleDeleteCategory(category)}
-                        style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                        <Trash2 size={13} />
-                      </button>
-                      <button type="button" onClick={() => setLongPressedCat(null)}
-                        style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
-                        <X size={14} />
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Category items + quick-add */}
-            {isOpen && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {categoryItems.map(item => {
-                  const isPending = pendingDeleteId === item.id;
-                  return (
-                    <div key={item.id}
-                      className="glass-card checklist-item-row"
-                      onClick={canEdit && !isPending ? () => handleToggle(item) : undefined}
-                      style={{
-                        padding: '12px 14px',
-                        cursor: canEdit && !isPending ? 'pointer' : 'default',
-                        background: isPending ? 'rgba(239,68,68,0.06)' : item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
-                        border: isPending ? '1.5px solid rgba(239,68,68,0.25)' : item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
-                        transition: 'background 0.2s, border 0.2s',
-                      }}
-                    >
-                      <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid rgba(11,11,48,0.18)', background: item.completed ? 'var(--primary-color)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
-                        {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
-                      </div>
-
-                      <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: isPending ? 'rgb(239,68,68)' : item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
-                        {item.text}
-                      </span>
-
-                      {canEdit ? (
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                          {!isPending && (
-                            <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
-                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
-                              <Pencil size={15} />
-                            </button>
-                          )}
-                          <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
-                            style={{ background: isPending ? 'rgba(239,68,68,0.12)' : 'transparent', border: isPending ? '1px solid rgba(239,68,68,0.3)' : 'none', borderRadius: 7, color: isPending ? 'rgb(239,68,68)' : 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.15s' }}>
-                            <Trash2 size={14} />
-                            {isPending && <span style={{ fontSize: 11, fontWeight: 800 }}>מחק?</span>}
-                          </button>
-                        </div>
-                      ) : <div />}
-                    </div>
-                  );
-                })}
-
-                {/* Quick-add at bottom of open category */}
-                {canEdit && (
-                  quickAddCat === category ? (
-                    <form onSubmit={e => handleQuickAdd(e, category)}
-                      style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
-                      <input
-                        ref={quickAddInputRef}
-                        type="text"
-                        className="form-control"
-                        autoFocus
-                        placeholder={`פריט ב${category}...`}
-                        value={quickAddText}
-                        onChange={e => setQuickAddText(e.target.value)}
-                        style={{ flex: 1, minHeight: 38, fontSize: 13 }}
-                      />
-                      <button type="submit" className="btn-primary"
-                        style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
-                        <Plus size={14} />
-                      </button>
-                      <button type="button"
-                        onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
-                        <X size={14} />
-                      </button>
-                    </form>
-                  ) : (
-                    <button type="button"
-                      onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
-                      <Plus size={14} />
-                      הוסף לרשימה
-                    </button>
-                  )
-                )}
-              </div>
-            )}
+      {/* Checklist categories — sortable, all closed by default */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={categories} strategy={verticalListSortingStrategy}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {categories.map((category) => {
+              const categoryItems = items.filter(item => item.category === category);
+              if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
+              const isOpen = !!openCategories[category];
+              const isLongPressed = longPressedCat === category;
+              const doneCount = categoryItems.filter(i => i.completed).length;
+              return (
+                <SortableCategoryBlock
+                  key={category}
+                  category={category}
+                  categoryItems={categoryItems}
+                  isOpen={isOpen}
+                  isLongPressed={isLongPressed}
+                  doneCount={doneCount}
+                  canEdit={canEdit}
+                  editingCat={editingCat}
+                  editCatText={editCatText}
+                  setEditCatText={setEditCatText}
+                  setEditingCat={setEditingCat}
+                  handleRenameCategory={handleRenameCategory}
+                  toggleCategory={toggleCategory}
+                  longPressActive={longPressActive}
+                  startLongPress={startLongPress}
+                  cancelLongPress={cancelLongPress}
+                  setLongPressedCat={setLongPressedCat}
+                  handleDeleteCategory={handleDeleteCategory}
+                  pendingDeleteId={pendingDeleteId}
+                  handleToggle={handleToggle}
+                  handleStartEdit={handleStartEdit}
+                  handleDeleteItem={handleDeleteItem}
+                  quickAddCat={quickAddCat}
+                  setQuickAddCat={setQuickAddCat}
+                  quickAddText={quickAddText}
+                  setQuickAddText={setQuickAddText}
+                  quickAddInputRef={quickAddInputRef}
+                  handleQuickAdd={handleQuickAdd}
+                />
+              );
+            })}
           </div>
-        );
-      })}
+        </SortableContext>
+      </DndContext>
 
     </div>
   );
