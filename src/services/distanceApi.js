@@ -1,26 +1,11 @@
-// Google Maps Distance Matrix — uses the JS API (not REST) to avoid CORS.
-// The Maps JS library is loaded lazily on first call.
+// Google Maps Routes API (v2) — supports CORS from browsers.
+// Replaces the deprecated Distance Matrix API.
+// Requires "Routes API" enabled on the API key in Google Cloud Console.
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
-
-// ── Lazy loader ──────────────────────────────────────────────────────────────
-let loadPromise = null;
-
-function loadGoogleMaps() {
-  if (window.google?.maps?.DistanceMatrixService) return Promise.resolve();
-  if (loadPromise) return loadPromise;
-  loadPromise = new Promise((resolve, reject) => {
-    const cb = `_gmcb_${Date.now()}`;
-    window[cb] = () => { delete window[cb]; resolve(); };
-    const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&callback=${cb}&loading=async`;
-    s.onerror = () => { loadPromise = null; reject(new Error('Maps load failed')); };
-    document.head.appendChild(s);
-  });
-  return loadPromise;
-}
 
 // ── URL helpers ──────────────────────────────────────────────────────────────
 export function extractCoordsFromMapsUrl(url) {
@@ -42,6 +27,52 @@ function extractPlaceNameFromMapsUrl(url) {
     const name = decodeURIComponent(m[1].replace(/\+/g, ' ')).trim();
     return name.length > 2 ? name : null;
   } catch { return null; }
+}
+
+// Build a Routes API waypoint object from an address string or "lat,lng"
+function toWaypoint(str) {
+  const coords = str.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/);
+  if (coords) {
+    return { location: { latLng: { latitude: parseFloat(coords[1]), longitude: parseFloat(coords[2]) } } };
+  }
+  return { address: str };
+}
+
+function fmtDuration(secs) {
+  const m = Math.round(secs / 60);
+  if (m < 60) return `${m} דק'`;
+  return `${Math.floor(m / 60)} שע' ${m % 60} דק'`;
+}
+
+function fmtDistance(meters) {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} ק"מ`;
+  return `${meters} מ'`;
+}
+
+async function queryRoute(origin, destination, travelMode) {
+  const body = {
+    origin: toWaypoint(origin),
+    destination: toWaypoint(destination),
+    travelMode,
+  };
+  const res = await fetch(ROUTES_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': GMAPS_KEY,
+      'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const route = data?.routes?.[0];
+  if (!route) return null;
+  const secs = parseInt(String(route.duration || '0s').replace('s', '')) || 0;
+  return {
+    duration: fmtDuration(secs),
+    distance: fmtDistance(route.distanceMeters || 0),
+  };
 }
 
 // ── Origin / destination resolvers ───────────────────────────────────────────
@@ -90,27 +121,10 @@ export function resolveDestinationString(plan) {
 export async function fetchTravelTimes(origin, destination) {
   if (!GMAPS_KEY || !origin || !destination) return null;
   try {
-    await loadGoogleMaps();
-    const svc = new window.google.maps.DistanceMatrixService();
-
-    const query = (mode, extra = {}) => new Promise((resolve) => {
-      svc.getDistanceMatrix(
-        { origins: [origin], destinations: [destination], travelMode: mode, language: 'he', ...extra },
-        (res, status) => {
-          if (status !== 'OK') { resolve(null); return; }
-          const el = res?.rows?.[0]?.elements?.[0];
-          resolve(el?.status === 'OK'
-            ? { duration: el.duration.text, distance: el.distance.text }
-            : null);
-        }
-      );
-    });
-
     const [walk, transit] = await Promise.all([
-      query(window.google.maps.TravelMode.WALKING),
-      query(window.google.maps.TravelMode.TRANSIT, { transitOptions: { departureTime: new Date() } }),
+      queryRoute(origin, destination, 'WALK'),
+      queryRoute(origin, destination, 'TRANSIT'),
     ]);
-
     return { walk, transit };
   } catch {
     return null;
