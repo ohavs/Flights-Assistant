@@ -165,7 +165,7 @@ export function resolveDestinationString(plan) {
 // ── Main fetch ───────────────────────────────────────────────────────────────
 export async function fetchTravelTimes(origin, destination) {
   if (!GMAPS_KEY || !origin || !destination) return null;
-  console.debug('[Routes API] origin:', origin, '| destination:', destination);
+  console.log('[Routes API] origin:', origin, '| destination:', destination);
   try {
     const [walk, transit] = await Promise.all([
       queryRoute(origin, destination, 'WALK'),
