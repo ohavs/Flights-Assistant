@@ -1,16 +1,21 @@
 // Google Maps Routes API (v2) — supports CORS from browsers.
-// Replaces the deprecated Distance Matrix API.
 // Requires "Routes API" enabled on the API key in Google Cloud Console.
+//
+// How location resolution works:
+// - Origin: hotel text address, OR coordinates from a full Maps URL (@lat,lng)
+// - Destination: plan item text address, OR coordinates from a full Maps URL
+// - Short mobile URLs (maps.app.goo.gl) cannot be used — Google blocks cross-origin
+//   access to them. Users should enter a text address OR paste the full desktop URL.
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
 const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
-// ── URL helpers ──────────────────────────────────────────────────────────────
+// ── Coordinate extraction from full Google Maps URLs ──────────────────────────
 export function extractCoordsFromMapsUrl(url) {
   if (!url || typeof url !== 'string') return null;
-  // @lat,lng,zoom  (standard full Google Maps URL)
+  // @lat,lng  (standard desktop Maps URL)
   const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m1) return `${m1[1]},${m1[2]}`;
   // ?q=lat,lng
@@ -19,39 +24,13 @@ export function extractCoordsFromMapsUrl(url) {
   // ?ll=lat,lng
   const m3 = url.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m3) return `${m3[1]},${m3[2]}`;
-  // !3dlat!4dlng  (embedded in Google Maps data= parameter)
+  // !3dlat!4dlng  (embedded in Maps data= parameter)
   const m4 = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
   if (m4) return `${m4[1]},${m4[2]}`;
   return null;
 }
 
-function extractPlaceNameFromMapsUrl(url) {
-  if (!url) return null;
-  // /maps/place/NAME  or  /maps/search/NAME
-  const mPlace = url.match(/\/maps\/(?:place|search)\/([^/@?]+)/i);
-  if (mPlace) {
-    try {
-      const name = decodeURIComponent(mPlace[1].replace(/\+/g, ' ')).trim();
-      if (name.length > 2) return name;
-    } catch { /* ignore */ }
-  }
-  // ?q=TEXT  (non-coordinate search query)
-  const mq = url.match(/[?&]q=([^&]+)/);
-  if (mq) {
-    try {
-      const decoded = decodeURIComponent(mq[1].replace(/\+/g, ' ')).trim();
-      if (decoded.length > 2 && !/^-?\d+\.\d+,-?\d+\.\d+$/.test(decoded)) return decoded;
-    } catch { /* ignore */ }
-  }
-  return null;
-}
-
-// Returns true for any recognised Google Maps URL (including short links)
-function isMapsUrl(url) {
-  return /google\.com\/maps|maps\.google\.|maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url);
-}
-
-// Build a Routes API waypoint object from an address string or "lat,lng"
+// Build a Routes API waypoint from a "lat,lng" string or a text address
 function toWaypoint(str) {
   const coords = str.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/);
   if (coords) {
@@ -72,24 +51,19 @@ function fmtDistance(meters) {
 }
 
 async function queryRoute(origin, destination, travelMode) {
-  const body = {
-    origin: toWaypoint(origin),
-    destination: toWaypoint(destination),
-    travelMode,
-  };
   const res = await fetch(`${ROUTES_URL}?key=${GMAPS_KEY}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      origin: toWaypoint(origin),
+      destination: toWaypoint(destination),
+      travelMode,
+    }),
   });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    console.warn(`[Routes API] ${travelMode} → HTTP ${res.status}:`, txt.slice(0, 400));
-    return null;
-  }
+  if (!res.ok) return null;
   const data = await res.json();
   const route = data?.routes?.[0];
   if (!route) return null;
@@ -100,48 +74,41 @@ async function queryRoute(origin, destination, travelMode) {
   };
 }
 
-// ── Origin / destination resolvers ───────────────────────────────────────────
+// ── Location resolvers ────────────────────────────────────────────────────────
 
-// Try every extraction strategy on a URL; return coords or name if found.
-function extractLocationFromUrl(url) {
-  const c = extractCoordsFromMapsUrl(url);
-  if (c) return c;
-  const p = extractPlaceNameFromMapsUrl(url);
-  if (p) return p;
-  return null;
-}
-
+// Resolve origin: prefer custom origin coords, then hotel text address, then hotel link coords
 export function resolveOriginString(hotelDetails, customOrigin) {
   if (customOrigin?.mapsUrl) {
-    const loc = extractLocationFromUrl(customOrigin.mapsUrl);
-    if (loc) return loc;
+    const c = extractCoordsFromMapsUrl(customOrigin.mapsUrl);
+    if (c) return c;
   }
   if (hotelDetails?.address?.trim()) return hotelDetails.address.trim();
   if (hotelDetails?.link) {
-    const loc = extractLocationFromUrl(hotelDetails.link);
-    if (loc) return loc;
+    const c = extractCoordsFromMapsUrl(hotelDetails.link);
+    if (c) return c;
   }
   return null;
 }
 
+// Resolve destination from a plan item.
+// Returns: text address, OR lat,lng string from a full Maps URL, OR null.
+// Note: short mobile URLs (maps.app.goo.gl) return null — Google blocks
+// cross-origin access to them from browsers. Use a text address instead.
 export function resolveDestinationString(plan) {
   const { address, links } = plan;
-  // Note: plan.title is intentionally NOT used — Hebrew/ambiguous titles
-  // cause wrong geocoding results. Only explicit addresses or URL-embedded
-  // coordinates are reliable.
 
-  // Plain text address field (user explicitly typed it, not a URL)
+  // Text address in the address field — most reliable
   if (address && !/^https?:\/\//i.test(address) && address.trim()) {
     return address.trim();
   }
 
-  // Address field contains a URL — only use extracted coordinates (not place names)
+  // Full Maps URL in the address field — try to extract coordinates
   if (address && /^https?:\/\//i.test(address)) {
     const c = extractCoordsFromMapsUrl(address);
     if (c) return c;
   }
 
-  // Links array — try coordinates from every URL (Maps or otherwise)
+  // Links — try to extract coordinates from any link URL
   if (Array.isArray(links)) {
     for (const link of links) {
       const c = extractCoordsFromMapsUrl(link?.url || '');
@@ -149,61 +116,12 @@ export function resolveDestinationString(plan) {
     }
   }
 
-  // Nothing usable found → caller will set noLocation: true
   return null;
 }
 
-// Try to follow a short Google Maps URL and extract coordinates.
-// maps.app.goo.gl blocks direct cross-origin fetches (403), so we route
-// through api.allorigins.win which follows the redirect server-side and
-// returns the final URL + HTML body in a CORS-friendly JSON response.
-async function tryExpandShortMapsUrl(url) {
-  if (!url || !/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return null;
-  try {
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    // allorigins returns the actual URL it fetched in status.url (after redirects)
-    const finalUrl = data?.status?.url || '';
-    if (finalUrl && /google\.com\/maps/i.test(finalUrl)) {
-      const c = extractCoordsFromMapsUrl(finalUrl);
-      if (c) return c;
-    }
-
-    // Fall back to parsing og:url from the HTML body
-    const html = data?.contents || '';
-    const og = html.match(/property=["']og:url["'][^>]*content=["']([^"']+)["']/i)
-              || html.match(/content=["']([^"']+)["'][^>]*property=["']og:url["']/i);
-    if (og) {
-      const c = extractCoordsFromMapsUrl(og[1]);
-      if (c) return c;
-    }
-  } catch { /* proxy unavailable or network error — fall through */ }
-  return null;
-}
-
-// Async resolver: first tries synchronous extraction, then attempts short-URL expansion.
-export async function resolveDestinationAsync(plan) {
-  const sync = resolveDestinationString(plan);
-  if (sync) return sync;
-
-  const urls = [];
-  if (plan.address && /^https?:\/\//i.test(plan.address)) urls.push(plan.address);
-  if (Array.isArray(plan.links)) plan.links.forEach(l => l?.url && urls.push(l.url));
-
-  for (const url of urls) {
-    const c = await tryExpandShortMapsUrl(url);
-    if (c) return c;
-  }
-  return null;
-}
-
-// ── Main fetch ───────────────────────────────────────────────────────────────
+// ── Main fetch ────────────────────────────────────────────────────────────────
 export async function fetchTravelTimes(origin, destination) {
   if (!GMAPS_KEY || !origin || !destination) return null;
-  console.log('[Routes API] origin:', origin, '| destination:', destination);
   try {
     const [walk, transit] = await Promise.all([
       queryRoute(origin, destination, 'WALK'),

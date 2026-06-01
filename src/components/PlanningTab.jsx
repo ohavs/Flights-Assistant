@@ -14,7 +14,7 @@ import {
 import {
   hasGmapsKey,
   resolveOriginString,
-  resolveDestinationAsync,
+  resolveDestinationString,
   fetchTravelTimes,
 } from '../services/distanceApi';
 import { CustomDropdown } from './CustomDatePicker';
@@ -369,14 +369,8 @@ export default function PlanningTab({ tripId }) {
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     const origin = resolveOriginString(hotelDetails, customOrigin);
-    if (!origin) {
-      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
-      return;
-    }
-    // Mark loading while we attempt short-URL expansion (may take a moment)
-    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
-    const dest = await resolveDestinationAsync(plan);
-    if (!dest) {
+    const dest = resolveDestinationString(plan);
+    if (!origin || !dest) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
     }
@@ -892,14 +886,17 @@ export default function PlanningTab({ tripId }) {
                   />
 
                   <div className="form-group">
-                    <label>כתובת / מיקום</label>
+                    <label>כתובת (לחישוב מרחק אוטומטי)</label>
                     <input
                       type="text"
                       className="form-control"
-                      placeholder="כתובת או קישור למפה"
+                      placeholder='כתובת טקסטואלית, למשל: "Pasta Fresca, Praha 1"'
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                     />
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      קישור Google Maps מלא (מהמחשב) גם עובד. קישור קצר מהנייד — לא.
+                    </div>
                   </div>
 
                   {/* Free-form links */}
@@ -1390,7 +1387,7 @@ export default function PlanningTab({ tripId }) {
                           );
                           if (cache.noLocation) return (
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-                              📍 הוסף כתובת טקסטואלית, או קישור Google Maps מלא מהמחשב (לא קישור קצר מהנייד)
+                              📍 ערוך את הפריט והוסף כתובת טקסטואלית לחישוב זמן הגעה
                             </div>
                           );
                           if (cache.error || (!cache.walk && !cache.transit)) return null;
