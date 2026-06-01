@@ -55,16 +55,19 @@ async function queryRoute(origin, destination, travelMode) {
     destination: toWaypoint(destination),
     travelMode,
   };
-  const res = await fetch(ROUTES_URL, {
+  const res = await fetch(`${ROUTES_URL}?key=${GMAPS_KEY}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GMAPS_KEY,
       'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    console.warn(`[Routes API] ${travelMode} → HTTP ${res.status}:`, txt.slice(0, 400));
+    return null;
+  }
   const data = await res.json();
   const route = data?.routes?.[0];
   if (!route) return null;
