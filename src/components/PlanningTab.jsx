@@ -14,7 +14,7 @@ import {
 import {
   hasGmapsKey,
   resolveOriginString,
-  resolveDestinationString,
+  resolveDestinationAsync,
   fetchTravelTimes,
 } from '../services/distanceApi';
 import { CustomDropdown } from './CustomDatePicker';
@@ -369,14 +369,18 @@ export default function PlanningTab({ tripId }) {
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     const origin = resolveOriginString(hotelDetails, customOrigin);
-    const dest = resolveDestinationString(plan);
-    // Mark as no-location so the card can show a hint
-    if (!origin || !dest) {
+    if (!origin) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      return;
+    }
+    // Mark loading while we attempt short-URL expansion (may take a moment)
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+    const dest = await resolveDestinationAsync(plan);
+    if (!dest) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
     }
 
-    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
     const result = await fetchTravelTimes(origin, dest);
     setDistanceCache(prev => ({
       ...prev,

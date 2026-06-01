@@ -153,6 +153,49 @@ export function resolveDestinationString(plan) {
   return null;
 }
 
+// Try to follow a short Google Maps URL and extract coordinates.
+// Short links (maps.app.goo.gl, goo.gl/maps) don't embed coordinates — we
+// fetch them, follow the redirect, and extract coords from the final URL.
+async function tryExpandShortMapsUrl(url) {
+  if (!url || !/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return null;
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(6000),
+    });
+    // If CORS is allowed, res.url holds the final URL after redirect
+    if (res.url && res.url !== url) {
+      const c = extractCoordsFromMapsUrl(res.url);
+      if (c) return c;
+    }
+    // Parse HTML for og:url meta tag (may contain full Maps URL with coords)
+    const html = await res.text();
+    const og = html.match(/property=["']og:url["'][^>]*content=["']([^"']+)["']/i)
+              || html.match(/content=["']([^"']+)["'][^>]*property=["']og:url["']/i);
+    if (og) {
+      const c = extractCoordsFromMapsUrl(og[1]);
+      if (c) return c;
+    }
+  } catch { /* CORS blocked or network error — fall through */ }
+  return null;
+}
+
+// Async resolver: first tries synchronous extraction, then attempts short-URL expansion.
+export async function resolveDestinationAsync(plan) {
+  const sync = resolveDestinationString(plan);
+  if (sync) return sync;
+
+  const urls = [];
+  if (plan.address && /^https?:\/\//i.test(plan.address)) urls.push(plan.address);
+  if (Array.isArray(plan.links)) plan.links.forEach(l => l?.url && urls.push(l.url));
+
+  for (const url of urls) {
+    const c = await tryExpandShortMapsUrl(url);
+    if (c) return c;
+  }
+  return null;
+}
+
 // ── Main fetch ───────────────────────────────────────────────────────────────
 export async function fetchTravelTimes(origin, destination) {
   if (!GMAPS_KEY || !origin || !destination) return null;
