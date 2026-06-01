@@ -47,7 +47,7 @@ function extractCoordsFromHtml(html) {
 // ── Short-URL expansion via CORS proxies ──────────────────────────────────────
 async function tryProxy(proxyUrl) {
   try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
     const ct = res.headers.get('content-type') || '';
     if (ct.includes('json')) {
@@ -178,24 +178,45 @@ function resolveDestinationSync(plan) {
   return null;
 }
 
-// Async resolver: sync → short-URL expansion → Places Search
+// Async resolver with fast cache checks + parallel fallback
 export async function resolveDestinationAsync(plan, origin) {
+  // 1. Instant: text address or embedded coords
   const sync = resolveDestinationSync(plan);
   if (sync) return sync;
 
-  // Collect all URLs stored on the plan item
+  // 2. Instant: check both caches before any network call
   const urls = [];
   if (plan.address && /^https?:\/\//i.test(plan.address)) urls.push(plan.address);
   if (Array.isArray(plan.links)) plan.links.forEach(l => l?.url && urls.push(l.url));
 
-  // Try to expand short URLs via proxy (cached after first success)
   for (const url of urls) {
-    const coords = await expandShortUrl(url);
-    if (coords) return coords;
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) {
+      const hit = localStorage.getItem(SHORT_CACHE + url);
+      if (hit) return hit;
+    }
   }
+  const placeHit = localStorage.getItem(PLACE_CACHE + plan.id);
+  if (placeHit) return placeHit;
 
-  // Last resort: geocode by plan title with location context
-  return findPlaceCoords(plan.id, plan.title, origin);
+  // 3. Nothing cached — run proxy expansion AND Places Search in parallel,
+  //    take whichever succeeds first.
+  const proxyRace = (async () => {
+    for (const url of urls) {
+      const c = await expandShortUrl(url);
+      if (c) return c;
+    }
+    return null;
+  })();
+  const placesRace = findPlaceCoords(plan.id, plan.title, origin);
+
+  try {
+    return await Promise.any([
+      proxyRace.then(c => { if (!c) throw new Error(); return c; }),
+      placesRace.then(c => { if (!c) throw new Error(); return c; }),
+    ]);
+  } catch {
+    return null;
+  }
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
