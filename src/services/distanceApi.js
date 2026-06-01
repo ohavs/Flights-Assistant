@@ -9,7 +9,7 @@
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
 const ROUTES_URL  = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const PLACES_URL  = 'https://places.googleapis.com/v1/places:searchText';
-const PLACE_CACHE = 'gmaps_place_';   // localStorage prefix
+const PLACE_CACHE = 'gmaps_place_v2_'; // localStorage prefix (v2 = with location context)
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
@@ -70,7 +70,7 @@ async function queryRoute(origin, destination, travelMode) {
 
 // ── Places API: find coordinates for a place name ─────────────────────────────
 // Results cached in localStorage by planId so each place is looked up only once.
-async function findPlaceCoords(planId, title, originCoords) {
+async function findPlaceCoords(planId, title, origin) {
   if (!title?.trim() || !GMAPS_KEY) return null;
 
   const cacheKey = PLACE_CACHE + planId;
@@ -78,15 +78,29 @@ async function findPlaceCoords(planId, title, originCoords) {
   if (cached) return cached;
 
   try {
-    const body = { textQuery: title.trim() };
-    if (originCoords) {
-      const [lat, lng] = originCoords.split(',').map(Number);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        body.locationBias = {
-          circle: { center: { latitude: lat, longitude: lng }, radius: 50000 },
-        };
-      }
+    const body = {};
+
+    // Check whether origin is "lat,lng" coordinates or a text address
+    const coordMatch = origin?.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
+    if (coordMatch) {
+      // Use coordinates as location bias (50 km radius)
+      body.locationBias = {
+        circle: {
+          center: { latitude: parseFloat(coordMatch[1]), longitude: parseFloat(coordMatch[2]) },
+          radius: 50000,
+        },
+      };
+      body.textQuery = title.trim();
+    } else if (origin) {
+      // Hotel has a text address — extract country/city (last comma-separated part)
+      // and append it to make the search location-aware.
+      const parts = origin.split(',').map(s => s.trim()).filter(Boolean);
+      const hint = parts[parts.length - 1]; // e.g. "Czechia" or "Praha 1"
+      body.textQuery = hint ? `${title.trim()}, ${hint}` : title.trim();
+    } else {
+      body.textQuery = title.trim();
     }
+
     const res = await fetch(PLACES_URL, {
       method: 'POST',
       headers: {
