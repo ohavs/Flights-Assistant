@@ -1,36 +1,33 @@
-// Google Maps Routes API (v2) — supports CORS from browsers.
-// Requires "Routes API" enabled on the API key in Google Cloud Console.
+// Google Maps Routes API (v2) + Places API (New) — both support browser CORS.
+// Requires "Routes API" and "Places API" enabled on the API key.
 //
-// How location resolution works:
-// - Origin: hotel text address, OR coordinates from a full Maps URL (@lat,lng)
-// - Destination: plan item text address, OR coordinates from a full Maps URL
-// - Short mobile URLs (maps.app.goo.gl) cannot be used — Google blocks cross-origin
-//   access to them. Users should enter a text address OR paste the full desktop URL.
+// Destination resolution priority:
+// 1. Text address in plan.address field
+// 2. Coordinates from a full Maps URL (with @lat,lng)
+// 3. Places Text Search using the plan title + hotel location as bias  ← handles short URLs
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
-const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+const ROUTES_URL  = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+const PLACES_URL  = 'https://places.googleapis.com/v1/places:searchText';
+const PLACE_CACHE = 'gmaps_place_';   // localStorage prefix
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
 // ── Coordinate extraction from full Google Maps URLs ──────────────────────────
 export function extractCoordsFromMapsUrl(url) {
   if (!url || typeof url !== 'string') return null;
-  // @lat,lng  (standard desktop Maps URL)
   const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m1) return `${m1[1]},${m1[2]}`;
-  // ?q=lat,lng
   const m2 = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m2) return `${m2[1]},${m2[2]}`;
-  // ?ll=lat,lng
   const m3 = url.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m3) return `${m3[1]},${m3[2]}`;
-  // !3dlat!4dlng  (embedded in Maps data= parameter)
   const m4 = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
   if (m4) return `${m4[1]},${m4[2]}`;
   return null;
 }
 
-// Build a Routes API waypoint from a "lat,lng" string or a text address
+// ── Routes API helpers ────────────────────────────────────────────────────────
 function toWaypoint(str) {
   const coords = str.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/);
   if (coords) {
@@ -68,15 +65,49 @@ async function queryRoute(origin, destination, travelMode) {
   const route = data?.routes?.[0];
   if (!route) return null;
   const secs = parseInt(String(route.duration || '0s').replace('s', '')) || 0;
-  return {
-    duration: fmtDuration(secs),
-    distance: fmtDistance(route.distanceMeters || 0),
-  };
+  return { duration: fmtDuration(secs), distance: fmtDistance(route.distanceMeters || 0) };
+}
+
+// ── Places API: find coordinates for a place name ─────────────────────────────
+// Results cached in localStorage by planId so each place is looked up only once.
+async function findPlaceCoords(planId, title, originCoords) {
+  if (!title?.trim() || !GMAPS_KEY) return null;
+
+  const cacheKey = PLACE_CACHE + planId;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const body = { textQuery: title.trim() };
+    if (originCoords) {
+      const [lat, lng] = originCoords.split(',').map(Number);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        body.locationBias = {
+          circle: { center: { latitude: lat, longitude: lng }, radius: 50000 },
+        };
+      }
+    }
+    const res = await fetch(PLACES_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GMAPS_KEY,
+        'X-Goog-FieldMask': 'places.location',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const loc = data?.places?.[0]?.location;
+    if (!loc) return null;
+    const coords = `${loc.latitude},${loc.longitude}`;
+    localStorage.setItem(cacheKey, coords);
+    return coords;
+  } catch { return null; }
 }
 
 // ── Location resolvers ────────────────────────────────────────────────────────
 
-// Resolve origin: prefer custom origin coords, then hotel text address, then hotel link coords
 export function resolveOriginString(hotelDetails, customOrigin) {
   if (customOrigin?.mapsUrl) {
     const c = extractCoordsFromMapsUrl(customOrigin.mapsUrl);
@@ -90,33 +121,29 @@ export function resolveOriginString(hotelDetails, customOrigin) {
   return null;
 }
 
-// Resolve destination from a plan item.
-// Returns: text address, OR lat,lng string from a full Maps URL, OR null.
-// Note: short mobile URLs (maps.app.goo.gl) return null — Google blocks
-// cross-origin access to them from browsers. Use a text address instead.
-export function resolveDestinationString(plan) {
+function resolveDestinationSync(plan) {
   const { address, links } = plan;
-
-  // Text address in the address field — most reliable
-  if (address && !/^https?:\/\//i.test(address) && address.trim()) {
-    return address.trim();
-  }
-
-  // Full Maps URL in the address field — try to extract coordinates
+  if (address && !/^https?:\/\//i.test(address) && address.trim()) return address.trim();
   if (address && /^https?:\/\//i.test(address)) {
     const c = extractCoordsFromMapsUrl(address);
     if (c) return c;
   }
-
-  // Links — try to extract coordinates from any link URL
   if (Array.isArray(links)) {
     for (const link of links) {
       const c = extractCoordsFromMapsUrl(link?.url || '');
       if (c) return c;
     }
   }
-
   return null;
+}
+
+// Async resolver: sync extraction first, then Places Search fallback.
+// originCoords is used as location bias for the Places Search ("near the hotel").
+export async function resolveDestinationAsync(plan, originCoords) {
+  const sync = resolveDestinationSync(plan);
+  if (sync) return sync;
+  // Fall back to Places Text Search with the plan title + hotel location bias
+  return findPlaceCoords(plan.id, plan.title, originCoords);
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
@@ -128,7 +155,5 @@ export async function fetchTravelTimes(origin, destination) {
       queryRoute(origin, destination, 'TRANSIT'),
     ]);
     return { walk, transit };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }

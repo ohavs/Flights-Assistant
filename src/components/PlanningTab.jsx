@@ -14,7 +14,7 @@ import {
 import {
   hasGmapsKey,
   resolveOriginString,
-  resolveDestinationString,
+  resolveDestinationAsync,
   fetchTravelTimes,
 } from '../services/distanceApi';
 import { CustomDropdown } from './CustomDatePicker';
@@ -369,8 +369,14 @@ export default function PlanningTab({ tripId }) {
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     const origin = resolveOriginString(hotelDetails, customOrigin);
-    const dest = resolveDestinationString(plan);
-    if (!origin || !dest) {
+    if (!origin) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      return;
+    }
+
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+    const dest = await resolveDestinationAsync(plan, origin);
+    if (!dest) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
     }
@@ -886,17 +892,14 @@ export default function PlanningTab({ tripId }) {
                   />
 
                   <div className="form-group">
-                    <label>כתובת (לחישוב מרחק אוטומטי)</label>
+                    <label>כתובת / מיקום</label>
                     <input
                       type="text"
                       className="form-control"
-                      placeholder='כתובת טקסטואלית, למשל: "Pasta Fresca, Praha 1"'
+                      placeholder="כתובת או קישור למפה"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                     />
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                      קישור Google Maps מלא (מהמחשב) גם עובד. קישור קצר מהנייד — לא.
-                    </div>
                   </div>
 
                   {/* Free-form links */}
@@ -1387,7 +1390,7 @@ export default function PlanningTab({ tripId }) {
                           );
                           if (cache.noLocation) return (
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-                              📍 ערוך את הפריט והוסף כתובת טקסטואלית לחישוב זמן הגעה
+                              📍 לא נמצא מיקום לחישוב זמן הגעה
                             </div>
                           );
                           if (cache.error || (!cache.walk && !cache.transit)) return null;
