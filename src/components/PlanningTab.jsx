@@ -1386,7 +1386,7 @@ export default function PlanningTab({ tripId }) {
                           );
                           if (cache.noLocation) return (
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-                              📍 הוסף כתובת או קישור Google Maps לחישוב זמן הגעה
+                              📍 הוסף כתובת טקסטואלית, או קישור Google Maps מלא מהמחשב (לא קישור קצר מהנייד)
                             </div>
                           );
                           if (cache.error || (!cache.walk && !cache.transit)) return null;

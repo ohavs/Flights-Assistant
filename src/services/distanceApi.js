@@ -125,40 +125,31 @@ export function resolveOriginString(hotelDetails, customOrigin) {
 }
 
 export function resolveDestinationString(plan) {
-  const { address, links, title } = plan;
+  const { address, links } = plan;
+  // Note: plan.title is intentionally NOT used — Hebrew/ambiguous titles
+  // cause wrong geocoding results. Only explicit addresses or URL-embedded
+  // coordinates are reliable.
 
-  // Plain text address (not a URL) — most reliable
+  // Plain text address field (user explicitly typed it, not a URL)
   if (address && !/^https?:\/\//i.test(address) && address.trim()) {
     return address.trim();
   }
 
-  // Address field contains a URL
+  // Address field contains a URL — only use extracted coordinates (not place names)
   if (address && /^https?:\/\//i.test(address)) {
-    const loc = extractLocationFromUrl(address);
-    if (loc) return loc;
+    const c = extractCoordsFromMapsUrl(address);
+    if (c) return c;
   }
 
-  // Check every link — try extraction on all Maps URLs (including short links)
+  // Links array — try coordinates from every URL (Maps or otherwise)
   if (Array.isArray(links)) {
     for (const link of links) {
-      const url = link?.url || '';
-      if (isMapsUrl(url)) {
-        const loc = extractLocationFromUrl(url);
-        if (loc) return loc;
-      }
-    }
-    // Second pass: try any URL in case Maps URL is miscategorised
-    for (const link of links) {
-      const url = link?.url || '';
-      if (url && !isMapsUrl(url)) {
-        const loc = extractLocationFromUrl(url);
-        if (loc) return loc;
-      }
+      const c = extractCoordsFromMapsUrl(link?.url || '');
+      if (c) return c;
     }
   }
 
-  // Last resort: title — may fail geocoding for non-English text
-  if (title?.trim()) return title.trim();
+  // Nothing usable found → caller will set noLocation: true
   return null;
 }
 
