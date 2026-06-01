@@ -154,29 +154,33 @@ export function resolveDestinationString(plan) {
 }
 
 // Try to follow a short Google Maps URL and extract coordinates.
-// Short links (maps.app.goo.gl, goo.gl/maps) don't embed coordinates — we
-// fetch them, follow the redirect, and extract coords from the final URL.
+// maps.app.goo.gl blocks direct cross-origin fetches (403), so we route
+// through api.allorigins.win which follows the redirect server-side and
+// returns the final URL + HTML body in a CORS-friendly JSON response.
 async function tryExpandShortMapsUrl(url) {
   if (!url || !/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return null;
   try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(6000),
-    });
-    // If CORS is allowed, res.url holds the final URL after redirect
-    if (res.url && res.url !== url) {
-      const c = extractCoordsFromMapsUrl(res.url);
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    // allorigins returns the actual URL it fetched in status.url (after redirects)
+    const finalUrl = data?.status?.url || '';
+    if (finalUrl && /google\.com\/maps/i.test(finalUrl)) {
+      const c = extractCoordsFromMapsUrl(finalUrl);
       if (c) return c;
     }
-    // Parse HTML for og:url meta tag (may contain full Maps URL with coords)
-    const html = await res.text();
+
+    // Fall back to parsing og:url from the HTML body
+    const html = data?.contents || '';
     const og = html.match(/property=["']og:url["'][^>]*content=["']([^"']+)["']/i)
               || html.match(/content=["']([^"']+)["'][^>]*property=["']og:url["']/i);
     if (og) {
       const c = extractCoordsFromMapsUrl(og[1]);
       if (c) return c;
     }
-  } catch { /* CORS blocked or network error — fall through */ }
+  } catch { /* proxy unavailable or network error — fall through */ }
   return null;
 }
 
