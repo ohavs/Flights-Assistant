@@ -1,19 +1,21 @@
 // Google Maps Routes API (v2) + Places API (New) — both support browser CORS.
-// Requires "Routes API" and "Places API" enabled on the API key.
+// Requires "Routes API" and "Places API (New)" enabled on the API key.
 //
-// Destination resolution priority:
+// Destination resolution order:
 // 1. Text address in plan.address field
-// 2. Coordinates from a full Maps URL (with @lat,lng)
-// 3. Places Text Search using the plan title + hotel location as bias  ← handles short URLs
+// 2. Coordinates embedded in a full Maps URL (@lat,lng / !3dlat!4dlng)
+// 3. Follow the short URL (maps.app.goo.gl) via CORS proxy → extract coords
+// 4. Places Text Search by title + location context (last resort)
 
-const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+const GMAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
 const ROUTES_URL  = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const PLACES_URL  = 'https://places.googleapis.com/v1/places:searchText';
-const PLACE_CACHE = 'gmaps_place_v2_'; // localStorage prefix (v2 = with location context)
+const SHORT_CACHE = 'gmaps_short_v1_';  // short-URL expansion results
+const PLACE_CACHE = 'gmaps_place_v2_';  // Places-search results
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
-// ── Coordinate extraction from full Google Maps URLs ──────────────────────────
+// ── Coordinate extraction from URLs ──────────────────────────────────────────
 export function extractCoordsFromMapsUrl(url) {
   if (!url || typeof url !== 'string') return null;
   const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
@@ -27,12 +29,60 @@ export function extractCoordsFromMapsUrl(url) {
   return null;
 }
 
+function extractCoordsFromHtml(html) {
+  if (!html) return null;
+  const patterns = [
+    /property=["']og:url["'][^>]*content=["']([^"']+)["']/i,
+    /content=["']([^"']+)["'][^>]*property=["']og:url["']/i,
+    /rel=["']canonical["'][^>]*href=["']([^"']+)["']/i,
+    /href=["']([^"']+)["'][^>]*rel=["']canonical["']/i,
+  ];
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m) { const c = extractCoordsFromMapsUrl(m[1]); if (c) return c; }
+  }
+  return null;
+}
+
+// ── Short-URL expansion via CORS proxies ──────────────────────────────────────
+async function tryProxy(proxyUrl) {
+  try {
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('json')) {
+      const data = await res.json();
+      // allorigins.win: status.url = final URL after redirects
+      const finalUrl = data?.status?.url || '';
+      if (finalUrl) { const c = extractCoordsFromMapsUrl(finalUrl); if (c) return c; }
+      return extractCoordsFromHtml(data?.contents || '');
+    }
+    return extractCoordsFromHtml(await res.text());
+  } catch { return null; }
+}
+
+async function expandShortUrl(url) {
+  if (!url || !/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return null;
+
+  const cacheKey = SHORT_CACHE + url;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return cached;
+
+  const enc = encodeURIComponent(url);
+  // Try both proxies in parallel; use whichever succeeds first
+  const results = await Promise.allSettled([
+    tryProxy(`https://api.allorigins.win/get?url=${enc}`),
+    tryProxy(`https://corsproxy.io/?url=${enc}`),
+  ]);
+  const coords = results.find(r => r.status === 'fulfilled' && r.value)?.value ?? null;
+  if (coords) localStorage.setItem(cacheKey, coords);
+  return coords;
+}
+
 // ── Routes API helpers ────────────────────────────────────────────────────────
 function toWaypoint(str) {
-  const coords = str.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/);
-  if (coords) {
-    return { location: { latLng: { latitude: parseFloat(coords[1]), longitude: parseFloat(coords[2]) } } };
-  }
+  const m = str.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
+  if (m) return { location: { latLng: { latitude: parseFloat(m[1]), longitude: parseFloat(m[2]) } } };
   return { address: str };
 }
 
@@ -50,15 +100,8 @@ function fmtDistance(meters) {
 async function queryRoute(origin, destination, travelMode) {
   const res = await fetch(`${ROUTES_URL}?key=${GMAPS_KEY}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
-    },
-    body: JSON.stringify({
-      origin: toWaypoint(origin),
-      destination: toWaypoint(destination),
-      travelMode,
-    }),
+    headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
+    body: JSON.stringify({ origin: toWaypoint(origin), destination: toWaypoint(destination), travelMode }),
   });
   if (!res.ok) return null;
   const data = await res.json();
@@ -68,34 +111,24 @@ async function queryRoute(origin, destination, travelMode) {
   return { duration: fmtDuration(secs), distance: fmtDistance(route.distanceMeters || 0) };
 }
 
-// ── Places API: find coordinates for a place name ─────────────────────────────
-// Results cached in localStorage by planId so each place is looked up only once.
+// ── Places API: geocode by title when all else fails ─────────────────────────
 async function findPlaceCoords(planId, title, origin) {
   if (!title?.trim() || !GMAPS_KEY) return null;
-
   const cacheKey = PLACE_CACHE + planId;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return cached;
 
   try {
     const body = {};
-
-    // Check whether origin is "lat,lng" coordinates or a text address
     const coordMatch = origin?.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
     if (coordMatch) {
-      // Use coordinates as location bias (50 km radius)
       body.locationBias = {
-        circle: {
-          center: { latitude: parseFloat(coordMatch[1]), longitude: parseFloat(coordMatch[2]) },
-          radius: 50000,
-        },
+        circle: { center: { latitude: parseFloat(coordMatch[1]), longitude: parseFloat(coordMatch[2]) }, radius: 50000 },
       };
       body.textQuery = title.trim();
     } else if (origin) {
-      // Hotel has a text address — extract country/city (last comma-separated part)
-      // and append it to make the search location-aware.
       const parts = origin.split(',').map(s => s.trim()).filter(Boolean);
-      const hint = parts[parts.length - 1]; // e.g. "Czechia" or "Praha 1"
+      const hint = parts[parts.length - 1];
       body.textQuery = hint ? `${title.trim()}, ${hint}` : title.trim();
     } else {
       body.textQuery = title.trim();
@@ -103,11 +136,7 @@ async function findPlaceCoords(planId, title, origin) {
 
     const res = await fetch(PLACES_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GMAPS_KEY,
-        'X-Goog-FieldMask': 'places.location',
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location' },
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -121,7 +150,6 @@ async function findPlaceCoords(planId, title, origin) {
 }
 
 // ── Location resolvers ────────────────────────────────────────────────────────
-
 export function resolveOriginString(hotelDetails, customOrigin) {
   if (customOrigin?.mapsUrl) {
     const c = extractCoordsFromMapsUrl(customOrigin.mapsUrl);
@@ -135,29 +163,39 @@ export function resolveOriginString(hotelDetails, customOrigin) {
   return null;
 }
 
+// Sync fast-path: text address or embedded coords in URL
 function resolveDestinationSync(plan) {
   const { address, links } = plan;
   if (address && !/^https?:\/\//i.test(address) && address.trim()) return address.trim();
   if (address && /^https?:\/\//i.test(address)) {
-    const c = extractCoordsFromMapsUrl(address);
-    if (c) return c;
+    const c = extractCoordsFromMapsUrl(address); if (c) return c;
   }
   if (Array.isArray(links)) {
     for (const link of links) {
-      const c = extractCoordsFromMapsUrl(link?.url || '');
-      if (c) return c;
+      const c = extractCoordsFromMapsUrl(link?.url || ''); if (c) return c;
     }
   }
   return null;
 }
 
-// Async resolver: sync extraction first, then Places Search fallback.
-// originCoords is used as location bias for the Places Search ("near the hotel").
-export async function resolveDestinationAsync(plan, originCoords) {
+// Async resolver: sync → short-URL expansion → Places Search
+export async function resolveDestinationAsync(plan, origin) {
   const sync = resolveDestinationSync(plan);
   if (sync) return sync;
-  // Fall back to Places Text Search with the plan title + hotel location bias
-  return findPlaceCoords(plan.id, plan.title, originCoords);
+
+  // Collect all URLs stored on the plan item
+  const urls = [];
+  if (plan.address && /^https?:\/\//i.test(plan.address)) urls.push(plan.address);
+  if (Array.isArray(plan.links)) plan.links.forEach(l => l?.url && urls.push(l.url));
+
+  // Try to expand short URLs via proxy (cached after first success)
+  for (const url of urls) {
+    const coords = await expandShortUrl(url);
+    if (coords) return coords;
+  }
+
+  // Last resort: geocode by plan title with location context
+  return findPlaceCoords(plan.id, plan.title, origin);
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
