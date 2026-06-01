@@ -363,12 +363,18 @@ export default function PlanningTab({ tripId }) {
     if (!hasGmapsKey()) return;
     const originId = plan.distanceOriginId || 'hotel';
     const cacheKey = `${plan.id}_${originId}`;
-    if (distanceCache[cacheKey]) return;
+    // Don't re-fetch if already loading or successfully fetched
+    const existing = distanceCache[cacheKey];
+    if (existing && (existing.loading || existing.walk || existing.transit)) return;
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     const origin = resolveOriginString(hotelDetails, customOrigin);
     const dest = resolveDestinationString(plan);
-    if (!origin || !dest) return;
+    // Mark as no-location so the card can show a hint
+    if (!origin || !dest) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      return;
+    }
 
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
     const result = await fetchTravelTimes(origin, dest);
@@ -1364,7 +1370,7 @@ export default function PlanningTab({ tripId }) {
                         )}
 
                         {/* Distance from hotel / origin */}
-                        {hasGmapsKey() && (() => {
+                        {hasGmapsKey() && hotelDetails && (() => {
                           const originId = plan.distanceOriginId || 'hotel';
                           const cacheKey = `${plan.id}_${originId}`;
                           const cache = distanceCache[cacheKey];
@@ -1372,13 +1378,18 @@ export default function PlanningTab({ tripId }) {
                             ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
                             : (distanceOrigins.find(o => o.id === originId)?.name || 'מהמיקום');
 
-                          if (cache?.loading) return (
+                          if (!cache || cache.loading) return (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
                               <Loader2 size={13} className="spinning" />
                               <span>מחשב מרחק...</span>
                             </div>
                           );
-                          if (!cache || cache.error || (!cache.walk && !cache.transit)) return null;
+                          if (cache.noLocation) return (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+                              📍 הוסף כתובת או קישור Google Maps לחישוב זמן הגעה
+                            </div>
+                          );
+                          if (cache.error || (!cache.walk && !cache.transit)) return null;
                           return (
                             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.04)', borderRadius: 10, border: '1px solid rgba(79,70,229,0.1)' }}>
                               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
