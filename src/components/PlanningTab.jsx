@@ -1,14 +1,22 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  writeBatch 
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
+import {
+  hasGmapsKey,
+  resolveOriginString,
+  resolveDestinationString,
+  fetchTravelTimes,
+} from '../services/distanceApi';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -28,6 +36,8 @@ import {
   Pencil,
   ArrowUp,
   ArrowDown,
+  Loader2,
+  Hotel,
   Calendar,
   ChevronDown,
   Link2,
@@ -247,6 +257,17 @@ export default function PlanningTab({ tripId }) {
   // Locations modal: when a card has multiple navigation targets
   const [locationsModal, setLocationsModal] = useState(null);
 
+  // Distance from hotel/origin
+  const [hotelDetails, setHotelDetails] = useState(null);
+  const [distanceOrigins, setDistanceOrigins] = useState([]); // [{id,name,mapsUrl}]
+  const [distanceCache, setDistanceCache] = useState({}); // cacheKey → {walk,transit,loading,error}
+  // Form: distance origin selector
+  const [formOriginId, setFormOriginId] = useState('hotel');
+  const [originDropOpen, setOriginDropOpen] = useState(false);
+  const [showAddOriginForm, setShowAddOriginForm] = useState(false);
+  const [newOriginName, setNewOriginName] = useState('');
+  const [newOriginUrl, setNewOriginUrl] = useState('');
+
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState('');
@@ -283,6 +304,18 @@ export default function PlanningTab({ tripId }) {
     if (!tripId) return;
     const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
       setCategorySettings(snap.exists() ? (snap.data() || {}) : {});
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  // Listen to trip document for hotelDetails + custom distance origins
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      setHotelDetails(d.hotelDetails || null);
+      setDistanceOrigins(Array.isArray(d.distanceOrigins) ? d.distanceOrigins : []);
     });
     return () => unsub();
   }, [tripId]);
@@ -324,6 +357,50 @@ export default function PlanningTab({ tripId }) {
   }, [tripId]);
 
   /* ══════════════════════════════════════════════════════════
+     DISTANCE HELPERS
+     ══════════════════════════════════════════════════════════ */
+  const fetchPlanDistances = async (plan) => {
+    if (!hasGmapsKey()) return;
+    const originId = plan.distanceOriginId || 'hotel';
+    const cacheKey = `${plan.id}_${originId}`;
+    if (distanceCache[cacheKey]) return;
+
+    const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+    const origin = resolveOriginString(hotelDetails, customOrigin);
+    const dest = resolveDestinationString(plan);
+    if (!origin || !dest) return;
+
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+    const result = await fetchTravelTimes(origin, dest);
+    setDistanceCache(prev => ({
+      ...prev,
+      [cacheKey]: result ? { ...result, loading: false } : { loading: false, error: true },
+    }));
+  };
+
+  const handleSaveDistanceOrigin = async () => {
+    if (!newOriginName.trim() || !newOriginUrl.trim() || !tripId) return;
+    const newOrigin = {
+      id: 'origin-' + Date.now(),
+      name: newOriginName.trim(),
+      mapsUrl: newOriginUrl.trim(),
+    };
+    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayUnion(newOrigin) });
+    setFormOriginId(newOrigin.id);
+    setNewOriginName('');
+    setNewOriginUrl('');
+    setShowAddOriginForm(false);
+  };
+
+  const handleRemoveDistanceOrigin = async (originId) => {
+    if (!tripId) return;
+    const origin = distanceOrigins.find(o => o.id === originId);
+    if (!origin) return;
+    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayRemove(origin) });
+    if (formOriginId === originId) setFormOriginId('hotel');
+  };
+
+  /* ══════════════════════════════════════════════════════════
      PLACES POOL (OLD PLANNING) OPERATIONS
      ══════════════════════════════════════════════════════════ */
   const handleOpenAdd = () => {
@@ -336,6 +413,9 @@ export default function PlanningTab({ tripId }) {
     setLinks([]);
     setNewLinkLabel('');
     setNewLinkUrl('');
+    setFormOriginId('hotel');
+    setOriginDropOpen(false);
+    setShowAddOriginForm(false);
     setShowAddForm(true);
   };
 
@@ -371,6 +451,9 @@ export default function PlanningTab({ tripId }) {
     setLinks(Array.isArray(plan.links) ? plan.links : []);
     setNewLinkLabel('');
     setNewLinkUrl('');
+    setFormOriginId(plan.distanceOriginId || 'hotel');
+    setOriginDropOpen(false);
+    setShowAddOriginForm(false);
     setShowAddForm(true);
   };
 
@@ -388,7 +471,14 @@ export default function PlanningTab({ tripId }) {
   };
 
   const togglePlanExpanded = (id) => {
-    setExpandedPlanIds(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedPlanIds(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      if (next[id]) {
+        const plan = plans.find(p => p.id === id);
+        if (plan) setTimeout(() => fetchPlanDistances(plan), 0);
+      }
+      return next;
+    });
   };
 
   const handleToggleVisited = async (plan) => {
@@ -417,6 +507,7 @@ export default function PlanningTab({ tripId }) {
     e.preventDefault();
     if (!title.trim() || !tripId) return;
 
+    const originId = formOriginId !== 'hotel' ? formOriginId : null;
     if (editingId) {
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
       await updateDoc(docRef, {
@@ -425,7 +516,15 @@ export default function PlanningTab({ tripId }) {
         description: description.trim(),
         address: address.trim(),
         price: price.trim() || 'חינם',
-        links: links
+        links: links,
+        distanceOriginId: originId,
+      });
+      // Invalidate cache so distances re-fetch on next open
+      setDistanceCache(prev => {
+        const next = { ...prev };
+        delete next[`${editingId}_hotel`];
+        delete next[`${editingId}_${originId}`];
+        return next;
       });
     } else {
       const id = 'plan-' + Date.now();
@@ -437,7 +536,8 @@ export default function PlanningTab({ tripId }) {
         address: address.trim(),
         price: price.trim() || 'חינם',
         links: links,
-        visited: false
+        visited: false,
+        distanceOriginId: originId,
       });
     }
 
@@ -839,6 +939,133 @@ export default function PlanningTab({ tripId }) {
                     </button>
                   </div>
 
+                  {/* Distance origin selector */}
+                  {hasGmapsKey() && (
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Hotel size={14} style={{ color: 'var(--accent)' }} />
+                        בדיקת זמנים מ...
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={() => setOriginDropOpen(o => !o)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 14px', borderRadius: 'var(--radius-md)',
+                            border: '1.5px solid rgba(79,70,229,0.25)', background: 'rgba(79,70,229,0.04)',
+                            cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                            color: 'var(--primary)',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Hotel size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            {formOriginId === 'hotel'
+                              ? (hotelDetails?.name ? `המלון — ${hotelDetails.name}` : 'המלון')
+                              : (distanceOrigins.find(o => o.id === formOriginId)?.name || 'מיקום לא ידוע')}
+                          </span>
+                          <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: originDropOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                        </button>
+
+                        {originDropOpen && (
+                          <div style={{
+                            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
+                            background: '#fff', border: '1.5px solid rgba(79,70,229,0.15)', borderRadius: 'var(--radius-md)',
+                            boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+                          }}>
+                            {/* Hotel option */}
+                            <button
+                              type="button"
+                              onClick={() => { setFormOriginId('hotel'); setOriginDropOpen(false); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '11px 14px', border: 'none', background: formOriginId === 'hotel' ? 'rgba(79,70,229,0.08)' : '#fff',
+                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                                color: formOriginId === 'hotel' ? 'var(--accent)' : 'var(--primary)',
+                                borderBottom: '1px solid rgba(11,11,48,0.06)',
+                              }}
+                            >
+                              <Hotel size={15} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1, textAlign: 'right' }}>
+                                {hotelDetails?.name ? `המלון — ${hotelDetails.name}` : 'המלון'}
+                              </span>
+                              {formOriginId === 'hotel' && <Check size={14} />}
+                            </button>
+
+                            {/* Custom origins */}
+                            {distanceOrigins.map(origin => (
+                              <div key={origin.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(11,11,48,0.04)' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => { setFormOriginId(origin.id); setOriginDropOpen(false); }}
+                                  style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '11px 14px', border: 'none', background: formOriginId === origin.id ? 'rgba(79,70,229,0.08)' : '#fff',
+                                    cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                                    color: formOriginId === origin.id ? 'var(--accent)' : 'var(--primary)',
+                                  }}
+                                >
+                                  <MapPin size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                                  <span style={{ flex: 1, textAlign: 'right' }}>{origin.name}</span>
+                                  {formOriginId === origin.id && <Check size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDistanceOrigin(origin.id)}
+                                  style={{ padding: '0 12px 0 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.6)' }}
+                                  title="הסר מיקום"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Add new origin */}
+                            {!showAddOriginForm ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowAddOriginForm(true)}
+                                style={{
+                                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                                  padding: '10px 14px', border: 'none', background: '#fff',
+                                  cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                  color: 'var(--accent)',
+                                }}
+                              >
+                                <Plus size={14} />
+                                <span>הוסף מיקום...</span>
+                              </button>
+                            ) : (
+                              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'rgba(79,70,229,0.03)' }}>
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  placeholder="שם המיקום (למשל: תחנת הרכבת)"
+                                  value={newOriginName}
+                                  onChange={e => setNewOriginName(e.target.value)}
+                                  style={{ fontSize: 13 }}
+                                />
+                                <input
+                                  type="url"
+                                  className="form-control"
+                                  placeholder="קישור לגוגל מפות"
+                                  value={newOriginUrl}
+                                  onChange={e => setNewOriginUrl(e.target.value)}
+                                  dir="ltr"
+                                  style={{ fontSize: 13 }}
+                                />
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <button type="button" onClick={handleSaveDistanceOrigin} className="btn-primary" style={{ flex: 1, minHeight: 36, fontSize: 13 }}>שמור</button>
+                                  <button type="button" onClick={() => { setShowAddOriginForm(false); setNewOriginName(''); setNewOriginUrl(''); }} className="btn-secondary" style={{ minHeight: 36, padding: '0 12px', fontSize: 13 }}>ביטול</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
                     <textarea
@@ -1135,6 +1362,41 @@ export default function PlanningTab({ tripId }) {
                             {plan.description}
                           </p>
                         )}
+
+                        {/* Distance from hotel / origin */}
+                        {hasGmapsKey() && (() => {
+                          const originId = plan.distanceOriginId || 'hotel';
+                          const cacheKey = `${plan.id}_${originId}`;
+                          const cache = distanceCache[cacheKey];
+                          const originLabel = originId === 'hotel'
+                            ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
+                            : (distanceOrigins.find(o => o.id === originId)?.name || 'מהמיקום');
+
+                          if (cache?.loading) return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                              <Loader2 size={13} className="spinning" />
+                              <span>מחשב מרחק...</span>
+                            </div>
+                          );
+                          if (!cache || cache.error || (!cache.walk && !cache.transit)) return null;
+                          return (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.04)', borderRadius: 10, border: '1px solid rgba(79,70,229,0.1)' }}>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
+                                {originLabel}:
+                              </span>
+                              {cache.walk && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+                                  🚶 {cache.walk.duration}
+                                </span>
+                              )}
+                              {cache.transit && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+                                  🚌 {cache.transit.duration}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         <div style={{
                           display: 'flex',
