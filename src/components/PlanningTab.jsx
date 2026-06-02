@@ -11,6 +11,9 @@ import {
   arrayUnion,
   arrayRemove,
 } from 'firebase/firestore';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   hasGmapsKey,
   resolveOriginString,
@@ -54,6 +57,7 @@ import {
   Mountain,
   Tent,
   Navigation,
+  GripVertical,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -620,6 +624,24 @@ export default function PlanningTab({ tripId }) {
       order: nextDayNum,
       activities: []
     });
+  };
+
+  const daySensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
+  const handleDayDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = days.findIndex(d => d.id === active.id);
+    const newIdx = days.findIndex(d => d.id === over.id);
+    const reordered = arrayMove(days, oldIdx, newIdx);
+    const batch = writeBatch(db);
+    reordered.forEach((day, idx) => {
+      batch.update(doc(db, 'trips', tripId, 'days', day.id), { order: idx + 1 });
+    });
+    await batch.commit();
   };
 
   const handleSaveDayTitle = async (dayId, newTitle) => {
@@ -1539,9 +1561,11 @@ export default function PlanningTab({ tripId }) {
               <p style={{ fontSize: '13px', marginTop: 4 }}>לחץ על "הוסף יום" כדי להתחיל לתכנן!</p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
+              <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {days.map((day) => (
-                <div key={day.id} className="glass-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <SortableDayCard key={day.id} day={day} canEdit={canEdit}>
                   {/* Day Header */}
                   <div style={{ 
                     display: 'flex', 
@@ -1569,7 +1593,10 @@ export default function PlanningTab({ tripId }) {
                       </form>
                     ) : (
                       <>
-                        <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                          {canEdit && <DayDragHandle />}
+                          <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
+                        </div>
                         {canEdit && (
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button
@@ -1768,9 +1795,11 @@ export default function PlanningTab({ tripId }) {
                     <span>הוסף פעילות</span>
                   </button>
                   )}
-                </div>
+                </SortableDayCard>
               ))}
             </div>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       )}
@@ -2140,5 +2169,61 @@ export default function PlanningTab({ tripId }) {
       })()}
 
     </div>
+  );
+}
+
+/* ── Drag-and-drop helpers for day reordering ─────────────────────────── */
+
+const DragHandleContext = React.createContext(null);
+
+function SortableDayCard({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <DragHandleContext.Provider value={listeners}>
+      <div
+        ref={setNodeRef}
+        {...attributes}
+        className="glass-card"
+        style={{
+          padding: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          transform: CSS.Transform.toString(transform),
+          transition,
+          opacity: isDragging ? 0.45 : 1,
+          boxShadow: isDragging ? '0 8px 32px rgba(11,11,48,0.18)' : undefined,
+          zIndex: isDragging ? 10 : undefined,
+          position: 'relative',
+        }}
+      >
+        {children}
+      </div>
+    </DragHandleContext.Provider>
+  );
+}
+
+function DayDragHandle() {
+  const listeners = React.useContext(DragHandleContext);
+  return (
+    <button
+      type="button"
+      {...listeners}
+      style={{
+        border: 'none',
+        background: 'transparent',
+        color: 'var(--text-muted)',
+        cursor: 'grab',
+        padding: '4px 2px',
+        display: 'flex',
+        alignItems: 'center',
+        touchAction: 'none',
+        flexShrink: 0,
+        opacity: 0.5,
+      }}
+      title="גרור לשינוי סדר"
+    >
+      <GripVertical size={16} />
+    </button>
   );
 }
