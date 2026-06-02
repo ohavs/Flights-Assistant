@@ -286,6 +286,7 @@ export default function PlanningTab({ tripId }) {
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
+  const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null });
 
   const defaultCategoryNames = [
     'אטרקציות ודברים לעשות',
@@ -357,6 +358,21 @@ export default function PlanningTab({ tripId }) {
       setDays(fetchedDays);
     });
 
+    return () => unsubscribe();
+  }, [tripId]);
+
+  // Listen to trip doc for flight dates (used by smart-days init)
+  useEffect(() => {
+    if (!tripId) return;
+    const unsubscribe = onSnapshot(doc(db, 'trips', tripId), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setTripFlightDates({
+          out: d.outboundFlightDetails?.date || null,
+          ret: d.returnFlightDetails?.date || null,
+        });
+      }
+    });
     return () => unsubscribe();
   }, [tripId]);
 
@@ -624,6 +640,46 @@ export default function PlanningTab({ tripId }) {
       order: nextDayNum,
       activities: []
     });
+  };
+
+  const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
+  const handleInitDaysFromFlight = async () => {
+    if (!tripId || !tripFlightDates.out || !tripFlightDates.ret) return;
+    if (days.length > 0) {
+      const ok = await confirm({
+        title: 'החלפת ימי הטיול',
+        message: 'כבר קיימים ימים מתוכננים. האם למחוק אותם וליצור מחדש לפי תאריכי הטיסה?',
+        confirmText: 'כן, החלף',
+        cancelText: 'ביטול',
+        danger: true,
+      });
+      if (!ok) return;
+      const batch = writeBatch(db);
+      days.forEach(d => batch.delete(doc(db, 'trips', tripId, 'days', d.id)));
+      await batch.commit();
+    }
+    const start = new Date(tripFlightDates.out);
+    const end = new Date(tripFlightDates.ret);
+    // Clamp to reasonable range
+    const maxDays = 30;
+    const batch = writeBatch(db);
+    let dayNum = 1;
+    const cur = new Date(start);
+    while (cur <= end && dayNum <= maxDays) {
+      const dayName = HE_DAYS[cur.getDay()];
+      const dd = String(cur.getDate()).padStart(2, '0');
+      const mm = String(cur.getMonth() + 1).padStart(2, '0');
+      const id = 'day-' + Date.now() + '-' + dayNum;
+      batch.set(doc(db, 'trips', tripId, 'days', id), {
+        title: `יום ${dayNum} – ${dayName} ${dd}.${mm}`,
+        order: dayNum,
+        activities: [],
+      });
+      cur.setDate(cur.getDate() + 1);
+      dayNum++;
+    }
+    await batch.commit();
   };
 
   const daySensors = useSensors(
@@ -1540,17 +1596,30 @@ export default function PlanningTab({ tripId }) {
       ) : (
         /* DAILY PLANNER SUB-TAB */
         <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
             {canEdit && (
-              <button
-                onClick={handleAddDay}
-                className="btn-primary"
-                style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
-              >
-                <Plus size={15} />
-                <span>הוסף יום</span>
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {tripFlightDates.out && tripFlightDates.ret && (
+                  <button
+                    onClick={handleInitDaysFromFlight}
+                    className="btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
+                    title="צור ימים אוטומטית לפי תאריכי הטיסה"
+                  >
+                    <Calendar size={15} />
+                    <span>ייצר ימים לפי טיסה</span>
+                  </button>
+                )}
+                <button
+                  onClick={handleAddDay}
+                  className="btn-primary"
+                  style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
+                >
+                  <Plus size={15} />
+                  <span>הוסף יום</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -1558,14 +1627,28 @@ export default function PlanningTab({ tripId }) {
             <div className="glass-card" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <Calendar size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
               <p style={{ fontSize: '15px', fontWeight: '700', margin: 0 }}>אין עדיין ימי טיול מתוכננים.</p>
-              <p style={{ fontSize: '13px', marginTop: 4 }}>לחץ על "הוסף יום" כדי להתחיל לתכנן!</p>
+              {canEdit && tripFlightDates.out && tripFlightDates.ret ? (
+                <>
+                  <p style={{ fontSize: '13px', marginTop: 4, marginBottom: 16 }}>ניתן לייצר ימים אוטומטית לפי תאריכי הטיסה שהוזנו</p>
+                  <button
+                    onClick={handleInitDaysFromFlight}
+                    className="btn-primary"
+                    style={{ padding: '10px 20px', fontSize: 14, gap: 8, margin: '0 auto' }}
+                  >
+                    <Calendar size={16} />
+                    <span>ייצר ימים לפי תאריכי הטיסה</span>
+                  </button>
+                </>
+              ) : (
+                <p style={{ fontSize: '13px', marginTop: 4 }}>לחץ על "הוסף יום" כדי להתחיל לתכנן!</p>
+              )}
             </div>
           ) : (
             <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
               <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {days.map((day) => (
-                <SortableDayCard key={day.id} day={day} canEdit={canEdit}>
+                <SortableDayCard key={day.id} id={day.id}>
                   {/* Day Header */}
                   <div style={{ 
                     display: 'flex', 
