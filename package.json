@@ -10,11 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "bidi-js": "^1.0.3",
+    "docx": "^9.6.1",
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "firebase": "^10.11.0",
+    "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.378.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

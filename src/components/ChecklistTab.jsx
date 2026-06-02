@@ -9,7 +9,10 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, RotateCcw, ShieldCheck, Pencil } from 'lucide-react';
+import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
+import { CustomDropdown } from './CustomDatePicker';
+import { useTrip } from '../TripContext';
+import { useConfirm } from '../ConfirmContext';
 
 export const defaultChecklist = [
   // Category 1: Documents & Core
@@ -46,19 +49,33 @@ export const defaultChecklist = [
 ];
 
 export default function ChecklistTab({ tripId }) {
+  const { canEdit } = useTrip();
+  const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Collapsed by default to save space
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  const categories = [
+  const toggleCategory = (cat) => {
+    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const defaultCategoryNames = [
     'מסמכים וסידורים',
     'בגדים',
     'אלקטרוניקה',
     'תרופות ועזרה ראשונה',
     'סידורים אחרונים בארץ'
   ];
+  // Allow the user to add custom categories via the dropdown — they
+  // persist as soon as the first item with that category is saved.
+  const categories = Array.from(new Set([
+    ...defaultCategoryNames,
+    ...items.map(i => i.category).filter(Boolean),
+  ]));
 
   // Listen to Firestore checklist
   useEffect(() => {
@@ -127,15 +144,29 @@ export default function ChecklistTab({ tripId }) {
 
   const handleDelete = async (id) => {
     if (!tripId) return;
+    const item = items.find(i => i.id === id);
+    const ok = await confirm({
+      title: 'מחיקת פריט מהרשימה',
+      message: item?.text ? <>האם למחוק את <strong>{item.text}</strong>?</> : 'האם למחוק את הפריט הזה?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     const docRef = doc(db, 'trips', tripId, 'checklist', id);
     await deleteDoc(docRef);
   };
 
   const handleReset = async () => {
     if (!tripId) return;
-    if (!window.confirm('האם אתה בטוח שברצונך לאפס את רשימת הציוד לרשימת ברירת המחדל? כל הפריטים האישיים יימחקו.')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'איפוס רשימת ציוד',
+      message: 'כל הפריטים האישיים בצ\'קליסט של הטיול יימחקו ויוחלפו ברשימת ברירת המחדל. האם להמשיך?',
+      confirmText: 'אפס לרשימת ברירת מחדל',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
 
     setLoading(true);
     const batch = writeBatch(db);
@@ -196,7 +227,8 @@ export default function ChecklistTab({ tripId }) {
         </div>
       </div>
 
-      {/* Add New Item form */}
+      {/* Add New Item form — owner/editor only */}
+      {canEdit && (
       <form onSubmit={handleAdd} className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <h4 style={{ fontSize: '15px', fontWeight: '800', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
           {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
@@ -214,18 +246,14 @@ export default function ChecklistTab({ tripId }) {
               required
             />
           </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>קטגוריה</label>
-            <select 
-              className="form-control" 
-              value={newItemCategory}
-              onChange={(e) => setNewItemCategory(e.target.value)}
-            >
-              {categories.map((cat, idx) => (
-                <option key={idx} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
+          <CustomDropdown
+            label="קטגוריה"
+            value={newItemCategory}
+            onChange={setNewItemCategory}
+            options={categories}
+            addable
+            addLabel="הוסף קטגוריה חדשה"
+          />
         </div>
 
         {editingItemId ? (
@@ -240,40 +268,70 @@ export default function ChecklistTab({ tripId }) {
           </button>
         )}
       </form>
+      )}
 
-      {/* Checklist categories */}
+      {/* Checklist categories — collapsible by default */}
       {categories.map((category, catIdx) => {
         const categoryItems = items.filter(item => item.category === category);
         if (categoryItems.length === 0) return null;
+        const isCollapsed = !!collapsedCategories[category];
+        const doneCount = categoryItems.filter(i => i.completed).length;
 
         return (
-          <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)', paddingRight: '4px', letterSpacing: '-0.2px' }}>
-              {category}
-            </h3>
+          <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Category header — click to toggle */}
+            <button
+              type="button"
+              onClick={() => toggleCategory(category)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '4px 4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                width: '100%',
+                fontFamily: 'var(--font-hebrew)'
+              }}
+            >
+              <ChevronDown
+                size={16}
+                style={{
+                  color: 'var(--text-muted)',
+                  transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                  flexShrink: 0
+                }}
+              />
+              <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1 }}>
+                {category}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                {doneCount}/{categoryItems.length}
+              </span>
+            </button>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {categoryItems.map((item) => (
-                <div 
-                  key={item.id} 
-                  className="glass-card" 
-                  onClick={() => handleToggle(item)}
-                  style={{ 
-                    padding: '14px 16px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
-                    border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                    <div style={{ 
-                      width: '22px', 
-                      height: '22px', 
-                      borderRadius: '6px', 
-                      border: item.completed ? 'none' : '2px solid rgba(11, 11, 48, 0.18)', 
+            {!isCollapsed && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {categoryItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="glass-card checklist-item-row"
+                    onClick={canEdit ? () => handleToggle(item) : undefined}
+                    style={{
+                      padding: '12px 14px',
+                      cursor: canEdit ? 'pointer' : 'default',
+                      background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
+                      border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
+                    }}
+                  >
+                    {/* RTL grid: checkbox(right, first in DOM) | text(center) | actions(left, last in DOM) */}
+                    <div style={{
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '6px',
+                      border: item.completed ? 'none' : '2px solid rgba(11, 11, 48, 0.18)',
                       background: item.completed ? 'var(--primary-color)' : 'transparent',
                       display: 'flex',
                       alignItems: 'center',
@@ -284,78 +342,57 @@ export default function ChecklistTab({ tripId }) {
                       {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
                     </div>
 
-                    <span style={{ 
-                      fontSize: '15px', 
+                    <span style={{
+                      fontSize: '15px',
                       fontWeight: item.completed ? '500' : '600',
                       textDecoration: item.completed ? 'line-through' : 'none',
                       color: item.completed ? 'var(--text-muted)' : 'var(--text-main)',
-                      transition: 'all 0.2s ease'
+                      transition: 'all 0.2s ease',
+                      textAlign: 'right',
+                      wordBreak: 'break-word'
                     }}>
                       {item.text}
                     </span>
-                  </div>
 
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartEdit(item);
-                      }}
-                      style={{ 
-                        background: 'transparent', 
-                        border: 'none', 
-                        color: 'var(--text-muted)', 
-                        cursor: 'pointer',
-                        padding: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <Pencil size={15} />
-                    </button>
-
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(item.id);
-                      }}
-                      style={{ 
-                        background: 'transparent', 
-                        border: 'none', 
-                        color: 'rgba(239, 68, 68, 0.5)', 
-                        cursor: 'pointer',
-                        padding: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = 'rgb(239, 68, 68)'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(239, 68, 68, 0.5)'}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {canEdit ? (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="ערוך"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                          style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="מחק"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ) : <div />}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
 
-      {/* Reset button */}
+      {/* Reset button — owner/editor only */}
+      {canEdit && (
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-        <button 
-          onClick={handleReset} 
-          className="btn-secondary" 
+        <button
+          onClick={handleReset}
+          className="btn-secondary"
           style={{ fontSize: '13px', padding: '10px 16px', gap: '6px', color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
         >
           <RotateCcw size={14} />
           <span>איפוס לרשימת ברירת המחדל</span>
         </button>
       </div>
+      )}
 
     </div>
   );
