@@ -286,7 +286,7 @@ export default function PlanningTab({ tripId }) {
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
-  const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null });
+  const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
 
   const defaultCategoryNames = [
     'אטרקציות ודברים לעשות',
@@ -370,6 +370,7 @@ export default function PlanningTab({ tripId }) {
         setTripFlightDates({
           out: d.outboundFlightDetails?.date || null,
           ret: d.returnFlightDetails?.date || null,
+          plannerSync: d.plannerDaysFromFlight || null,
         });
       }
     });
@@ -661,24 +662,30 @@ export default function PlanningTab({ tripId }) {
     }
     const start = new Date(tripFlightDates.out);
     const end = new Date(tripFlightDates.ret);
-    // Clamp to reasonable range
     const maxDays = 30;
     const batch = writeBatch(db);
     let dayNum = 1;
     const cur = new Date(start);
     while (cur <= end && dayNum <= maxDays) {
       const dayName = HE_DAYS[cur.getDay()];
-      const dd = String(cur.getDate()).padStart(2, '0');
+      const yyyy = cur.getFullYear();
       const mm = String(cur.getMonth() + 1).padStart(2, '0');
+      const dd = String(cur.getDate()).padStart(2, '0');
+      const isoDate = `${yyyy}-${mm}-${dd}`;
       const id = 'day-' + Date.now() + '-' + dayNum;
       batch.set(doc(db, 'trips', tripId, 'days', id), {
-        title: `יום ${dayNum} – ${dayName} ${dd}.${mm}`,
+        title: `יום ${dayNum} – ${dayName}`,
+        date: isoDate,
         order: dayNum,
         activities: [],
       });
       cur.setDate(cur.getDate() + 1);
       dayNum++;
     }
+    // Record which flight dates were used so we can detect stale state
+    batch.update(doc(db, 'trips', tripId), {
+      plannerDaysFromFlight: { out: tripFlightDates.out, ret: tripFlightDates.ret },
+    });
     await batch.commit();
   };
 
@@ -1599,18 +1606,34 @@ export default function PlanningTab({ tripId }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
             {canEdit && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {tripFlightDates.out && tripFlightDates.ret && (
-                  <button
-                    onClick={handleInitDaysFromFlight}
-                    className="btn-secondary"
-                    style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
-                    title="צור ימים אוטומטית לפי תאריכי הטיסה"
-                  >
-                    <Calendar size={15} />
-                    <span>ייצר ימים לפי טיסה</span>
-                  </button>
-                )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {tripFlightDates.out && tripFlightDates.ret && (() => {
+                  const synced = tripFlightDates.plannerSync?.out === tripFlightDates.out &&
+                                 tripFlightDates.plannerSync?.ret === tripFlightDates.ret;
+                  if (synced) {
+                    return (
+                      <span style={{
+                        fontSize: 12, color: 'var(--success, #16a34a)',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        opacity: 0.8,
+                      }}>
+                        <CheckCircle2 size={13} />
+                        ימים מסונכרנים עם הטיסה
+                      </span>
+                    );
+                  }
+                  return (
+                    <button
+                      onClick={handleInitDaysFromFlight}
+                      className="btn-secondary"
+                      style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
+                      title="צור ימים אוטומטית לפי תאריכי הטיסה"
+                    >
+                      <Calendar size={15} />
+                      <span>{tripFlightDates.plannerSync ? 'עדכן ימים לפי טיסה' : 'ייצר ימים לפי טיסה'}</span>
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={handleAddDay}
                   className="btn-primary"
@@ -1639,9 +1662,9 @@ export default function PlanningTab({ tripId }) {
                     <span>ייצר ימים לפי תאריכי הטיסה</span>
                   </button>
                 </>
-              ) : (
+              ) : canEdit ? (
                 <p style={{ fontSize: '13px', marginTop: 4 }}>לחץ על "הוסף יום" כדי להתחיל לתכנן!</p>
-              )}
+              ) : null}
             </div>
           ) : (
             <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
@@ -1679,6 +1702,20 @@ export default function PlanningTab({ tripId }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                           {canEdit && <DayDragHandle />}
                           <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
+                          {day.date && (() => {
+                            const [, mm, dd] = day.date.split('-');
+                            return (
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, flexShrink: 0,
+                                background: 'rgba(79,70,229,0.08)',
+                                color: 'var(--accent)',
+                                border: '1px solid rgba(79,70,229,0.15)',
+                                borderRadius: 8, padding: '2px 8px',
+                              }}>
+                                {`${dd}.${mm}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                         {canEdit && (
                         <div style={{ display: 'flex', gap: 6 }}>
