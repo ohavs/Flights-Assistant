@@ -160,7 +160,7 @@ export default function PlanningTab({ tripId }) {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState('');
   const [editingActivityId, setEditingActivityId] = useState(null);
-  const [placeId, setPlaceId] = useState('');
+  const [savedPlaceSelections, setSavedPlaceSelections] = useState([{ categoryFilter: '', placeId: '' }]);
   const [activityTitle, setActivityTitle] = useState('');
   const [activityTimeLabel, setActivityTimeLabel] = useState('');
   const [activityAddress, setActivityAddress] = useState('');
@@ -348,7 +348,7 @@ export default function PlanningTab({ tripId }) {
   const handleOpenAddActivity = (dayId) => {
     setSelectedDayId(dayId);
     setEditingActivityId(null);
-    setPlaceId('');
+    setSavedPlaceSelections([{ categoryFilter: '', placeId: '' }]);
     setActivityTitle('');
     setActivityTimeLabel('');
     setActivityAddress('');
@@ -360,13 +360,35 @@ export default function PlanningTab({ tripId }) {
   const handleStartEditActivity = (dayId, act) => {
     setSelectedDayId(dayId);
     setEditingActivityId(act.id);
-    setPlaceId(act.placeId || '');
+    if (act.placeId) {
+      const place = plans.find(p => p.id === act.placeId);
+      setSavedPlaceSelections([{ categoryFilter: place?.category || '', placeId: act.placeId }]);
+    } else {
+      setSavedPlaceSelections([{ categoryFilter: '', placeId: '' }]);
+    }
     setActivityTitle(act.title);
     setActivityTimeLabel(act.timeLabel || '');
     setActivityAddress(act.address || '');
     setActivityDescription(act.description || '');
     setActivityCategory(act.category || 'אטרקציות ודברים לעשות');
     setShowActivityForm(true);
+  };
+
+  const addSavedPlaceSelection = () => {
+    setSavedPlaceSelections(prev => [...prev, { categoryFilter: '', placeId: '' }]);
+  };
+
+  const removeSavedPlaceSelection = (idx) => {
+    setSavedPlaceSelections(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateSavedPlaceSelection = (idx, field, value) => {
+    setSavedPlaceSelections(prev => prev.map((sel, i) => {
+      if (i !== idx) return sel;
+      const updated = { ...sel, [field]: value };
+      if (field === 'categoryFilter') updated.placeId = '';
+      return updated;
+    }));
   };
 
   const handleDeleteActivity = async (dayId, activityId) => {
@@ -404,28 +426,60 @@ export default function PlanningTab({ tripId }) {
 
   const handleActivitySubmit = async (e) => {
     e.preventDefault();
-    if (!activityTitle.trim() || !tripId || !selectedDayId) return;
+    if (!tripId || !selectedDayId) return;
+
+    const hasPlaceSelections = savedPlaceSelections.some(s => s.placeId);
+    const hasManualTitle = activityTitle.trim().length > 0;
+    if (!hasPlaceSelections && !hasManualTitle) return;
 
     const day = days.find(d => d.id === selectedDayId);
     if (!day) return;
 
-    const activityObj = {
-      id: editingActivityId || 'act-' + Date.now(),
-      title: activityTitle.trim(),
-      timeLabel: activityTimeLabel.trim(),
-      placeId: placeId || null,
-      address: activityAddress.trim(),
-      description: activityDescription.trim(),
-      category: activityCategory
-    };
-
     let updatedActivities = [...(day.activities || [])];
+
     if (editingActivityId) {
-      updatedActivities = updatedActivities.map(act => 
+      const firstSel = savedPlaceSelections[0];
+      const place = firstSel?.placeId ? plans.find(p => p.id === firstSel.placeId) : null;
+      const activityObj = {
+        id: editingActivityId,
+        title: place ? place.title : activityTitle.trim(),
+        timeLabel: activityTimeLabel.trim(),
+        placeId: firstSel?.placeId || null,
+        address: place ? (place.address || '') : activityAddress.trim(),
+        description: place ? (place.description || '') : activityDescription.trim(),
+        category: place ? place.category : activityCategory
+      };
+      updatedActivities = updatedActivities.map(act =>
         act.id === editingActivityId ? activityObj : act
       );
     } else {
-      updatedActivities.push(activityObj);
+      for (const sel of savedPlaceSelections) {
+        if (sel.placeId) {
+          const place = plans.find(p => p.id === sel.placeId);
+          if (place) {
+            updatedActivities.push({
+              id: 'act-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+              title: place.title,
+              timeLabel: '',
+              placeId: place.id,
+              address: place.address || '',
+              description: place.description || '',
+              category: place.category
+            });
+          }
+        }
+      }
+      if (hasManualTitle) {
+        updatedActivities.push({
+          id: 'act-' + Date.now(),
+          title: activityTitle.trim(),
+          timeLabel: activityTimeLabel.trim(),
+          placeId: null,
+          address: activityAddress.trim(),
+          description: activityDescription.trim(),
+          category: activityCategory
+        });
+      }
     }
 
     try {
@@ -1099,140 +1153,238 @@ export default function PlanningTab({ tripId }) {
       )}
 
       {/* Add/Edit Activity Slide-Up Bottom Sheet Modal */}
-      {showActivityForm && (
-        <div className="modal-overlay" onClick={() => setShowActivityForm(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-            
-            <div className="modal-header" style={{ flexShrink: 0 }}>
-              <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>
-              <button className="btn-close" onClick={() => setShowActivityForm(false)}>✕</button>
-            </div>
+      {showActivityForm && (() => {
+        const usedPlaceIds = new Set(
+          days.flatMap(day =>
+            (day.activities || [])
+              .filter(a => a.placeId && a.id !== editingActivityId)
+              .map(a => a.placeId)
+          )
+        );
 
-            <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>
-              
-              {/* Linked Places Selector */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>בחר מקום שמור מתוך האטרקציות (אופציונלי)</label>
-                <select
-                  className="form-control"
-                  value={placeId}
-                  onChange={(e) => {
-                    const pid = e.target.value;
-                    setPlaceId(pid);
-                    if (pid) {
-                      const found = plans.find(p => p.id === pid);
-                      if (found) {
-                        setActivityTitle(found.title);
-                        setActivityAddress(found.address || '');
-                        setActivityDescription(found.description || '');
-                        setActivityCategory(found.category || 'אטרקציות ודברים לעשות');
-                      }
-                    }
-                  }}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                >
-                  <option value="">-- הזנה ידנית (לא מקושר למקום שמור) --</option>
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
-                  ))}
-                </select>
+        return (
+          <div className="modal-overlay" onClick={() => setShowActivityForm(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+
+              <div className="modal-header" style={{ flexShrink: 0 }}>
+                <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>
+                <button className="btn-close" onClick={() => setShowActivityForm(false)}>✕</button>
               </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>שם הפעילות *</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={activityTitle} 
-                  onChange={(e) => setActivityTitle(e.target.value)} 
-                  required 
-                  placeholder="למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון"
-                  style={{ minHeight: 40, fontSize: 14 }}
-                />
-              </div>
+              <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>קטגוריה</label>
-                <select 
-                  className="form-control" 
-                  value={activityCategory} 
-                  onChange={(e) => setActivityCategory(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                >
-                  {categories.map((cat, idx) => (
-                    <option key={idx} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+                {/* === SECTION 1: Saved Places === */}
+                <div style={{
+                  background: 'rgba(79,70,229,0.03)',
+                  border: '1.5px solid rgba(79,70,229,0.12)',
+                  borderRadius: 12,
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>מקומות שמורים</span>
 
-              {/* Time Label Tagging */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>תיוג זמן (שדה חופשי / בחירה מהירה)</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="למשל: בוקר, 10:30, צהריים, 19:00" 
-                  value={activityTimeLabel} 
-                  onChange={(e) => setActivityTimeLabel(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                />
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
+                  {savedPlaceSelections.map((sel, idx) => {
+                    const placesForSel = sel.categoryFilter
+                      ? plans.filter(p => p.category === sel.categoryFilter)
+                      : plans;
+                    const unusedPlaces = placesForSel.filter(p => !usedPlaceIds.has(p.id));
+                    const usedPlaces = placesForSel.filter(p => usedPlaceIds.has(p.id));
+
+                    return (
+                      <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {/* Category filter */}
+                        <select
+                          className="form-control"
+                          value={sel.categoryFilter}
+                          onChange={(e) => updateSavedPlaceSelection(idx, 'categoryFilter', e.target.value)}
+                          style={{ flex: 1, minHeight: 40, fontSize: 13 }}
+                        >
+                          <option value="">כל הקטגוריות</option>
+                          {categories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+
+                        {/* Place dropdown (filtered + sorted: unused first, used at bottom) */}
+                        <select
+                          className="form-control"
+                          value={sel.placeId}
+                          onChange={(e) => updateSavedPlaceSelection(idx, 'placeId', e.target.value)}
+                          style={{ flex: 1.5, minHeight: 40, fontSize: 13 }}
+                        >
+                          <option value="">-- בחר מקום --</option>
+                          {unusedPlaces.map(p => (
+                            <option key={p.id} value={p.id}>{p.title}</option>
+                          ))}
+                          {usedPlaces.length > 0 && (
+                            <optgroup label="── כבר תוכנן ──">
+                              {usedPlaces.map(p => (
+                                <option key={p.id} value={p.id}>✓ {p.title}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+
+                        {savedPlaceSelections.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSavedPlaceSelection(idx)}
+                            style={{
+                              border: 'none',
+                              background: 'rgba(220,38,38,0.08)',
+                              color: 'rgb(220,38,38)',
+                              borderRadius: 8,
+                              width: 36,
+                              height: 36,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 18,
+                              lineHeight: 1
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {!editingActivityId && (
                     <button
-                      key={label}
                       type="button"
-                      onClick={() => setActivityTimeLabel(label)}
+                      onClick={addSavedPlaceSelection}
                       style={{
-                        border: '1px solid rgba(11,11,48,0.1)',
-                        background: activityTimeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.7)',
-                        color: activityTimeLabel === label ? '#fff' : 'var(--text-muted)',
-                        borderRadius: 12,
-                        padding: '4px 10px',
+                        border: '1.5px dashed rgba(79,70,229,0.25)',
+                        background: 'transparent',
+                        color: 'var(--accent)',
+                        borderRadius: 8,
+                        padding: '7px 14px',
                         fontSize: 12,
                         fontWeight: 700,
                         cursor: 'pointer',
-                        transition: 'all 0.15s ease'
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        alignSelf: 'flex-start'
                       }}
                     >
-                      {label}
+                      <Plus size={13} />
+                      הוסף מקום שמור
                     </button>
-                  ))}
+                  )}
                 </div>
-              </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>כתובת / מיקום</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="כתובת או קישור למפה" 
-                  value={activityAddress} 
-                  onChange={(e) => setActivityAddress(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                />
-              </div>
+                {/* === DIVIDER === */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.1)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>הזנה ידנית</span>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.1)' }} />
+                </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>הערות לפעילות זו</label>
-                <textarea 
-                  className="form-control" 
-                  rows="3" 
-                  placeholder="הערות מיוחדות, מספרי הזמנה, שעות פתיחה..." 
-                  value={activityDescription} 
-                  onChange={(e) => setActivityDescription(e.target.value)}
-                  style={{ resize: 'none', fontFamily: 'inherit', fontSize: 14 }}
-                />
-              </div>
+                {/* === SECTION 2: Manual Entry === */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>
+                    שם הפעילות
+                    {savedPlaceSelections.some(s => s.placeId) ? ' (אופציונלי)' : ' *'}
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={activityTitle}
+                    onChange={(e) => setActivityTitle(e.target.value)}
+                    required={!savedPlaceSelections.some(s => s.placeId)}
+                    placeholder="למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון"
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  />
+                </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 8, flexShrink: 0 }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 44, fontSize: 15 }}>שמור פעילות</button>
-                <button type="button" onClick={() => setShowActivityForm(false)} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
-              </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>קטגוריה</label>
+                  <select
+                    className="form-control"
+                    value={activityCategory}
+                    onChange={(e) => setActivityCategory(e.target.value)}
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  >
+                    {categories.map((cat, idx) => (
+                      <option key={idx} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
 
-            </form>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>תיוג זמן (שדה חופשי / בחירה מהירה)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="למשל: בוקר, 10:30, צהריים, 19:00"
+                    value={activityTimeLabel}
+                    onChange={(e) => setActivityTimeLabel(e.target.value)}
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setActivityTimeLabel(label)}
+                        style={{
+                          border: '1px solid rgba(11,11,48,0.1)',
+                          background: activityTimeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.7)',
+                          color: activityTimeLabel === label ? '#fff' : 'var(--text-muted)',
+                          borderRadius: 12,
+                          padding: '4px 10px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>כתובת / מיקום</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="כתובת או קישור למפה"
+                    value={activityAddress}
+                    onChange={(e) => setActivityAddress(e.target.value)}
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>הערות לפעילות זו</label>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    placeholder="הערות מיוחדות, מספרי הזמנה, שעות פתיחה..."
+                    value={activityDescription}
+                    onChange={(e) => setActivityDescription(e.target.value)}
+                    style={{ resize: 'none', fontFamily: 'inherit', fontSize: 14 }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 8, flexShrink: 0 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 44, fontSize: 15 }}>שמור פעילות</button>
+                  <button type="button" onClick={() => setShowActivityForm(false)} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
+                </div>
+
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );
