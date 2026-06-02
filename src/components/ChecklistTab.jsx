@@ -1,128 +1,762 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  writeBatch 
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, RotateCcw, Pencil, ChevronDown } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+/* ── RemindersCard ──────────────────────────────────────────────────────── */
+function RemindersCard({ tripId, canEdit }) {
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
+  const confirm = useConfirm();
+  const [reminders, setReminders] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [mode, setMode] = useState(null); // null | 'add' | 'edit' | 'pickUser'
+  const [inputText, setInputText] = useState('');
+  const [editId, setEditId] = useState(null);
+  const [userPickRemId, setUserPickRemId] = useState(null);
+  const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+  const ignoreScroll = useRef(false);
+  const scrollEndTimer = useRef(null);
+
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(collection(db, 'trips', tripId, 'reminders'), snap => {
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      setReminders(docs);
+      setIdx(i => Math.min(i, Math.max(0, docs.length - 1)));
+    });
+  }, [tripId]);
+
+  useEffect(() => {
+    if (mode === 'add' || mode === 'edit') inputRef.current?.focus();
+  }, [mode]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!scrollRef.current) return;
+      const w = scrollRef.current.offsetWidth;
+      if (!w) return;
+      const n = reminders.length;
+      const safeIdx = Math.min(idx, Math.max(0, n - 1));
+      const phys = n > 1 ? safeIdx + 1 : safeIdx;
+      ignoreScroll.current = true;
+      scrollRef.current.scrollTo({ left: phys * w, behavior: 'instant' });
+      setTimeout(() => { ignoreScroll.current = false; }, 100);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [reminders.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // All trip members with their profiles for the user picker
+  const allMembers = useMemo(() => {
+    const list = [];
+    if (currentUid && currentUserProfile) {
+      list.push({ uid: currentUid, displayName: currentUserProfile.displayName || currentUserProfile.email || '', photoURL: currentUserProfile.photoURL || '' });
+    }
+    Object.keys(tripMembers || {}).forEach(uid => {
+      if (uid === currentUid) return;
+      const p = memberProfiles?.[uid] || {};
+      list.push({ uid, displayName: p.displayName || p.email || uid, photoURL: p.photoURL || '' });
+    });
+    return list;
+  }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
+
+  const looping = reminders.length > 1;
+  const extended = looping
+    ? [reminders[reminders.length - 1], ...reminders, reminders[0]]
+    : reminders;
+
+  const scrollTo = (i) => {
+    if (!scrollRef.current) return;
+    ignoreScroll.current = true;
+    const phys = looping ? i + 1 : i;
+    scrollRef.current.scrollTo({ left: phys * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    setIdx(i);
+    setTimeout(() => { ignoreScroll.current = false; }, 400);
+  };
+
+  const handleScroll = () => {
+    if (ignoreScroll.current || !scrollRef.current) return;
+    const { scrollLeft, offsetWidth } = scrollRef.current;
+    const phys = Math.round(scrollLeft / offsetWidth);
+    if (looping && phys > 0 && phys < extended.length - 1) setIdx(phys - 1);
+    else if (!looping && phys !== idx) setIdx(phys);
+    if (!looping) return;
+    clearTimeout(scrollEndTimer.current);
+    scrollEndTimer.current = setTimeout(() => {
+      if (!scrollRef.current || ignoreScroll.current) return;
+      const { scrollLeft: sl, offsetWidth: ow } = scrollRef.current;
+      const p = Math.round(sl / ow);
+      if (p === 0) {
+        ignoreScroll.current = true;
+        scrollRef.current.scrollTo({ left: reminders.length * ow, behavior: 'instant' });
+        setIdx(reminders.length - 1);
+        setTimeout(() => { ignoreScroll.current = false; }, 50);
+      } else if (p >= extended.length - 1) {
+        ignoreScroll.current = true;
+        scrollRef.current.scrollTo({ left: ow, behavior: 'instant' });
+        setIdx(0);
+        setTimeout(() => { ignoreScroll.current = false; }, 50);
+      }
+    }, 80);
+  };
+
+  const handleSave = async () => {
+    const text = inputText.trim();
+    if (!text) { setMode(null); return; }
+    if (mode === 'add') {
+      const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
+      await setDoc(newRef, {
+        text, createdAt: Date.now(),
+        addedByUid: currentUid || '',
+        addedByName: currentUserProfile?.displayName || currentUserProfile?.email || '',
+        addedByPhoto: currentUserProfile?.photoURL || '',
+      });
+      const newIdx = reminders.length;
+      setMode(null); setInputText('');
+      setTimeout(() => scrollTo(newIdx), 50);
+    } else if (mode === 'edit' && editId) {
+      await updateDoc(doc(db, 'trips', tripId, 'reminders', editId), { text });
+      setMode(null); setInputText(''); setEditId(null);
+    }
+  };
+
+  const handleDeleteById = async (id) => {
+    const ok = await confirm({ message: 'למחוק את התזכורת?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
+    if (!ok) return;
+    await deleteDoc(doc(db, 'trips', tripId, 'reminders', id));
+    setIdx(i => Math.max(0, i - 1));
+  };
+
+  const handlePickUser = async (remId, member) => {
+    await updateDoc(doc(db, 'trips', tripId, 'reminders', remId), {
+      addedByUid: member.uid,
+      addedByName: member.displayName,
+      addedByPhoto: member.photoURL,
+    });
+    setUserPickRemId(null);
+    setMode(null);
+  };
+
+  const iconBtn = (color = 'var(--text-muted)') => ({
+    background: 'none', border: 'none', cursor: 'pointer',
+    color, padding: '6px 8px', display: 'flex', alignItems: 'center', flexShrink: 0,
+  });
+
+  const Avatar = ({ photoURL, name, size = 26 }) => (
+    <div style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {photoURL
+        ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
+        : <span style={{ fontSize: size * 0.38, fontWeight: 700, color: '#fff' }}>{(name || '?')[0]}</span>}
+    </div>
+  );
+
+  return (
+    <div>
+      <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
+
+      {/* Text input overlay (add / edit) */}
+      {(mode === 'add' || mode === 'edit') && (
+        <div className="glass-card" style={{ direction: 'rtl', padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>
+            {mode === 'add' ? 'תזכורת חדשה' : 'עריכה'}
+          </span>
+          <input ref={inputRef} type="text" className="form-control"
+            value={inputText} onChange={e => setInputText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setMode(null); setEditId(null); } }}
+            placeholder="כתוב תזכורת..."
+            style={{ flex: 1, minHeight: 36, fontSize: 14 }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button onClick={handleSave}
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'var(--primary-color)', color: '#fff' }}>
+              <Check size={15} />
+            </button>
+            <button onClick={() => { setMode(null); setEditId(null); }}
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'rgba(11,11,48,0.07)', color: 'var(--text-muted)' }}>
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* User picker overlay */}
+      {mode === 'pickUser' && (
+        <div className="glass-card" style={{ direction: 'rtl', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)' }}>שנה משתמש</span>
+            <button onClick={() => { setMode(null); setUserPickRemId(null); }} style={iconBtn()}>
+              <X size={15} />
+            </button>
+          </div>
+          {allMembers.map(m => (
+            <button key={m.uid} onClick={() => handlePickUser(userPickRemId, m)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'right' }}>
+              <Avatar photoURL={m.photoURL} name={m.displayName} size={30} />
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>{m.displayName}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Carousel — visible only when no overlay is active */}
+      {mode === null && (
+        reminders.length === 0 ? (
+          <div className="glass-card" style={{ direction: 'rtl', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)' }}>תזכורות</span>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)', flex: 1, textAlign: 'center' }}>
+              {canEdit ? 'לחץ + להוספת תזכורת' : 'אין תזכורות'}
+            </span>
+            {canEdit && (
+              <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
+                <Plus size={15} />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div ref={scrollRef} className="rc-scroll" onScroll={handleScroll}
+            style={{
+              display: 'flex', direction: 'ltr', alignItems: 'stretch',
+              overflowX: 'auto', overflowY: 'hidden',
+              scrollSnapType: 'x mandatory',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none', msOverflowStyle: 'none',
+            }}
+          >
+            {extended.map((r, i) => (
+              <div key={`${r.id}-${i}`} style={{ flex: '0 0 100%', scrollSnapAlign: 'start', direction: 'rtl' }}>
+                <div className="glass-card" style={{
+                  display: 'flex', flexDirection: 'column',
+                  padding: '14px 18px 12px', gap: 10,
+                  height: 160, boxSizing: 'border-box',
+                }}>
+
+                  {/* Header: label + actions */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
+                    {canEdit && (
+                      <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
+                        <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={iconBtn()}>
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => handleDeleteById(r.id)} style={iconBtn('rgba(239,68,68,0.75)')}>
+                          <Trash2 size={14} />
+                        </button>
+                        <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reminder text */}
+                  <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
+                    <p style={{
+                      fontSize: 18, fontWeight: 600, color: 'var(--text-main)',
+                      textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
+                      display: '-webkit-box', WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                      userSelect: 'none',
+                    }}>{r.text}</p>
+                  </div>
+
+                  {/* Footer: user avatar + dots */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    {/* User */}
+                    <button onClick={() => canEdit && (setUserPickRemId(r.id), setMode('pickUser'))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: canEdit ? 'pointer' : 'default' }}>
+                      <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={24} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{r.addedByName || ''}</span>
+                      {canEdit && <ChevronDown size={10} style={{ color: 'var(--text-muted)' }} />}
+                    </button>
+                    {/* Dots */}
+                    {reminders.length > 1 && (
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                        {reminders.map((_, j) => (
+                          <button key={j} onClick={() => scrollTo(j)} style={{
+                            width: j === idx ? 16 : 6, height: 6, borderRadius: 3,
+                            border: 'none', padding: 0, flexShrink: 0,
+                            background: j === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
+                            cursor: 'pointer', transition: 'all 0.2s ease',
+                          }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+/* ── SortableCategoryBlock ──────────────────────────────────────────────── */
+function SortableCategoryBlock({
+  category, categoryItems, isOpen, isLongPressed, doneCount, canEdit,
+  editingCat, editCatText, setEditCatText, setEditingCat, handleRenameCategory,
+  toggleCategory, longPressActive, startLongPress, cancelLongPress,
+  setLongPressedCat, handleDeleteCategory,
+  pendingDeleteId, handleToggle, handleStartEdit, handleDeleteItem,
+  quickAddCat, setQuickAddCat, quickAddText, setQuickAddText,
+  quickAddInputRef, handleQuickAdd,
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Category header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {/* Drag handle */}
+        {canEdit && (
+          <button type="button" {...attributes} {...listeners}
+            style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
+            <GripVertical size={15} />
+          </button>
+        )}
+
+        {editingCat === category ? (
+          <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
+            style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="text" autoFocus className="form-control"
+              value={editCatText} onChange={e => setEditCatText(e.target.value)}
+              style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+            />
+            <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
+              <Check size={13} />
+            </button>
+            <button type="button" onClick={() => setEditingCat(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
+              <X size={14} />
+            </button>
+          </form>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (longPressActive.current) { longPressActive.current = false; return; }
+                toggleCategory(category);
+              }}
+              onMouseDown={() => canEdit && startLongPress(category)}
+              onMouseUp={cancelLongPress}
+              onTouchStart={e => { e.stopPropagation(); canEdit && startLongPress(category); }}
+              onTouchEnd={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
+            >
+              <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                {category}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
+                {doneCount}/{categoryItems.length}
+              </span>
+            </button>
+
+            {/* Quick-add shortcut in header */}
+            {canEdit && !isLongPressed && (
+              <button type="button"
+                onClick={() => { setQuickAddCat(category); setQuickAddText(''); if (!isOpen) toggleCategory(category); }}
+                style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <Plus size={15} />
+              </button>
+            )}
+
+            {isLongPressed && canEdit && (
+              <>
+                <button type="button"
+                  onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
+                  style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                  <Pencil size={13} />
+                </button>
+                <button type="button" onClick={() => handleDeleteCategory(category)}
+                  style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                  <Trash2 size={13} />
+                </button>
+                <button type="button" onClick={() => setLongPressedCat(null)}
+                  style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Category items + quick-add */}
+      {isOpen && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {categoryItems.map(item => {
+            const isPending = pendingDeleteId === item.id;
+            return (
+              <div key={item.id}
+                className="glass-card checklist-item-row"
+                onClick={canEdit && !isPending ? () => handleToggle(item) : undefined}
+                style={{
+                  padding: '12px 14px',
+                  cursor: canEdit && !isPending ? 'pointer' : 'default',
+                  background: isPending ? 'rgba(239,68,68,0.06)' : item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
+                  border: isPending ? '1.5px solid rgba(239,68,68,0.25)' : item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
+                  transition: 'background 0.2s, border 0.2s',
+                }}
+              >
+                <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid rgba(11,11,48,0.18)', background: item.completed ? 'var(--primary-color)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
+                  {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
+                </div>
+                <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: isPending ? 'rgb(239,68,68)' : item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
+                  {item.text}
+                </span>
+                {canEdit ? (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                    {!isPending && (
+                      <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
+                      style={{ background: isPending ? 'rgba(239,68,68,0.12)' : 'transparent', border: isPending ? '1px solid rgba(239,68,68,0.3)' : 'none', borderRadius: 7, color: isPending ? 'rgb(239,68,68)' : 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.15s' }}>
+                      <Trash2 size={14} />
+                      {isPending && <span style={{ fontSize: 11, fontWeight: 800 }}>מחק?</span>}
+                    </button>
+                  </div>
+                ) : <div />}
+              </div>
+            );
+          })}
+
+          {/* Quick-add inside open category */}
+          {canEdit && (
+            quickAddCat === category ? (
+              <form onSubmit={e => handleQuickAdd(e, category)}
+                style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
+                <input
+                  ref={quickAddInputRef}
+                  type="text"
+                  className="form-control"
+                  autoFocus
+                  placeholder={`פריט ב${category}...`}
+                  value={quickAddText}
+                  onChange={e => setQuickAddText(e.target.value)}
+                  style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                />
+                <button type="submit" className="btn-primary"
+                  style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
+                  <Plus size={14} />
+                </button>
+                <button type="button"
+                  onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                  <X size={14} />
+                </button>
+              </form>
+            ) : (
+              <button type="button"
+                onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                <Plus size={14} />
+                הוסף לרשימה
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export const defaultChecklist = [
-  // Category 1: Documents & Core
   { id: 'doc-1', text: 'דרכון בתוקף (לפחות חצי שנה)', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-2', text: 'כרטיסי טיסה מודפסים / בנייד', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-3', text: 'אישור הזמנת מלון', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-4', text: 'ביטוח נסיעות לחו"ל בתוקף', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-5', text: 'רישיון נהיגה בינלאומי', completed: false, category: 'מסמכים וסידורים' },
   { id: 'doc-6', text: 'המרת מט"ח / כרטיס אשראי בינלאומי', completed: false, category: 'מסמכים וסידורים' },
-  
-  // Category 2: Clothing
   { id: 'clo-1', text: 'בגדים להחלפה (לפי מספר ימי הטיול)', completed: false, category: 'בגדים' },
   { id: 'clo-2', text: 'בגד ים ומשקפי שמש', completed: false, category: 'בגדים' },
   { id: 'clo-3', text: 'נעלי הליכה נוחות', completed: false, category: 'בגדים' },
   { id: 'clo-4', text: 'ז\'קט / סוודר חם לטיסה', completed: false, category: 'בגדים' },
   { id: 'clo-5', text: 'לבנים, גרביים ופיג\'מה', completed: false, category: 'בגדים' },
-
-  // Category 3: Electronics
   { id: 'ele-1', text: 'מטען לטלפון ומטען נייד (Power Bank)', completed: false, category: 'אלקטרוניקה' },
   { id: 'ele-2', text: 'מתאם שקעים בינלאומי', completed: false, category: 'אלקטרוניקה' },
   { id: 'ele-3', text: 'אוזניות נוחות לטיסה', completed: false, category: 'אלקטרוניקה' },
-
-  // Category 4: Meds & Personal
   { id: 'med-1', text: 'ערכת עזרה ראשונה (פלסטרים, פולידין)', completed: false, category: 'תרופות ועזרה ראשונה' },
   { id: 'med-2', text: 'משככי כאבים ותרופות אישיות', completed: false, category: 'תרופות ועזרה ראשונה' },
   { id: 'med-3', text: 'קרם הגנה ושפתון נגד יובש', completed: false, category: 'תרופות ועזרה ראשונה' },
   { id: 'med-4', text: 'מברשת שיניים, משחה וכלי רחצה', completed: false, category: 'תרופות ועזרה ראשונה' },
-
-  // Category 5: Last checks
   { id: 'chk-1', text: 'סגירת ברז מים ראשי וגז בבית', completed: false, category: 'סידורים אחרונים בארץ' },
   { id: 'chk-2', text: 'כיבוי מכשירים חשמליים ופינוי זבל', completed: false, category: 'סידורים אחרונים בארץ' },
   { id: 'chk-3', text: 'נעילת חלונות, מרפסות ודלת כניסה', completed: false, category: 'סידורים אחרונים בארץ' },
   { id: 'chk-4', text: 'הפעלת חבילת גלישה / סים בינלאומי', completed: false, category: 'סידורים אחרונים בארץ' },
 ];
 
-export default function ChecklistTab({ tripId }) {
-  const { canEdit } = useTrip();
+export default function ChecklistTab({ tripId, globalChecklist = [] }) {
+  const { canEdit, tripMembers } = useTrip();
   const confirm = useConfirm();
+
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deletedGlobalIds, setDeletedGlobalIds] = useState([]);
+  const [extraCategories, setExtraCategories] = useState([]);
+  const [categoryOrder, setCategoryOrder] = useState([]);
+  const [membersGlobalChecklists, setMembersGlobalChecklists] = useState({});
+
+  // Form state
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
-  const [loading, setLoading] = useState(true);
-  // Collapsed by default to save space
-  const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
 
-  const toggleCategory = (cat) => {
-    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
-  };
+  // Category open/close — default ALL closed (empty obj = all closed)
+  const [openCategories, setOpenCategories] = useState({});
+
+  // Long-press to reveal category actions
+  const [longPressedCat, setLongPressedCat] = useState(null);
+  const longPressTimer = useRef(null);
+  const longPressActive = useRef(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [editCatText, setEditCatText] = useState('');
+
+  // Two-tap delete for items
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const pendingDeleteTimer = useRef(null);
+
+  // Quick-add inside an open category
+  const [quickAddCat, setQuickAddCat] = useState(null);
+  const [quickAddText, setQuickAddText] = useState('');
+  const quickAddInputRef = useRef(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => () => {
+    clearTimeout(longPressTimer.current);
+    clearTimeout(pendingDeleteTimer.current);
+  }, []);
 
   const defaultCategoryNames = [
-    'מסמכים וסידורים',
-    'בגדים',
-    'אלקטרוניקה',
-    'תרופות ועזרה ראשונה',
-    'סידורים אחרונים בארץ'
+    'מסמכים וסידורים', 'בגדים', 'אלקטרוניקה',
+    'תרופות ועזרה ראשונה', 'סידורים אחרונים בארץ',
   ];
-  // Allow the user to add custom categories via the dropdown — they
-  // persist as soon as the first item with that category is saved.
-  const categories = Array.from(new Set([
-    ...defaultCategoryNames,
-    ...items.map(i => i.category).filter(Boolean),
-  ]));
+  const categories = useMemo(() => {
+    const all = Array.from(new Set([
+      ...defaultCategoryNames,
+      ...extraCategories,
+      ...items.map(i => i.category).filter(Boolean),
+    ]));
+    if (!categoryOrder.length) return all;
+    const ordered = categoryOrder.filter(c => all.includes(c));
+    const rest = all.filter(c => !categoryOrder.includes(c));
+    return [...ordered, ...rest];
+  }, [extraCategories, items, categoryOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen to Firestore checklist
+  // ── Firestore listeners ──────────────────────────────────────────────────
   useEffect(() => {
     if (!tripId) return;
-    const unsubscribe = onSnapshot(collection(db, 'trips', tripId, 'checklist'), (snapshot) => {
-      const fetchedItems = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setItems(fetchedItems);
+    return onSnapshot(collection(db, 'trips', tripId, 'checklist'), snap => {
+      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
-
-    return () => unsubscribe();
   }, [tripId]);
 
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
+      const data = snap.exists() ? snap.data() : {};
+      setDeletedGlobalIds(data.deletedGlobalIds || []);
+      setExtraCategories(data.extraCategories || []);
+      setCategoryOrder(data.categoryOrder || []);
+    });
+  }, [tripId]);
+
+  useEffect(() => {
+    const uids = Object.keys(tripMembers);
+    if (uids.length === 0) return;
+    const unsubs = uids.map(uid =>
+      onSnapshot(doc(db, 'users', uid), snap => {
+        setMembersGlobalChecklists(prev => ({
+          ...prev, [uid]: snap.data()?.globalChecklist || [],
+        }));
+      })
+    );
+    return () => unsubs.forEach(u => u());
+  }, [tripMembers]);
+
+  // ── Merged global checklist (all members, deduped) ───────────────────────
+  const mergedGlobalChecklist = useMemo(() => {
+    const seen = new Set();
+    return Object.values(membersGlobalChecklists).flat().filter(item => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [membersGlobalChecklists]);
+
+  // ── Auto-sync missing global items ───────────────────────────────────────
+  useEffect(() => {
+    if (!tripId || !canEdit || loading || !mergedGlobalChecklist.length) return;
+    const existingIds = new Set(items.map(i => i.id));
+    const deletedSet = new Set(deletedGlobalIds);
+    const missing = mergedGlobalChecklist.filter(
+      item => !existingIds.has(item.id) && !deletedSet.has(item.id)
+    );
+    if (!missing.length) return;
+    const batch = writeBatch(db);
+    missing.forEach(item => {
+      batch.set(doc(db, 'trips', tripId, 'checklist', item.id), {
+        text: item.text, completed: false, category: item.category,
+      });
+    });
+    batch.commit().catch(console.error);
+  }, [mergedGlobalChecklist, items, loading, tripId, canEdit, deletedGlobalIds]);
+
+  // ── DnD sensors ─────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = categories.indexOf(active.id);
+    const newIdx = categories.indexOf(over.id);
+    const newOrder = arrayMove(categories, oldIdx, newIdx);
+    setCategoryOrder(newOrder);
+    const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+    await setDoc(syncRef, { categoryOrder: newOrder }, { merge: true });
+  };
+
+  // ── Category helpers ─────────────────────────────────────────────────────
+  const toggleCategory = (cat) =>
+    setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+
+  const startLongPress = (cat) => {
+    longPressActive.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressActive.current = true;
+      setLongPressedCat(cat);
+    }, 550);
+  };
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer.current);
+  };
+
+  const saveExtraCategory = async (cat) => {
+    if (!cat || !tripId || extraCategories.includes(cat)) return;
+    const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+    await setDoc(syncRef, { extraCategories: [...new Set([...extraCategories, cat])] }, { merge: true });
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    const catItems = items.filter(i => i.category === cat);
+    const ok = await confirm({
+      title: 'מחיקת קטגוריה',
+      message: catItems.length > 0
+        ? `האם למחוק את "${cat}" ואת ${catItems.length} הפריטים שבה?`
+        : `האם למחוק את הקטגוריה "${cat}"?`,
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
+    setLongPressedCat(null);
+    if (!ok) return;
+    const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+    const batch = writeBatch(db);
+    catItems.forEach(item => batch.delete(doc(db, 'trips', tripId, 'checklist', item.id)));
+    await batch.commit();
+    await setDoc(syncRef, { extraCategories: extraCategories.filter(c => c !== cat) }, { merge: true });
+  };
+
+  const handleRenameCategory = async (oldCat, newCat) => {
+    const trimmed = newCat.trim();
+    setEditingCat(null);
+    if (!trimmed || trimmed === oldCat) return;
+    const catItems = items.filter(i => i.category === oldCat);
+    const batch = writeBatch(db);
+    catItems.forEach(item =>
+      batch.update(doc(db, 'trips', tripId, 'checklist', item.id), { category: trimmed })
+    );
+    await batch.commit();
+  };
+
+  // ── Item actions ─────────────────────────────────────────────────────────
   const handleToggle = async (item) => {
     if (!tripId) return;
-    const docRef = doc(db, 'trips', tripId, 'checklist', item.id);
-    await updateDoc(docRef, {
-      completed: !item.completed
+    await updateDoc(doc(db, 'trips', tripId, 'checklist', item.id), {
+      completed: !item.completed,
     });
   };
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!newItemText.trim() || !tripId) return;
+  // Two-tap delete: first tap → pending (highlighted), second tap → delete
+  const handleDeleteItem = async (id) => {
+    if (!tripId) return;
+    if (pendingDeleteId === id) {
+      clearTimeout(pendingDeleteTimer.current);
+      setPendingDeleteId(null);
+      await deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
+      if (mergedGlobalChecklist.some(g => g.id === id)) {
+        const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+        await setDoc(syncRef, {
+          deletedGlobalIds: [...new Set([...deletedGlobalIds, id])],
+        }, { merge: true });
+      }
+    } else {
+      clearTimeout(pendingDeleteTimer.current);
+      setPendingDeleteId(id);
+      pendingDeleteTimer.current = setTimeout(() => setPendingDeleteId(null), 3000);
+    }
+  };
 
+  const doAdd = async (overrideCategory) => {
+    const text = newItemText.trim();
+    if (!text || !tripId) return;
+    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
     if (editingItemId) {
-      const docRef = doc(db, 'trips', tripId, 'checklist', editingItemId);
-      await updateDoc(docRef, {
-        text: newItemText.trim(),
-        category: newItemCategory
-      });
+      await updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat });
       setEditingItemId(null);
     } else {
-      const id = 'custom-' + Date.now();
-      const docRef = doc(db, 'trips', tripId, 'checklist', id);
-      await setDoc(docRef, {
-        text: newItemText.trim(),
-        completed: false,
-        category: newItemCategory
+      await setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
+        text, completed: false, category: cat,
       });
     }
-
     setNewItemText('');
   };
+
+  const handleAdd = async (e) => { e.preventDefault(); await doAdd(); };
 
   const handleCancelEdit = () => {
     setEditingItemId(null);
@@ -131,268 +765,162 @@ export default function ChecklistTab({ tripId }) {
   };
 
   const handleStartEdit = (item) => {
+    setPendingDeleteId(null);
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
-    
-    // Smooth scroll the app-content container to the top
-    const container = document.querySelector('.app-content');
-    if (container) {
-      container.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    setShowAddForm(true);
+    document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id) => {
-    if (!tripId) return;
-    const item = items.find(i => i.id === id);
-    const ok = await confirm({
-      title: 'מחיקת פריט מהרשימה',
-      message: item?.text ? <>האם למחוק את <strong>{item.text}</strong>?</> : 'האם למחוק את הפריט הזה?',
-      confirmText: 'מחק',
-      cancelText: 'בטל',
-      danger: true,
+  const handleQuickAdd = async (e, cat) => {
+    e.preventDefault();
+    if (!quickAddText.trim() || !tripId) return;
+    await setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
+      text: quickAddText.trim(), completed: false, category: cat,
     });
-    if (!ok) return;
-    const docRef = doc(db, 'trips', tripId, 'checklist', id);
-    await deleteDoc(docRef);
+    setQuickAddText('');
+    setQuickAddCat(null);
   };
 
-  const handleReset = async () => {
-    if (!tripId) return;
-    const ok = await confirm({
-      title: 'איפוס רשימת ציוד',
-      message: 'כל הפריטים האישיים בצ\'קליסט של הטיול יימחקו ויוחלפו ברשימת ברירת המחדל. האם להמשיך?',
-      confirmText: 'אפס לרשימת ברירת מחדל',
-      cancelText: 'בטל',
-      danger: true,
-    });
-    if (!ok) return;
-
-    setLoading(true);
-    const batch = writeBatch(db);
-    items.forEach((item) => {
-      batch.delete(doc(db, 'trips', tripId, 'checklist', item.id));
-    });
-    await batch.commit();
-
-    const batch2 = writeBatch(db);
-    defaultChecklist.forEach((item) => {
-      const docRef = doc(collection(db, 'trips', tripId, 'checklist'), item.id);
-      batch2.set(docRef, {
-        text: item.text,
-        completed: item.completed,
-        category: item.category
-      });
-    });
-    await batch2.commit();
-    setLoading(false);
-  };
-
-  // Calculations for progress bar
+  // ── Progress ─────────────────────────────────────────────────────────────
   const totalCount = items.length;
-  const completedCount = items.filter(item => item.completed).length;
+  const completedCount = items.filter(i => i.completed).length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, height: '100%', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: '12px', height: '12px' }}></div>
-        <span style={{ marginRight: '10px', color: 'var(--text-muted)', fontSize: '15px' }}>טוען רשימת ציוד...</span>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '40px 0' }}>
+        <div className="pulsing-dot" style={{ width: 12, height: 12 }} />
+        <span style={{ marginRight: 10, color: 'var(--text-muted)', fontSize: 15 }}>טוען רשימת ציוד...</span>
       </div>
     );
   }
 
   return (
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {/* Progress Card */}
-      <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary-color)' }}>מוכנות לטיסה</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>נארזו {completedCount} מתוך {totalCount} פריטים</p>
-          </div>
-          <span style={{ fontSize: '28px', fontWeight: '900', color: 'var(--primary-color)' }}>{progressPercent}%</span>
-        </div>
-        
-        {/* Progress Bar Track */}
-        <div style={{ width: '100%', height: '8px', background: 'rgba(11, 11, 48, 0.06)', borderRadius: '50px', overflow: 'hidden' }}>
-          <div style={{ 
-            width: `${progressPercent}%`, 
-            height: '100%', 
-            background: 'var(--primary-color)', 
-            borderRadius: '50px',
-            transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
-          }} />
-        </div>
-      </div>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Add New Item form — owner/editor only */}
+      {/* Reminders — full-width One UI widget carousel */}
+      <RemindersCard tripId={tripId} canEdit={canEdit} />
+
+      {/* Add New Item + Progress Ring */}
       {canEdit && (
-      <form onSubmit={handleAdd} className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h4 style={{ fontSize: '15px', fontWeight: '800', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
-          {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
-        </h4>
-        
-        <div className="row-2" style={{ gap: '10px' }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>מה להביא?</label>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="למשל: סוודר, מטען" 
-              value={newItemText}
-              onChange={(e) => setNewItemText(e.target.value)}
-              required
-            />
-          </div>
-          <CustomDropdown
-            label="קטגוריה"
-            value={newItemCategory}
-            onChange={setNewItemCategory}
-            options={categories}
-            addable
-            addLabel="הוסף קטגוריה חדשה"
-          />
-        </div>
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, direction: 'rtl' }}>
 
-        {editingItemId ? (
-          <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-            <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-            <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
-          </div>
-        ) : (
-          <button type="submit" className="btn-primary" style={{ marginTop: '4px', width: '100%' }}>
-            <Plus size={18} />
-            <span>הוסף פריט לרשימה</span>
-          </button>
-        )}
-      </form>
-      )}
+          {/* Title row: ring on left, title on right */}
+          <div style={{ display: 'flex', flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 0 }}>
 
-      {/* Checklist categories — collapsible by default */}
-      {categories.map((category, catIdx) => {
-        const categoryItems = items.filter(item => item.category === category);
-        if (categoryItems.length === 0) return null;
-        const isCollapsed = !!collapsedCategories[category];
-        const doneCount = categoryItems.filter(i => i.completed).length;
-
-        return (
-          <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {/* Category header — click to toggle */}
-            <button
-              type="button"
-              onClick={() => toggleCategory(category)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                padding: '4px 4px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                cursor: 'pointer',
-                width: '100%',
-                fontFamily: 'var(--font-hebrew)'
-              }}
-            >
-              <ChevronDown
-                size={16}
-                style={{
-                  color: 'var(--text-muted)',
-                  transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.2s ease',
-                  flexShrink: 0
-                }}
-              />
-              <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1 }}>
-                {category}
-              </h3>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-                {doneCount}/{categoryItems.length}
-              </span>
-            </button>
-
-            {!isCollapsed && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {categoryItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="glass-card checklist-item-row"
-                    onClick={canEdit ? () => handleToggle(item) : undefined}
-                    style={{
-                      padding: '12px 14px',
-                      cursor: canEdit ? 'pointer' : 'default',
-                      background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
-                      border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
-                    }}
-                  >
-                    {/* RTL grid: checkbox(right, first in DOM) | text(center) | actions(left, last in DOM) */}
-                    <div style={{
-                      width: '22px',
-                      height: '22px',
-                      borderRadius: '6px',
-                      border: item.completed ? 'none' : '2px solid rgba(11, 11, 48, 0.18)',
-                      background: item.completed ? 'var(--primary-color)' : 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'all 0.2s ease',
-                      flexShrink: 0
-                    }}>
-                      {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
-                    </div>
-
-                    <span style={{
-                      fontSize: '15px',
-                      fontWeight: item.completed ? '500' : '600',
-                      textDecoration: item.completed ? 'line-through' : 'none',
-                      color: item.completed ? 'var(--text-muted)' : 'var(--text-main)',
-                      transition: 'all 0.2s ease',
-                      textAlign: 'right',
-                      wordBreak: 'break-word'
-                    }}>
-                      {item.text}
-                    </span>
-
-                    {canEdit ? (
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="ערוך"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
-                          style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="מחק"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ) : <div />}
-                  </div>
-                ))}
+            {/* Progress ring */}
+            <div style={{ width: 54, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+              <div style={{ position: 'relative', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width={44} height={44} viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
+                  <circle cx={22} cy={22} r={17} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={4} />
+                  <circle cx={22} cy={22} r={17} fill="none" stroke="var(--primary-color)" strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeDasharray="106.81"
+                    strokeDashoffset={`${(106.81 * (1 - progressPercent / 100)).toFixed(2)}`}
+                    transform="rotate(-90 22 22)"
+                    style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
+                  />
+                </svg>
+                <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+                  <span style={{ fontSize: 7, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>{completedCount}/{totalCount}</span>
+                </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
 
-      {/* Reset button — owner/editor only */}
-      {canEdit && (
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-        <button
-          onClick={handleReset}
-          className="btn-secondary"
-          style={{ fontSize: '13px', padding: '10px 16px', gap: '6px', color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
-        >
-          <RotateCcw size={14} />
-          <span>איפוס לרשימת ברירת המחדל</span>
-        </button>
-      </div>
+            {/* Title button */}
+            <div style={{ flex: 1, direction: 'rtl' }}>
+              <button type="button" onClick={() => setShowAddForm(s => !s)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}>
+                {showAddForm
+                  ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+                  {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
+                </span>
+                {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Form — full width below the title row */}
+          {showAddForm && (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מה להביא?</label>
+                  <input type="text" className="form-control" placeholder="למשל: סוודר, מטען"
+                    value={newItemText} onChange={e => setNewItemText(e.target.value)} required />
+                </div>
+                <CustomDropdown
+                  label="קטגוריה" value={newItemCategory} onChange={setNewItemCategory}
+                  options={categories} addable addLabel="הוסף קטגוריה חדשה"
+                  onCommit={cat => saveExtraCategory(cat)}
+                />
+              </div>
+              {editingItemId ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+                  <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
+                </div>
+              ) : (
+                <button type="submit" className="btn-primary" style={{ width: '100%' }}>
+                  <Plus size={18} /><span>הוסף פריט לרשימה</span>
+                </button>
+              )}
+            </form>
+          )}
+        </div>
       )}
+
+      {/* Checklist categories — sortable, all closed by default */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={categories} strategy={verticalListSortingStrategy}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {categories.map((category) => {
+              const categoryItems = items.filter(item => item.category === category);
+              if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
+              const isOpen = !!openCategories[category];
+              const isLongPressed = longPressedCat === category;
+              const doneCount = categoryItems.filter(i => i.completed).length;
+              return (
+                <SortableCategoryBlock
+                  key={category}
+                  category={category}
+                  categoryItems={categoryItems}
+                  isOpen={isOpen}
+                  isLongPressed={isLongPressed}
+                  doneCount={doneCount}
+                  canEdit={canEdit}
+                  editingCat={editingCat}
+                  editCatText={editCatText}
+                  setEditCatText={setEditCatText}
+                  setEditingCat={setEditingCat}
+                  handleRenameCategory={handleRenameCategory}
+                  toggleCategory={toggleCategory}
+                  longPressActive={longPressActive}
+                  startLongPress={startLongPress}
+                  cancelLongPress={cancelLongPress}
+                  setLongPressedCat={setLongPressedCat}
+                  handleDeleteCategory={handleDeleteCategory}
+                  pendingDeleteId={pendingDeleteId}
+                  handleToggle={handleToggle}
+                  handleStartEdit={handleStartEdit}
+                  handleDeleteItem={handleDeleteItem}
+                  quickAddCat={quickAddCat}
+                  setQuickAddCat={setQuickAddCat}
+                  quickAddText={quickAddText}
+                  setQuickAddText={setQuickAddText}
+                  quickAddInputRef={quickAddInputRef}
+                  handleQuickAdd={handleQuickAdd}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
 
     </div>
   );

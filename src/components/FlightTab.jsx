@@ -1238,17 +1238,17 @@ export default function FlightTab({ tripId }) {
                 </div>
 
                 <div className="form-group">
-                  <label>קישור למלון (אופציונלי)</label>
+                  <label>קישור Google Maps</label>
                   <input
                     type="url"
                     className="form-control"
                     value={formHotelLink}
                     onChange={(e) => setFormHotelLink(e.target.value)}
-                    placeholder="https://www.booking.com/..."
+                    placeholder="https://maps.google.com/..."
                     dir="ltr"
                   />
                   <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
-                    אתר המלון, קישור Booking.com, או כל URL אחר.
+                    קישור לגוגל מפות — ישמש לחישוב מרחק אוטומטי מהמלון לאטרקציות.
                   </small>
                 </div>
 

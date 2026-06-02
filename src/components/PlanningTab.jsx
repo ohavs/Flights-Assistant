@@ -1,14 +1,22 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  writeBatch 
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
+import {
+  hasGmapsKey,
+  resolveOriginString,
+  resolveDestinationAsync,
+  fetchTravelTimes,
+} from '../services/distanceApi';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -28,11 +36,52 @@ import {
   Pencil,
   ArrowUp,
   ArrowDown,
+  Loader2,
+  Hotel,
   Calendar,
   ChevronDown,
   Link2,
-  X
+  X,
+  Settings,
+  Camera,
+  Coffee,
+  ShoppingBag,
+  Plane,
+  Star,
+  Bike,
+  Car,
+  Landmark,
+  Mountain,
+  Tent,
+  Navigation,
 } from 'lucide-react';
+
+const ICON_OPTIONS = [
+  { key: 'Compass',        Icon: Compass },
+  { key: 'UtensilsCrossed',Icon: UtensilsCrossed },
+  { key: 'Train',          Icon: Train },
+  { key: 'Info',           Icon: Info },
+  { key: 'MapPin',         Icon: MapPin },
+  { key: 'Camera',         Icon: Camera },
+  { key: 'Coffee',         Icon: Coffee },
+  { key: 'ShoppingBag',   Icon: ShoppingBag },
+  { key: 'Plane',          Icon: Plane },
+  { key: 'Star',           Icon: Star },
+  { key: 'Bike',           Icon: Bike },
+  { key: 'Car',            Icon: Car },
+  { key: 'Landmark',       Icon: Landmark },
+  { key: 'Mountain',       Icon: Mountain },
+  { key: 'Tent',           Icon: Tent },
+  { key: 'Calendar',       Icon: Calendar },
+];
+
+const ICON_MAP = Object.fromEntries(ICON_OPTIONS.map(({ key, Icon }) => [key, Icon]));
+
+const COLOR_OPTIONS = [
+  '#4f46e5', '#7c3aed', '#db2777', '#dc2626',
+  '#ea580c', '#d97706', '#16a34a', '#0f766e',
+  '#0891b2', '#1d4ed8', '#64748b', '#334155',
+];
 
 export const defaultGironaPlans = [
   {
@@ -144,29 +193,35 @@ export default function PlanningTab({ tripId }) {
   const { canEdit } = useTrip();
   const confirm = useConfirm();
 
-  // FLIP animation: when the visited-sort changes the order, each card
-  // slides from its previous position to the new one. We record every
-  // card's bounding rect after each render in lastPositions; on the next
-  // render the layout effect compares the new position to the recorded
-  // one and plays a transform animation from the delta back to 0.
+  // FLIP animation: only fires when the sorted order of cards changes
+  // (i.e. a visited-toggle moves a card to the bottom). Expanding/collapsing
+  // a card shifts cards below it but does NOT change order — without this
+  // guard those positional shifts triggered an unwanted scroll-like animation.
   const itemRefs = useRef(new Map());
   const lastPositions = useRef(new Map());
+  const prevSortedIds = useRef([]);
   useLayoutEffect(() => {
+    const currentIds = filteredPlans.map(p => p.id);
+    const orderChanged =
+      currentIds.length !== prevSortedIds.current.length ||
+      currentIds.some((id, i) => id !== prevSortedIds.current[i]);
+    prevSortedIds.current = currentIds;
+
     for (const [id, node] of itemRefs.current.entries()) {
       if (!node) continue;
       const newRect = node.getBoundingClientRect();
-      const prev = lastPositions.current.get(id);
-      if (prev) {
-        const dy = prev.top - newRect.top;
-        if (Math.abs(dy) > 2) {
-          node.style.transition = 'none';
-          node.style.transform = `translateY(${dy}px)`;
-          // Force a reflow so the no-transition transform is committed
-          // before we apply the animated transition.
-          // eslint-disable-next-line no-unused-expressions
-          node.offsetHeight;
-          node.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
-          node.style.transform = 'translateY(0)';
+      if (orderChanged) {
+        const prev = lastPositions.current.get(id);
+        if (prev) {
+          const dy = prev.top - newRect.top;
+          if (Math.abs(dy) > 2) {
+            node.style.transition = 'none';
+            node.style.transform = `translateY(${dy}px)`;
+            // eslint-disable-next-line no-unused-expressions
+            node.offsetHeight;
+            node.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+            node.style.transform = 'translateY(0)';
+          }
         }
       }
       lastPositions.current.set(id, newRect);
@@ -194,6 +249,24 @@ export default function PlanningTab({ tripId }) {
 
   // Expanded plan cards (default: collapsed)
   const [expandedPlanIds, setExpandedPlanIds] = useState({});
+
+  // Category customisation (icon + color), synced with Firestore
+  const [categorySettings, setCategorySettings] = useState({});
+  const [showCategorySettings, setShowCategorySettings] = useState(false);
+
+  // Locations modal: when a card has multiple navigation targets
+  const [locationsModal, setLocationsModal] = useState(null);
+
+  // Distance from hotel/origin
+  const [hotelDetails, setHotelDetails] = useState(null);
+  const [distanceOrigins, setDistanceOrigins] = useState([]); // [{id,name,mapsUrl}]
+  const [distanceCache, setDistanceCache] = useState({}); // cacheKey → {walk,transit,loading,error}
+  // Form: distance origin selector
+  const [formOriginId, setFormOriginId] = useState('hotel');
+  const [originDropOpen, setOriginDropOpen] = useState(false);
+  const [showAddOriginForm, setShowAddOriginForm] = useState(false);
+  const [newOriginName, setNewOriginName] = useState('');
+  const [newOriginUrl, setNewOriginUrl] = useState('');
 
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -225,6 +298,32 @@ export default function PlanningTab({ tripId }) {
     ...plans.map(p => p.category).filter(Boolean),
     ...days.flatMap(d => (d.activities || []).map(a => a.category).filter(Boolean)),
   ]));
+
+  // Load category customisation settings
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
+      setCategorySettings(snap.exists() ? (snap.data() || {}) : {});
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  // Listen to trip document for hotelDetails + custom distance origins
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      setHotelDetails(d.hotelDetails || null);
+      setDistanceOrigins(Array.isArray(d.distanceOrigins) ? d.distanceOrigins : []);
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  const saveCategorySettings = async (updated) => {
+    if (!tripId) return;
+    await setDoc(doc(db, 'trips', tripId, 'settings', 'categories'), updated);
+  };
 
   // Listen to Firestore planning items (pool)
   useEffect(() => {
@@ -258,6 +357,60 @@ export default function PlanningTab({ tripId }) {
   }, [tripId]);
 
   /* ══════════════════════════════════════════════════════════
+     DISTANCE HELPERS
+     ══════════════════════════════════════════════════════════ */
+  const fetchPlanDistances = async (plan) => {
+    if (!hasGmapsKey()) return;
+    const originId = plan.distanceOriginId || 'hotel';
+    const cacheKey = `${plan.id}_${originId}`;
+    // Don't re-fetch if already loading or successfully fetched
+    const existing = distanceCache[cacheKey];
+    if (existing && (existing.loading || existing.walk || existing.transit)) return;
+
+    const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+    const origin = resolveOriginString(hotelDetails, customOrigin);
+    if (!origin) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      return;
+    }
+
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+    const dest = await resolveDestinationAsync(plan, origin);
+    if (!dest) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      return;
+    }
+
+    const result = await fetchTravelTimes(origin, dest);
+    setDistanceCache(prev => ({
+      ...prev,
+      [cacheKey]: result ? { ...result, loading: false } : { loading: false, error: true },
+    }));
+  };
+
+  const handleSaveDistanceOrigin = async () => {
+    if (!newOriginName.trim() || !newOriginUrl.trim() || !tripId) return;
+    const newOrigin = {
+      id: 'origin-' + Date.now(),
+      name: newOriginName.trim(),
+      mapsUrl: newOriginUrl.trim(),
+    };
+    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayUnion(newOrigin) });
+    setFormOriginId(newOrigin.id);
+    setNewOriginName('');
+    setNewOriginUrl('');
+    setShowAddOriginForm(false);
+  };
+
+  const handleRemoveDistanceOrigin = async (originId) => {
+    if (!tripId) return;
+    const origin = distanceOrigins.find(o => o.id === originId);
+    if (!origin) return;
+    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayRemove(origin) });
+    if (formOriginId === originId) setFormOriginId('hotel');
+  };
+
+  /* ══════════════════════════════════════════════════════════
      PLACES POOL (OLD PLANNING) OPERATIONS
      ══════════════════════════════════════════════════════════ */
   const handleOpenAdd = () => {
@@ -270,6 +423,9 @@ export default function PlanningTab({ tripId }) {
     setLinks([]);
     setNewLinkLabel('');
     setNewLinkUrl('');
+    setFormOriginId('hotel');
+    setOriginDropOpen(false);
+    setShowAddOriginForm(false);
     setShowAddForm(true);
   };
 
@@ -305,6 +461,9 @@ export default function PlanningTab({ tripId }) {
     setLinks(Array.isArray(plan.links) ? plan.links : []);
     setNewLinkLabel('');
     setNewLinkUrl('');
+    setFormOriginId(plan.distanceOriginId || 'hotel');
+    setOriginDropOpen(false);
+    setShowAddOriginForm(false);
     setShowAddForm(true);
   };
 
@@ -322,7 +481,14 @@ export default function PlanningTab({ tripId }) {
   };
 
   const togglePlanExpanded = (id) => {
-    setExpandedPlanIds(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedPlanIds(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      if (next[id]) {
+        const plan = plans.find(p => p.id === id);
+        if (plan) setTimeout(() => fetchPlanDistances(plan), 0);
+      }
+      return next;
+    });
   };
 
   const handleToggleVisited = async (plan) => {
@@ -351,6 +517,7 @@ export default function PlanningTab({ tripId }) {
     e.preventDefault();
     if (!title.trim() || !tripId) return;
 
+    const originId = formOriginId !== 'hotel' ? formOriginId : null;
     if (editingId) {
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
       await updateDoc(docRef, {
@@ -359,7 +526,15 @@ export default function PlanningTab({ tripId }) {
         description: description.trim(),
         address: address.trim(),
         price: price.trim() || 'חינם',
-        links: links
+        links: links,
+        distanceOriginId: originId,
+      });
+      // Invalidate cache so distances re-fetch on next open
+      setDistanceCache(prev => {
+        const next = { ...prev };
+        delete next[`${editingId}_hotel`];
+        delete next[`${editingId}_${originId}`];
+        return next;
       });
     } else {
       const id = 'plan-' + Date.now();
@@ -371,7 +546,8 @@ export default function PlanningTab({ tripId }) {
         address: address.trim(),
         price: price.trim() || 'חינם',
         links: links,
-        visited: false
+        visited: false,
+        distanceOriginId: originId,
       });
     }
 
@@ -385,20 +561,34 @@ export default function PlanningTab({ tripId }) {
     setShowAddForm(false);
   };
 
-  // Helper to resolve category icons
-  const getCategoryIcon = (cat) => {
+  const getCategoryColor = (cat) => categorySettings[cat]?.color || '#4f46e5';
+
+  const getCategoryIcon = (cat, size = 18) => {
+    const iconKey = categorySettings[cat]?.iconKey;
+    const Icon = iconKey ? ICON_MAP[iconKey] : null;
+    if (Icon) return <Icon size={size} />;
     switch (cat) {
-      case 'אטרקציות ודברים לעשות':
-        return <Compass size={18} />;
-      case 'מסעדות ומקומות אכילה':
-        return <UtensilsCrossed size={18} />;
-      case 'תחבורה ציבורית':
-        return <Train size={18} />;
-      case 'מידע כללי וטיפים':
-        return <Info size={18} />;
-      default:
-        return <MapPin size={18} />;
+      case 'אטרקציות ודברים לעשות': return <Compass size={size} />;
+      case 'מסעדות ומקומות אכילה': return <UtensilsCrossed size={size} />;
+      case 'תחבורה ציבורית':       return <Train size={size} />;
+      case 'מידע כללי וטיפים':     return <Info size={size} />;
+      default:                      return <MapPin size={size} />;
     }
+  };
+
+  const getPlanLocations = (plan) => {
+    const locs = [];
+    if (plan.address) {
+      const isUrl = /^https?:\/\//i.test(plan.address);
+      locs.push({
+        label: plan.address,
+        url: isUrl ? plan.address : `https://maps.google.com/?q=${encodeURIComponent(plan.address)}`,
+      });
+    }
+    if (Array.isArray(plan.links)) {
+      plan.links.forEach(link => locs.push({ label: link.label || link.url, url: link.url }));
+    }
+    return locs;
   };
 
   // Filter plans + sort visited ones to the bottom
@@ -702,17 +892,6 @@ export default function PlanningTab({ tripId }) {
                   />
 
                   <div className="form-group">
-                    <label>עלות/תקציב</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="למשל: 10 €, חינם"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
                     <label>כתובת / מיקום</label>
                     <input
                       type="text"
@@ -770,6 +949,133 @@ export default function PlanningTab({ tripId }) {
                     </button>
                   </div>
 
+                  {/* Distance origin selector */}
+                  {hasGmapsKey() && (
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Hotel size={14} style={{ color: 'var(--accent)' }} />
+                        בדיקת זמנים מ...
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={() => setOriginDropOpen(o => !o)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 14px', borderRadius: 'var(--radius-md)',
+                            border: '1.5px solid rgba(79,70,229,0.25)', background: 'rgba(79,70,229,0.04)',
+                            cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                            color: 'var(--primary)',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Hotel size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            {formOriginId === 'hotel'
+                              ? (hotelDetails?.name ? `המלון — ${hotelDetails.name}` : 'המלון')
+                              : (distanceOrigins.find(o => o.id === formOriginId)?.name || 'מיקום לא ידוע')}
+                          </span>
+                          <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: originDropOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                        </button>
+
+                        {originDropOpen && (
+                          <div style={{
+                            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
+                            background: '#fff', border: '1.5px solid rgba(79,70,229,0.15)', borderRadius: 'var(--radius-md)',
+                            boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+                          }}>
+                            {/* Hotel option */}
+                            <button
+                              type="button"
+                              onClick={() => { setFormOriginId('hotel'); setOriginDropOpen(false); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '11px 14px', border: 'none', background: formOriginId === 'hotel' ? 'rgba(79,70,229,0.08)' : '#fff',
+                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                                color: formOriginId === 'hotel' ? 'var(--accent)' : 'var(--primary)',
+                                borderBottom: '1px solid rgba(11,11,48,0.06)',
+                              }}
+                            >
+                              <Hotel size={15} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1, textAlign: 'right' }}>
+                                {hotelDetails?.name ? `המלון — ${hotelDetails.name}` : 'המלון'}
+                              </span>
+                              {formOriginId === 'hotel' && <Check size={14} />}
+                            </button>
+
+                            {/* Custom origins */}
+                            {distanceOrigins.map(origin => (
+                              <div key={origin.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(11,11,48,0.04)' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => { setFormOriginId(origin.id); setOriginDropOpen(false); }}
+                                  style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '11px 14px', border: 'none', background: formOriginId === origin.id ? 'rgba(79,70,229,0.08)' : '#fff',
+                                    cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                                    color: formOriginId === origin.id ? 'var(--accent)' : 'var(--primary)',
+                                  }}
+                                >
+                                  <MapPin size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                                  <span style={{ flex: 1, textAlign: 'right' }}>{origin.name}</span>
+                                  {formOriginId === origin.id && <Check size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDistanceOrigin(origin.id)}
+                                  style={{ padding: '0 12px 0 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.6)' }}
+                                  title="הסר מיקום"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Add new origin */}
+                            {!showAddOriginForm ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowAddOriginForm(true)}
+                                style={{
+                                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                                  padding: '10px 14px', border: 'none', background: '#fff',
+                                  cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                  color: 'var(--accent)',
+                                }}
+                              >
+                                <Plus size={14} />
+                                <span>הוסף מיקום...</span>
+                              </button>
+                            ) : (
+                              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'rgba(79,70,229,0.03)' }}>
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  placeholder="שם המיקום (למשל: תחנת הרכבת)"
+                                  value={newOriginName}
+                                  onChange={e => setNewOriginName(e.target.value)}
+                                  style={{ fontSize: 13 }}
+                                />
+                                <input
+                                  type="url"
+                                  className="form-control"
+                                  placeholder="קישור לגוגל מפות"
+                                  value={newOriginUrl}
+                                  onChange={e => setNewOriginUrl(e.target.value)}
+                                  dir="ltr"
+                                  style={{ fontSize: 13 }}
+                                />
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <button type="button" onClick={handleSaveDistanceOrigin} className="btn-primary" style={{ flex: 1, minHeight: 36, fontSize: 13 }}>שמור</button>
+                                  <button type="button" onClick={() => { setShowAddOriginForm(false); setNewOriginName(''); setNewOriginUrl(''); }} className="btn-secondary" style={{ minHeight: 36, padding: '0 12px', fontSize: 13 }}>ביטול</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
                     <textarea
@@ -792,7 +1098,7 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Category Horizontal Filter Chips — sticky, larger touch targets */}
+          {/* Filter chips row — only categories that have at least one plan item */}
           <div
             className="horizontal-scroll filter-chips-row"
             style={{
@@ -811,23 +1117,40 @@ export default function PlanningTab({ tripId }) {
               WebkitBackdropFilter: 'blur(6px)'
             }}
           >
-            {['הכל', ...categories].map((filter, idx) => {
+            {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
               const active = filter === selectedFilter;
+              const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
               return (
                 <button
                   key={idx}
                   onClick={() => setSelectedFilter(filter)}
                   className={`filter-chip ${active ? 'active' : ''}`}
+                  style={active && filter !== 'הכל' ? {
+                    background: color,
+                    borderColor: color,
+                    color: '#fff',
+                  } : {}}
                 >
                   {filter !== 'הכל' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      {getCategoryIcon(filter)}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
+                      {getCategoryIcon(filter, 14)}
                     </span>
                   )}
                   <span>{filter}</span>
                 </button>
               );
             })}
+            {/* Settings button as last chip in the scrollable row */}
+            {canEdit && (
+              <button
+                onClick={() => setShowCategorySettings(true)}
+                title="הגדרות קטגוריות"
+                className="filter-chip"
+                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'rgba(11,11,48,0.05)' }}
+              >
+                <Settings size={13} />
+              </button>
+            )}
           </div>
 
           {/* Planning Cards List */}
@@ -927,8 +1250,8 @@ export default function PlanningTab({ tripId }) {
 
                       <span style={{
                         width: 32, height: 32, borderRadius: 10,
-                        background: 'rgba(11, 11, 48, 0.05)',
-                        color: 'var(--primary-color)',
+                        background: `${getCategoryColor(plan.category)}18`,
+                        color: getCategoryColor(plan.category),
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
                       }}>
@@ -959,8 +1282,44 @@ export default function PlanningTab({ tripId }) {
                             }}>נצפה</span>
                           )}
                         </h3>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{plan.category}</span>
+                        <span style={{
+                          fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
+                        }}>
+                          {plan.description
+                            ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
+                            : plan.category}
+                        </span>
                       </div>
+
+                      {(() => {
+                        const locs = getPlanLocations(plan);
+                        if (!locs.length) return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (locs.length === 1) {
+                                window.open(locs[0].url, '_blank', 'noreferrer');
+                              } else {
+                                setLocationsModal(plan);
+                              }
+                            }}
+                            title="נווט למיקום"
+                            style={{
+                              width: 32, height: 32, borderRadius: '50%',
+                              background: `${getCategoryColor(plan.category)}18`,
+                              color: getCategoryColor(plan.category),
+                              border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Navigation size={15} />
+                          </button>
+                        );
+                      })()}
 
                       <ChevronDown
                         size={18}
@@ -1014,6 +1373,46 @@ export default function PlanningTab({ tripId }) {
                           </p>
                         )}
 
+                        {/* Distance from hotel / origin */}
+                        {hasGmapsKey() && hotelDetails && (() => {
+                          const originId = plan.distanceOriginId || 'hotel';
+                          const cacheKey = `${plan.id}_${originId}`;
+                          const cache = distanceCache[cacheKey];
+                          const originLabel = originId === 'hotel'
+                            ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
+                            : (distanceOrigins.find(o => o.id === originId)?.name || 'מהמיקום');
+
+                          if (!cache || cache.loading) return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                              <Loader2 size={13} className="spinning" />
+                              <span>מחשב מרחק...</span>
+                            </div>
+                          );
+                          if (cache.noLocation) return (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+                              📍 לא נמצא מיקום לחישוב זמן הגעה
+                            </div>
+                          );
+                          if (cache.error || (!cache.walk && !cache.transit)) return null;
+                          return (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.04)', borderRadius: 10, border: '1px solid rgba(79,70,229,0.1)' }}>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
+                                {originLabel}:
+                              </span>
+                              {cache.walk && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+                                  🚶 {cache.walk.duration}
+                                </span>
+                              )}
+                              {cache.transit && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+                                  🚌 {cache.transit.duration}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         <div style={{
                           display: 'flex',
                           flexWrap: 'wrap',
@@ -1022,7 +1421,6 @@ export default function PlanningTab({ tripId }) {
                           borderTop: '1px solid rgba(0,0,0,0.04)',
                           paddingTop: '10px'
                         }}>
-                          {renderChip(<DollarSign size={12} />, plan.price)}
                           {renderChip(<MapPin size={12} />, plan.address, true)}
                           {Array.isArray(plan.links) && plan.links.map((link, idx) => (
                             <a
@@ -1162,12 +1560,13 @@ export default function PlanningTab({ tripId }) {
                           }}>
                             <div style={{
                               width: 28, height: 28, borderRadius: '50%',
-                              background: 'rgba(79,70,229,0.08)', color: 'var(--accent)',
+                              background: `${getCategoryColor(act.category)}18`,
+                              color: getCategoryColor(act.category),
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               zIndex: 2,
-                              border: '1.5px solid rgba(79,70,229,0.15)'
+                              border: `1.5px solid ${getCategoryColor(act.category)}40`
                             }}>
-                              {getCategoryIcon(act.category)}
+                              {getCategoryIcon(act.category, 15)}
                             </div>
                             {!isLast && (
                               <div style={{
@@ -1321,6 +1720,142 @@ export default function PlanningTab({ tripId }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Locations Modal — multiple navigation targets for a card */}
+      {locationsModal && (
+        <div className="modal-overlay" onClick={() => setLocationsModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: 15 }}>{locationsModal.title}</h2>
+              <button className="btn-close" onClick={() => setLocationsModal(null)}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 8 }}>
+              {getPlanLocations(locationsModal).map((loc, i) => (
+                <a
+                  key={i}
+                  href={loc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setLocationsModal(null)}
+                  style={{ textDecoration: 'none' }}
+                >
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '13px 14px',
+                    background: 'rgba(79,70,229,0.05)',
+                    borderRadius: 14,
+                    border: '1px solid rgba(79,70,229,0.12)',
+                    transition: 'background 0.15s ease',
+                  }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                      background: 'var(--accent)', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Navigation size={16} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {loc.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">
+                        {loc.url}
+                      </div>
+                    </div>
+                    <ExternalLink size={14} style={{ color: 'var(--accent)', flexShrink: 0, opacity: 0.7 }} />
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Settings Modal */}
+      {showCategorySettings && (
+        <div className="modal-overlay" onClick={() => setShowCategorySettings(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+              <h2>התאמת קטגוריות</h2>
+              <button className="btn-close" onClick={() => setShowCategorySettings(false)}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 16 }}>
+              {categories.map(cat => {
+                const s = categorySettings[cat] || {};
+                const color = s.color || '#4f46e5';
+                return (
+                  <div key={cat} style={{ background: 'rgba(11,11,48,0.025)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Category label with live preview */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{
+                        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                        background: `${color}1a`, color,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        {getCategoryIcon(cat, 18)}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{cat}</span>
+                    </div>
+
+                    {/* Icon picker */}
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>אייקון</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {ICON_OPTIONS.map(({ key, Icon }) => {
+                          const selected = s.iconKey === key;
+                          return (
+                            <button key={key} type="button"
+                              onClick={() => {
+                                const updated = { ...categorySettings, [cat]: { ...s, iconKey: key } };
+                                setCategorySettings(updated);
+                                saveCategorySettings(updated);
+                              }}
+                              title={key}
+                              style={{
+                                width: 36, height: 36, borderRadius: 10, border: 'none',
+                                background: selected ? color : 'rgba(11,11,48,0.06)',
+                                color: selected ? '#fff' : 'var(--primary)',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                                boxShadow: selected ? `0 2px 8px ${color}60` : 'none',
+                              }}>
+                              <Icon size={16} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Color picker */}
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>צבע</span>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {COLOR_OPTIONS.map(c => (
+                          <button key={c} type="button"
+                            onClick={() => {
+                              const updated = { ...categorySettings, [cat]: { ...s, color: c } };
+                              setCategorySettings(updated);
+                              saveCategorySettings(updated);
+                            }}
+                            style={{
+                              width: 28, height: 28, borderRadius: '50%', padding: 0,
+                              border: color === c ? '3px solid var(--primary)' : '2px solid rgba(255,255,255,0.5)',
+                              background: c, cursor: 'pointer',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                              transform: color === c ? 'scale(1.18)' : 'scale(1)',
+                              transition: 'transform 0.15s ease',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

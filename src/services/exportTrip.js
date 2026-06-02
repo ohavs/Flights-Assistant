@@ -33,6 +33,11 @@ function safeFileName(name) {
     .slice(0, 80);
 }
 
+// Excel sheet names forbid [ ] \ / * ? : and max 31 chars
+function safeSheetName(name) {
+  return String(name || 'כללי').replace(/[[\]\\\/\*\?:']/g, '_').trim().slice(0, 31) || 'כללי';
+}
+
 function formatHotelDateTime(s) {
   if (!s) return '';
   const d = new Date(s);
@@ -64,6 +69,8 @@ const SCOPE = {
   info:     { flight: false, planning: false, days: false, checklist: false, info: true  },
   all:      { flight: true,  planning: true,  days: true,  checklist: true,  info: true  },
 };
+
+const SCOPE_LABEL = { flight: 'טיסה', planning: 'תכנון', checklist: 'ציוד', info: 'מידע', all: 'מלא' };
 
 // ──────────────────────────────────────────────────────────────────────
 // PDF
@@ -250,7 +257,7 @@ export async function exportTripPdf(data, scope = 'all') {
     if (ht?.name) {
       subHeader('מלון');
       write(ht.name, { size: 13 });
-      if (ht.address) writeLink(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 12, indent: 14 });
+      if (ht.address) writeLink(`📍 ${ht.address}`, `https://www.google.com/maps?q=${encodeURIComponent(ht.address)}`, { size: 12, indent: 14 });
       if (ht.link) writeLink(`🔗 ${ht.link}`, ht.link, { size: 12, indent: 14 });
       if (ht.checkIn || ht.checkOut) write(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { size: 12, color: C_MUTED, indent: 14 });
       if (ht.roomNumber) write(`חדר: ${ht.roomNumber}`, { size: 12, color: C_MUTED, indent: 14 });
@@ -262,23 +269,106 @@ export async function exportTripPdf(data, scope = 'all') {
   if (SS.planning && planning.length > 0) {
     if (SS.flight) newPage();
     banner('תכנון הטיול');
-    const groups = groupByCategory(planning);
-    for (const [cat, items] of Object.entries(groups)) {
-      subHeader(cat);
-      for (const p of items) {
-        ensureSpace(60);
-        write(`• ${p.title}${p.visited ? '   ✓' : ''}`, { size: 13 });
-        if (p.description) write(p.description, { size: 11, color: C_MUTED, indent: 16 });
-        if (p.price) write(`מחיר: ${p.price}`, { size: 11, color: C_MUTED, indent: 16 });
-        if (p.address) writeLink(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`, { size: 11, indent: 16 });
-        if (Array.isArray(p.links)) {
-          for (const ln of p.links) {
-            if (ln?.url) writeLink(`🔗 ${ln.label || ln.url}`, ln.url, { size: 11, indent: 16 });
+
+    // Table column layout (RTL: index 0 = rightmost visual column)
+    const PLAN_COLS = [
+      { label: 'שם',     w: 165 },
+      { label: 'תיאור',  w: 158 },
+      { label: 'כתובת',  w: 122 },
+      { label: '✓',      w: 46  },
+    ];
+    const CELL_FS      = 11;
+    const CELL_PAD     = 5;
+    const COL_HDR_H    = 22;
+    const MIN_ROW_H    = 20;
+
+    // Pre-compute right-edge x for each column
+    const planColRX = [];
+    let _cx = rightX;
+    for (const col of PLAN_COLS) { planColRX.push(_cx); _cx -= col.w; }
+
+    const drawPlanColHeaders = () => {
+      ensureSpace(COL_HDR_H + 2);
+      doc.setFillColor(79, 70, 229);
+      doc.rect(leftX, y, contentW, COL_HDR_H, 'F');
+      for (let i = 0; i < PLAN_COLS.length; i++) {
+        const col = PLAN_COLS[i];
+        if (i < PLAN_COLS.length - 1) {
+          doc.setDrawColor(255, 255, 255);
+          doc.setLineWidth(0.4);
+          doc.line(planColRX[i] - col.w, y, planColRX[i] - col.w, y + COL_HDR_H);
+        }
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(shape(col.label), planColRX[i] - CELL_PAD, y + COL_HDR_H - 6, { ...TEXT_OPTS });
+      }
+      y += COL_HDR_H;
+    };
+
+    const planGroups = groupByCategory(planning);
+    for (const [cat, items] of Object.entries(planGroups)) {
+      // Category banner row
+      ensureSpace(28);
+      doc.setFillColor(99, 102, 241);
+      doc.rect(leftX, y, contentW, 22, 'F');
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255);
+      doc.text(shape(cat), rightX - 10, y + 15, { ...TEXT_OPTS });
+      y += 26;
+
+      drawPlanColHeaders();
+
+      for (let idx = 0; idx < items.length; idx++) {
+        const p = items[idx];
+        const addrRaw = p.address
+          || (Array.isArray(p.links) && p.links[0] ? (p.links[0].label || p.links[0].url || '') : '');
+        // Build a clickable URL for the address cell
+        const addrUrl = addrRaw
+          ? (/^https?:\/\//i.test(addrRaw)
+              ? addrRaw
+              : `https://www.google.com/maps?q=${encodeURIComponent(addrRaw)}`)
+          : null;
+        const cellTexts = [p.title || '', p.description || '', addrRaw, p.visited ? '✓' : ''];
+
+        doc.setFontSize(CELL_FS);
+        const rowH = Math.max(MIN_ROW_H, ...PLAN_COLS.map((col, i) => {
+          const lines = doc.splitTextToSize(String(cellTexts[i]), col.w - CELL_PAD * 2);
+          return lines.length * (CELL_FS * 1.4) + CELL_PAD * 2;
+        }));
+
+        ensureSpace(rowH + 1);
+        const rowY = y; // capture after potential page break
+
+        const bg = idx % 2 === 0 ? [255, 255, 255] : [240, 242, 254];
+        doc.setFillColor(...bg);
+        doc.setDrawColor(210, 210, 230);
+        doc.setLineWidth(0.4);
+        doc.rect(leftX, y, contentW, rowH, 'FD');
+
+        let sepX = rightX;
+        for (let i = 0; i < PLAN_COLS.length - 1; i++) {
+          sepX -= PLAN_COLS[i].w;
+          doc.line(sepX, y, sepX, y + rowH);
+        }
+
+        for (let i = 0; i < PLAN_COLS.length; i++) {
+          const isAddr = i === 2 && !!addrUrl;
+          doc.setFontSize(CELL_FS);
+          doc.setTextColor(...(isAddr ? C_ACCENT : [0, 0, 0]));
+          const lines = doc.splitTextToSize(String(cellTexts[i]), PLAN_COLS[i].w - CELL_PAD * 2);
+          let ty = y + CELL_PAD + CELL_FS;
+          for (const line of lines) {
+            doc.text(shape(line), planColRX[i] - CELL_PAD, ty, { ...TEXT_OPTS });
+            if (i === 0) doc.text(shape(line), planColRX[i] - CELL_PAD + 0.3, ty, { ...TEXT_OPTS });
+            ty += CELL_FS * 1.4;
+          }
+          if (isAddr) {
+            doc.link(planColRX[i] - PLAN_COLS[i].w, rowY, PLAN_COLS[i].w, rowH, { url: addrUrl });
           }
         }
-        y += 6;
+        y += rowH;
       }
-      y += 6;
+      y += 14;
     }
   }
 
@@ -298,7 +388,7 @@ export async function exportTripPdf(data, scope = 'all') {
           write(`• ${labelPart}${act.title}`, { size: 14 });
           if (act.category) write(act.category, { size: 11, color: [148, 163, 184], indent: 16 });
           if (act.description) write(act.description, { size: 11, color: C_MUTED, indent: 16 });
-          if (act.address) writeLink(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
+          if (act.address) writeLink(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
           y += 10;
         }
       }
@@ -335,7 +425,7 @@ export async function exportTripPdf(data, scope = 'all') {
           if (item.type === 'phone') {
             writeLink(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`, { size: 12, indent: 16 });
           } else if (item.type === 'address') {
-            writeLink(`📍 ${item.value}`, `https://maps.google.com/?q=${encodeURIComponent(item.value)}`, { size: 12, indent: 16 });
+            writeLink(`📍 ${item.value}`, `https://www.google.com/maps?q=${encodeURIComponent(item.value)}`, { size: 12, indent: 16 });
           } else if (item.type === 'url') {
             const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
             writeLink(`🔗 ${item.value}`, url, { size: 12, indent: 16 });
@@ -349,7 +439,7 @@ export async function exportTripPdf(data, scope = 'all') {
     }
   }
 
-  doc.save(`${safeFileName(trip?.name || 'trip')}_${scope}.pdf`);
+  doc.save(`${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.pdf`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -359,7 +449,8 @@ export async function exportTripPdf(data, scope = 'all') {
 export async function exportTripDocx(data, scope = 'all') {
   const { trip, planning, days, checklist, info } = data;
   const SS = SCOPE[scope] || SCOPE.all;
-  const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType, Footer, Header } = await import('docx');
+  const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType,
+          Table, TableRow, TableCell, WidthType, Footer, Header } = await import('docx');
   const { saveAs } = await import('file-saver');
 
   const RUN_OPTS = { rtl: true, font: 'David', size: 24 };
@@ -426,7 +517,7 @@ export async function exportTripDocx(data, scope = 'all') {
     if (ht?.name) {
       main.push(para('מלון', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }));
       main.push(para(ht.name, { bold: true, size: 26 }));
-      if (ht.address) main.push(linkPara(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 22 }));
+      if (ht.address) main.push(linkPara(`📍 ${ht.address}`, `https://www.google.com/maps?q=${encodeURIComponent(ht.address)}`, { size: 22 }));
       if (ht.link) main.push(linkPara(`🔗 ${ht.link}`, ht.link, { size: 22 }));
       if (ht.checkIn || ht.checkOut) main.push(para(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { color: '475569' }));
       if (ht.roomNumber) main.push(para(`חדר: ${ht.roomNumber}`, { color: '475569' }));
@@ -437,19 +528,58 @@ export async function exportTripDocx(data, scope = 'all') {
 
   if (SS.planning && planning.length > 0) {
     main.push(para('תכנון הטיול', { bold: true, size: 36, color: '4f46e5', heading: HeadingLevel.HEADING_1, spacing: { before: 240, after: 200 } }));
-    const groups = groupByCategory(planning);
-    for (const [cat, items] of Object.entries(groups)) {
-      main.push(para(cat, { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 100 } }));
-      for (const p of items) {
-        main.push(para(`• ${p.title}${p.visited ? '   ✓' : ''}`, { bold: true, size: 26 }));
-        if (p.description) main.push(para(p.description, { color: '475569' }));
-        if (p.price) main.push(para(`מחיר: ${p.price}`, { color: '475569' }));
-        if (p.address) main.push(linkPara(`📍 ${p.address}`, `https://maps.google.com/?q=${encodeURIComponent(p.address)}`));
-        if (Array.isArray(p.links)) {
-          for (const ln of p.links) if (ln?.url) main.push(linkPara(`🔗 ${ln.label || ln.url}`, ln.url));
-        }
-        main.push(spacer());
-      }
+
+    const mkCell = (text, { isHeader = false, widthPct = 25 } = {}) => new TableCell({
+      width: { size: widthPct, type: WidthType.PERCENTAGE },
+      shading: isHeader ? { fill: '4F46E5', color: '4F46E5', type: 'solid' } : undefined,
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: [new Paragraph({
+        bidirectional: true,
+        alignment: AlignmentType.RIGHT,
+        children: [new TextRun({
+          text: String(text || ''),
+          bold: isHeader,
+          color: isHeader ? 'FFFFFF' : '0b0b26',
+          rtl: true,
+          font: 'David',
+          size: isHeader ? 22 : 20,
+        })],
+      })],
+    });
+
+    const planGroups = groupByCategory(planning);
+    for (const [cat, items] of Object.entries(planGroups)) {
+      main.push(para(cat, { bold: true, size: 26, color: '4f46e5', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }));
+
+      const headerRow = new TableRow({
+        tableHeader: true,
+        children: [
+          mkCell('שם',    { isHeader: true, widthPct: 30 }),
+          mkCell('תיאור', { isHeader: true, widthPct: 35 }),
+          mkCell('כתובת', { isHeader: true, widthPct: 27 }),
+          mkCell('נצפה',  { isHeader: true, widthPct: 8 }),
+        ],
+      });
+
+      const dataRows = items.map(p => {
+        const addrText = p.address
+          || (Array.isArray(p.links) && p.links[0] ? (p.links[0].label || p.links[0].url || '') : '');
+        return new TableRow({
+          children: [
+            mkCell(p.title || '',    { widthPct: 30 }),
+            mkCell(p.description || '', { widthPct: 35 }),
+            mkCell(addrText,         { widthPct: 27 }),
+            mkCell(p.visited ? '✓' : '', { widthPct: 8 }),
+          ],
+        });
+      });
+
+      main.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        bidi: true,
+        rows: [headerRow, ...dataRows],
+      }));
+      main.push(spacer());
     }
   }
 
@@ -476,7 +606,7 @@ export async function exportTripDocx(data, scope = 'all') {
           dayChildren.push(para(`• ${labelPart}${act.title}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2 }));
           if (act.category) dayChildren.push(para(act.category, { color: '94a3b8' }));
           if (act.description) dayChildren.push(para(act.description, { color: '475569' }));
-          if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`));
+          if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`));
           dayChildren.push(spacer());
         }
       }
@@ -523,7 +653,7 @@ export async function exportTripDocx(data, scope = 'all') {
           if (item.type === 'phone') {
             inf.push(linkPara(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`));
           } else if (item.type === 'address') {
-            inf.push(linkPara(`📍 ${item.value}`, `https://maps.google.com/?q=${encodeURIComponent(item.value)}`));
+            inf.push(linkPara(`📍 ${item.value}`, `https://www.google.com/maps?q=${encodeURIComponent(item.value)}`));
           } else if (item.type === 'url') {
             const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
             inf.push(linkPara(`🔗 ${item.value}`, url));
@@ -562,7 +692,7 @@ export async function exportTripDocx(data, scope = 'all') {
     sections,
   });
   const blob = await Packer.toBlob(documentInstance);
-  saveAs(blob, `${safeFileName(trip?.name || 'trip')}_${scope}.docx`);
+  saveAs(blob, `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.docx`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -800,15 +930,30 @@ export async function exportTripXlsx(data, scope = 'all') {
     ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
   };
 
-  // ── Planning sheet ──
+  // ── Planning sheets — one tab per category ──
   if (SS.planning && planning.length > 0) {
-    const rows = planning.map(p => {
-      const links = Array.isArray(p.links) && p.links.length
-        ? p.links.map(l => l.url).filter(Boolean).join(' | ')
-        : '';
-      return [p.category || '', p.title || '', p.description || '', p.address || '', p.price || '', links, p.visited ? '✓' : ''];
-    });
-    addTableSheet('תכנון', ['קטגוריה', 'שם', 'תיאור', 'כתובת', 'מחיר', 'קישורים', 'נצפה?'], rows, [22, 32, 50, 36, 14, 40, 10]);
+    const PLAN_COLS   = ['שם', 'תיאור', 'כתובת', 'קישורים', 'נצפה?'];
+    const PLAN_WIDTHS = [32, 50, 36, 40, 10];
+    const planGroups  = groupByCategory(planning);
+
+    for (const [cat, items] of Object.entries(planGroups)) {
+      const ws = addSheet(safeSheetName(cat), { cols: PLAN_WIDTHS });
+
+      ws.addRow(PLAN_COLS);
+      applyRowStyle(ws.getRow(1), stylesPalette.header);
+      ws.getRow(1).height = 26;
+      ws.views = [{ rightToLeft: true, state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: PLAN_COLS.length } };
+
+      items.forEach((p, i) => {
+        const links = Array.isArray(p.links) && p.links.length
+          ? p.links.map(l => l.url).filter(Boolean).join(' | ')
+          : '';
+        ws.addRow([p.title || '', p.description || '', p.address || '', links, p.visited ? '✓' : '']);
+        applyRowStyle(ws.getRow(i + 2), i % 2 === 0 ? stylesPalette.body : stylesPalette.bodyAlt);
+        ws.getRow(i + 2).height = 22;
+      });
+    }
   }
 
   // ── One sheet per day ──
@@ -837,5 +982,5 @@ export async function exportTripXlsx(data, scope = 'all') {
 
   const buf = await wb.xlsx.writeBuffer();
   saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-         `${safeFileName(trip?.name || 'trip')}_${scope}.xlsx`);
+         `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.xlsx`);
 }

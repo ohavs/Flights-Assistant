@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import {
@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
+import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
@@ -16,11 +17,13 @@ import { CustomDropdown } from './components/CustomDatePicker';
 import PlanningTab from './components/PlanningTab';
 import ChecklistTab from './components/ChecklistTab';
 import InfoTab, { defaultInfoItems } from './components/InfoTab';
+import ExpensesTab from './components/ExpensesTab';
 import CurrencyConverter from './components/CurrencyConverter';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw, ChevronDown, AlertCircle, Coins
+  Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet,
+  AlertTriangle, Upload, Archive, Loader2
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -146,7 +149,7 @@ function ConverterScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, onExportTrip, onImportTrip, exportBusyId, importBusy, importError, userName, onOpenGlobalChecklist }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -193,18 +196,39 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <span className="homepage-section-title" style={{ margin: 0 }}>טיולים מתוכננים</span>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'var(--accent)', color: '#fff', border: 'none',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
-          }}
-        >
-          <Plus size={18} />
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={onImportTrip}
+            disabled={importBusy}
+            title="ייבוא טיול מגיבוי"
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: importBusy ? 'rgba(5,150,105,0.2)' : 'rgba(5,150,105,0.1)',
+              color: 'var(--text-success)', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: importBusy ? 'default' : 'pointer'
+            }}
+          >
+            {importBusy ? <Loader2 size={16} className="spinning" /> : <Upload size={16} />}
+          </button>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'var(--accent)', color: '#fff', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
+            }}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </div>
+      {importError && (
+        <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+          {importError}
+        </div>
+      )}
 
       {/* Create trip form */}
       {showCreate && (
@@ -329,6 +353,14 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               <ChevronLeft size={16} />
             </div>
             <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => onExportTrip(trip.id)}
+                disabled={exportBusyId === trip.id}
+                style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(5,150,105,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: exportBusyId === trip.id ? 'default' : 'pointer', color: 'var(--text-success)' }}
+                title="ייצוא גיבוי JSON"
+              >
+                {exportBusyId === trip.id ? <Loader2 size={15} className="spinning" /> : <Archive size={15} />}
+              </button>
               <button
                 onClick={() => onShareTrip(trip.id)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
@@ -614,12 +646,21 @@ function ShareModal({ tripId, currentUid, onClose }) {
 /* ══════════════════════════════════════════════════════════
    GLOBAL CHECKLIST MODAL
    ══════════════════════════════════════════════════════════ */
-function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
+function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategories = [], userId }) {
   const confirm = useConfirm();
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
-  const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [openCategories, setOpenCategories] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [quickAddCat, setQuickAddCat] = useState(null);
+  const [quickAddText, setQuickAddText] = useState('');
+  const quickAddInputRef = useRef(null);
+  const [longPressedCat, setLongPressedCat] = useState(null);
+  const longPressTimer = useRef(null);
+  const longPressActive = useRef(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [editCatText, setEditCatText] = useState('');
 
   const defaultCategoryNames = [
     'מסמכים וסידורים',
@@ -628,16 +669,72 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     'תרופות ועזרה ראשונה',
     'סידורים אחרונים בארץ'
   ];
-  // Categories shown in the dropdown = defaults + any used by existing items.
   const categories = Array.from(new Set([
     ...defaultCategoryNames,
+    ...extraCategories,
     ...(globalChecklist || []).map(i => i.category).filter(Boolean),
   ]));
 
   if (!isOpen) return null;
 
-  const toggleCategory = (cat) => {
-    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  const toggleCategory = (cat) =>
+    setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+
+  const startLongPress = (cat) => {
+    longPressActive.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressActive.current = true;
+      setLongPressedCat(cat);
+    }, 550);
+  };
+  const cancelLongPress = () => clearTimeout(longPressTimer.current);
+
+  const saveExtraCategory = async (cat) => {
+    if (!cat || !userId || extraCategories.includes(cat)) return;
+    try {
+      await setDoc(doc(db, 'users', userId), {
+        globalExtraCategories: [...new Set([...extraCategories, cat])],
+      }, { merge: true });
+      setOpenCategories(prev => ({ ...prev, [cat]: true }));
+    } catch (err) {
+      console.error('Error saving extra category:', err);
+    }
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    const catItems = (globalChecklist || []).filter(i => i.category === cat);
+    const ok = await confirm({
+      title: 'מחיקת קטגוריה',
+      message: catItems.length > 0
+        ? `האם למחוק את "${cat}" ואת ${catItems.length} הפריטים שבה?`
+        : `האם למחוק את הקטגוריה "${cat}"?`,
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
+    setLongPressedCat(null);
+    if (!ok) return;
+    const updatedList = (globalChecklist || []).filter(i => i.category !== cat);
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        globalChecklist: updatedList,
+        globalExtraCategories: extraCategories.filter(c => c !== cat),
+      });
+    } catch (err) {
+      console.error('Error deleting category:', err);
+    }
+  };
+
+  const handleRenameCategory = async (oldCat, newCat) => {
+    const trimmed = newCat.trim();
+    setEditingCat(null);
+    if (!trimmed || trimmed === oldCat) return;
+    const updatedList = (globalChecklist || []).map(item =>
+      item.category === oldCat ? { ...item, category: trimmed } : item
+    );
+    try {
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
+    } catch (err) {
+      console.error('Error renaming category:', err);
+    }
   };
 
   const isDirty = !!newItemText.trim();
@@ -659,35 +756,30 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     onClose();
   };
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!newItemText.trim() || !userId) return;
-
+  const doAdd = async (overrideCategory) => {
+    const text = newItemText.trim();
+    if (!text || !userId) return;
+    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
     let updatedList;
     if (editingItemId) {
       updatedList = globalChecklist.map(item =>
-        item.id === editingItemId
-          ? { ...item, text: newItemText.trim(), category: newItemCategory }
-          : item
+        item.id === editingItemId ? { ...item, text, category: cat } : item
       );
       setEditingItemId(null);
     } else {
-      const newItem = {
-        id: 'global-' + Date.now(),
-        text: newItemText.trim(),
-        completed: false,
-        category: newItemCategory
-      };
-      updatedList = [...globalChecklist, newItem];
+      updatedList = [...globalChecklist, { id: 'global-' + Date.now(), text, completed: false, category: cat }];
     }
-
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: updatedList });
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
       setNewItemText('');
     } catch (err) {
       console.error('Error updating global checklist:', err);
     }
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    await doAdd();
   };
 
   const handleDelete = async (id) => {
@@ -713,6 +805,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
+    setShowAddForm(true);
   };
 
   const handleCancelEdit = async () => {
@@ -731,19 +824,19 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
     setNewItemCategory('מסמכים וסידורים');
   };
 
-  const handleReset = async () => {
-    const ok = await confirm({
-      title: 'איפוס הרשימה הקבועה',
-      message: 'כל הפריטים האישיים יימחקו ויוחלפו ברשימת ברירת המחדל. הפעולה לא תשפיע על טיולים קיימים.',
-      confirmText: 'אפס לברירת מחדל',
-      cancelText: 'בטל',
-      danger: true,
-    });
-    if (!ok) return;
+  const handleQuickAdd = async (e, cat) => {
+    e.preventDefault();
+    if (!quickAddText.trim() || !userId) return;
+    const updatedList = [
+      ...globalChecklist,
+      { id: 'global-' + Date.now(), text: quickAddText.trim(), completed: false, category: cat },
+    ];
     try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: defaultChecklist });
+      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
+      setQuickAddText('');
+      setQuickAddCat(null);
     } catch (err) {
-      console.error('Error resetting global checklist:', err);
+      console.error('Error adding to global checklist:', err);
     }
   };
 
@@ -759,95 +852,153 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
           נהל כאן את רשימת הציוד הקבועה שלך. פריטים אלו יועתקו אוטומטית לכל טיול חדש שתפתח, ותוכל להתאים אותם אישית לכל טיול בנפרד.
         </p>
 
-        {/* Form Container — inputs share the same height as the trip checklist */}
-        <form onSubmit={handleAdd} className="glass-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
-          <h4 style={{ fontSize: 15, fontWeight: 800, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 6, margin: 0 }}>
-            {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
-          </h4>
+        {/* Form Container — collapsible */}
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
+          <button
+            type="button"
+            onClick={() => setShowAddForm(s => !s)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}
+          >
+            {showAddForm
+              ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+              {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
+            </span>
+            {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+          </button>
 
-          <div className="row-2" style={{ gap: 10 }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>מה להביא?</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="למשל: רישיון נהיגה, כפכפים"
-                value={newItemText}
-                onChange={(e) => setNewItemText(e.target.value)}
-                required
-              />
-            </div>
-            <CustomDropdown
-              label="קטגוריה"
-              value={newItemCategory}
-              onChange={setNewItemCategory}
-              options={categories}
-              addable
-              addLabel="הוסף קטגוריה חדשה"
-            />
-          </div>
+          {showAddForm && (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מה להביא?</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="למשל: רישיון נהיגה, כפכפים"
+                    value={newItemText}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    required
+                  />
+                </div>
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={newItemCategory}
+                  onChange={setNewItemCategory}
+                  options={categories}
+                  addable
+                  addLabel="הוסף קטגוריה חדשה"
+                  onCommit={(cat) => saveExtraCategory(cat)}
+                />
+              </div>
 
-          {editingItemId ? (
-            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-              <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
-            </div>
-          ) : (
-            <button type="submit" className="btn-primary" style={{ marginTop: 4, width: '100%' }}>
-              <Plus size={18} />
-              <span>הוסף פריט לרשימה</span>
-            </button>
+              {editingItemId ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+                  <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
+                </div>
+              ) : (
+                <button type="submit" className="btn-primary" style={{ width: '100%' }}>
+                  <Plus size={18} />
+                  <span>הוסף פריט לרשימה</span>
+                </button>
+              )}
+            </form>
           )}
-        </form>
+        </div>
 
-        {/* Scrollable checklist items — uses the same .checklist-item-row layout as the trip tab */}
+        {/* Scrollable checklist items — all categories closed by default */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {categories.map((category, catIdx) => {
             const categoryItems = globalChecklist.filter(item => item.category === category);
-            if (categoryItems.length === 0) return null;
-            const isCollapsed = !!collapsedCategories[category];
+            if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
+            const isOpen = !!openCategories[category];
 
             return (
               <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  style={{
-                    background: 'transparent', border: 'none',
-                    padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
-                    cursor: 'pointer', width: '100%',
-                    fontFamily: 'var(--font-hebrew)'
-                  }}
-                >
-                  <ChevronDown
-                    size={16}
-                    style={{
-                      color: 'var(--text-muted)',
-                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.2s ease', flexShrink: 0
-                    }}
-                  />
-                  <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
-                    {category}
-                  </h3>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-                    {categoryItems.length}
-                  </span>
-                </button>
+                {/* Category header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {editingCat === category ? (
+                    <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
+                      style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="text" autoFocus className="form-control"
+                        value={editCatText} onChange={e => setEditCatText(e.target.value)}
+                        style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+                      />
+                      <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
+                        <Check size={13} />
+                      </button>
+                      <button type="button" onClick={() => setEditingCat(null)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
+                        <X size={14} />
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (longPressActive.current) { longPressActive.current = false; return; }
+                          toggleCategory(category);
+                        }}
+                        onMouseDown={() => startLongPress(category)}
+                        onMouseUp={cancelLongPress}
+                        onTouchStart={e => { e.stopPropagation(); startLongPress(category); }}
+                        onTouchEnd={cancelLongPress}
+                        onTouchMove={cancelLongPress}
+                        style={{
+                          flex: 1, background: 'transparent', border: 'none',
+                          padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
+                          cursor: 'pointer', fontFamily: 'var(--font-hebrew)'
+                        }}
+                      >
+                        <ChevronDown
+                          size={16}
+                          style={{
+                            color: 'var(--text-muted)',
+                            transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                            transition: 'transform 0.2s ease', flexShrink: 0
+                          }}
+                        />
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                          {category}
+                        </h3>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                          {categoryItems.length}
+                        </span>
+                      </button>
 
-                {!isCollapsed && (
+                      {longPressedCat === category && (
+                        <>
+                          <button type="button"
+                            onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteCategory(category)}
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            <Trash2 size={13} />
+                          </button>
+                          <button type="button" onClick={() => setLongPressedCat(null)}
+                            style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                            <X size={14} />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {isOpen && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {categoryItems.map((item) => (
                       <div
                         key={item.id}
                         className="glass-card checklist-item-row"
-                        style={{
-                          padding: '12px 14px',
-                          background: 'var(--card-bg)',
-                          border: 'var(--card-border)',
-                        }}
+                        style={{ padding: '12px 14px', background: 'var(--card-bg)', border: 'var(--card-border)' }}
                       >
-                        {/* RTL grid: text(right via flex) | actions(left) — no checkbox here (this is a template, not a tracked list) */}
                         <div />
                         <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-main)', textAlign: 'right', wordBreak: 'break-word' }}>
                           {item.text}
@@ -857,21 +1008,52 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
                             type="button"
                             onClick={() => handleStartEdit(item)}
                             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="ערוך"
                           >
                             <Pencil size={15} />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDelete(item.id)}
-                            style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="מחק"
+                            style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             <Trash2 size={15} />
                           </button>
                         </div>
                       </div>
                     ))}
+
+                    {/* Quick-add at bottom of open category */}
+                    {quickAddCat === category ? (
+                      <form onSubmit={e => handleQuickAdd(e, category)}
+                        style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
+                        <input
+                          ref={quickAddInputRef}
+                          type="text"
+                          className="form-control"
+                          autoFocus
+                          placeholder={`פריט ב${category}...`}
+                          value={quickAddText}
+                          onChange={e => setQuickAddText(e.target.value)}
+                          style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                        />
+                        <button type="submit" className="btn-primary"
+                          style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
+                          <Plus size={14} />
+                        </button>
+                        <button type="button"
+                          onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                          <X size={14} />
+                        </button>
+                      </form>
+                    ) : (
+                      <button type="button"
+                        onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                        <Plus size={14} />
+                        הוסף לרשימה
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -880,20 +1062,9 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
 
           {globalChecklist.length === 0 && (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-              <p>הרשימה ריקה. הוסף פריטים או אפס לברירת המחדל.</p>
+              <p>הרשימה ריקה. הוסף פריטים חדשים.</p>
             </div>
           )}
-
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, paddingBottom: 16 }}>
-            <button
-              onClick={handleReset}
-              className="btn-secondary"
-              style={{ fontSize: 13, padding: '10px 16px', gap: 6, color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)' }}
-            >
-              <RotateCcw size={14} />
-              <span>איפוס רשימה קבועה לברירת מחדל</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -913,6 +1084,7 @@ export default function App() {
   const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
+  const [globalExtraCategories, setGlobalExtraCategories] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
 
   // Save user profile to Firestore on first login
@@ -1044,6 +1216,7 @@ export default function App() {
     const userRef = doc(db, 'users', user.uid);
     return onSnapshot(userRef, (snap) => {
       setGlobalChecklist(snap.data()?.globalChecklist || []);
+      setGlobalExtraCategories(snap.data()?.globalExtraCategories || []);
     });
   }, [user]);
 
@@ -1194,7 +1367,7 @@ export default function App() {
     const tripRef = doc(db, 'trips', tripId);
 
     // Delete all docs in the known subcollections, batched.
-    const subcollections = ['planning', 'days', 'checklist'];
+    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'expenses', 'settings'];
     for (const name of subcollections) {
       try {
         const snap = await getDocs(collection(db, 'trips', tripId, name));
@@ -1234,6 +1407,12 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+
+  const [exportBusy, setExportBusy] = useState(null); // tripId | null
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  const importFileRef = useRef(null);
 
   const requestDeleteTrip = (tripId, isOwner) => {
     const t = trips.find(x => x.id === tripId);
@@ -1247,6 +1426,7 @@ export default function App() {
 
   const handleConfirmDelete = async () => {
     if (!user || !confirmDelete?.tripId) return;
+    if (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580') return;
     setDeleteBusy(true);
     setDeleteError('');
     try {
@@ -1260,11 +1440,46 @@ export default function App() {
         setSelectedTripId(null);
       }
       setConfirmDelete(null);
+      setDeletePasswordInput('');
     } catch (err) {
       console.error('Trip delete failed:', err);
       setDeleteError(err?.message || 'מחיקה נכשלה');
     } finally {
       setDeleteBusy(false);
+    }
+  };
+
+  const handleExportTrip = async (tripId) => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    setExportBusy(tripId);
+    try {
+      const backup = await exportTripBackup(tripId, trip);
+      downloadBackupFile(backup, trip.name);
+      localStorage.setItem(`lastExport_${tripId}`, new Date().toISOString());
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('ייצוא נכשל: ' + (err?.message || err));
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportBusy(true);
+    setImportError('');
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      await importTripBackup(backup, user.uid);
+    } catch (err) {
+      console.error('Import failed:', err);
+      setImportError(err?.message || 'ייבוא נכשל — ודא שהקובץ תקין');
+    } finally {
+      setImportBusy(false);
     }
   };
 
@@ -1274,6 +1489,7 @@ export default function App() {
       case 'planning': return 'תכנון הטיול';
       case 'checklist': return 'רשימת ציוד';
       case 'info':      return 'מידע חשוב';
+      case 'expenses':  return 'מעקב הוצאות';
       default:          return 'עוזר טיסות';
     }
   };
@@ -1322,6 +1538,13 @@ export default function App() {
         </header>
 
         <main className="app-content">
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".json"
+            style={{ display: 'none' }}
+            onChange={handleImportFile}
+          />
           <Homepage
             trips={trips}
             currentUid={user.uid}
@@ -1331,6 +1554,11 @@ export default function App() {
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={requestDeleteTrip}
             onShareTrip={(id) => setSharingTripId(id)}
+            onExportTrip={handleExportTrip}
+            onImportTrip={() => importFileRef.current?.click()}
+            exportBusyId={exportBusy}
+            importBusy={importBusy}
+            importError={importError}
             userName={user.displayName}
             onOpenGlobalChecklist={() => setShowGlobalChecklistModal(true)}
           />
@@ -1344,40 +1572,94 @@ export default function App() {
           isOpen={showGlobalChecklistModal}
           onClose={() => setShowGlobalChecklistModal(false)}
           globalChecklist={globalChecklist}
+          extraCategories={globalExtraCategories}
           userId={user.uid}
         />
 
-        <ConfirmModal
-          isOpen={!!confirmDelete}
-          title={confirmDelete?.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
-          message={
-            confirmDelete?.mode === 'leave' ? (
-              <>
-                האם לצאת מ-<strong>{confirmDelete?.name}</strong>?
-                <br />
-                הטיול לא יימחק — הוא פשוט יוסר מהרשימה שלך. רק הבעלים של הטיול יכול למחוק אותו לכולם.
-                {deleteError && (
-                  <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
-                )}
-              </>
-            ) : (
-              <>
-                האם למחוק את <strong>{confirmDelete?.name}</strong> לצמיתות?
-                <br />
-                כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.
-                {deleteError && (
-                  <><br /><span style={{ color: '#dc2626', fontSize: 12 }}>שגיאה: {deleteError}</span></>
-                )}
-              </>
-            )
-          }
-          confirmText={confirmDelete?.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות'}
-          cancelText="בטל"
-          onConfirm={handleConfirmDelete}
-          onClose={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); } }}
-          danger
-          busy={deleteBusy}
-        />
+        {confirmDelete && (
+          <div
+            className="modal-overlay"
+            onClick={deleteBusy ? undefined : () => { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); }}
+            style={{ alignItems: 'center' }}
+          >
+            <div
+              className="modal-content"
+              style={{ height: 'auto', maxHeight: '80%', maxWidth: 420, borderRadius: 'var(--radius-xl)', margin: 16, padding: '24px 20px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', color: 'rgb(220,38,38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <AlertTriangle size={22} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+                    {confirmDelete.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
+                  </h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600, marginBottom: 0 }}>
+                    {confirmDelete.mode === 'leave' ? (
+                      <>האם לצאת מ-<strong>{confirmDelete.name}</strong>?<br />הטיול לא יימחק — הוא פשוט יוסר מהרשימה שלך. רק הבעלים של הטיול יכול למחוק אותו לכולם.</>
+                    ) : (
+                      <>האם למחוק את <strong>{confirmDelete.name}</strong> לצמיתות?<br />כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.</>
+                    )}
+                  </p>
+                  {confirmDelete.mode === 'delete' && (
+                    <div style={{ marginTop: 14 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                        הזן סיסמת אישור למחיקה:
+                      </label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        placeholder="סיסמה"
+                        value={deletePasswordInput}
+                        onChange={e => setDeletePasswordInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && deletePasswordInput === '2580') handleConfirmDelete(); }}
+                        autoFocus
+                        style={{ fontSize: 18, letterSpacing: 6, textAlign: 'center' }}
+                      />
+                    </div>
+                  )}
+                  {deleteError && (
+                    <p style={{ color: '#dc2626', fontSize: 12, marginTop: 8, fontWeight: 700 }}>שגיאה: {deleteError}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  disabled={deleteBusy}
+                  style={{ background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: deleteBusy ? 'default' : 'pointer', color: 'var(--text-muted)', flexShrink: 0, opacity: deleteBusy ? 0.5 : 1 }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+                <button
+                  type="button"
+                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  disabled={deleteBusy}
+                  className="btn-secondary"
+                  style={{ flex: 1, opacity: deleteBusy ? 0.5 : 1 }}
+                >
+                  ביטול
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')}
+                  className="btn-primary"
+                  style={{
+                    flex: 1,
+                    background: 'rgb(220,38,38)',
+                    boxShadow: '0 4px 14px rgba(220,38,38,0.3)',
+                    opacity: (deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')) ? 0.45 : 1
+                  }}
+                >
+                  {deleteBusy ? 'פועל...' : (confirmDelete.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1447,11 +1729,16 @@ export default function App() {
             const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
             return ownerUid && ownerUid !== user.uid ? memberProfiles[ownerUid] : null;
           })(),
+          currentUid: user.uid,
+          currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
+          memberProfiles: memberProfiles,
+          tripMembers: selectedTrip?.members || {},
         }}>
           {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
           {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
-          {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+          {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
           {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
+          {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
         </TripProvider>
       </main>
 
@@ -1467,6 +1754,9 @@ export default function App() {
         </button>
         <button onClick={() => setActiveTab('info')}      className={`nav-item ${activeTab === 'info' ? 'active' : ''}`}>
           <AlertCircle /><span className="nav-label">מידע חשוב</span>
+        </button>
+        <button onClick={() => setActiveTab('expenses')}  className={`nav-item ${activeTab === 'expenses' ? 'active' : ''}`}>
+          <Wallet /><span className="nav-label">הוצאות</span>
         </button>
       </nav>
     </div>

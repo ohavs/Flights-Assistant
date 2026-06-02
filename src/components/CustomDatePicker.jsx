@@ -794,7 +794,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
 /* ══════════════════════════════════════════════════════════
    CUSTOM DROPDOWN — fully styled select replacement
    ══════════════════════════════════════════════════════════ */
-export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש' }) {
+export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש', onCommit }) {
   const [isOpen, setIsOpen] = useState(false);
   const [popupRect, setPopupRect] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -808,28 +808,24 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
   ));
   const current = normalized.find(o => o.value === value);
 
-  // Compute popup position relative to viewport. Anchor the popup so its
-  // right edge lines up with the trigger's right edge (natural for RTL
-  // Hebrew layout) and clamp to the viewport so we never spill off-screen.
+  // Compute popup position directly from the trigger's bounding rect.
+  // We also set right:'auto' in the popup inline style to prevent the
+  // CSS class's right:0 from fighting left in RTL mode (which caused the
+  // dropdown to snap to the right edge of the viewport).
   useEffect(() => {
     if (!isOpen) return;
     const update = () => {
       if (!triggerRef.current) return;
       const r = triggerRef.current.getBoundingClientRect();
-      const gutter = 8;
-      const desiredWidth = Math.max(r.width, 220);
-      let left = r.right - desiredWidth;
-      if (left < gutter) left = gutter;
-      if (left + desiredWidth > window.innerWidth - gutter) {
-        left = window.innerWidth - desiredWidth - gutter;
-      }
       const spaceBelow = window.innerHeight - r.bottom;
       const openAbove = spaceBelow < 220 && r.top > 220;
+      const w = Math.min(r.width, window.innerWidth - 32);
+      const left = Math.max(16, Math.min(r.left, window.innerWidth - w - 16));
       setPopupRect({
         top: openAbove ? undefined : r.bottom + 6,
         bottom: openAbove ? (window.innerHeight - r.top + 6) : undefined,
         left,
-        width: desiredWidth,
+        width: w,
       });
     };
     update();
@@ -877,6 +873,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
     const val = draft.trim();
     if (!val) { setAdding(false); return; }
     handleSelect(val);
+    onCommit?.(val);
   };
 
   // Reset adding mode when closing
@@ -928,6 +925,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
             top: popupRect.top,
             bottom: popupRect.bottom,
             left: popupRect.left,
+            right: 'auto',
             width: popupRect.width
           }}
         >
