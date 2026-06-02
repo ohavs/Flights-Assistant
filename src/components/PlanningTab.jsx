@@ -674,7 +674,7 @@ export default function PlanningTab({ tripId }) {
       const isoDate = `${yyyy}-${mm}-${dd}`;
       const id = 'day-' + Date.now() + '-' + dayNum;
       batch.set(doc(db, 'trips', tripId, 'days', id), {
-        title: `יום ${dayNum} – ${dayName}`,
+        title: `יום ${dayNum}`,
         date: isoDate,
         order: dayNum,
         activities: [],
@@ -700,14 +700,9 @@ export default function PlanningTab({ tripId }) {
     const oldIdx = days.findIndex(d => d.id === active.id);
     const newIdx = days.findIndex(d => d.id === over.id);
     const reordered = arrayMove(days, oldIdx, newIdx);
-    // Title, date, and order are positional anchors — only activities travel.
-    // days[i] keeps its slot; it just receives the activities of whoever
-    // moved into that slot (reordered[i]).
     const batch = writeBatch(db);
-    days.forEach((day, idx) => {
-      batch.update(doc(db, 'trips', tripId, 'days', day.id), {
-        activities: reordered[idx].activities || [],
-      });
+    reordered.forEach((day, idx) => {
+      batch.update(doc(db, 'trips', tripId, 'days', day.id), { order: idx + 1 });
     });
     await batch.commit();
   };
@@ -1709,6 +1704,8 @@ export default function PlanningTab({ tripId }) {
                           <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
                           {day.date && (() => {
                             const [, mm, dd] = day.date.split('-');
+                            const dowIdx = new Date(day.date).getDay();
+                            const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dowIdx];
                             return (
                               <span style={{
                                 fontSize: 11, fontWeight: 700, flexShrink: 0,
@@ -1717,7 +1714,7 @@ export default function PlanningTab({ tripId }) {
                                 border: '1px solid rgba(79,70,229,0.15)',
                                 borderRadius: 8, padding: '2px 8px',
                               }}>
-                                {`${dd}.${mm}`}
+                                {`${dow} ${dd}.${mm}`}
                               </span>
                             );
                           })()}
