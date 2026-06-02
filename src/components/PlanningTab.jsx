@@ -700,9 +700,15 @@ export default function PlanningTab({ tripId }) {
     const oldIdx = days.findIndex(d => d.id === active.id);
     const newIdx = days.findIndex(d => d.id === over.id);
     const reordered = arrayMove(days, oldIdx, newIdx);
+    // Dates are positional anchors — keep them at their slots so the date chip
+    // never moves. Only titles/activities travel with the drag.
+    const positionalDates = days.map(d => d.date ?? null);
     const batch = writeBatch(db);
     reordered.forEach((day, idx) => {
-      batch.update(doc(db, 'trips', tripId, 'days', day.id), { order: idx + 1 });
+      batch.update(doc(db, 'trips', tripId, 'days', day.id), {
+        order: idx + 1,
+        date: positionalDates[idx],
+      });
     });
     await batch.commit();
   };
