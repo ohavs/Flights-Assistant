@@ -1949,56 +1949,40 @@ export default function PlanningTab({ tripId }) {
                       : plans;
                     const unusedPlaces = placesForSel.filter(p => !usedPlaceIds.has(p.id));
                     const usedPlaces = placesForSel.filter(p => usedPlaceIds.has(p.id));
-                    const selectStyle = {
-                      minHeight: 40,
-                      fontSize: 13,
-                      padding: '0 10px 0 32px',
-                      borderRadius: 10,
-                      border: '1.5px solid rgba(11,11,48,0.12)',
-                      background: '#fff',
-                      color: 'var(--primary)',
-                      fontWeight: 600,
-                      boxShadow: '0 1px 3px rgba(11,11,48,0.06)',
-                      cursor: 'pointer',
-                      transition: 'border-color 0.2s ease',
-                    };
+
                     return (
                       <div key={idx} style={{
-                        display: 'flex', flexDirection: 'column', gap: 8,
+                        display: 'flex', flexDirection: 'column', gap: 10,
                         borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid rgba(79,70,229,0.08)' : 'none',
-                        paddingBottom: idx < savedPlaceSelections.length - 1 ? 10 : 0
+                        paddingBottom: idx < savedPlaceSelections.length - 1 ? 12 : 0
                       }}>
                         {/* Category + Place + remove */}
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <select
-                            className="form-control"
-                            value={sel.categoryFilter}
-                            onChange={(e) => updateSavedPlaceSelection(idx, 'categoryFilter', e.target.value)}
-                            style={{ flex: 1, ...selectStyle }}
-                          >
-                            <option value="">כל הקטגוריות</option>
-                            {categories.map(cat => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                          </select>
-                          <select
-                            className="form-control"
-                            value={sel.placeId}
-                            onChange={(e) => updateSavedPlaceSelection(idx, 'placeId', e.target.value)}
-                            style={{ flex: 1.5, ...selectStyle }}
-                          >
-                            <option value="">-- בחר מקום --</option>
-                            {unusedPlaces.map(p => (
-                              <option key={p.id} value={p.id}>{p.title}</option>
-                            ))}
-                            {usedPlaces.length > 0 && (
-                              <optgroup label="── כבר תוכנן ──">
-                                {usedPlaces.map(p => (
-                                  <option key={p.id} value={p.id}>✓ {p.title}</option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            <CustomDropdown
+                              value={sel.categoryFilter}
+                              onChange={(v) => updateSavedPlaceSelection(idx, 'categoryFilter', v)}
+                              options={[
+                                { value: '', label: 'כל הקטגוריות' },
+                                ...categories.map(cat => ({ value: cat, label: cat }))
+                              ]}
+                              placeholder="בחר קטגוריה"
+                            />
+                          </div>
+                          <div style={{ flex: 1.5 }}>
+                            <CustomDropdown
+                              value={sel.placeId}
+                              onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
+                              options={[
+                                { value: '', label: 'בחר מקום' },
+                                ...unusedPlaces.map(p => ({ value: p.id, label: p.title })),
+                                ...(usedPlaces.length > 0 ? [
+                                  ...usedPlaces.map(p => ({ value: p.id, label: `✓ ${p.title}` }))
+                                ] : [])
+                              ]}
+                              placeholder="-- בחר מקום --"
+                            />
+                          </div>
                           {savedPlaceSelections.length > 1 && (
                             <button
                               type="button"
@@ -2007,7 +1991,8 @@ export default function PlanningTab({ tripId }) {
                                 border: 'none', background: 'rgba(220,38,38,0.08)',
                                 color: 'rgb(220,38,38)', borderRadius: 8,
                                 width: 36, height: 36, cursor: 'pointer', flexShrink: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                marginTop: 0
                               }}
                             >
                               <X size={14} />
