@@ -65,6 +65,8 @@ const SCOPE = {
   all:      { flight: true,  planning: true,  days: true,  checklist: true,  info: true  },
 };
 
+const SCOPE_LABEL = { flight: 'טיסה', planning: 'תכנון', checklist: 'ציוד', info: 'מידע', all: 'מלא' };
+
 // ──────────────────────────────────────────────────────────────────────
 // PDF
 // ──────────────────────────────────────────────────────────────────────
@@ -270,7 +272,7 @@ export async function exportTripPdf(data, scope = 'all') {
       { label: 'כתובת',  w: 122 },
       { label: '✓',      w: 46  },
     ];
-    const CELL_FS      = 10;
+    const CELL_FS      = 11;
     const CELL_PAD     = 5;
     const COL_HDR_H    = 22;
     const MIN_ROW_H    = 20;
@@ -339,11 +341,13 @@ export async function exportTripPdf(data, scope = 'all') {
 
         for (let i = 0; i < PLAN_COLS.length; i++) {
           doc.setFontSize(CELL_FS);
-          doc.setTextColor(...C_TEXT);
+          doc.setTextColor(0, 0, 0);
           const lines = doc.splitTextToSize(String(cellTexts[i]), PLAN_COLS[i].w - CELL_PAD * 2);
           let ty = y + CELL_PAD + CELL_FS;
           for (const line of lines) {
             doc.text(shape(line), planColRX[i] - CELL_PAD, ty, { ...TEXT_OPTS });
+            // Fake-bold for the title column by drawing a second pass at 0.3pt offset
+            if (i === 0) doc.text(shape(line), planColRX[i] - CELL_PAD + 0.3, ty, { ...TEXT_OPTS });
             ty += CELL_FS * 1.4;
           }
         }
@@ -420,7 +424,7 @@ export async function exportTripPdf(data, scope = 'all') {
     }
   }
 
-  doc.save(`${safeFileName(trip?.name || 'trip')}_${scope}.pdf`);
+  doc.save(`${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.pdf`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -673,7 +677,7 @@ export async function exportTripDocx(data, scope = 'all') {
     sections,
   });
   const blob = await Packer.toBlob(documentInstance);
-  saveAs(blob, `${safeFileName(trip?.name || 'trip')}_${scope}.docx`);
+  saveAs(blob, `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.docx`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -911,38 +915,28 @@ export async function exportTripXlsx(data, scope = 'all') {
     ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
   };
 
-  // ── Planning sheet ──
+  // ── Planning sheets — one tab per category ──
   if (SS.planning && planning.length > 0) {
-    const PLAN_COLS = ['שם', 'תיאור', 'כתובת', 'קישורים', 'נצפה?'];
+    const PLAN_COLS   = ['שם', 'תיאור', 'כתובת', 'קישורים', 'נצפה?'];
     const PLAN_WIDTHS = [32, 50, 36, 40, 10];
-    const ws = addSheet('תכנון', { cols: PLAN_WIDTHS });
+    const planGroups  = groupByCategory(planning);
 
-    // Frozen column-header row
-    ws.addRow(PLAN_COLS);
-    applyRowStyle(ws.getRow(1), stylesPalette.header);
-    ws.getRow(1).height = 26;
-    ws.views = [{ rightToLeft: true, state: 'frozen', ySplit: 1 }];
-    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: PLAN_COLS.length } };
-
-    let rowNum = 2;
-    const planGroups = groupByCategory(planning);
     for (const [cat, items] of Object.entries(planGroups)) {
-      // Merge category divider across all columns
-      ws.mergeCells(`A${rowNum}:E${rowNum}`);
-      const catCell = ws.getCell(`A${rowNum}`);
-      catCell.value = cat;
-      applyCellStyle(catCell, stylesPalette.subHeader);
-      ws.getRow(rowNum).height = 24;
-      rowNum++;
+      const ws = addSheet(cat.slice(0, 31), { cols: PLAN_WIDTHS });
+
+      ws.addRow(PLAN_COLS);
+      applyRowStyle(ws.getRow(1), stylesPalette.header);
+      ws.getRow(1).height = 26;
+      ws.views = [{ rightToLeft: true, state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: PLAN_COLS.length } };
 
       items.forEach((p, i) => {
         const links = Array.isArray(p.links) && p.links.length
           ? p.links.map(l => l.url).filter(Boolean).join(' | ')
           : '';
         ws.addRow([p.title || '', p.description || '', p.address || '', links, p.visited ? '✓' : '']);
-        applyRowStyle(ws.getRow(rowNum), i % 2 === 0 ? stylesPalette.body : stylesPalette.bodyAlt);
-        ws.getRow(rowNum).height = 22;
-        rowNum++;
+        applyRowStyle(ws.getRow(i + 2), i % 2 === 0 ? stylesPalette.body : stylesPalette.bodyAlt);
+        ws.getRow(i + 2).height = 22;
       });
     }
   }
@@ -973,5 +967,5 @@ export async function exportTripXlsx(data, scope = 'all') {
 
   const buf = await wb.xlsx.writeBuffer();
   saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-         `${safeFileName(trip?.name || 'trip')}_${scope}.xlsx`);
+         `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.xlsx`);
 }
