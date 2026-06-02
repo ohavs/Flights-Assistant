@@ -700,12 +700,17 @@ export default function PlanningTab({ tripId }) {
     const oldIdx = days.findIndex(d => d.id === active.id);
     const newIdx = days.findIndex(d => d.id === over.id);
     const reordered = arrayMove(days, oldIdx, newIdx);
-    // Dates are positional anchors — stay at their slot while the card moves.
-    const positionalDates = days.map(d => d.date ?? null);
+    // Both title and date are positional anchors — only activities travel.
+    const positionalDates  = days.map(d => d.date  ?? null);
+    const positionalTitles = days.map(d => d.title ?? '');
     const batch = writeBatch(db);
     reordered.forEach((day, idx) => {
-      const updates = { order: idx + 1, date: positionalDates[idx] };
-      batch.update(doc(db, 'trips', tripId, 'days', day.id), updates);
+      batch.update(doc(db, 'trips', tripId, 'days', day.id), {
+        order:      idx + 1,
+        date:       positionalDates[idx],
+        title:      positionalTitles[idx],
+        activities: day.activities || [],
+      });
     });
     await batch.commit();
   };
