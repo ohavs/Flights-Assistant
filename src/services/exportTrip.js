@@ -33,6 +33,11 @@ function safeFileName(name) {
     .slice(0, 80);
 }
 
+// Excel sheet names forbid [ ] \ / * ? : and max 31 chars
+function safeSheetName(name) {
+  return String(name || 'כללי').replace(/[[\]\\\/\*\?:']/g, '_').trim().slice(0, 31) || 'כללי';
+}
+
 function formatHotelDateTime(s) {
   if (!s) return '';
   const d = new Date(s);
@@ -252,7 +257,7 @@ export async function exportTripPdf(data, scope = 'all') {
     if (ht?.name) {
       subHeader('מלון');
       write(ht.name, { size: 13 });
-      if (ht.address) writeLink(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 12, indent: 14 });
+      if (ht.address) writeLink(`📍 ${ht.address}`, `https://www.google.com/maps?q=${encodeURIComponent(ht.address)}`, { size: 12, indent: 14 });
       if (ht.link) writeLink(`🔗 ${ht.link}`, ht.link, { size: 12, indent: 14 });
       if (ht.checkIn || ht.checkOut) write(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { size: 12, color: C_MUTED, indent: 14 });
       if (ht.roomNumber) write(`חדר: ${ht.roomNumber}`, { size: 12, color: C_MUTED, indent: 14 });
@@ -315,9 +320,15 @@ export async function exportTripPdf(data, scope = 'all') {
 
       for (let idx = 0; idx < items.length; idx++) {
         const p = items[idx];
-        const addrText = p.address
+        const addrRaw = p.address
           || (Array.isArray(p.links) && p.links[0] ? (p.links[0].label || p.links[0].url || '') : '');
-        const cellTexts = [p.title || '', p.description || '', addrText, p.visited ? '✓' : ''];
+        // Build a clickable URL for the address cell
+        const addrUrl = addrRaw
+          ? (/^https?:\/\//i.test(addrRaw)
+              ? addrRaw
+              : `https://www.google.com/maps?q=${encodeURIComponent(addrRaw)}`)
+          : null;
+        const cellTexts = [p.title || '', p.description || '', addrRaw, p.visited ? '✓' : ''];
 
         doc.setFontSize(CELL_FS);
         const rowH = Math.max(MIN_ROW_H, ...PLAN_COLS.map((col, i) => {
@@ -326,6 +337,7 @@ export async function exportTripPdf(data, scope = 'all') {
         }));
 
         ensureSpace(rowH + 1);
+        const rowY = y; // capture after potential page break
 
         const bg = idx % 2 === 0 ? [255, 255, 255] : [240, 242, 254];
         doc.setFillColor(...bg);
@@ -340,15 +352,18 @@ export async function exportTripPdf(data, scope = 'all') {
         }
 
         for (let i = 0; i < PLAN_COLS.length; i++) {
+          const isAddr = i === 2 && !!addrUrl;
           doc.setFontSize(CELL_FS);
-          doc.setTextColor(0, 0, 0);
+          doc.setTextColor(...(isAddr ? C_ACCENT : [0, 0, 0]));
           const lines = doc.splitTextToSize(String(cellTexts[i]), PLAN_COLS[i].w - CELL_PAD * 2);
           let ty = y + CELL_PAD + CELL_FS;
           for (const line of lines) {
             doc.text(shape(line), planColRX[i] - CELL_PAD, ty, { ...TEXT_OPTS });
-            // Fake-bold for the title column by drawing a second pass at 0.3pt offset
             if (i === 0) doc.text(shape(line), planColRX[i] - CELL_PAD + 0.3, ty, { ...TEXT_OPTS });
             ty += CELL_FS * 1.4;
+          }
+          if (isAddr) {
+            doc.link(planColRX[i] - PLAN_COLS[i].w, rowY, PLAN_COLS[i].w, rowH, { url: addrUrl });
           }
         }
         y += rowH;
@@ -373,7 +388,7 @@ export async function exportTripPdf(data, scope = 'all') {
           write(`• ${labelPart}${act.title}`, { size: 14 });
           if (act.category) write(act.category, { size: 11, color: [148, 163, 184], indent: 16 });
           if (act.description) write(act.description, { size: 11, color: C_MUTED, indent: 16 });
-          if (act.address) writeLink(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
+          if (act.address) writeLink(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
           y += 10;
         }
       }
@@ -410,7 +425,7 @@ export async function exportTripPdf(data, scope = 'all') {
           if (item.type === 'phone') {
             writeLink(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`, { size: 12, indent: 16 });
           } else if (item.type === 'address') {
-            writeLink(`📍 ${item.value}`, `https://maps.google.com/?q=${encodeURIComponent(item.value)}`, { size: 12, indent: 16 });
+            writeLink(`📍 ${item.value}`, `https://www.google.com/maps?q=${encodeURIComponent(item.value)}`, { size: 12, indent: 16 });
           } else if (item.type === 'url') {
             const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
             writeLink(`🔗 ${item.value}`, url, { size: 12, indent: 16 });
@@ -502,7 +517,7 @@ export async function exportTripDocx(data, scope = 'all') {
     if (ht?.name) {
       main.push(para('מלון', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }));
       main.push(para(ht.name, { bold: true, size: 26 }));
-      if (ht.address) main.push(linkPara(`📍 ${ht.address}`, `https://maps.google.com/?q=${encodeURIComponent(ht.address)}`, { size: 22 }));
+      if (ht.address) main.push(linkPara(`📍 ${ht.address}`, `https://www.google.com/maps?q=${encodeURIComponent(ht.address)}`, { size: 22 }));
       if (ht.link) main.push(linkPara(`🔗 ${ht.link}`, ht.link, { size: 22 }));
       if (ht.checkIn || ht.checkOut) main.push(para(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { color: '475569' }));
       if (ht.roomNumber) main.push(para(`חדר: ${ht.roomNumber}`, { color: '475569' }));
@@ -591,7 +606,7 @@ export async function exportTripDocx(data, scope = 'all') {
           dayChildren.push(para(`• ${labelPart}${act.title}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2 }));
           if (act.category) dayChildren.push(para(act.category, { color: '94a3b8' }));
           if (act.description) dayChildren.push(para(act.description, { color: '475569' }));
-          if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://maps.google.com/?q=${encodeURIComponent(act.address)}`));
+          if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`));
           dayChildren.push(spacer());
         }
       }
@@ -638,7 +653,7 @@ export async function exportTripDocx(data, scope = 'all') {
           if (item.type === 'phone') {
             inf.push(linkPara(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`));
           } else if (item.type === 'address') {
-            inf.push(linkPara(`📍 ${item.value}`, `https://maps.google.com/?q=${encodeURIComponent(item.value)}`));
+            inf.push(linkPara(`📍 ${item.value}`, `https://www.google.com/maps?q=${encodeURIComponent(item.value)}`));
           } else if (item.type === 'url') {
             const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
             inf.push(linkPara(`🔗 ${item.value}`, url));
@@ -922,7 +937,7 @@ export async function exportTripXlsx(data, scope = 'all') {
     const planGroups  = groupByCategory(planning);
 
     for (const [cat, items] of Object.entries(planGroups)) {
-      const ws = addSheet(cat.slice(0, 31), { cols: PLAN_WIDTHS });
+      const ws = addSheet(safeSheetName(cat), { cols: PLAN_WIDTHS });
 
       ws.addRow(PLAN_COLS);
       applyRowStyle(ws.getRow(1), stylesPalette.header);
