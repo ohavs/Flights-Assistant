@@ -272,7 +272,7 @@ export default function PlanningTab({ tripId }) {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState('');
   const [editingActivityId, setEditingActivityId] = useState(null);
-  const [savedPlaceSelections, setSavedPlaceSelections] = useState([{ categoryFilter: '', placeId: '' }]);
+  const [savedPlaceSelections, setSavedPlaceSelections] = useState([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
   const [activityTitle, setActivityTitle] = useState('');
   const [activityTimeLabel, setActivityTimeLabel] = useState('');
   const [activityAddress, setActivityAddress] = useState('');
@@ -646,7 +646,7 @@ export default function PlanningTab({ tripId }) {
   const handleOpenAddActivity = (dayId) => {
     setSelectedDayId(dayId);
     setEditingActivityId(null);
-    setSavedPlaceSelections([{ categoryFilter: '', placeId: '' }]);
+    setSavedPlaceSelections([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
     setActivityTitle('');
     setActivityTimeLabel('');
     setActivityAddress('');
@@ -680,9 +680,9 @@ export default function PlanningTab({ tripId }) {
     setEditingActivityId(act.id);
     if (act.placeId) {
       const place = plans.find(p => p.id === act.placeId);
-      setSavedPlaceSelections([{ categoryFilter: place?.category || '', placeId: act.placeId }]);
+      setSavedPlaceSelections([{ categoryFilter: place?.category || '', placeId: act.placeId, timeLabel: act.timeLabel || '' }]);
     } else {
-      setSavedPlaceSelections([{ categoryFilter: '', placeId: '' }]);
+      setSavedPlaceSelections([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
     }
     setActivityTitle(act.title);
     setActivityTimeLabel(act.timeLabel || '');
@@ -693,7 +693,7 @@ export default function PlanningTab({ tripId }) {
   };
 
   const addSavedPlaceSelection = () =>
-    setSavedPlaceSelections(prev => [...prev, { categoryFilter: '', placeId: '' }]);
+    setSavedPlaceSelections(prev => [...prev, { categoryFilter: '', placeId: '', timeLabel: '' }]);
 
   const removeSavedPlaceSelection = (idx) =>
     setSavedPlaceSelections(prev => prev.filter((_, i) => i !== idx));
@@ -782,7 +782,7 @@ export default function PlanningTab({ tripId }) {
             updatedActivities.push({
               id: 'act-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
               title: place.title,
-              timeLabel: '',
+              timeLabel: sel.timeLabel || '',
               placeId: place.id,
               address: place.address || '',
               description: place.description || '',
@@ -1949,51 +1949,95 @@ export default function PlanningTab({ tripId }) {
                       : plans;
                     const unusedPlaces = placesForSel.filter(p => !usedPlaceIds.has(p.id));
                     const usedPlaces = placesForSel.filter(p => usedPlaceIds.has(p.id));
+                    const selectStyle = {
+                      minHeight: 40,
+                      fontSize: 13,
+                      padding: '0 10px 0 32px',
+                      borderRadius: 10,
+                      border: '1.5px solid rgba(11,11,48,0.12)',
+                      background: '#fff',
+                      color: 'var(--primary)',
+                      fontWeight: 600,
+                      boxShadow: '0 1px 3px rgba(11,11,48,0.06)',
+                      cursor: 'pointer',
+                      transition: 'border-color 0.2s ease',
+                    };
                     return (
-                      <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <select
-                          className="form-control"
-                          value={sel.categoryFilter}
-                          onChange={(e) => updateSavedPlaceSelection(idx, 'categoryFilter', e.target.value)}
-                          style={{ flex: 1, minHeight: 40, fontSize: 13 }}
-                        >
-                          <option value="">כל הקטגוריות</option>
-                          {categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                        <select
-                          className="form-control"
-                          value={sel.placeId}
-                          onChange={(e) => updateSavedPlaceSelection(idx, 'placeId', e.target.value)}
-                          style={{ flex: 1.5, minHeight: 40, fontSize: 13 }}
-                        >
-                          <option value="">-- בחר מקום --</option>
-                          {unusedPlaces.map(p => (
-                            <option key={p.id} value={p.id}>{p.title}</option>
-                          ))}
-                          {usedPlaces.length > 0 && (
-                            <optgroup label="── כבר תוכנן ──">
-                              {usedPlaces.map(p => (
-                                <option key={p.id} value={p.id}>✓ {p.title}</option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
-                        {savedPlaceSelections.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeSavedPlaceSelection(idx)}
-                            style={{
-                              border: 'none', background: 'rgba(220,38,38,0.08)',
-                              color: 'rgb(220,38,38)', borderRadius: 8,
-                              width: 36, height: 36, cursor: 'pointer', flexShrink: 0,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}
+                      <div key={idx} style={{
+                        display: 'flex', flexDirection: 'column', gap: 8,
+                        borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid rgba(79,70,229,0.08)' : 'none',
+                        paddingBottom: idx < savedPlaceSelections.length - 1 ? 10 : 0
+                      }}>
+                        {/* Category + Place + remove */}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <select
+                            className="form-control"
+                            value={sel.categoryFilter}
+                            onChange={(e) => updateSavedPlaceSelection(idx, 'categoryFilter', e.target.value)}
+                            style={{ flex: 1, ...selectStyle }}
                           >
-                            <X size={14} />
-                          </button>
-                        )}
+                            <option value="">כל הקטגוריות</option>
+                            {categories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                          <select
+                            className="form-control"
+                            value={sel.placeId}
+                            onChange={(e) => updateSavedPlaceSelection(idx, 'placeId', e.target.value)}
+                            style={{ flex: 1.5, ...selectStyle }}
+                          >
+                            <option value="">-- בחר מקום --</option>
+                            {unusedPlaces.map(p => (
+                              <option key={p.id} value={p.id}>{p.title}</option>
+                            ))}
+                            {usedPlaces.length > 0 && (
+                              <optgroup label="── כבר תוכנן ──">
+                                {usedPlaces.map(p => (
+                                  <option key={p.id} value={p.id}>✓ {p.title}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                          {savedPlaceSelections.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeSavedPlaceSelection(idx)}
+                              style={{
+                                border: 'none', background: 'rgba(220,38,38,0.08)',
+                                color: 'rgb(220,38,38)', borderRadius: 8,
+                                width: 36, height: 36, cursor: 'pointer', flexShrink: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                              }}
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                        {/* Time chips per row */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => updateSavedPlaceSelection(idx, 'timeLabel', sel.timeLabel === label ? '' : label)}
+                              style={{
+                                border: `1.5px solid ${sel.timeLabel === label ? 'var(--accent)' : 'rgba(11,11,48,0.1)'}`,
+                                background: sel.timeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
+                                color: sel.timeLabel === label ? '#fff' : 'var(--text-muted)',
+                                borderRadius: 20,
+                                padding: '3px 11px',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                boxShadow: sel.timeLabel === label ? '0 2px 6px rgba(79,70,229,0.2)' : 'none'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     );
                   })}
