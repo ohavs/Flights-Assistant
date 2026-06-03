@@ -1109,8 +1109,7 @@ export default function PlanningTab({ tripId }) {
                   </div>
 
                   {/* Distance origin selector */}
-                  {hasGmapsKey() && (
-                    <div className="form-group">
+                  <div className="form-group">
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Hotel size={14} style={{ color: 'var(--accent)' }} />
                         בדיקת זמנים מ...
@@ -1233,7 +1232,6 @@ export default function PlanningTab({ tripId }) {
                         )}
                       </div>
                     </div>
-                  )}
 
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
