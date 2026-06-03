@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
 import {
   collection,
@@ -34,6 +34,7 @@ function RemindersCard({ tripId, canEdit }) {
   const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
   const confirm = useConfirm();
   const [reminders, setReminders] = useState([]);
+  const [shuffledReminders, setShuffledReminders] = useState([]);
   const [idx, setIdx] = useState(0);
   const [mode, setMode] = useState(null); // null | 'add' | 'edit' | 'pickUser'
   const [inputText, setInputText] = useState('');
@@ -43,6 +44,9 @@ function RemindersCard({ tripId, canEdit }) {
   const inputRef = useRef(null);
   const ignoreScroll = useRef(false);
   const scrollEndTimer = useRef(null);
+  const autoTimer = useRef(null);
+  const idxRef = useRef(0);
+  const prevLengthRef = useRef(0);
 
   useEffect(() => {
     if (!tripId) return;
@@ -55,24 +59,50 @@ function RemindersCard({ tripId, canEdit }) {
     });
   }, [tripId]);
 
+  // Shuffle reminders when the list changes; update in-place on edits
+  useEffect(() => {
+    const reshuffle = reminders.length !== prevLengthRef.current;
+    prevLengthRef.current = reminders.length;
+    if (reminders.length === 0) { setShuffledReminders([]); return; }
+    if (reshuffle) {
+      setShuffledReminders([...reminders].sort(() => Math.random() - 0.5));
+      setIdx(0);
+    } else {
+      setShuffledReminders(prev => prev.map(p => reminders.find(r => r.id === p.id) ?? p));
+    }
+  }, [reminders]);
+
+  // Keep idxRef in sync so the interval callback always reads the latest value
+  idxRef.current = idx;
+
+  // Auto-advance every 5 s; cleared and restarted whenever idx changes (manual or auto)
+  const startAutoAdvance = useCallback(() => {
+    clearInterval(autoTimer.current);
+    if (shuffledReminders.length <= 1) return;
+    autoTimer.current = setInterval(() => {
+      setIdx(i => (i + 1) % shuffledReminders.length);
+    }, 5000);
+  }, [shuffledReminders.length]);
+
+  useEffect(() => {
+    startAutoAdvance();
+    return () => clearInterval(autoTimer.current);
+  }, [startAutoAdvance]);
+
+  // Scroll to current idx whenever it changes (covers both manual and auto)
+  useEffect(() => {
+    if (!scrollRef.current || shuffledReminders.length === 0) return;
+    const loopingNow = shuffledReminders.length > 1;
+    const phys = loopingNow ? idx + 1 : idx;
+    ignoreScroll.current = true;
+    scrollRef.current.scrollTo({ left: phys * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    setTimeout(() => { ignoreScroll.current = false; }, 400);
+  }, [idx, shuffledReminders.length]);
+
   useEffect(() => {
     if (mode === 'add' || mode === 'edit') inputRef.current?.focus();
   }, [mode]);
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (!scrollRef.current) return;
-      const w = scrollRef.current.offsetWidth;
-      if (!w) return;
-      const n = reminders.length;
-      const safeIdx = Math.min(idx, Math.max(0, n - 1));
-      const phys = n > 1 ? safeIdx + 1 : safeIdx;
-      ignoreScroll.current = true;
-      scrollRef.current.scrollTo({ left: phys * w, behavior: 'instant' });
-      setTimeout(() => { ignoreScroll.current = false; }, 100);
-    }, 0);
-    return () => clearTimeout(t);
-  }, [reminders.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // All trip members with their profiles for the user picker
   const allMembers = useMemo(() => {
@@ -88,26 +118,22 @@ function RemindersCard({ tripId, canEdit }) {
     return list;
   }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
 
-  const looping = reminders.length > 1;
+  const looping = shuffledReminders.length > 1;
   const extended = looping
-    ? [reminders[reminders.length - 1], ...reminders, reminders[0]]
-    : reminders;
+    ? [shuffledReminders[shuffledReminders.length - 1], ...shuffledReminders, shuffledReminders[0]]
+    : shuffledReminders;
 
   const scrollTo = (i) => {
-    if (!scrollRef.current) return;
-    ignoreScroll.current = true;
-    const phys = looping ? i + 1 : i;
-    scrollRef.current.scrollTo({ left: phys * scrollRef.current.offsetWidth, behavior: 'smooth' });
     setIdx(i);
-    setTimeout(() => { ignoreScroll.current = false; }, 400);
+    startAutoAdvance(); // reset 5s timer on manual nav
   };
 
   const handleScroll = () => {
     if (ignoreScroll.current || !scrollRef.current) return;
     const { scrollLeft, offsetWidth } = scrollRef.current;
     const phys = Math.round(scrollLeft / offsetWidth);
-    if (looping && phys > 0 && phys < extended.length - 1) setIdx(phys - 1);
-    else if (!looping && phys !== idx) setIdx(phys);
+    if (looping && phys > 0 && phys < extended.length - 1) { setIdx(phys - 1); startAutoAdvance(); }
+    else if (!looping && phys !== idx) { setIdx(phys); startAutoAdvance(); }
     if (!looping) return;
     clearTimeout(scrollEndTimer.current);
     scrollEndTimer.current = setTimeout(() => {
@@ -116,8 +142,8 @@ function RemindersCard({ tripId, canEdit }) {
       const p = Math.round(sl / ow);
       if (p === 0) {
         ignoreScroll.current = true;
-        scrollRef.current.scrollTo({ left: reminders.length * ow, behavior: 'instant' });
-        setIdx(reminders.length - 1);
+        scrollRef.current.scrollTo({ left: shuffledReminders.length * ow, behavior: 'instant' });
+        setIdx(shuffledReminders.length - 1);
         setTimeout(() => { ignoreScroll.current = false; }, 50);
       } else if (p >= extended.length - 1) {
         ignoreScroll.current = true;
@@ -228,7 +254,7 @@ function RemindersCard({ tripId, canEdit }) {
 
       {/* Carousel — visible only when no overlay is active */}
       {mode === null && (
-        reminders.length === 0 ? (
+        shuffledReminders.length === 0 ? (
           <div className="glass-card" style={{ direction: 'rtl', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)' }}>תזכורות</span>
             <span style={{ fontSize: 13, color: 'var(--text-muted)', flex: 1, textAlign: 'center' }}>
@@ -258,9 +284,22 @@ function RemindersCard({ tripId, canEdit }) {
                   height: 160, boxSizing: 'border-box',
                 }}>
 
-                  {/* Header: label + actions */}
+                  {/* Header: label + count badge + actions */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
+                      {shuffledReminders.length > 1 && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700,
+                          background: 'rgba(79,70,229,0.10)',
+                          color: 'var(--accent)',
+                          border: '1px solid rgba(79,70,229,0.18)',
+                          borderRadius: 20, padding: '1px 7px',
+                        }}>
+                          {idx + 1} / {shuffledReminders.length}
+                        </span>
+                      )}
+                    </div>
                     {canEdit && (
                       <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
                         <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={iconBtn()}>
@@ -297,9 +336,9 @@ function RemindersCard({ tripId, canEdit }) {
                       {canEdit && <ChevronDown size={10} style={{ color: 'var(--text-muted)' }} />}
                     </button>
                     {/* Dots */}
-                    {reminders.length > 1 && (
+                    {shuffledReminders.length > 1 && (
                       <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                        {reminders.map((_, j) => (
+                        {shuffledReminders.map((_, j) => (
                           <button key={j} onClick={() => scrollTo(j)} style={{
                             width: j === idx ? 16 : 6, height: 6, borderRadius: 3,
                             border: 'none', padding: 0, flexShrink: 0,
