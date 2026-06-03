@@ -9,7 +9,7 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -40,6 +40,8 @@ function RemindersCard({ tripId, canEdit }) {
   const [inputText, setInputText] = useState('');
   const [editId, setEditId] = useState(null);
   const [userPickRemId, setUserPickRemId] = useState(null);
+  const [showAll, setShowAll] = useState(false);
+  const [checkedIds, setCheckedIds] = useState(new Set());
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const ignoreScroll = useRef(false);
@@ -81,7 +83,7 @@ function RemindersCard({ tripId, canEdit }) {
     if (shuffledReminders.length <= 1) return;
     autoTimer.current = setInterval(() => {
       setIdx(i => (i + 1) % shuffledReminders.length);
-    }, 5000);
+    }, 3000);
   }, [shuffledReminders.length]);
 
   useEffect(() => {
@@ -300,8 +302,11 @@ function RemindersCard({ tripId, canEdit }) {
                         </span>
                       )}
                     </div>
-                    {canEdit && (
-                      <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
+                      <button onClick={() => setShowAll(true)} style={iconBtn('var(--accent)')} title="כל התזכורות">
+                        <List size={14} />
+                      </button>
+                      {canEdit && (<>
                         <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={iconBtn()}>
                           <Pencil size={14} />
                         </button>
@@ -311,8 +316,8 @@ function RemindersCard({ tripId, canEdit }) {
                         <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
                           <Plus size={14} />
                         </button>
-                      </div>
-                    )}
+                      </>)}
+                    </div>
                   </div>
 
                   {/* Reminder text */}
@@ -355,6 +360,101 @@ function RemindersCard({ tripId, canEdit }) {
             ))}
           </div>
         )
+      )}
+      {/* All-reminders modal */}
+      {showAll && (
+        <div
+          onClick={() => setShowAll(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(11,11,48,0.45)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            padding: '0 0 env(safe-area-inset-bottom)',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 520,
+              background: 'var(--bg-card, #fff)',
+              borderRadius: '20px 20px 0 0',
+              boxShadow: '0 -4px 40px rgba(11,11,48,0.18)',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: '80vh',
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '18px 20px 12px', borderBottom: '1px solid rgba(11,11,48,0.07)',
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
+                כל התזכורות
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {checkedIds.size > 0 && (
+                  <button
+                    onClick={() => setCheckedIds(new Set())}
+                    style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                  >
+                    נקה סימונים
+                  </button>
+                )}
+                <button onClick={() => setShowAll(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Reminder list */}
+            <div style={{ overflowY: 'auto', padding: '8px 16px 24px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {reminders.length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '24px 0' }}>אין תזכורות</p>
+              ) : reminders.map(r => {
+                const checked = checkedIds.has(r.id);
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => setCheckedIds(prev => {
+                      const next = new Set(prev);
+                      checked ? next.delete(r.id) : next.add(r.id);
+                      return next;
+                    })}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 14,
+                      padding: '14px 12px', borderRadius: 12,
+                      background: checked ? 'rgba(79,70,229,0.06)' : 'transparent',
+                      border: 'none', cursor: 'pointer', textAlign: 'right', width: '100%',
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 1,
+                      border: checked ? 'none' : '2px solid rgba(11,11,48,0.2)',
+                      background: checked ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.15s',
+                    }}>
+                      {checked && <Check size={13} color="#fff" strokeWidth={3} />}
+                    </div>
+                    {/* Text */}
+                    <span style={{
+                      fontSize: 15, fontWeight: 500, color: 'var(--text-main)',
+                      lineHeight: 1.45, flex: 1,
+                      textDecoration: checked ? 'line-through' : 'none',
+                      opacity: checked ? 0.45 : 1,
+                      transition: 'all 0.15s',
+                    }}>
+                      {r.text}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
