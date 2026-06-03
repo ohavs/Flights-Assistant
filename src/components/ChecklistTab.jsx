@@ -42,13 +42,10 @@ function RemindersCard({ tripId, canEdit }) {
   const [userPickRemId, setUserPickRemId] = useState(null);
   const [showAll, setShowAll] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
-  const scrollRef = useRef(null);
   const inputRef = useRef(null);
-  const ignoreScroll = useRef(false);
-  const scrollEndTimer = useRef(null);
   const autoTimer = useRef(null);
-  const idxRef = useRef(0);
   const prevLengthRef = useRef(0);
+  const touchStartX = useRef(0);
 
   useEffect(() => {
     if (!tripId) return;
@@ -91,16 +88,6 @@ function RemindersCard({ tripId, canEdit }) {
     return () => clearInterval(autoTimer.current);
   }, [startAutoAdvance]);
 
-  // Scroll to current idx whenever it changes (covers both manual and auto)
-  useEffect(() => {
-    if (!scrollRef.current || shuffledReminders.length === 0) return;
-    const loopingNow = shuffledReminders.length > 1;
-    const phys = loopingNow ? idx + 1 : idx;
-    ignoreScroll.current = true;
-    scrollRef.current.scrollTo({ left: phys * scrollRef.current.offsetWidth, behavior: 'smooth' });
-    setTimeout(() => { ignoreScroll.current = false; }, 400);
-  }, [idx, shuffledReminders.length]);
-
   useEffect(() => {
     if (mode === 'add' || mode === 'edit') inputRef.current?.focus();
   }, [mode]);
@@ -120,40 +107,9 @@ function RemindersCard({ tripId, canEdit }) {
     return list;
   }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
 
-  const looping = shuffledReminders.length > 1;
-  const extended = looping
-    ? [shuffledReminders[shuffledReminders.length - 1], ...shuffledReminders, shuffledReminders[0]]
-    : shuffledReminders;
-
-  const scrollTo = (i) => {
+  const goTo = (i) => {
     setIdx(i);
-    startAutoAdvance(); // reset 5s timer on manual nav
-  };
-
-  const handleScroll = () => {
-    if (ignoreScroll.current || !scrollRef.current) return;
-    const { scrollLeft, offsetWidth } = scrollRef.current;
-    const phys = Math.round(scrollLeft / offsetWidth);
-    if (looping && phys > 0 && phys < extended.length - 1) { setIdx(phys - 1); startAutoAdvance(); }
-    else if (!looping && phys !== idx) { setIdx(phys); startAutoAdvance(); }
-    if (!looping) return;
-    clearTimeout(scrollEndTimer.current);
-    scrollEndTimer.current = setTimeout(() => {
-      if (!scrollRef.current || ignoreScroll.current) return;
-      const { scrollLeft: sl, offsetWidth: ow } = scrollRef.current;
-      const p = Math.round(sl / ow);
-      if (p === 0) {
-        ignoreScroll.current = true;
-        scrollRef.current.scrollTo({ left: shuffledReminders.length * ow, behavior: 'instant' });
-        setIdx(shuffledReminders.length - 1);
-        setTimeout(() => { ignoreScroll.current = false; }, 50);
-      } else if (p >= extended.length - 1) {
-        ignoreScroll.current = true;
-        scrollRef.current.scrollTo({ left: ow, behavior: 'instant' });
-        setIdx(0);
-        setTimeout(() => { ignoreScroll.current = false; }, 50);
-      }
-    }, 80);
+    startAutoAdvance();
   };
 
   const handleSave = async () => {
@@ -208,7 +164,12 @@ function RemindersCard({ tripId, canEdit }) {
 
   return (
     <div>
-      <style>{`.rc-scroll::-webkit-scrollbar{display:none}`}</style>
+      <style>{`
+        @keyframes remFadeUp {
+          from { opacity: 0; transform: translateY(7px); }
+          to   { opacity: 1; transform: translateY(0);   }
+        }
+      `}</style>
 
       {/* Text input overlay (add / edit) */}
       {(mode === 'add' || mode === 'edit') && (
@@ -254,7 +215,7 @@ function RemindersCard({ tripId, canEdit }) {
         </div>
       )}
 
-      {/* Carousel — visible only when no overlay is active */}
+      {/* Reminder card — visible only when no overlay is active */}
       {mode === null && (
         shuffledReminders.length === 0 ? (
           <div className="glass-card" style={{ direction: 'rtl', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -268,150 +229,160 @@ function RemindersCard({ tripId, canEdit }) {
               </button>
             )}
           </div>
-        ) : (
-          <div ref={scrollRef} className="rc-scroll" onScroll={handleScroll}
-            style={{
-              display: 'flex', direction: 'ltr', alignItems: 'stretch',
-              overflowX: 'auto', overflowY: 'hidden',
-              scrollSnapType: 'x mandatory',
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'none', msOverflowStyle: 'none',
-            }}
-          >
-            {extended.map((r, i) => (
-              <div key={`${r.id}-${i}`} style={{ flex: '0 0 100%', scrollSnapAlign: 'start', direction: 'rtl' }}>
-                <div className="glass-card" style={{
-                  display: 'flex', flexDirection: 'column',
-                  padding: '14px 18px 12px', gap: 10,
-                  height: 160, boxSizing: 'border-box',
-                }}>
-
-                  {/* Header: label + count badge + actions */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.3px' }}>תזכורות</span>
-                      {shuffledReminders.length > 1 && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700,
-                          background: 'rgba(79,70,229,0.10)',
-                          color: 'var(--accent)',
-                          border: '1px solid rgba(79,70,229,0.18)',
-                          borderRadius: 20, padding: '1px 7px',
-                        }}>
-                          {idx + 1} / {shuffledReminders.length}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
-                      <button onClick={() => setShowAll(true)} style={iconBtn('var(--accent)')} title="כל התזכורות">
-                        <List size={14} />
-                      </button>
-                      {canEdit && (<>
-                        <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={iconBtn()}>
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => handleDeleteById(r.id)} style={iconBtn('rgba(239,68,68,0.75)')}>
-                          <Trash2 size={14} />
-                        </button>
-                        <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
-                          <Plus size={14} />
-                        </button>
-                      </>)}
-                    </div>
-                  </div>
-
-                  {/* Reminder text */}
-                  <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
-                    <p style={{
-                      fontSize: 18, fontWeight: 600, color: 'var(--text-main)',
-                      textAlign: 'right', lineHeight: 1.5, margin: 0, width: '100%',
-                      display: '-webkit-box', WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                      userSelect: 'none',
-                    }}>{r.text}</p>
-                  </div>
-
-                  {/* Footer: user avatar + dots */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    {/* User */}
-                    <button onClick={() => canEdit && (setUserPickRemId(r.id), setMode('pickUser'))}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: canEdit ? 'pointer' : 'default' }}>
-                      <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={24} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{r.addedByName || ''}</span>
-                      {canEdit && <ChevronDown size={10} style={{ color: 'var(--text-muted)' }} />}
+        ) : (() => {
+          const r = shuffledReminders[idx] || shuffledReminders[0];
+          if (!r) return null;
+          const n = shuffledReminders.length;
+          return (
+            <div
+              className="glass-card"
+              onTouchStart={e => { touchStartX.current = e.touches[0].clientX; }}
+              onTouchEnd={e => {
+                const dx = e.changedTouches[0].clientX - touchStartX.current;
+                if (Math.abs(dx) > 40) goTo(dx > 0 ? (idx - 1 + n) % n : (idx + 1) % n);
+              }}
+              style={{
+                direction: 'rtl', display: 'flex', flexDirection: 'column',
+                padding: '14px 18px 12px', gap: 10,
+                height: 160, boxSizing: 'border-box',
+                borderTop: '3px solid var(--accent)',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>תזכורות</span>
+                  {n > 1 && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700,
+                      background: 'rgba(79,70,229,0.10)', color: 'var(--accent)',
+                      border: '1px solid rgba(79,70,229,0.18)',
+                      borderRadius: 20, padding: '1px 7px',
+                    }}>
+                      {idx + 1} / {n}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
+                  <button onClick={() => setShowAll(true)} style={iconBtn('var(--accent)')} title="כל התזכורות">
+                    <List size={14} />
+                  </button>
+                  {canEdit && (<>
+                    <button onClick={() => { setInputText(r.text); setEditId(r.id); setMode('edit'); }} style={iconBtn()}>
+                      <Pencil size={14} />
                     </button>
-                    {/* Dots */}
-                    {shuffledReminders.length > 1 && (
-                      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                        {shuffledReminders.map((_, j) => (
-                          <button key={j} onClick={() => scrollTo(j)} style={{
-                            width: j === idx ? 16 : 6, height: 6, borderRadius: 3,
-                            border: 'none', padding: 0, flexShrink: 0,
-                            background: j === idx ? 'var(--primary-color)' : 'rgba(11,11,48,0.15)',
-                            cursor: 'pointer', transition: 'all 0.2s ease',
-                          }} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
+                    <button onClick={() => handleDeleteById(r.id)} style={iconBtn('rgba(239,68,68,0.75)')}>
+                      <Trash2 size={14} />
+                    </button>
+                    <button onClick={() => { setInputText(''); setMode('add'); }} style={iconBtn('var(--accent)')}>
+                      <Plus size={14} />
+                    </button>
+                  </>)}
                 </div>
               </div>
-            ))}
-          </div>
-        )
+
+              {/* Animated text */}
+              <div key={`${r.id}-${idx}`} style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', animation: 'remFadeUp 0.35s ease' }}>
+                <p style={{
+                  fontSize: 17, fontWeight: 600, color: 'var(--text-main)',
+                  textAlign: 'right', lineHeight: 1.55, margin: 0, width: '100%',
+                  display: '-webkit-box', WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  userSelect: 'none',
+                }}>{r.text}</p>
+              </div>
+
+              {/* Footer: user + dots */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <button onClick={() => canEdit && (setUserPickRemId(r.id), setMode('pickUser'))}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: canEdit ? 'pointer' : 'default' }}>
+                  <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={22} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{r.addedByName || ''}</span>
+                  {canEdit && <ChevronDown size={10} style={{ color: 'var(--text-muted)' }} />}
+                </button>
+                {n > 1 && (
+                  <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                    {shuffledReminders.map((_, j) => (
+                      <button key={j} onClick={() => goTo(j)} style={{
+                        width: j === idx ? 18 : 6, height: 6, borderRadius: 3,
+                        border: 'none', padding: 0, flexShrink: 0,
+                        background: j === idx ? 'var(--accent)' : 'rgba(79,70,229,0.15)',
+                        cursor: 'pointer', transition: 'all 0.25s ease',
+                      }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()
       )}
-      {/* All-reminders modal */}
+      {/* All-reminders bottom sheet */}
       {showAll && (
         <div
           onClick={() => setShowAll(false)}
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(11,11,48,0.45)', backdropFilter: 'blur(4px)',
+            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            padding: '0 0 env(safe-area-inset-bottom)',
+            paddingBottom: 'calc(64px + env(safe-area-inset-bottom))',
           }}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%', maxWidth: 520,
-              background: 'var(--bg-card, #fff)',
-              borderRadius: '20px 20px 0 0',
-              boxShadow: '0 -4px 40px rgba(11,11,48,0.18)',
+              background: 'var(--bg-card, #f8f8ff)',
+              borderRadius: '24px 24px 0 0',
+              boxShadow: '0 -8px 48px rgba(11,11,48,0.22)',
               display: 'flex', flexDirection: 'column',
-              maxHeight: '80vh',
+              maxHeight: 'calc(75vh - 64px)',
+              overflow: 'hidden',
             }}
           >
-            {/* Modal header */}
+            {/* Drag handle pill */}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(11,11,48,0.12)' }} />
+            </div>
+
+            {/* Header */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '18px 20px 12px', borderBottom: '1px solid rgba(11,11,48,0.07)',
+              padding: '12px 20px 14px',
+              borderBottom: '1px solid rgba(11,11,48,0.07)',
               flexShrink: 0,
             }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
-                כל התזכורות
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>כל התזכורות</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, background: 'rgba(79,70,229,0.10)',
+                  color: 'var(--accent)', border: '1px solid rgba(79,70,229,0.18)',
+                  borderRadius: 20, padding: '1px 8px',
+                }}>{reminders.length}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {checkedIds.size > 0 && (
-                  <button
-                    onClick={() => setCheckedIds(new Set())}
-                    style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
-                  >
-                    נקה סימונים
-                  </button>
+                  <button onClick={() => setCheckedIds(new Set())} style={{
+                    fontSize: 12, color: 'var(--accent)', background: 'rgba(79,70,229,0.08)',
+                    border: '1px solid rgba(79,70,229,0.15)', borderRadius: 20,
+                    cursor: 'pointer', padding: '3px 10px', fontWeight: 600,
+                  }}>נקה ({checkedIds.size})</button>
                 )}
-                <button onClick={() => setShowAll(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
-                  <X size={18} />
+                <button onClick={() => setShowAll(false)} style={{
+                  background: 'rgba(11,11,48,0.06)', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
+                }}>
+                  <X size={16} />
                 </button>
               </div>
             </div>
 
-            {/* Reminder list */}
-            <div style={{ overflowY: 'auto', padding: '8px 16px 24px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* List */}
+            <div style={{ overflowY: 'auto', padding: '6px 12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
               {reminders.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '24px 0' }}>אין תזכורות</p>
-              ) : reminders.map(r => {
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '28px 0' }}>אין תזכורות</p>
+              ) : reminders.map((r, ri) => {
                 const checked = checkedIds.has(r.id);
                 return (
                   <button
@@ -422,30 +393,29 @@ function RemindersCard({ tripId, canEdit }) {
                       return next;
                     })}
                     style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 14,
-                      padding: '14px 12px', borderRadius: 12,
-                      background: checked ? 'rgba(79,70,229,0.06)' : 'transparent',
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      padding: '13px 10px', borderRadius: 14,
+                      background: checked ? 'rgba(79,70,229,0.07)' : ri % 2 === 0 ? 'transparent' : 'rgba(11,11,48,0.02)',
                       border: 'none', cursor: 'pointer', textAlign: 'right', width: '100%',
                       transition: 'background 0.15s',
                     }}
                   >
                     {/* Checkbox */}
                     <div style={{
-                      width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 1,
-                      border: checked ? 'none' : '2px solid rgba(11,11,48,0.2)',
+                      width: 24, height: 24, borderRadius: 7, flexShrink: 0,
+                      border: checked ? 'none' : '2px solid rgba(79,70,229,0.25)',
                       background: checked ? 'var(--accent)' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.15s',
+                      transition: 'all 0.18s', boxShadow: checked ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
                     }}>
                       {checked && <Check size={13} color="#fff" strokeWidth={3} />}
                     </div>
                     {/* Text */}
                     <span style={{
-                      fontSize: 15, fontWeight: 500, color: 'var(--text-main)',
-                      lineHeight: 1.45, flex: 1,
+                      fontSize: 15, fontWeight: checked ? 400 : 500,
+                      color: 'var(--text-main)', lineHeight: 1.45, flex: 1,
                       textDecoration: checked ? 'line-through' : 'none',
-                      opacity: checked ? 0.45 : 1,
-                      transition: 'all 0.15s',
+                      opacity: checked ? 0.4 : 1, transition: 'all 0.18s',
                     }}>
                       {r.text}
                     </span>
