@@ -689,6 +689,20 @@ export default function PlanningTab({ tripId }) {
     await batch.commit();
   };
 
+  // Lazy-fetch travel times for all day-planner activities that link to a saved place
+  useEffect(() => {
+    if (!hasGmapsKey() || !hotelDetails) return;
+    const allPlaceIds = new Set(
+      days.flatMap(d => (d.activities || []).map(a => a.placeId).filter(Boolean))
+    );
+    allPlaceIds.forEach(placeId => {
+      const cacheKey = `${placeId}_hotel`;
+      if (distanceCache[cacheKey]) return;
+      const plan = plans.find(p => p.id === placeId);
+      if (plan) fetchPlanDistances(plan);
+    });
+  }, [days, plans, hotelDetails]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const daySensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
@@ -1869,25 +1883,40 @@ export default function PlanningTab({ tripId }) {
                             )}
 
                             {act.address && (
-                              <a 
-                                href={`https://maps.google.com/?q=${encodeURIComponent(act.address)}`} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                style={{ 
-                                  fontSize: 11, 
-                                  color: 'var(--accent)', 
-                                  fontWeight: 700, 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 3, 
-                                  textDecoration: 'none',
-                                  marginTop: 2
-                                }}
-                              >
-                                <MapPin size={11} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{act.address}</span>
-                                <ExternalLink size={10} />
-                              </a>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                                <a
+                                  href={`https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    fontSize: 11, color: 'var(--accent)', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', gap: 3,
+                                    textDecoration: 'none', minWidth: 0,
+                                  }}
+                                >
+                                  <MapPin size={11} />
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
+                                  <ExternalLink size={10} />
+                                </a>
+                                {/* Travel-time chips from hotel */}
+                                {(() => {
+                                  if (!act.placeId || !hasGmapsKey()) return null;
+                                  const cache = distanceCache[`${act.placeId}_hotel`];
+                                  if (!cache || cache.loading || cache.error || cache.noLocation) return null;
+                                  return (<>
+                                    {cache.walk && (
+                                      <span style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                        🚶 {cache.walk.duration}
+                                      </span>
+                                    )}
+                                    {cache.transit && (
+                                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                        🚌 {cache.transit.duration}
+                                      </span>
+                                    )}
+                                  </>);
+                                })()}
+                              </div>
                             )}
                           </div>
                         </div>

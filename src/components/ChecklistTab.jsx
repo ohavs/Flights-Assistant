@@ -416,6 +416,12 @@ function RemindersCard({ tripId, canEdit }) {
                     }}>
                       {r.text}
                     </span>
+                    {/* Author avatar */}
+                    {(r.addedByPhoto || r.addedByName) && (
+                      <div title={r.addedByName || ''} style={{ flexShrink: 0, opacity: checked ? 0.35 : 0.85, transition: 'opacity 0.18s' }}>
+                        <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
+                      </div>
+                    )}
                   </button>
                 );
               })}
