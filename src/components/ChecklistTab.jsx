@@ -71,10 +71,7 @@ function RemindersCard({ tripId, canEdit }) {
     }
   }, [reminders]);
 
-  // Keep idxRef in sync so the interval callback always reads the latest value
-  idxRef.current = idx;
-
-  // Auto-advance every 5 s; cleared and restarted whenever idx changes (manual or auto)
+  // Auto-advance every 3s; cleared and restarted whenever idx changes (manual or auto)
   const startAutoAdvance = useCallback(() => {
     clearInterval(autoTimer.current);
     if (shuffledReminders.length <= 1) return;
@@ -125,7 +122,7 @@ function RemindersCard({ tripId, canEdit }) {
       });
       const newIdx = reminders.length;
       setMode(null); setInputText('');
-      setTimeout(() => scrollTo(newIdx), 50);
+      setTimeout(() => goTo(newIdx), 50);
     } else if (mode === 'edit' && editId) {
       await updateDoc(doc(db, 'trips', tripId, 'reminders', editId), { text });
       setMode(null); setInputText(''); setEditId(null);
