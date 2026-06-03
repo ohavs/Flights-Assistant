@@ -1,5 +1,39 @@
 # Changelog — Flights-Assistant
 
+## [7.2.0] - 2026-06-03
+
+### Added
+- **Daily Planner — Drag-and-Drop Day Reordering** (`PlanningTab.jsx`):
+  - Days can be dragged and reordered using `@dnd-kit`. Only activities travel with the dragged card; title and date are positional anchors and stay in their slot.
+- **Daily Planner — Smart Day Generation from Flight Dates** (`PlanningTab.jsx`):
+  - "ייצר ימים לפי טיסה" button auto-creates one day card per calendar date between the outbound and return flight. Hebrew day-of-week chip shown on each card.
+  - After sync: button replaced by a ✓ "ימים מסונכרנים עם הטיסה" indicator.
+  - If flight dates change: shows "עדכן ימים לפי טיסה" to re-sync.
+- **Daily Planner — Travel-Time Chips on Activities** (`PlanningTab.jsx`):
+  - 🚶/🚌 walk and transit duration chips appear next to each activity's Maps address link, drawn from the same `distanceCache` used by the planning pool.
+  - Lazy-fetched when the planner is open; cached for the session.
+- **Planning Pool — Travel-Time Chips on Expanded Cards** (`PlanningTab.jsx`):
+  - Walk + transit duration shown inside expanded plan cards using the configured origin (hotel or custom).
+- **Distance Origin Picker always visible** (`PlanningTab.jsx`):
+  - The hotel/origin selector in the item edit form is no longer gated by the Google Maps key — users can set their preference even before the key is configured.
+- **Reminders Carousel** (`ChecklistTab.jsx`):
+  - Reminders shuffle randomly on load and auto-advance every 3 seconds with a fade-up animation.
+  - Swipeable left/right on touch devices. Position badge shows `N / total`.
+- **Reminders "כל התזכורות" Bottom Sheet** (`ChecklistTab.jsx`):
+  - Button opens a full-list overlay with checkboxes to mark reminders as read.
+  - Each row shows the author's avatar (photo or initials fallback).
+  - Sheet floats above the navigation bar using `calc(64px + env(safe-area-inset-bottom))` padding.
+
+### Fixed
+- **D&D SortableDayCard washed-out bug**: `SortableDayCard` was receiving `day` prop but destructuring only `{id, children}`, causing `useSortable({id: undefined})` — all cards were rendered as drag overlays. Fixed by passing only the `id` prop.
+- **Reminders white-page crash**: `idxRef.current` reference left after refactor caused a ReferenceError on checklist load. Removed orphaned ref assignment and renamed `scrollTo` → `goTo`.
+- **`.firebase` false-positive git hook**: `.firebase/hosting.ZGlzdA.cache` was committed despite being in `.gitignore`. Untracked it with `git rm --cached`.
+
+### Changed
+- **API Keys configured**: `VITE_GOOGLE_MAPS_KEY` and `VITE_AERODATABOX_KEY` now set in `.env.local` — travel-time chips and live flight lookup fully operational on the deployed site.
+
+---
+
 ## [7.1.0] - 2026-05-30
 
 ### Added

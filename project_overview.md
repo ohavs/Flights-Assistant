@@ -4,7 +4,7 @@
 Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) designed to assist travelers in planning, tracking, and managing their flight and hotel bookings, packing checklists, trip itineraries, and travel expenses. The app is optimized for mobile screens, supports full offline capability, synchronizes with Firestore in real-time, and supports collaborative editing between users.
 
 **Live URL:** https://listify-84018.web.app  
-**Current Version:** 7.1.0
+**Current Version:** 7.2.0
 
 ---
 
@@ -59,12 +59,15 @@ Custom Hebrew RTL calendar and datetime picker — replaces native OS pickers to
 
 ### `PlanningTab.jsx`
 Two sub-tabs:
-- **אטרקציות ומקומות** (pool): collapsible plan cards with FLIP reorder animation, visited toggle, description preview in collapsed state, quick-access Navigation button (opens location directly or shows multi-location modal), category filter chips (only used categories shown).
-- **לוח זמנים יומי**: day-by-day timeline with drag-free activity reordering.
+- **אטרקציות ומקומות** (pool): collapsible plan cards with FLIP reorder animation, visited toggle, description preview in collapsed state, quick-access Navigation button (opens location directly or shows multi-location modal), category filter chips (only used categories shown). Expanded card shows 🚶/🚌 travel-time chips (walk + transit duration from the configured origin).
+- **לוח זמנים יומי**: day-by-day timeline with drag-and-drop day reordering (`@dnd-kit`). Each activity row shows a 🚶/🚌 chip beside its Maps address. Smart day generation: "ייצר ימים לפי טיסה" button creates day cards from outbound→return dates; after sync shows a ✓ indicator; detects date drift and offers "עדכן ימים לפי טיסה". D&D semantics: only activities travel with the dragged day — title and date are positional anchors.
+- **Distance origin picker**: always visible in item edit form (no API key required to set preference); travel-time fetches use Google Maps Routes API + Places API (`VITE_GOOGLE_MAPS_KEY`).
 - **Category customization**: gear button opens a modal to set icon + color per category; settings stored in `trips/{tripId}/settings/categories`.
 
 ### `ChecklistTab.jsx`
 Packing checklist synced with Firestore. Collapsible categories. Auto-syncs new items from the user's global template: on mount, any `globalChecklist` items missing from the trip's checklist are batch-written to Firestore. Intentionally deleted global items are tracked in `trips/{tripId}/settings/checklistSync.deletedGlobalIds`.
+
+**Reminders carousel** (`RemindersCard`): randomly shuffled on load, auto-advances every 3 seconds with a fade-up animation. Swipeable (touch). Count badge shows current position. "כל התזכורות" button opens a bottom sheet with the full list as checkable items; each row shows the author's avatar. Bottom sheet floats above the navigation bar.
 
 ### `ExpensesTab.jsx`
 Travel expense tracker:
@@ -106,7 +109,7 @@ App-wide styled confirm dialog via `useConfirm()` hook — replaces native `wind
     title, category, description, address, price, links, visited
 
   /days/{dayId}
-    title, order
+    title, date, order
     activities: [{id, title, category, timeLabel, address, description, placeId}]
 
   /checklist/{itemId}
@@ -127,5 +130,17 @@ App-wide styled confirm dialog via `useConfirm()` hook — replaces native `wind
 
   /settings/checklistSync
     deletedGlobalIds: [id, ...]
+
+  plannerDaysFromFlight: {out, ret}   # stored on trip root doc for sync indicator
 ```
+
+---
+
+## Environment Variables
+| Variable | Purpose |
+|---|---|
+| `VITE_AERODATABOX_KEY` | RapidAPI key for AeroDataBox — live flight status |
+| `VITE_GOOGLE_MAPS_KEY` | Google Cloud key — Routes API + Places API (travel times) |
+
+Both are set in `.env.local` (gitignored). The app builds and runs without them but travel-time chips and live flight lookup will be disabled.
 
