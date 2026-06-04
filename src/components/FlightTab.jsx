@@ -181,9 +181,9 @@ function TimeSlot({ scheduled, updated, label, icon, cancelled, flightDate }) {
   let color = 'var(--primary)';
   let bgChip = null;
   let chipColor = null;
-  if (cancelled) color = 'rgb(220, 38, 38)';
-  else if (delayed) { color = 'rgb(220, 38, 38)'; bgChip = 'rgba(220, 38, 38, 0.1)'; chipColor = 'rgb(220, 38, 38)'; }
-  else if (early)   { bgChip = 'rgba(5, 150, 105, 0.1)'; chipColor = 'var(--text-success)'; }
+  if (cancelled) color = 'var(--c-red)';
+  else if (delayed) { color = 'var(--c-red)'; bgChip = 'var(--c-red-10)'; chipColor = 'var(--c-red)'; }
+  else if (early)   { bgChip = 'var(--c-teal-10)'; chipColor = 'var(--text-success)'; }
 
   // When the chip is suppressed, also show the *scheduled* time rather
   // than a stale "updated" value (otherwise the row would silently
@@ -217,8 +217,8 @@ function TimeSlot({ scheduled, updated, label, icon, cancelled, flightDate }) {
         {delayed && !cancelled && (
           <span style={{
             fontSize: 10, fontWeight: 800,
-            color: 'rgb(220, 38, 38)',
-            background: 'rgba(220, 38, 38, 0.06)',
+            color: 'var(--c-red)',
+            background: 'var(--c-red-6)',
             padding: '1px 6px', borderRadius: 6,
           }}>
             מעודכן
@@ -743,8 +743,8 @@ export default function FlightTab({ tripId }) {
   // Render a flight card (extracted to share between outbound + return)
   const renderFlightCard = (flight, kind) => {
     const label = kind === 'outbound' ? 'טיסת הלוך' : 'טיסת חזור';
-    const badgeColor = kind === 'outbound' ? 'rgba(79, 70, 229, 0.1)' : 'rgba(239, 68, 68, 0.1)';
-    const badgeText = kind === 'outbound' ? 'var(--secondary-color)' : 'rgb(239, 68, 68)';
+    const badgeColor = kind === 'outbound' ? 'var(--p-10)' : 'var(--c-red2-10)';
+    const badgeText = kind === 'outbound' ? 'var(--secondary-color)' : 'var(--c-red2)';
     const isRefreshing = kind === 'outbound' ? refreshingOut : refreshingRet;
     const lastRefreshed = flight.lastRefreshed
       ? new Date(flight.lastRefreshed).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
@@ -766,7 +766,7 @@ export default function FlightTab({ tripId }) {
               onClick={() => openEditModal(kind)}
               title={`ערוך ${label}`}
               style={{
-                background: 'rgba(79, 70, 229, 0.06)',
+                background: 'var(--p-6)',
                 border: 'none', padding: '6px', borderRadius: 8, cursor: 'pointer',
                 color: 'var(--accent)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
@@ -780,7 +780,7 @@ export default function FlightTab({ tripId }) {
               disabled={isRefreshing || !flight.flightNumber}
               title={lastRefreshed ? `עודכן לאחרונה: ${lastRefreshed}` : 'רענן מידע טיסה'}
               style={{
-                background: 'rgba(79, 70, 229, 0.08)',
+                background: 'var(--p-8)',
                 border: 'none',
                 padding: '6px 10px',
                 borderRadius: 8,
@@ -801,7 +801,7 @@ export default function FlightTab({ tripId }) {
         </div>
 
         {/* Date Picker Section */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(11,11,48,0.03)', padding: '10px 14px', borderRadius: 'var(--border-radius-md)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--ink-3)', padding: '10px 14px', borderRadius: 'var(--border-radius-md)' }}>
           <Calendar size={16} style={{ color: 'var(--primary-color)' }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>תאריך טיסה</div>
@@ -858,8 +858,8 @@ export default function FlightTab({ tripId }) {
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה (בזמן אמת):</span>
-            <span className="badge-success" style={flight.status === 'בוטלה' ? { background: 'rgba(220,38,38,0.1)', color: 'rgb(220,38,38)' } : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'rgba(245,158,11,0.12)', color: 'rgb(146,64,14)' } : undefined}>
-              <span className="pulsing-dot" style={flight.status === 'בוטלה' ? { background: 'rgb(220,38,38)' } : flight.status?.includes('איחור') ? { background: 'rgb(245,158,11)' } : undefined}></span>
+            <span className="badge-success" style={flight.status === 'בוטלה' ? { background: 'var(--c-red-10)', color: 'var(--c-red)' } : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'var(--c-orange-12)', color: 'var(--c-orange)' } : undefined}>
+              <span className="pulsing-dot" style={flight.status === 'בוטלה' ? { background: 'var(--c-red)' } : flight.status?.includes('איחור') ? { background: 'var(--c-orange)' } : undefined}></span>
               <span>{flight.status || '—'}</span>
             </span>
           </div>
@@ -897,7 +897,7 @@ export default function FlightTab({ tripId }) {
           <span style={{
             fontSize: 11, fontWeight: 800,
             padding: '4px 10px', borderRadius: 999,
-            background: canEdit ? 'rgba(5,150,105,0.12)' : 'rgba(11,11,48,0.06)',
+            background: canEdit ? 'var(--c-teal-12)' : 'var(--ink-6)',
             color: canEdit ? 'var(--text-success)' : 'var(--text-muted)'
           }}>
             {canEdit ? 'הרשאה: עריכה' : 'הרשאה: צפייה בלבד'}
@@ -933,7 +933,7 @@ export default function FlightTab({ tripId }) {
             onClick={() => openEditModal('hotel')}
             title="ערוך פרטי מלון"
             style={{
-              background: 'rgba(79, 70, 229, 0.06)', border: 'none',
+              background: 'var(--p-6)', border: 'none',
               padding: '6px', borderRadius: 8, cursor: 'pointer',
               color: 'var(--accent)',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
@@ -972,7 +972,7 @@ export default function FlightTab({ tripId }) {
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                   color: 'var(--accent)', fontSize: 12,
                   fontWeight: 700, textDecoration: 'none',
-                  background: 'rgba(79,70,229,0.08)',
+                  background: 'var(--p-8)',
                   border: '1px solid rgba(79,70,229,0.18)',
                   borderRadius: 999, padding: '4px 10px',
                   alignSelf: 'flex-start',
@@ -1011,7 +1011,7 @@ export default function FlightTab({ tripId }) {
           {hotel.notes && (
             <>
               <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '2px 0' }} />
-              <div style={{ background: 'rgba(11,11,48,0.03)', padding: '12px 14px', borderRadius: 'var(--border-radius-md)', fontSize: '13px', lineHeight: '1.4', fontWeight: '600' }}>
+              <div style={{ background: 'var(--ink-3)', padding: '12px 14px', borderRadius: 'var(--border-radius-md)', fontSize: '13px', lineHeight: '1.4', fontWeight: '600' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', marginBottom: '4px' }}>הנחיות והערות מיוחדות:</div>
                 {hotel.notes}
               </div>
@@ -1040,7 +1040,7 @@ export default function FlightTab({ tripId }) {
 
               {/* === TRIP HEADER: name + 2 decisive date pickers === */}
               {(editScope === 'all' || editScope === 'trip') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(79, 70, 229, 0.03)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--p-3)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>פרטי כותרת ותאריכי הטיול</span>
                 </h3>
@@ -1067,7 +1067,7 @@ export default function FlightTab({ tripId }) {
 
               {/* === OUTBOUND FLIGHT === */}
               {(editScope === 'all' || editScope === 'outbound') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>1. פרטי טיסת הלוך</span>
                   {lookupBusyOut && <Loader2 size={14} className="spinning" style={{ color: 'var(--accent)' }} />}
@@ -1146,8 +1146,8 @@ export default function FlightTab({ tripId }) {
 
               {/* === RETURN FLIGHT === */}
               {(editScope === 'all' || editScope === 'return') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'rgb(239, 68, 68)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--c-red2)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>2. פרטי טיסת חזור</span>
                   {lookupBusyRet && <Loader2 size={14} className="spinning" style={{ color: 'var(--accent)' }} />}
                 </h3>
@@ -1222,7 +1222,7 @@ export default function FlightTab({ tripId }) {
 
               {/* === HOTEL === */}
               {(editScope === 'all' || editScope === 'hotel') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>3. פרטי מלון</span>
                 </h3>

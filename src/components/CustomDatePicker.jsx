@@ -93,7 +93,7 @@ function CalendarBody({ selectedDateStr, onSelect }) {
           type="button"
           onClick={handlePrevMonth}
           style={{
-            background: 'rgba(11,11,48,0.04)', border: 'none',
+            background: 'var(--ink-4)', border: 'none',
             width: '32px', height: '32px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', color: 'var(--primary)'
@@ -110,7 +110,7 @@ function CalendarBody({ selectedDateStr, onSelect }) {
           type="button"
           onClick={handleNextMonth}
           style={{
-            background: 'rgba(11,11,48,0.04)', border: 'none',
+            background: 'var(--ink-4)', border: 'none',
             width: '32px', height: '32px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', color: 'var(--primary)'
@@ -153,7 +153,7 @@ function CalendarBody({ selectedDateStr, onSelect }) {
                   ? 'var(--primary)' 
                   : isToday 
                     ? 'rgba(79,70,229,0.05)' 
-                    : 'rgba(11,11,48,0.02)',
+                    : 'var(--ink-2)',
                 color: isSelected 
                   ? '#fff' 
                   : isToday 
@@ -216,7 +216,7 @@ function TimeBody({ hour, minute, onChangeTime }) {
             overflowY: 'auto',
             border: '1px solid rgba(11,11,48,0.08)',
             borderRadius: '12px',
-            background: 'rgba(11,11,48,0.02)',
+            background: 'var(--ink-2)',
             padding: '6px',
             display: 'flex',
             flexDirection: 'column',
@@ -261,7 +261,7 @@ function TimeBody({ hour, minute, onChangeTime }) {
             overflowY: 'auto',
             border: '1px solid rgba(11,11,48,0.08)',
             borderRadius: '12px',
-            background: 'rgba(11,11,48,0.02)',
+            background: 'var(--ink-2)',
             padding: '6px',
             display: 'flex',
             flexDirection: 'column',
@@ -346,7 +346,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
-          background: '#fff'
+          background: 'var(--surface)'
         }}
       >
         <span style={{ 
@@ -366,7 +366,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(11,11,48,0.4)',
+            background: 'var(--ink-40)',
             backdropFilter: 'blur(4px)',
             zIndex: 9999,
             display: 'flex',
@@ -381,7 +381,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
             style={{
               width: '100%',
               maxWidth: '360px',
-              background: '#fff',
+              background: 'var(--surface)',
               borderRadius: '24px',
               boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)',
               border: '1px solid rgba(11, 11, 48, 0.08)',
@@ -400,7 +400,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
               <button 
                 type="button" 
                 onClick={() => setIsOpen(false)}
-                style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
+                style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 <X size={15} />
               </button>
@@ -509,7 +509,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
       <div
         onClick={() => setIsOpen(true)}
         className="form-control"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fff' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: 'var(--surface)' }}
       >
         <span style={{ fontSize: '15px', fontWeight: '700', color: displayValue ? 'var(--primary)' : 'var(--text-muted)' }}>
           {displayValue || 'בחר שעה...'}
@@ -520,15 +520,15 @@ export function CustomTimePicker({ value, onChange, label, required }) {
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(11,11,48,0.4)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          style={{ position: 'fixed', inset: 0, background: 'var(--ink-40)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '360px', background: '#fff', borderRadius: '24px', boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)', border: '1px solid rgba(11, 11, 48, 0.08)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
+            style={{ width: '100%', maxWidth: '360px', background: 'var(--surface)', borderRadius: '24px', boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)', border: '1px solid rgba(11, 11, 48, 0.08)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
-              <button type="button" onClick={() => setIsOpen(false)} style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <button type="button" onClick={() => setIsOpen(false)} style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <X size={15} />
               </button>
             </div>
@@ -537,7 +537,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'rtl' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
-                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {hours24.map(h => {
                     const isActive = h === tempH;
                     return (
@@ -554,7 +554,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
-                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'rgba(11,11,48,0.02)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {minutes.map(m => {
                     const isActive = m === tempM;
                     return (
@@ -655,7 +655,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
-          background: '#fff'
+          background: 'var(--surface)'
         }}
       >
         <span style={{ fontSize: '15px', fontWeight: '600', color: value ? 'var(--primary)' : 'var(--text-muted)' }}>
@@ -671,7 +671,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(11,11,48,0.4)',
+            background: 'var(--ink-40)',
             backdropFilter: 'blur(4px)',
             zIndex: 9999,
             display: 'flex',
@@ -686,7 +686,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             style={{
               width: '100%',
               maxWidth: '360px',
-              background: '#fff',
+              background: 'var(--surface)',
               borderRadius: '24px',
               boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)',
               border: '1px solid rgba(11, 11, 48, 0.08)',
@@ -705,14 +705,14 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               <button 
                 type="button" 
                 onClick={() => setIsOpen(false)}
-                style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
+                style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 <X size={15} />
               </button>
             </div>
 
             {/* Tabs for Date / Time */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'rgba(11,11,48,0.04)', padding: '4px', borderRadius: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--ink-4)', padding: '4px', borderRadius: '12px' }}>
               <button
                 type="button"
                 onClick={() => setActiveTab('date')}
@@ -980,7 +980,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
                   flex: 1, minHeight: 36, padding: '6px 10px',
                   border: '1.5px solid var(--accent)', borderRadius: 8,
                   fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
-                  color: 'var(--primary)', outline: 'none', background: '#fff',
+                  color: 'var(--primary)', outline: 'none', background: 'var(--surface)',
                   textAlign: 'right'
                 }}
               />

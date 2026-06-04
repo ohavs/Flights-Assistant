@@ -298,7 +298,7 @@ export default function ExpensesTab({ tripId }) {
               onClick={() => setShowSummary(s => !s)}
               style={{
                 padding: '8px 14px', borderRadius: 20, border: 'none',
-                background: showSummary ? 'var(--accent)' : 'rgba(79,70,229,0.08)',
+                background: showSummary ? 'var(--accent)' : 'var(--p-8)',
                 color: showSummary ? '#fff' : 'var(--accent)',
                 fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
@@ -321,7 +321,7 @@ export default function ExpensesTab({ tripId }) {
           <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', marginBottom: 10 }}>סיכום לפי מטבע</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {summary.map(({ code, symbol, name, total }) => (
-              <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(79,70,229,0.04)', borderRadius: 10 }}>
+              <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--p-4)', borderRadius: 10 }}>
                 <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>{name}</span>
                 <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--accent)' }}>
                   {symbol}{total.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
@@ -329,17 +329,17 @@ export default function ExpensesTab({ tripId }) {
               </div>
             ))}
             {ilsTotal !== null && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 12px', background: 'rgba(22,163,74,0.07)', borderRadius: 10, marginTop: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: 'rgb(22,163,74)' }}>סה"כ מוערך בשקלים</span>
-                <span style={{ fontSize: 17, fontWeight: 900, color: 'rgb(22,163,74)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 12px', background: 'var(--c-green-7)', borderRadius: 10, marginTop: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--c-green)' }}>סה"כ מוערך בשקלים</span>
+                <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--c-green)' }}>
                   ₪{ilsTotal.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
                 </span>
               </div>
             )}
             {ilsTotal !== null && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: 'rgba(22,163,74,0.04)', borderRadius: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'rgb(22,163,74)', opacity: 0.85 }}>לאדם (÷2)</span>
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'rgb(22,163,74)', opacity: 0.85 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: 'var(--c-green-7)', borderRadius: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-green)', opacity: 0.85 }}>לאדם (÷2)</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--c-green)', opacity: 0.85 }}>
                   ₪{(ilsTotal / 2).toLocaleString('he-IL', { maximumFractionDigits: 2 })}
                 </span>
               </div>
@@ -349,7 +349,7 @@ export default function ExpensesTab({ tripId }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, marginTop: 2, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
                 <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0, marginBottom: 2 }}>פירוט לפי משלם</p>
                 {summaryByPayer.map(({ uid, total, profile }) => (
-                  <div key={uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'rgba(79,70,229,0.04)', borderRadius: 9 }}>
+                  <div key={uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--p-4)', borderRadius: 9 }}>
                     <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
                       ₪{total.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
                     </span>
@@ -427,7 +427,7 @@ export default function ExpensesTab({ tripId }) {
                       return (
                         <div key={expense.id} className="glass-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           {/* Icon badge */}
-                          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(79,70,229,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--p-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <Receipt size={15} style={{ color: 'var(--accent)' }} />
                           </div>
 
@@ -453,7 +453,7 @@ export default function ExpensesTab({ tripId }) {
                               })()}
                             </div>
                             {expense.description ? (
-                              <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{ fontSize: 12, color: 'var(--c-slate)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {expense.description}
                               </div>
                             ) : null}
@@ -477,10 +477,10 @@ export default function ExpensesTab({ tripId }) {
 
                           {/* Action buttons — LEFT side in RTL */}
                           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                            <button onClick={() => openForm(expense)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(11,11,48,0.04)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <button onClick={() => openForm(expense)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--ink-4)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Pencil size={12} />
                             </button>
-                            <button onClick={() => handleDelete(expense.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.06)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <button onClick={() => handleDelete(expense.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--c-red2-6)', color: 'var(--c-red2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Trash2 size={12} />
                             </button>
                           </div>
@@ -530,7 +530,7 @@ export default function ExpensesTab({ tripId }) {
                       <button key={code} type="button" onClick={() => setCurrency(code)}
                         style={{
                           padding: '6px 14px', borderRadius: 20, border: 'none',
-                          background: currency === code ? 'var(--accent)' : 'rgba(11,11,48,0.06)',
+                          background: currency === code ? 'var(--accent)' : 'var(--ink-6)',
                           color: currency === code ? '#fff' : 'var(--primary)',
                           fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                         }}>
@@ -552,8 +552,8 @@ export default function ExpensesTab({ tripId }) {
 
                 {/* Inline currency list — no nested modal */}
                 {showCurrencyList && (
-                  <div style={{ marginTop: 8, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
-                    <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', position: 'sticky', top: 0, background: '#fff' }}>
+                  <div style={{ marginTop: 8, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', position: 'sticky', top: 0, background: 'var(--surface)' }}>
                       <div style={{ position: 'relative' }}>
                         <input
                           type="text"
@@ -610,13 +610,13 @@ export default function ExpensesTab({ tripId }) {
                     )}
                   </button>
                   {showPayerDropdown && payerUids.length > 1 && (
-                    <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: '#fff', border: '1px solid rgba(11,11,48,0.1)', borderRadius: 12, boxShadow: '0 8px 24px rgba(11,11,48,0.12)', overflow: 'hidden', marginTop: 4 }}>
+                    <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid rgba(11,11,48,0.1)', borderRadius: 12, boxShadow: '0 8px 24px rgba(11,11,48,0.12)', overflow: 'hidden', marginTop: 4 }}>
                       {payerUids.map(uid => {
                         const profile = getPayerProfile(uid);
                         return (
                           <button key={uid} type="button"
                             onClick={() => { setPaidBy(uid); setShowPayerDropdown(false); }}
-                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: uid === (paidBy || currentUid) ? 'rgba(79,70,229,0.06)' : 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: uid === (paidBy || currentUid) ? 'var(--p-6)' : 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
                           >
                             <MemberAvatar profile={profile} size={30} />
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -641,8 +641,8 @@ export default function ExpensesTab({ tripId }) {
               {/* ── Section A: link to planning item ─────────────────── */}
               <div style={{
                 padding: '14px', borderRadius: 14,
-                background: linkedPlanId ? 'rgba(79,70,229,0.06)' : 'rgba(79,70,229,0.03)',
-                border: `1.5px solid ${linkedPlanId ? 'rgba(79,70,229,0.22)' : 'rgba(79,70,229,0.12)'}`,
+                background: linkedPlanId ? 'var(--p-6)' : 'var(--p-3)',
+                border: `1.5px solid ${linkedPlanId ? 'var(--p-22)' : 'var(--p-12)'}`,
                 display: 'flex', flexDirection: 'column', gap: 10,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -655,7 +655,7 @@ export default function ExpensesTab({ tripId }) {
                   (() => {
                     const linked = plans.find(p => p.id === linkedPlanId);
                     return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.08)', borderRadius: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-8)', borderRadius: 10 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {linked?.title || linkedPlanId}
@@ -677,15 +677,15 @@ export default function ExpensesTab({ tripId }) {
                     <button type="button"
                       onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); }}
                       className="form-control"
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-muted)', background: '#fff' }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-muted)', background: 'var(--surface)' }}
                     >
                       <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מהרשימה...'}</span>
                       <ChevronDown size={15} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
                     </button>
 
                     {showPlanDropdown && (
-                      <div style={{ border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
-                        <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: '#fff' }}>
+                      <div style={{ border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
+                        <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: 'var(--surface)' }}>
                           <div style={{ position: 'relative' }}>
                             <input type="text" className="form-control"
                               placeholder="חפש אטרקציה, מסעדה..."
@@ -719,7 +719,7 @@ export default function ExpensesTab({ tripId }) {
                               style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
                             >
                               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'rgba(11,11,48,0.05)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'var(--ink-5)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
                             </button>
                           ))}
                         </div>
@@ -731,16 +731,16 @@ export default function ExpensesTab({ tripId }) {
 
               {/* ── OR separator ─────────────────────────────────────── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.08)' }} />
+                <div style={{ flex: 1, height: 1, background: 'var(--ink-8)' }} />
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1 }}>— או —</span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.08)' }} />
+                <div style={{ flex: 1, height: 1, background: 'var(--ink-8)' }} />
               </div>
 
               {/* ── Section B: manual entry ───────────────────────────── */}
               <div style={{
                 padding: '14px', borderRadius: 14,
-                background: (description.trim() || customPlace.trim()) ? 'rgba(11,11,48,0.04)' : 'rgba(11,11,48,0.02)',
-                border: `1.5px solid ${(description.trim() || customPlace.trim()) ? 'rgba(11,11,48,0.12)' : 'rgba(11,11,48,0.07)'}`,
+                background: (description.trim() || customPlace.trim()) ? 'var(--ink-4)' : 'var(--ink-2)',
+                border: `1.5px solid ${(description.trim() || customPlace.trim()) ? 'var(--ink-12)' : 'var(--ink-7)'}`,
                 display: 'flex', flexDirection: 'column', gap: 12,
                 opacity: linkedPlanId ? 0.5 : 1,
                 pointerEvents: linkedPlanId ? 'none' : 'auto',

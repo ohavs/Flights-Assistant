@@ -10,6 +10,7 @@ import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
+import { ThemeProvider, useTheme } from './ThemeContext';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
 import FlightTab, { defaultTrip } from './components/FlightTab';
@@ -23,7 +24,7 @@ import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet,
-  AlertTriangle, Upload, Archive, Loader2
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -1076,7 +1077,12 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
    MAIN APP
    ══════════════════════════════════════════════════════════ */
 export default function App() {
+  return <ThemeProvider><AppInner /></ThemeProvider>;
+}
+
+function AppInner() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
   const [selectedTripId, setSelectedTripId] = useState(null);
@@ -1523,18 +1529,33 @@ export default function App() {
             )}
             <h1 style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>עוזר טיסות</h1>
           </div>
-          <button
-            onClick={signOut}
-            style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: 'rgba(11,11,48,0.05)', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0
-            }}
-            title="התנתק"
-          >
-            <LogOut size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={toggleTheme}
+              style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: 'var(--ink-5)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0,
+                transition: 'color 0.2s ease, background 0.2s ease',
+              }}
+              title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
+              onClick={signOut}
+              style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: 'var(--ink-5)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0
+              }}
+              title="התנתק"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </header>
 
         <main className="app-content">
@@ -1673,7 +1694,7 @@ export default function App() {
             onClick={() => { setScreen('home'); setSelectedTripId(null); }}
             aria-label="חזרה"
             style={{
-              background: 'rgba(11,11,48,0.05)', border: 'none',
+              background: 'var(--ink-5)', border: 'none',
               width: 34, height: 34, borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: 'var(--primary)', flexShrink: 0
@@ -1708,14 +1729,19 @@ export default function App() {
               <Pencil size={15} />
             </button>
           )}
-          <div style={{
-            width: 34, height: 34, borderRadius: '50%',
-            background: 'rgba(11,11,48,0.05)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--primary)'
-          }}>
-            <Plane size={14} style={{ transform: 'rotate(-45deg)' }} />
-          </div>
+          <button
+            onClick={toggleTheme}
+            style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: 'var(--ink-5)', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'color 0.2s ease, background 0.2s ease',
+            }}
+            title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+          >
+            {isDark ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
         </div>
       </header>
 
