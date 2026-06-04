@@ -1521,18 +1521,12 @@ export default function PlanningTab({ tripId }) {
           )}
 
           {/* Filter chips row + sort button — sticky */}
-          <div className="filter-sticky-row" style={{
+          <div style={{
             position: 'sticky',
             top: 0,
             zIndex: 5,
-            marginRight: '-10px',
-            marginLeft: '-10px',
-            paddingRight: '10px',
-            paddingLeft: '10px',
             paddingTop: '8px',
             paddingBottom: '10px',
-            backdropFilter: 'blur(6px)',
-            WebkitBackdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             gap: 4,

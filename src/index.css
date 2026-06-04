@@ -1403,23 +1403,6 @@ input[type="datetime-local"].form-control {
   border-color: var(--accent);
 }
 
-/* ── Sticky filter chips row — theme-aware gradient backdrop ── */
-.filter-sticky-row {
-  background: linear-gradient(
-    180deg,
-    rgba(245,243,255,0.98) 0%,
-    rgba(245,243,255,0.92) 85%,
-    rgba(245,243,255,0) 100%
-  );
-}
-[data-theme="dark"] .filter-sticky-row {
-  background: linear-gradient(
-    180deg,
-    rgba(10,10,32,0.98) 0%,
-    rgba(10,10,32,0.92) 85%,
-    rgba(10,10,32,0) 100%
-  );
-}
 
 /* ── Event status highlights ── */
 .plan-card.event-today {
