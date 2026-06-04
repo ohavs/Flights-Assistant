@@ -100,6 +100,13 @@ const EVENTS_CATEGORY = 'אירועים';
 // grouped into the same area in the proximity-grouping view.
 const PROXIMITY_THRESHOLD_M = 800;
 
+// Local today date (YYYY-MM-DD) evaluated once on module load.
+// Used for event-status badges; stale by at most one day if tab is left open overnight.
+const todayISO = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
 // Great-circle distance between two {lat,lng} points, in metres.
 function haversineMeters(a, b) {
   const R = 6371000;
@@ -1510,7 +1517,7 @@ export default function PlanningTab({ tripId }) {
           )}
 
           {/* Filter chips row + sort button — sticky */}
-          <div style={{
+          <div className="filter-sticky-row" style={{
             position: 'sticky',
             top: 0,
             zIndex: 5,
@@ -1520,7 +1527,6 @@ export default function PlanningTab({ tripId }) {
             paddingLeft: '10px',
             paddingTop: '8px',
             paddingBottom: '10px',
-            background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
             backdropFilter: 'blur(6px)',
             WebkitBackdropFilter: 'blur(6px)',
             display: 'flex',
@@ -1718,6 +1724,15 @@ export default function PlanningTab({ tripId }) {
                 }
                 const isOpen = !!expandedPlanIds[plan.id];
 
+                // Event status badges (only for the events category)
+                const ev = plan.event;
+                const isEvent = plan.category === EVENTS_CATEGORY && ev?.startDate;
+                const isExpiredEvent = isEvent && (() => {
+                  const end = ev.endDate || ev.startDate;
+                  return todayISO > end;
+                })();
+                const isTodayEvent = isEvent && ev.startDate === todayISO;
+
                 const renderChip = (icon, text, isLink = false) => {
                   if (!text) return null;
                   const isUrl = /^https?:\/\//i.test(text);
@@ -1770,7 +1785,7 @@ export default function PlanningTab({ tripId }) {
                       if (node) itemRefs.current.set(plan.id, node);
                       else itemRefs.current.delete(plan.id);
                     }}
-                    className={`glass-card plan-card${plan.visited ? ' visited' : ''}`}
+                    className={`glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`}
                     onClick={() => togglePlanExpanded(plan.id)}
                     style={{
                       padding: '12px 14px',
@@ -1835,6 +1850,32 @@ export default function PlanningTab({ tripId }) {
                               textDecoration: 'none',
                               display: 'inline-block',
                             }}>נצפה</span>
+                          )}
+                          {isTodayEvent && !plan.visited && (
+                            <span style={{
+                              marginRight: 8,
+                              fontSize: 10, fontWeight: 900,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: 'var(--c-orange-12)',
+                              color: 'var(--c-orange)',
+                              verticalAlign: 'middle',
+                              textDecoration: 'none',
+                              display: 'inline-block',
+                            }}>✨ היום</span>
+                          )}
+                          {isExpiredEvent && !plan.visited && (
+                            <span style={{
+                              marginRight: 8,
+                              fontSize: 10, fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: 'var(--ink-8)',
+                              color: 'var(--text-muted)',
+                              verticalAlign: 'middle',
+                              textDecoration: 'none',
+                              display: 'inline-block',
+                            }}>נגמר</span>
                           )}
                         </h3>
                         <span style={{
@@ -2195,21 +2236,19 @@ export default function PlanningTab({ tripId }) {
                                 top: 28, 
                                 bottom: -12, 
                                 width: 2,
-                                background: 'rgba(11,11,48,0.06)', 
+                                background: 'var(--ink-6)',
                                 zIndex: 1
                               }} />
                             )}
                           </div>
 
                           {/* Activity Card */}
-                          <div className="glass-card" style={{ 
-                            flex: 1, 
-                            padding: '12px 14px', 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: 6, 
-                            background: 'rgba(255,255,255,0.7)', 
-                            border: '1px solid rgba(11,11,48,0.05)' 
+                          <div className="glass-card" style={{
+                            flex: 1,
+                            padding: '12px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 6,
                           }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                               <div style={{ minWidth: 0 }}>

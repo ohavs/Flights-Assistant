@@ -1279,3 +1279,66 @@ input[type="datetime-local"].form-control {
 .btn-add-circle:active {
   transform: scale(0.95);
 }
+
+/* ── Dark-mode button overrides ──
+   In dark mode --primary is a LIGHT colour (#c7d2fe) — fine for text, but
+   too bright when used as a button background. Swap to --accent (#818cf8)
+   for all button backgrounds that normally derive from --primary.           */
+[data-theme="dark"] .btn-primary {
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgba(129,140,248,0.25);
+}
+[data-theme="dark"] .btn-add-circle {
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgba(129,140,248,0.25);
+}
+[data-theme="dark"] .filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px rgba(129,140,248,0.30);
+}
+[data-theme="dark"] .btn-tab-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+[data-theme="dark"] .custom-checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Sticky filter chips row — theme-aware gradient backdrop ── */
+.filter-sticky-row {
+  background: linear-gradient(
+    180deg,
+    rgba(245,243,255,0.98) 0%,
+    rgba(245,243,255,0.92) 85%,
+    rgba(245,243,255,0) 100%
+  );
+}
+[data-theme="dark"] .filter-sticky-row {
+  background: linear-gradient(
+    180deg,
+    rgba(10,10,32,0.98) 0%,
+    rgba(10,10,32,0.92) 85%,
+    rgba(10,10,32,0) 100%
+  );
+}
+
+/* ── Event status highlights ── */
+.plan-card.event-today {
+  border-right: 4px solid var(--c-orange) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(245,158,11,0.10),
+    rgba(245,158,11,0.03)
+  ) !important;
+  box-shadow: 0 4px 16px rgba(245,158,11,0.18) !important;
+}
+[data-theme="dark"] .plan-card.event-today {
+  background: linear-gradient(
+    135deg,
+    rgba(251,191,36,0.12),
+    rgba(251,191,36,0.04)
+  ) !important;
+  box-shadow: 0 4px 16px rgba(251,191,36,0.15) !important;
+}

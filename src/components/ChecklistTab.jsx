@@ -182,11 +182,11 @@ function RemindersCard({ tripId, canEdit }) {
           />
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <button onClick={handleSave}
-              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'var(--primary-color)', color: '#fff' }}>
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'var(--accent)', color: '#fff' }}>
               <Check size={15} />
             </button>
             <button onClick={() => { setMode(null); setEditId(null); }}
-              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'rgba(11,11,48,0.07)', color: 'var(--text-muted)' }}>
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'var(--ink-7)', color: 'var(--text-muted)' }}>
               <X size={15} />
             </button>
           </div>
@@ -204,7 +204,7 @@ function RemindersCard({ tripId, canEdit }) {
           </div>
           {allMembers.map(m => (
             <button key={m.uid} onClick={() => handlePickUser(userPickRemId, m)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'right' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'var(--ink-4)', border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'right' }}>
               <Avatar photoURL={m.photoURL} name={m.displayName} size={30} />
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>{m.displayName}</span>
             </button>
@@ -253,8 +253,8 @@ function RemindersCard({ tripId, canEdit }) {
                   {n > 1 && (
                     <span style={{
                       fontSize: 10, fontWeight: 700,
-                      background: 'rgba(79,70,229,0.10)', color: 'var(--accent)',
-                      border: '1px solid rgba(79,70,229,0.18)',
+                      background: 'var(--p-10)', color: 'var(--accent)',
+                      border: '1px solid var(--p-18)',
                       borderRadius: 20, padding: '1px 7px',
                     }}>
                       {idx + 1} / {n}
@@ -304,7 +304,7 @@ function RemindersCard({ tripId, canEdit }) {
                       <button key={j} onClick={() => goTo(j)} style={{
                         width: j === idx ? 18 : 6, height: 6, borderRadius: 3,
                         border: 'none', padding: 0, flexShrink: 0,
-                        background: j === idx ? 'var(--accent)' : 'rgba(79,70,229,0.15)',
+                        background: j === idx ? 'var(--accent)' : 'var(--p-15)',
                         cursor: 'pointer', transition: 'all 0.25s ease',
                       }} />
                     ))}
@@ -330,9 +330,9 @@ function RemindersCard({ tripId, canEdit }) {
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%', maxWidth: 520,
-              background: 'var(--bg-card, #f8f8ff)',
+              background: 'var(--modal-bg)',
               borderRadius: '24px 24px 0 0',
-              boxShadow: '0 -8px 48px rgba(11,11,48,0.22)',
+              boxShadow: 'var(--shadow-lg)',
               display: 'flex', flexDirection: 'column',
               maxHeight: 'calc(75vh - 64px)',
               overflow: 'hidden',
@@ -340,34 +340,34 @@ function RemindersCard({ tripId, canEdit }) {
           >
             {/* Drag handle pill */}
             <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(11,11,48,0.12)' }} />
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-12)' }} />
             </div>
 
             {/* Header */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               padding: '12px 20px 14px',
-              borderBottom: '1px solid rgba(11,11,48,0.07)',
+              borderBottom: '1px solid var(--ink-7)',
               flexShrink: 0,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>כל התזכורות</span>
                 <span style={{
-                  fontSize: 11, fontWeight: 700, background: 'rgba(79,70,229,0.10)',
-                  color: 'var(--accent)', border: '1px solid rgba(79,70,229,0.18)',
+                  fontSize: 11, fontWeight: 700, background: 'var(--p-10)',
+                  color: 'var(--accent)', border: '1px solid var(--p-18)',
                   borderRadius: 20, padding: '1px 8px',
                 }}>{reminders.length}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {checkedIds.size > 0 && (
                   <button onClick={() => setCheckedIds(new Set())} style={{
-                    fontSize: 12, color: 'var(--accent)', background: 'rgba(79,70,229,0.08)',
-                    border: '1px solid rgba(79,70,229,0.15)', borderRadius: 20,
+                    fontSize: 12, color: 'var(--accent)', background: 'var(--p-8)',
+                    border: '1px solid var(--p-15)', borderRadius: 20,
                     cursor: 'pointer', padding: '3px 10px', fontWeight: 600,
                   }}>נקה ({checkedIds.size})</button>
                 )}
                 <button onClick={() => setShowAll(false)} style={{
-                  background: 'rgba(11,11,48,0.06)', border: 'none', cursor: 'pointer',
+                  background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
                   color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
                 }}>
                   <X size={16} />
@@ -392,7 +392,7 @@ function RemindersCard({ tripId, canEdit }) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 14,
                       padding: '13px 10px', borderRadius: 14,
-                      background: checked ? 'rgba(79,70,229,0.07)' : ri % 2 === 0 ? 'transparent' : 'rgba(11,11,48,0.02)',
+                      background: checked ? 'var(--p-8)' : ri % 2 === 0 ? 'transparent' : 'var(--ink-2)',
                       border: 'none', cursor: 'pointer', textAlign: 'right', width: '100%',
                       transition: 'background 0.15s',
                     }}
