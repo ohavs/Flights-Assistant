@@ -1532,7 +1532,7 @@ export default function PlanningTab({ tripId }) {
             gap: 4,
           }}>
             {/* Scrollable chips */}
-            <div className="horizontal-scroll filter-chips-row" style={{ flex: 1, gap: 10 }}>
+            <div className="horizontal-scroll filter-chips-row" style={{ flex: 1, gap: 10, paddingBottom: 0 }}>
               {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
                 const active = filter === selectedFilter;
                 const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
