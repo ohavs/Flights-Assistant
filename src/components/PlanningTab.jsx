@@ -62,6 +62,7 @@ import {
   Check,
   Layers,
   RefreshCw,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -1573,112 +1574,169 @@ export default function PlanningTab({ tripId }) {
               )}
             </div>
 
-            {/* Bulk distance calculation — fetch + persist all travel times once */}
-            {hasGmapsKey() && (
-              <button
-                onClick={handleCalculateAll}
-                disabled={!!bulkCalc}
-                title="חשב ושמור את כל זמני ההגעה (פעם אחת)"
-                className="filter-chip"
-                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'var(--ink-5)' }}
-              >
-                {bulkCalc ? (
-                  <>
-                    <Loader2 size={13} className="spinning" />
-                    <span style={{ fontSize: 11 }}>{bulkCalc.done}/{bulkCalc.total}</span>
-                  </>
-                ) : (
-                  <RefreshCw size={13} />
-                )}
-              </button>
-            )}
+            {/* Single options button — sort / view / distance, all in one menu
+                so the chips keep their full width. */}
+            {(() => {
+              const optionsActive = sortBy !== 'default' || groupByProximity;
+              return (
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <button
+                    onClick={() => setShowSortMenu(s => !s)}
+                    title="מיון ותצוגה"
+                    className="filter-chip"
+                    style={{
+                      gap: 4,
+                      color: optionsActive ? '#fff' : 'var(--text-muted)',
+                      background: optionsActive ? 'var(--accent)' : 'var(--ink-5)',
+                      borderColor: optionsActive ? 'var(--accent)' : undefined,
+                    }}
+                  >
+                    {bulkCalc ? (
+                      <>
+                        <Loader2 size={14} className="spinning" />
+                        <span style={{ fontSize: 11 }}>{bulkCalc.done}/{bulkCalc.total}</span>
+                      </>
+                    ) : (
+                      <SlidersHorizontal size={14} />
+                    )}
+                  </button>
 
-            {/* Proximity grouping toggle */}
-            {hasGmapsKey() && (
-              <button
-                onClick={() => setGroupByProximity(g => !g)}
-                title="קבץ מקומות קרובים גאוגרפית"
-                className="filter-chip"
-                style={{
-                  flexShrink: 0, gap: 4,
-                  color: groupByProximity ? '#fff' : 'var(--text-muted)',
-                  background: groupByProximity ? 'var(--accent)' : 'var(--ink-5)',
-                  borderColor: groupByProximity ? 'var(--accent)' : undefined,
-                }}
-              >
-                <Layers size={13} />
-              </button>
-            )}
+                  {showSortMenu && (
+                    <>
+                      <div
+                        style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                        onClick={() => setShowSortMenu(false)}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        left: 0,
+                        zIndex: 50,
+                        background: 'var(--surface)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 14,
+                        boxShadow: 'var(--shadow-lg)',
+                        overflow: 'hidden',
+                        width: 250,
+                        maxWidth: 'calc(100vw - 32px)',
+                        direction: 'rtl',
+                      }}>
+                        {/* — Sort section — */}
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>מיון</div>
+                        {[
+                          { key: 'default',      label: 'ברירת מחדל' },
+                          { key: 'walk-asc',     label: '🚶 הליכה — מהקרוב לרחוק' },
+                          { key: 'walk-desc',    label: '🚶 הליכה — מהרחוק לקרוב' },
+                          { key: 'transit-asc',  label: '🚌 תחבורה — מהקרוב לרחוק' },
+                          { key: 'transit-desc', label: '🚌 תחבורה — מהרחוק לקרוב' },
+                        ].map(opt => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '10px 14px',
+                              border: 'none',
+                              background: sortBy === opt.key ? 'var(--p-6)' : 'var(--surface)',
+                              color: sortBy === opt.key ? 'var(--accent)' : 'var(--primary)',
+                              cursor: 'pointer',
+                              fontFamily: 'var(--font-hebrew)',
+                              fontSize: 13,
+                              fontWeight: 700,
+                              borderBottom: '1px solid var(--ink-4)',
+                              textAlign: 'right',
+                            }}
+                          >
+                            <span>{opt.label}</span>
+                            {sortBy === opt.key && <Check size={13} />}
+                          </button>
+                        ))}
 
-            {/* Sort button — outside scrollable area so dropdown isn't clipped */}
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <button
-                onClick={() => setShowSortMenu(s => !s)}
-                title="מיין לפי זמני הגעה"
-                className="filter-chip"
-                style={{
-                  gap: 4,
-                  color: sortBy !== 'default' ? '#fff' : 'var(--text-muted)',
-                  background: sortBy !== 'default' ? 'var(--accent)' : 'var(--ink-5)',
-                  borderColor: sortBy !== 'default' ? 'var(--accent)' : undefined,
-                }}
-              >
-                <ArrowUpDown size={13} />
-              </button>
-              {showSortMenu && (
-                <>
-                  <div
-                    style={{ position: 'fixed', inset: 0, zIndex: 49 }}
-                    onClick={() => setShowSortMenu(false)}
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 6px)',
-                    right: 0,
-                    zIndex: 50,
-                    background: 'var(--surface)',
-                    border: '1.5px solid var(--p-12)',
-                    borderRadius: 14,
-                    boxShadow: 'var(--shadow-lg)',
-                    overflow: 'hidden',
-                    minWidth: 230,
-                  }}>
-                    {[
-                      { key: 'default',      label: 'ברירת מחדל' },
-                      { key: 'walk-asc',     label: '🚶 הליכה — מהקרוב לרחוק' },
-                      { key: 'walk-desc',    label: '🚶 הליכה — מהרחוק לקרוב' },
-                      { key: 'transit-asc',  label: '🚌 תחבורה — מהקרוב לרחוק' },
-                      { key: 'transit-desc', label: '🚌 תחבורה — מהרחוק לקרוב' },
-                    ].map(opt => (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '11px 14px',
-                          border: 'none',
-                          background: sortBy === opt.key ? 'var(--p-6)' : 'var(--surface)',
-                          color: sortBy === opt.key ? 'var(--accent)' : 'var(--primary)',
-                          cursor: 'pointer',
-                          fontFamily: 'var(--font-hebrew)',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          borderBottom: '1px solid var(--ink-4)',
-                          textAlign: 'right',
-                        }}
-                      >
-                        <span>{opt.label}</span>
-                        {sortBy === opt.key && <Check size={13} />}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+                        {/* — View / distance section (needs Maps key) — */}
+                        {hasGmapsKey() && (
+                          <>
+                            <div style={{
+                              padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                              color: 'var(--text-muted)', letterSpacing: '0.4px',
+                              background: 'var(--ink-3)',
+                            }}>תצוגה</div>
+
+                            {/* Proximity grouping toggle row */}
+                            <button
+                              type="button"
+                              onClick={() => setGroupByProximity(g => !g)}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center',
+                                justifyContent: 'space-between', gap: 8,
+                                padding: '10px 14px', border: 'none',
+                                background: 'var(--surface)', cursor: 'pointer',
+                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                color: 'var(--primary)', textAlign: 'right',
+                                borderBottom: '1px solid var(--ink-4)',
+                              }}
+                            >
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Layers size={14} style={{ color: 'var(--accent)' }} />
+                                קבץ לפי איזורים
+                              </span>
+                              {/* mini switch */}
+                              <span style={{
+                                width: 36, height: 20, borderRadius: 999, flexShrink: 0,
+                                background: groupByProximity ? 'var(--accent)' : 'var(--ink-15)',
+                                position: 'relative', transition: 'background 0.2s ease',
+                              }}>
+                                <span style={{
+                                  position: 'absolute', top: 2,
+                                  right: groupByProximity ? 2 : 18,
+                                  width: 16, height: 16, borderRadius: '50%',
+                                  background: '#fff', transition: 'right 0.2s ease',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                }} />
+                              </span>
+                            </button>
+
+                            {/* Bulk distance calculation */}
+                            <button
+                              type="button"
+                              onClick={handleCalculateAll}
+                              disabled={!!bulkCalc}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center',
+                                gap: 8, padding: '10px 14px', border: 'none',
+                                background: 'var(--surface)',
+                                cursor: bulkCalc ? 'default' : 'pointer',
+                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                color: 'var(--accent)', textAlign: 'right',
+                              }}
+                            >
+                              {bulkCalc ? (
+                                <>
+                                  <Loader2 size={14} className="spinning" />
+                                  <span>מחשב… {bulkCalc.done}/{bulkCalc.total}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw size={14} />
+                                  <span>חשב ושמור מרחקים</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Hint when grouping is on but some places aren't located yet */}
@@ -1691,9 +1749,9 @@ export default function PlanningTab({ tripId }) {
             }}>
               <MapPin size={14} style={{ flexShrink: 0 }} />
               <span>
-                {locatedCount} מתוך {filteredPlans.length} מקומות מוקמו. לחץ על
-                <RefreshCw size={12} style={{ verticalAlign: 'middle', margin: '0 4px' }} />
-                כדי למקם ולקבץ את כל המקומות.
+                {locatedCount} מתוך {filteredPlans.length} מקומות מוקמו. פתח את
+                <SlidersHorizontal size={12} style={{ verticalAlign: 'middle', margin: '0 4px' }} />
+                ולחץ "חשב ושמור מרחקים" כדי למקם ולקבץ את כולם.
               </span>
             </div>
           )}
