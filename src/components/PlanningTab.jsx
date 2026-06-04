@@ -317,6 +317,7 @@ export default function PlanningTab({ tripId }) {
   const [newCatName, setNewCatName] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const optionsBtnRef = useRef(null);
   // Proximity grouping view + bulk distance calculation
   const [groupByProximity, setGroupByProximity] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
@@ -1574,18 +1575,24 @@ export default function PlanningTab({ tripId }) {
               )}
             </div>
 
-            {/* Single options button — sort / view / distance, all in one menu
-                so the chips keep their full width. */}
+            {/* Single options button — no wrapper div (backdrop-filter parent
+                causes positioned wrapper divs to get implicit solid bg).
+                Dropdown uses position:fixed anchored via getBoundingClientRect. */}
             {(() => {
               const optionsActive = sortBy !== 'default' || groupByProximity;
+              const openMenu = () => {
+                setShowSortMenu(s => !s);
+              };
+              const rect = showSortMenu ? optionsBtnRef.current?.getBoundingClientRect() : null;
               return (
-                <div style={{ position: 'relative', flexShrink: 0 }}>
+                <>
                   <button
-                    onClick={() => setShowSortMenu(s => !s)}
+                    ref={optionsBtnRef}
+                    onClick={openMenu}
                     title="מיון ותצוגה"
                     className="filter-chip"
                     style={{
-                      gap: 4,
+                      flexShrink: 0, gap: 4,
                       color: optionsActive ? '#fff' : 'var(--text-muted)',
                       background: optionsActive ? 'var(--accent)' : 'var(--ink-5)',
                       borderColor: optionsActive ? 'var(--accent)' : undefined,
@@ -1603,14 +1610,11 @@ export default function PlanningTab({ tripId }) {
 
                   {showSortMenu && (
                     <>
-                      <div
-                        style={{ position: 'fixed', inset: 0, zIndex: 49 }}
-                        onClick={() => setShowSortMenu(false)}
-                      />
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowSortMenu(false)} />
                       <div style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 6px)',
-                        left: 0,
+                        position: 'fixed',
+                        top: rect ? rect.bottom + 6 : 120,
+                        left: rect ? Math.max(8, rect.left) : 8,
                         zIndex: 50,
                         background: 'var(--surface)',
                         border: '1.5px solid var(--p-12)',
@@ -1618,7 +1622,7 @@ export default function PlanningTab({ tripId }) {
                         boxShadow: 'var(--shadow-lg)',
                         overflow: 'hidden',
                         width: 250,
-                        maxWidth: 'calc(100vw - 32px)',
+                        maxWidth: 'calc(100vw - 16px)',
                         direction: 'rtl',
                       }}>
                         {/* — Sort section — */}
@@ -1639,20 +1643,14 @@ export default function PlanningTab({ tripId }) {
                             type="button"
                             onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
                             style={{
-                              width: '100%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '10px 14px',
+                              width: '100%', display: 'flex', alignItems: 'center',
+                              justifyContent: 'space-between', padding: '10px 14px',
                               border: 'none',
                               background: sortBy === opt.key ? 'var(--p-6)' : 'var(--surface)',
                               color: sortBy === opt.key ? 'var(--accent)' : 'var(--primary)',
-                              cursor: 'pointer',
-                              fontFamily: 'var(--font-hebrew)',
-                              fontSize: 13,
-                              fontWeight: 700,
-                              borderBottom: '1px solid var(--ink-4)',
-                              textAlign: 'right',
+                              cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                              fontSize: 13, fontWeight: 700,
+                              borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
                             }}
                           >
                             <span>{opt.label}</span>
@@ -1669,7 +1667,6 @@ export default function PlanningTab({ tripId }) {
                               background: 'var(--ink-3)',
                             }}>תצוגה</div>
 
-                            {/* Proximity grouping toggle row */}
                             <button
                               type="button"
                               onClick={() => setGroupByProximity(g => !g)}
@@ -1687,7 +1684,6 @@ export default function PlanningTab({ tripId }) {
                                 <Layers size={14} style={{ color: 'var(--accent)' }} />
                                 קבץ לפי איזורים
                               </span>
-                              {/* mini switch */}
                               <span style={{
                                 width: 36, height: 20, borderRadius: 999, flexShrink: 0,
                                 background: groupByProximity ? 'var(--accent)' : 'var(--ink-15)',
@@ -1703,7 +1699,6 @@ export default function PlanningTab({ tripId }) {
                               </span>
                             </button>
 
-                            {/* Bulk distance calculation */}
                             <button
                               type="button"
                               onClick={handleCalculateAll}
@@ -1734,7 +1729,7 @@ export default function PlanningTab({ tripId }) {
                       </div>
                     </>
                   )}
-                </div>
+                </>
               );
             })()}
           </div>
