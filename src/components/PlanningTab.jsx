@@ -35,7 +35,6 @@ import {
   Train,
   Info,
   CheckCircle2,
-  Check,
   Pencil,
   ArrowUp,
   ArrowDown,
@@ -58,6 +57,8 @@ import {
   Tent,
   Navigation,
   GripVertical,
+  ArrowUpDown,
+  Check,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -257,6 +258,10 @@ export default function PlanningTab({ tripId }) {
   // Category customisation (icon + color), synced with Firestore
   const [categorySettings, setCategorySettings] = useState({});
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [addingCatInSettings, setAddingCatInSettings] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   // Locations modal: when a card has multiple navigation targets
   const [locationsModal, setLocationsModal] = useState(null);
@@ -295,11 +300,10 @@ export default function PlanningTab({ tripId }) {
     'תחבורה ציבורית',
     'מידע כללי וטיפים'
   ];
-  // Derive the full category list from defaults + anything already used
-  // by existing plans / day activities so that custom categories added
-  // via the dropdown's "+" affordance persist across sessions.
+  // Derive the full category list: defaults + custom (saved in Firestore settings) + anything used
   const categories = Array.from(new Set([
     ...defaultCategoryNames,
+    ...Object.keys(categorySettings), // custom categories saved via settings
     ...plans.map(p => p.category).filter(Boolean),
     ...days.flatMap(d => (d.activities || []).map(a => a.category).filter(Boolean)),
   ]));
@@ -376,6 +380,17 @@ export default function PlanningTab({ tripId }) {
     });
     return () => unsubscribe();
   }, [tripId]);
+
+  // Persist sort preference per trip
+  useEffect(() => {
+    if (!tripId) return;
+    const saved = localStorage.getItem(`sortBy_${tripId}`);
+    if (saved) setSortBy(saved);
+  }, [tripId]);
+
+  useEffect(() => {
+    if (tripId) localStorage.setItem(`sortBy_${tripId}`, sortBy);
+  }, [sortBy, tripId]);
 
   /* ══════════════════════════════════════════════════════════
      DISTANCE HELPERS
@@ -612,17 +627,37 @@ export default function PlanningTab({ tripId }) {
     return locs;
   };
 
-  // Filter plans + sort visited ones to the bottom
+  const parseDurationMins = (str) => {
+    if (!str) return Infinity;
+    const h = Number((str.match(/(\d+)\s*שע'/) || [0, 0])[1]);
+    const m = Number((str.match(/(\d+)\s*דק'/) || [0, 0])[1]);
+    return h * 60 + m || Infinity;
+  };
+
+  // Filter plans + sort
   const filteredPlans = plans
     .filter(plan => {
       const matchesCategory = selectedFilter === 'הכל' || plan.category === selectedFilter;
       const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            plan.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            plan.address.toLowerCase().includes(searchQuery.toLowerCase());
+                            (plan.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (plan.address || '').toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     })
     .sort((a, b) => {
-      // Visited items always go to the bottom of the list.
+      if (sortBy !== 'default') {
+        const getTime = (plan, type) => {
+          const originId = plan.distanceOriginId || 'hotel';
+          const cache = distanceCache[`${plan.id}_${originId}`];
+          if (!cache) return Infinity;
+          const dur = type === 'walk' ? cache.walk?.duration : cache.transit?.duration;
+          return parseDurationMins(dur);
+        };
+        if (sortBy === 'walk-asc')     return getTime(a, 'walk')    - getTime(b, 'walk');
+        if (sortBy === 'walk-desc')    return getTime(b, 'walk')    - getTime(a, 'walk');
+        if (sortBy === 'transit-asc')  return getTime(a, 'transit') - getTime(b, 'transit');
+        if (sortBy === 'transit-desc') return getTime(b, 'transit') - getTime(a, 'transit');
+      }
+      // Default: visited items sink to the bottom
       if (!!a.visited === !!b.visited) return 0;
       return a.visited ? 1 : -1;
     });
@@ -936,7 +971,7 @@ export default function PlanningTab({ tripId }) {
       {/* Sub-tab Selector */}
       <div style={{ 
         display: 'flex', 
-        background: 'rgba(11, 11, 48, 0.05)', 
+        background: 'var(--ink-5)',
         borderRadius: 'var(--radius-md)', 
         padding: 4, 
         gap: 4 
@@ -955,7 +990,7 @@ export default function PlanningTab({ tripId }) {
             fontSize: 14,
             fontWeight: 800,
             cursor: 'pointer',
-            background: subTab === 'pool' ? '#fff' : 'transparent',
+            background: subTab === 'pool' ? 'var(--surface)' : 'transparent',
             color: subTab === 'pool' ? 'var(--primary)' : 'var(--text-muted)',
             boxShadow: subTab === 'pool' ? 'var(--shadow-sm)' : 'none',
             transition: 'all 0.2s ease'
@@ -978,7 +1013,7 @@ export default function PlanningTab({ tripId }) {
             fontSize: 14,
             fontWeight: 800,
             cursor: 'pointer',
-            background: subTab === 'daily' ? '#fff' : 'transparent',
+            background: subTab === 'daily' ? 'var(--surface)' : 'transparent',
             color: subTab === 'daily' ? 'var(--primary)' : 'var(--text-muted)',
             boxShadow: subTab === 'daily' ? 'var(--shadow-sm)' : 'none',
             transition: 'all 0.2s ease'
@@ -1048,6 +1083,11 @@ export default function PlanningTab({ tripId }) {
                     options={categories}
                     addable
                     addLabel="הוסף קטגוריה חדשה"
+                    onCommit={(newCat) => {
+                      const updated = { ...categorySettings, [newCat]: {} };
+                      setCategorySettings(updated);
+                      saveCategorySettings(updated);
+                    }}
                   />
 
                   <div className="form-group">
@@ -1067,7 +1107,7 @@ export default function PlanningTab({ tripId }) {
                     {links.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                         {links.map((link, idx) => (
-                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.06)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(79,70,229,0.12)' }}>
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1px solid var(--p-12)' }}>
                             <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.label}</div>
@@ -1121,7 +1161,7 @@ export default function PlanningTab({ tripId }) {
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             padding: '10px 14px', borderRadius: 'var(--radius-md)',
-                            border: '1.5px solid rgba(79,70,229,0.25)', background: 'rgba(79,70,229,0.04)',
+                            border: '1.5px solid rgba(79,70,229,0.25)', background: 'var(--p-4)',
                             cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
                             color: 'var(--primary)',
                           }}
@@ -1138,7 +1178,7 @@ export default function PlanningTab({ tripId }) {
                         {originDropOpen && (
                           <div style={{
                             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
-                            background: '#fff', border: '1.5px solid rgba(79,70,229,0.15)', borderRadius: 'var(--radius-md)',
+                            background: 'var(--surface)', border: '1.5px solid rgba(79,70,229,0.15)', borderRadius: 'var(--radius-md)',
                             boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
                           }}>
                             {/* Hotel option */}
@@ -1147,10 +1187,10 @@ export default function PlanningTab({ tripId }) {
                               onClick={() => { setFormOriginId('hotel'); setOriginDropOpen(false); }}
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '11px 14px', border: 'none', background: formOriginId === 'hotel' ? 'rgba(79,70,229,0.08)' : '#fff',
+                                padding: '11px 14px', border: 'none', background: formOriginId === 'hotel' ? 'var(--p-8)' : 'var(--surface)',
                                 cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
                                 color: formOriginId === 'hotel' ? 'var(--accent)' : 'var(--primary)',
-                                borderBottom: '1px solid rgba(11,11,48,0.06)',
+                                borderBottom: '1px solid var(--ink-6)',
                               }}
                             >
                               <Hotel size={15} style={{ flexShrink: 0 }} />
@@ -1162,13 +1202,13 @@ export default function PlanningTab({ tripId }) {
 
                             {/* Custom origins */}
                             {distanceOrigins.map(origin => (
-                              <div key={origin.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(11,11,48,0.04)' }}>
+                              <div key={origin.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--ink-4)' }}>
                                 <button
                                   type="button"
                                   onClick={() => { setFormOriginId(origin.id); setOriginDropOpen(false); }}
                                   style={{
                                     flex: 1, display: 'flex', alignItems: 'center', gap: 10,
-                                    padding: '11px 14px', border: 'none', background: formOriginId === origin.id ? 'rgba(79,70,229,0.08)' : '#fff',
+                                    padding: '11px 14px', border: 'none', background: formOriginId === origin.id ? 'var(--p-8)' : 'var(--surface)',
                                     cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
                                     color: formOriginId === origin.id ? 'var(--accent)' : 'var(--primary)',
                                   }}
@@ -1195,7 +1235,7 @@ export default function PlanningTab({ tripId }) {
                                 onClick={() => setShowAddOriginForm(true)}
                                 style={{
                                   width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                                  padding: '10px 14px', border: 'none', background: '#fff',
+                                  padding: '10px 14px', border: 'none', background: 'var(--surface)',
                                   cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
                                   color: 'var(--accent)',
                                 }}
@@ -1204,7 +1244,7 @@ export default function PlanningTab({ tripId }) {
                                 <span>הוסף מיקום...</span>
                               </button>
                             ) : (
-                              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'rgba(79,70,229,0.03)' }}>
+                              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--p-3)' }}>
                                 <input
                                   type="text"
                                   className="form-control"
@@ -1255,59 +1295,131 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Filter chips row — only categories that have at least one plan item */}
-          <div
-            className="horizontal-scroll filter-chips-row"
-            style={{
-              marginRight: '-10px',
-              marginLeft: '-10px',
-              paddingRight: '10px',
-              paddingLeft: '10px',
-              paddingTop: '8px',
-              paddingBottom: '10px',
-              position: 'sticky',
-              top: 0,
-              zIndex: 5,
-              gap: 10,
-              background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
-              backdropFilter: 'blur(6px)',
-              WebkitBackdropFilter: 'blur(6px)'
-            }}
-          >
-            {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
-              const active = filter === selectedFilter;
-              const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
-              return (
+          {/* Filter chips row + sort button — sticky */}
+          <div style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 5,
+            marginRight: '-10px',
+            marginLeft: '-10px',
+            paddingRight: '10px',
+            paddingLeft: '10px',
+            paddingTop: '8px',
+            paddingBottom: '10px',
+            background: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(245,243,255,0.92) 85%, rgba(245,243,255,0) 100%)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}>
+            {/* Scrollable chips */}
+            <div className="horizontal-scroll filter-chips-row" style={{ flex: 1, gap: 10 }}>
+              {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
+                const active = filter === selectedFilter;
+                const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedFilter(filter)}
+                    className={`filter-chip ${active ? 'active' : ''}`}
+                    style={active && filter !== 'הכל' ? {
+                      background: color,
+                      borderColor: color,
+                      color: '#fff',
+                    } : {}}
+                  >
+                    {filter !== 'הכל' && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
+                        {getCategoryIcon(filter, 14)}
+                      </span>
+                    )}
+                    <span>{filter}</span>
+                  </button>
+                );
+              })}
+              {/* Settings button inside scrollable row */}
+              {canEdit && (
                 <button
-                  key={idx}
-                  onClick={() => setSelectedFilter(filter)}
-                  className={`filter-chip ${active ? 'active' : ''}`}
-                  style={active && filter !== 'הכל' ? {
-                    background: color,
-                    borderColor: color,
-                    color: '#fff',
-                  } : {}}
+                  onClick={() => setShowCategorySettings(true)}
+                  title="הגדרות קטגוריות"
+                  className="filter-chip"
+                  style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'var(--ink-5)' }}
                 >
-                  {filter !== 'הכל' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
-                      {getCategoryIcon(filter, 14)}
-                    </span>
-                  )}
-                  <span>{filter}</span>
+                  <Settings size={13} />
                 </button>
-              );
-            })}
-            {/* Settings button as last chip in the scrollable row */}
-            {canEdit && (
+              )}
+            </div>
+
+            {/* Sort button — outside scrollable area so dropdown isn't clipped */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
               <button
-                onClick={() => setShowCategorySettings(true)}
-                title="הגדרות קטגוריות"
+                onClick={() => setShowSortMenu(s => !s)}
+                title="מיין לפי זמני הגעה"
                 className="filter-chip"
-                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'rgba(11,11,48,0.05)' }}
+                style={{
+                  gap: 4,
+                  color: sortBy !== 'default' ? '#fff' : 'var(--text-muted)',
+                  background: sortBy !== 'default' ? 'var(--accent)' : 'var(--ink-5)',
+                  borderColor: sortBy !== 'default' ? 'var(--accent)' : undefined,
+                }}
               >
-                <Settings size={13} />
+                <ArrowUpDown size={13} />
               </button>
-            )}
+              {showSortMenu && (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                    onClick={() => setShowSortMenu(false)}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    right: 0,
+                    zIndex: 50,
+                    background: 'var(--surface)',
+                    border: '1.5px solid var(--p-12)',
+                    borderRadius: 14,
+                    boxShadow: 'var(--shadow-lg)',
+                    overflow: 'hidden',
+                    minWidth: 230,
+                  }}>
+                    {[
+                      { key: 'default',      label: 'ברירת מחדל' },
+                      { key: 'walk-asc',     label: '🚶 הליכה — מהיר לאיטי' },
+                      { key: 'walk-desc',    label: '🚶 הליכה — איטי למהיר' },
+                      { key: 'transit-asc',  label: '🚌 תחבורה — מהיר לאיטי' },
+                      { key: 'transit-desc', label: '🚌 תחבורה — איטי למהיר' },
+                    ].map(opt => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '11px 14px',
+                          border: 'none',
+                          background: sortBy === opt.key ? 'var(--p-6)' : 'var(--surface)',
+                          color: sortBy === opt.key ? 'var(--accent)' : 'var(--primary)',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--font-hebrew)',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          borderBottom: '1px solid var(--ink-4)',
+                          textAlign: 'right',
+                        }}
+                      >
+                        <span>{opt.label}</span>
+                        {sortBy === opt.key && <Check size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Planning Cards List */}
@@ -1330,13 +1442,13 @@ export default function PlanningTab({ tripId }) {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
-                      background: 'rgba(11, 11, 48, 0.04)',
+                      background: 'var(--ink-4)',
                       padding: '5px 10px',
                       borderRadius: '10px',
                       fontSize: '12px',
                       fontWeight: '700',
                       color: 'var(--text-muted)',
-                      border: '1px solid rgba(11,11,48,0.02)',
+                      border: '1px solid var(--ink-2)',
                       maxWidth: '100%',
                       boxSizing: 'border-box'
                     }}>
@@ -1498,7 +1610,7 @@ export default function PlanningTab({ tripId }) {
                             onClick={() => handleStartEdit(plan)}
                             style={{
                               width: '40px', height: '40px', borderRadius: '50%',
-                              background: 'rgba(11, 11, 48, 0.04)', border: 'none',
+                              background: 'var(--ink-4)', border: 'none',
                               color: 'var(--text-muted)',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               cursor: 'pointer'
@@ -1512,8 +1624,8 @@ export default function PlanningTab({ tripId }) {
                             onClick={() => handleDelete(plan.id)}
                             style={{
                               width: '40px', height: '40px', borderRadius: '50%',
-                              background: 'rgba(239, 68, 68, 0.06)', border: 'none',
-                              color: 'rgb(239, 68, 68)',
+                              background: 'var(--c-red2-6)', border: 'none',
+                              color: 'var(--c-red2)',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               cursor: 'pointer'
                             }}
@@ -1525,7 +1637,7 @@ export default function PlanningTab({ tripId }) {
                         )}
 
                         {plan.description && (
-                          <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
+                          <p style={{ fontSize: '14px', color: 'var(--c-slate)', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
                             {plan.description}
                           </p>
                         )}
@@ -1552,7 +1664,7 @@ export default function PlanningTab({ tripId }) {
                           );
                           if (cache.error || (!cache.walk && !cache.transit)) return null;
                           return (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(79,70,229,0.04)', borderRadius: 10, border: '1px solid rgba(79,70,229,0.1)' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-4)', borderRadius: 10, border: '1px solid var(--p-10)' }}>
                               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
                                 {originLabel}:
                               </span>
@@ -2023,9 +2135,10 @@ export default function PlanningTab({ tripId }) {
               {categories.map(cat => {
                 const s = categorySettings[cat] || {};
                 const color = s.color || '#4f46e5';
+                const isCustom = !defaultCategoryNames.includes(cat);
                 return (
-                  <div key={cat} style={{ background: 'rgba(11,11,48,0.025)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {/* Category label with live preview */}
+                  <div key={cat} style={{ background: 'var(--ink-3)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Category label with live preview + delete if custom */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{
                         width: 36, height: 36, borderRadius: 10, flexShrink: 0,
@@ -2034,7 +2147,21 @@ export default function PlanningTab({ tripId }) {
                       }}>
                         {getCategoryIcon(cat, 18)}
                       </span>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{cat}</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', flex: 1 }}>{cat}</span>
+                      {isCustom && canEdit && (
+                        <button
+                          type="button"
+                          title="מחק קטגוריה"
+                          onClick={() => {
+                            const { [cat]: _, ...rest } = categorySettings;
+                            setCategorySettings(rest);
+                            saveCategorySettings(rest);
+                          }}
+                          style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.5)', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
 
                     {/* Icon picker */}
@@ -2092,6 +2219,74 @@ export default function PlanningTab({ tripId }) {
                   </div>
                 );
               })}
+
+              {/* Add new category */}
+              {canEdit && (
+                <div style={{ borderTop: '1px solid var(--ink-6)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)' }}>הוסף קטגוריה חדשה</span>
+                  {!addingCatInSettings ? (
+                    <button
+                      type="button"
+                      onClick={() => setAddingCatInSettings(true)}
+                      className="btn-secondary"
+                      style={{ minHeight: 44, fontSize: 14 }}
+                    >
+                      <Plus size={15} />
+                      <span>הוסף קטגוריה</span>
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="שם הקטגוריה החדשה"
+                        value={newCatName}
+                        onChange={e => setNewCatName(e.target.value)}
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const name = newCatName.trim();
+                            if (!name) return;
+                            const updated = { ...categorySettings, [name]: {} };
+                            setCategorySettings(updated);
+                            saveCategorySettings(updated);
+                            setNewCatName('');
+                            setAddingCatInSettings(false);
+                          }
+                          if (e.key === 'Escape') { setAddingCatInSettings(false); setNewCatName(''); }
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const name = newCatName.trim();
+                            if (!name) return;
+                            const updated = { ...categorySettings, [name]: {} };
+                            setCategorySettings(updated);
+                            saveCategorySettings(updated);
+                            setNewCatName('');
+                            setAddingCatInSettings(false);
+                          }}
+                          className="btn-primary"
+                          style={{ flex: 1, minHeight: 40, fontSize: 13 }}
+                        >
+                          הוסף
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAddingCatInSettings(false); setNewCatName(''); }}
+                          className="btn-secondary"
+                          style={{ minHeight: 40, padding: '0 16px', fontSize: 13 }}
+                        >
+                          ביטול
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2258,6 +2453,11 @@ export default function PlanningTab({ tripId }) {
                   options={categories}
                   addable
                   addLabel="הוסף קטגוריה חדשה"
+                  onCommit={(newCat) => {
+                    const updated = { ...categorySettings, [newCat]: {} };
+                    setCategorySettings(updated);
+                    saveCategorySettings(updated);
+                  }}
                 />
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
