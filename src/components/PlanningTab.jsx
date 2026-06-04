@@ -18,9 +18,10 @@ import {
   hasGmapsKey,
   resolveOriginString,
   resolveDestinationAsync,
+  resolvePlanCoords,
   fetchTravelTimes,
 } from '../services/distanceApi';
-import { CustomDropdown } from './CustomDatePicker';
+import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -59,6 +60,8 @@ import {
   GripVertical,
   ArrowUpDown,
   Check,
+  Layers,
+  RefreshCw,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -87,6 +90,45 @@ const COLOR_OPTIONS = [
   '#ea580c', '#d97706', '#16a34a', '#0f766e',
   '#0891b2', '#1d4ed8', '#64748b', '#334155',
 ];
+
+// Dedicated category whose items carry a date + time (concerts, reservations,
+// guided tours…). Items in this category render date/time inputs in the form
+// and are shown as a chronological agenda.
+const EVENTS_CATEGORY = 'אירועים';
+
+// Two places within this many metres of each other are treated as "near" and
+// grouped into the same area in the proximity-grouping view.
+const PROXIMITY_THRESHOLD_M = 800;
+
+// Great-circle distance between two {lat,lng} points, in metres.
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Greedy single-link clustering: each place joins an existing cluster if it is
+// within PROXIMITY_THRESHOLD_M of any member, otherwise it seeds a new cluster.
+function clusterByProximity(items, thresholdM) {
+  const clusters = [];
+  for (const item of items) {
+    let placed = false;
+    for (const cluster of clusters) {
+      if (cluster.some(m => haversineMeters(m.coords, item.coords) <= thresholdM)) {
+        cluster.push(item);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push([item]);
+  }
+  return clusters;
+}
 
 export const defaultGironaPlans = [
   {
@@ -251,6 +293,11 @@ export default function PlanningTab({ tripId }) {
   const [links, setLinks] = useState([]); // [{ label, url }]
   const [newLinkLabel, setNewLinkLabel] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
+  // Event fields (shown only when category === EVENTS_CATEGORY)
+  const [eventStartDate, setEventStartDate] = useState('');
+  const [eventEndDate, setEventEndDate] = useState('');
+  const [eventStartTime, setEventStartTime] = useState('');
+  const [eventEndTime, setEventEndTime] = useState('');
 
   // Expanded plan cards (default: collapsed)
   const [expandedPlanIds, setExpandedPlanIds] = useState({});
@@ -262,6 +309,10 @@ export default function PlanningTab({ tripId }) {
   const [newCatName, setNewCatName] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  // Proximity grouping view + bulk distance calculation
+  const [groupByProximity, setGroupByProximity] = useState(false);
+  const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
+  const [coordsCache, setCoordsCache] = useState({}); // planId → {lat,lng} | null
 
   // Locations modal: when a card has multiple navigation targets
   const [locationsModal, setLocationsModal] = useState(null);
@@ -298,7 +349,8 @@ export default function PlanningTab({ tripId }) {
     'מסעדות ומקומות אכילה',
     'מקומות לבקר',
     'תחבורה ציבורית',
-    'מידע כללי וטיפים'
+    'מידע כללי וטיפים',
+    EVENTS_CATEGORY,
   ];
   // Derive the full category list: defaults + custom (saved in Firestore settings) + anything used
   const categories = Array.from(new Set([
@@ -348,6 +400,31 @@ export default function PlanningTab({ tripId }) {
 
     return () => unsubscribe();
   }, [tripId]);
+
+  // Hydrate runtime caches from persisted Firestore data (distances + coords)
+  // so we don't re-hit the Routes API on every reload. Runtime values already
+  // present (fresher) are kept.
+  useEffect(() => {
+    if (!plans.length) return;
+    setDistanceCache(prev => {
+      const next = { ...prev };
+      for (const plan of plans) {
+        if (!plan.distances) continue;
+        for (const [originId, val] of Object.entries(plan.distances)) {
+          const key = `${plan.id}_${originId}`;
+          if (!next[key]) next[key] = val;
+        }
+      }
+      return next;
+    });
+    setCoordsCache(prev => {
+      const next = { ...prev };
+      for (const plan of plans) {
+        if (plan.coords && !(plan.id in next)) next[plan.id] = plan.coords;
+      }
+      return next;
+    });
+  }, [plans]);
 
   // Listen to Firestore daily planner days
   useEffect(() => {
@@ -418,10 +495,20 @@ export default function PlanningTab({ tripId }) {
     }
 
     const result = await fetchTravelTimes(origin, dest);
-    setDistanceCache(prev => ({
-      ...prev,
-      [cacheKey]: result ? { ...result, loading: false } : { loading: false, error: true },
-    }));
+    if (!result) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: false, error: true } }));
+      return;
+    }
+    const value = { walk: result.walk || null, transit: result.transit || null, fetchedAt: Date.now() };
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { ...value, loading: false } }));
+    // Persist so it survives reloads — no API call needed next time.
+    if (tripId) {
+      try {
+        await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+          [`distances.${originId}`]: value,
+        });
+      } catch { /* non-fatal: runtime cache still holds the result */ }
+    }
   };
 
   const handleSaveDistanceOrigin = async () => {
@@ -436,6 +523,29 @@ export default function PlanningTab({ tripId }) {
     setNewOriginName('');
     setNewOriginUrl('');
     setShowAddOriginForm(false);
+  };
+
+  // One-shot: walk every place, fetch + persist its travel times and resolve
+  // its coordinates (for proximity grouping). Skips places already computed so
+  // re-pressing is cheap. Runs sequentially to stay gentle on the API quota.
+  const handleCalculateAll = async () => {
+    if (!hasGmapsKey() || bulkCalc) return;
+    const origin = resolveOriginString(hotelDetails, null);
+    const list = [...plans];
+    setBulkCalc({ done: 0, total: list.length });
+    for (let i = 0; i < list.length; i++) {
+      const plan = list[i];
+      await fetchPlanDistances(plan);
+      if (!(plan.id in coordsCache)) {
+        const c = await resolvePlanCoords(plan, origin).catch(() => null);
+        setCoordsCache(prev => ({ ...prev, [plan.id]: c }));
+        if (c && tripId) {
+          try { await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: c }); } catch { /* keep runtime */ }
+        }
+      }
+      setBulkCalc({ done: i + 1, total: list.length });
+    }
+    setBulkCalc(null);
   };
 
   const handleRemoveDistanceOrigin = async (originId) => {
@@ -459,6 +569,10 @@ export default function PlanningTab({ tripId }) {
     setLinks([]);
     setNewLinkLabel('');
     setNewLinkUrl('');
+    setEventStartDate('');
+    setEventEndDate('');
+    setEventStartTime('');
+    setEventEndTime('');
     setFormOriginId('hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
@@ -497,6 +611,10 @@ export default function PlanningTab({ tripId }) {
     setLinks(Array.isArray(plan.links) ? plan.links : []);
     setNewLinkLabel('');
     setNewLinkUrl('');
+    setEventStartDate(plan.event?.startDate || '');
+    setEventEndDate(plan.event?.endDate || '');
+    setEventStartTime(plan.event?.startTime || '');
+    setEventEndTime(plan.event?.endTime || '');
     setFormOriginId(plan.distanceOriginId || 'hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
@@ -554,7 +672,22 @@ export default function PlanningTab({ tripId }) {
     if (!title.trim() || !tripId) return;
 
     const originId = formOriginId !== 'hotel' ? formOriginId : null;
+    const eventData = category === EVENTS_CATEGORY ? {
+      startDate: eventStartDate || null,
+      endDate: eventEndDate || null,
+      startTime: eventStartTime || null,
+      endTime: eventEndTime || null,
+    } : null;
+
     if (editingId) {
+      const oldPlan = plans.find(p => p.id === editingId);
+      // Resolved location depends on address / links / chosen origin — if any
+      // changed, drop the persisted distances + coords so they recompute.
+      const locationChanged = !oldPlan ||
+        (oldPlan.address || '') !== address.trim() ||
+        JSON.stringify(oldPlan.links || []) !== JSON.stringify(links) ||
+        (oldPlan.distanceOriginId || null) !== originId;
+
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
       await updateDoc(docRef, {
         title: title.trim(),
@@ -564,14 +697,22 @@ export default function PlanningTab({ tripId }) {
         price: price.trim() || 'חינם',
         links: links,
         distanceOriginId: originId,
+        event: eventData,
+        ...(locationChanged ? { distances: {}, coords: null } : {}),
       });
-      // Invalidate cache so distances re-fetch on next open
-      setDistanceCache(prev => {
-        const next = { ...prev };
-        delete next[`${editingId}_hotel`];
-        delete next[`${editingId}_${originId}`];
-        return next;
-      });
+
+      if (locationChanged) {
+        setDistanceCache(prev => {
+          const next = { ...prev };
+          Object.keys(next).forEach(k => { if (k.startsWith(`${editingId}_`)) delete next[k]; });
+          return next;
+        });
+        setCoordsCache(prev => {
+          const next = { ...prev };
+          delete next[editingId];
+          return next;
+        });
+      }
     } else {
       const id = 'plan-' + Date.now();
       const docRef = doc(db, 'trips', tripId, 'planning', id);
@@ -584,6 +725,7 @@ export default function PlanningTab({ tripId }) {
         links: links,
         visited: false,
         distanceOriginId: originId,
+        event: eventData,
       });
     }
 
@@ -593,11 +735,26 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setPrice('');
     setLinks([]);
+    setEventStartDate('');
+    setEventEndDate('');
+    setEventStartTime('');
+    setEventEndTime('');
     setEditingId(null);
     setShowAddForm(false);
   };
 
   const getCategoryColor = (cat) => categorySettings[cat]?.color || '#4f46e5';
+
+  // Compact Hebrew "when" string for an event: "12.06" / "12.06–14.06 · 20:30-23:00"
+  const formatEventWhen = (ev) => {
+    if (!ev?.startDate) return '';
+    const dm = (s) => { const [, m, d] = s.split('-'); return `${d}.${m}`; };
+    let str = dm(ev.startDate);
+    if (ev.endDate && ev.endDate !== ev.startDate) str += `–${dm(ev.endDate)}`;
+    if (ev.startTime) str += ` · ${ev.startTime}`;
+    if (ev.endTime) str += `-${ev.endTime}`;
+    return str;
+  };
 
   const getCategoryIcon = (cat, size = 18) => {
     const iconKey = categorySettings[cat]?.iconKey;
@@ -608,6 +765,7 @@ export default function PlanningTab({ tripId }) {
       case 'מסעדות ומקומות אכילה': return <UtensilsCrossed size={size} />;
       case 'תחבורה ציבורית':       return <Train size={size} />;
       case 'מידע כללי וטיפים':     return <Info size={size} />;
+      case EVENTS_CATEGORY:         return <Calendar size={size} />;
       default:                      return <MapPin size={size} />;
     }
   };
@@ -644,13 +802,21 @@ export default function PlanningTab({ tripId }) {
       return matchesCategory && matchesSearch;
     })
     .sort((a, b) => {
+      // When viewing the events category, order chronologically by date+time.
+      if (selectedFilter === EVENTS_CATEGORY && sortBy === 'default') {
+        const ts = (p) => {
+          if (!p.event?.startDate) return Infinity;
+          return new Date(`${p.event.startDate}T${p.event.startTime || '00:00'}`).getTime();
+        };
+        return ts(a) - ts(b);
+      }
       if (sortBy !== 'default') {
         const getTime = (plan, type) => {
           const originId = plan.distanceOriginId || 'hotel';
           const cache = distanceCache[`${plan.id}_${originId}`];
-          if (!cache) return Infinity;
-          const dur = type === 'walk' ? cache.walk?.duration : cache.transit?.duration;
-          return parseDurationMins(dur);
+          const leg = type === 'walk' ? cache?.walk : cache?.transit;
+          if (!leg) return Infinity;
+          return typeof leg.seconds === 'number' ? leg.seconds : parseDurationMins(leg.duration) * 60;
         };
         if (sortBy === 'walk-asc')     return getTime(a, 'walk')    - getTime(b, 'walk');
         if (sortBy === 'walk-desc')    return getTime(b, 'walk')    - getTime(a, 'walk');
@@ -661,6 +827,29 @@ export default function PlanningTab({ tripId }) {
       if (!!a.visited === !!b.visited) return 0;
       return a.visited ? 1 : -1;
     });
+
+  // Proximity-grouping view: flatten filteredPlans into a single render list
+  // interleaved with area-header sentinels ({ __header: true }). Places without
+  // resolved coordinates land in a trailing "ללא מיקום" group.
+  const locatedCount = filteredPlans.filter(p => coordsCache[p.id]).length;
+  let renderItems = filteredPlans;
+  if (groupByProximity) {
+    const located = filteredPlans
+      .filter(p => coordsCache[p.id])
+      .map(p => ({ ...p, coords: coordsCache[p.id] }));
+    const unlocated = filteredPlans.filter(p => !coordsCache[p.id]);
+    const clusters = clusterByProximity(located, PROXIMITY_THRESHOLD_M)
+      .sort((a, b) => b.length - a.length);
+    renderItems = [];
+    clusters.forEach((cluster, i) => {
+      renderItems.push({ __header: true, id: `__h${i}`, label: `אזור ${i + 1}`, count: cluster.length });
+      cluster.forEach(p => renderItems.push(p));
+    });
+    if (unlocated.length) {
+      renderItems.push({ __header: true, id: '__hx', label: 'ללא מיקום', count: unlocated.length });
+      unlocated.forEach(p => renderItems.push(p));
+    }
+  }
 
   /* ══════════════════════════════════════════════════════════
      DAILY PLANNER OPERATIONS
@@ -1090,6 +1279,31 @@ export default function PlanningTab({ tripId }) {
                     }}
                   />
 
+                  {/* Event date/time — only for the events category */}
+                  {category === EVENTS_CATEGORY && (
+                    <div style={{
+                      background: 'var(--p-4)',
+                      border: '1.5px solid var(--p-12)',
+                      borderRadius: 12,
+                      padding: 14,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                    }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Calendar size={14} /> מתי האירוע?
+                      </span>
+                      <div className="row-2" style={{ gap: 10 }}>
+                        <CustomDatePicker label="תאריך התחלה" value={eventStartDate} onChange={setEventStartDate} />
+                        <CustomDatePicker label="תאריך סיום (לא חובה)" value={eventEndDate} onChange={setEventEndDate} />
+                      </div>
+                      <div className="row-2" style={{ gap: 10 }}>
+                        <CustomTimePicker label="שעת התחלה" value={eventStartTime} onChange={setEventStartTime} />
+                        <CustomTimePicker label="שעת סיום (לא חובה)" value={eventEndTime} onChange={setEventEndTime} />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="form-group">
                     <label>כתובת / מיקום</label>
                     <input
@@ -1351,6 +1565,43 @@ export default function PlanningTab({ tripId }) {
               )}
             </div>
 
+            {/* Bulk distance calculation — fetch + persist all travel times once */}
+            {hasGmapsKey() && (
+              <button
+                onClick={handleCalculateAll}
+                disabled={!!bulkCalc}
+                title="חשב ושמור את כל זמני ההגעה (פעם אחת)"
+                className="filter-chip"
+                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'var(--ink-5)' }}
+              >
+                {bulkCalc ? (
+                  <>
+                    <Loader2 size={13} className="spinning" />
+                    <span style={{ fontSize: 11 }}>{bulkCalc.done}/{bulkCalc.total}</span>
+                  </>
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+              </button>
+            )}
+
+            {/* Proximity grouping toggle */}
+            {hasGmapsKey() && (
+              <button
+                onClick={() => setGroupByProximity(g => !g)}
+                title="קבץ מקומות קרובים גאוגרפית"
+                className="filter-chip"
+                style={{
+                  flexShrink: 0, gap: 4,
+                  color: groupByProximity ? '#fff' : 'var(--text-muted)',
+                  background: groupByProximity ? 'var(--accent)' : 'var(--ink-5)',
+                  borderColor: groupByProximity ? 'var(--accent)' : undefined,
+                }}
+              >
+                <Layers size={13} />
+              </button>
+            )}
+
             {/* Sort button — outside scrollable area so dropdown isn't clipped */}
             <div style={{ position: 'relative', flexShrink: 0 }}>
               <button
@@ -1386,10 +1637,10 @@ export default function PlanningTab({ tripId }) {
                   }}>
                     {[
                       { key: 'default',      label: 'ברירת מחדל' },
-                      { key: 'walk-asc',     label: '🚶 הליכה — מהיר לאיטי' },
-                      { key: 'walk-desc',    label: '🚶 הליכה — איטי למהיר' },
-                      { key: 'transit-asc',  label: '🚌 תחבורה — מהיר לאיטי' },
-                      { key: 'transit-desc', label: '🚌 תחבורה — איטי למהיר' },
+                      { key: 'walk-asc',     label: '🚶 הליכה — מהקרוב לרחוק' },
+                      { key: 'walk-desc',    label: '🚶 הליכה — מהרחוק לקרוב' },
+                      { key: 'transit-asc',  label: '🚌 תחבורה — מהקרוב לרחוק' },
+                      { key: 'transit-desc', label: '🚌 תחבורה — מהרחוק לקרוב' },
                     ].map(opt => (
                       <button
                         key={opt.key}
@@ -1422,6 +1673,23 @@ export default function PlanningTab({ tripId }) {
             </div>
           </div>
 
+          {/* Hint when grouping is on but some places aren't located yet */}
+          {groupByProximity && locatedCount < filteredPlans.length && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 12px', borderRadius: 12,
+              background: 'var(--p-6)', border: '1px solid var(--p-12)',
+              fontSize: 12.5, fontWeight: 600, color: 'var(--accent)',
+            }}>
+              <MapPin size={14} style={{ flexShrink: 0 }} />
+              <span>
+                {locatedCount} מתוך {filteredPlans.length} מקומות מוקמו. לחץ על
+                <RefreshCw size={12} style={{ verticalAlign: 'middle', margin: '0 4px' }} />
+                כדי למקם ולקבץ את כל המקומות.
+              </span>
+            </div>
+          )}
+
           {/* Planning Cards List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {filteredPlans.length === 0 ? (
@@ -1429,7 +1697,25 @@ export default function PlanningTab({ tripId }) {
                 <p style={{ fontSize: '15px', fontWeight: '700' }}>לא נמצאו פריטי תכנון העונים לסינון.</p>
               </div>
             ) : (
-              filteredPlans.map((plan) => {
+              renderItems.map((plan) => {
+                // Area-header sentinel rows in the proximity-grouping view
+                if (plan.__header) {
+                  return (
+                    <div key={plan.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '4px 2px', marginTop: plan.id === '__h0' ? 0 : 6,
+                      fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
+                    }}>
+                      <Layers size={14} style={{ color: 'var(--accent)' }} />
+                      <span>{plan.label}</span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, color: 'var(--accent)',
+                        background: 'var(--p-8)', borderRadius: 8, padding: '1px 8px',
+                      }}>{plan.count} מקומות</span>
+                      <div style={{ flex: 1, height: 1, background: 'var(--ink-6)' }} />
+                    </div>
+                  );
+                }
                 const isOpen = !!expandedPlanIds[plan.id];
 
                 const renderChip = (icon, text, isLink = false) => {
@@ -1555,9 +1841,11 @@ export default function PlanningTab({ tripId }) {
                           fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
                         }}>
-                          {plan.description
-                            ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
-                            : plan.category}
+                          {plan.category === EVENTS_CATEGORY && plan.event?.startDate
+                            ? `🗓️ ${formatEventWhen(plan.event)}`
+                            : plan.description
+                              ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
+                              : plan.category}
                         </span>
                       </div>
 
@@ -2152,7 +2440,18 @@ export default function PlanningTab({ tripId }) {
                         <button
                           type="button"
                           title="מחק קטגוריה"
-                          onClick={() => {
+                          onClick={async () => {
+                            const inUse = plans.filter(p => p.category === cat).length;
+                            const ok = await confirm({
+                              title: 'מחיקת קטגוריה',
+                              message: inUse > 0
+                                ? <>הקטגוריה <strong>{cat}</strong> בשימוש ב-{inUse} מקומות. מחיקתה תסיר את ההתאמה האישית (אייקון וצבע), אך המקומות עצמם יישארו. להמשיך?</>
+                                : <>האם למחוק את הקטגוריה <strong>{cat}</strong>?</>,
+                              confirmText: 'מחק',
+                              cancelText: 'בטל',
+                              danger: true,
+                            });
+                            if (!ok) return;
                             const { [cat]: _, ...rest } = categorySettings;
                             setCategorySettings(rest);
                             saveCategorySettings(rest);

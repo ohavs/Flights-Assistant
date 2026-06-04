@@ -108,7 +108,18 @@ async function queryRoute(origin, destination, travelMode) {
   const route = data?.routes?.[0];
   if (!route) return null;
   const secs = parseInt(String(route.duration || '0s').replace('s', '')) || 0;
-  return { duration: fmtDuration(secs), distance: fmtDistance(route.distanceMeters || 0) };
+  const meters = route.distanceMeters || 0;
+  // Raw seconds/meters are persisted so sorting/grouping is exact and
+  // independent of the formatted Hebrew string.
+  return { duration: fmtDuration(secs), distance: fmtDistance(meters), seconds: secs, meters };
+}
+
+// Parse a "lat,lng" string into numeric coordinates.
+export function parseLatLng(str) {
+  if (!str || typeof str !== 'string') return null;
+  const m = str.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
+  if (!m) return null;
+  return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
 }
 
 // ── Places API: geocode by title when all else fails ─────────────────────────
@@ -217,6 +228,45 @@ export async function resolveDestinationAsync(plan, origin) {
   } catch {
     return null;
   }
+}
+
+// ── Geocode a plain text address → coords (cached) ───────────────────────────
+const GEO_CACHE = 'gmaps_geo_v1_';
+async function geocodeAddress(address) {
+  if (!address?.trim() || !GMAPS_KEY) return null;
+  const cacheKey = GEO_CACHE + address.trim();
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return cached;
+  try {
+    const res = await fetch(PLACES_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location' },
+      body: JSON.stringify({ textQuery: address.trim() }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const loc = data?.places?.[0]?.location;
+    if (!loc) return null;
+    const coords = `${loc.latitude},${loc.longitude}`;
+    localStorage.setItem(cacheKey, coords);
+    return coords;
+  } catch { return null; }
+}
+
+// Resolve a plan to numeric {lat,lng} for proximity clustering.
+// Uses every cheap source first (embedded coords, cached expansions/places),
+// and only geocodes a plain address as a last resort.
+export async function resolvePlanCoords(plan, origin) {
+  const direct = parseLatLng(resolveDestinationSync(plan));
+  if (direct) return direct;
+  const resolved = await resolveDestinationAsync(plan, origin);
+  const c = parseLatLng(resolved);
+  if (c) return c;
+  if (resolved) {
+    const geo = parseLatLng(await geocodeAddress(resolved));
+    if (geo) return geo;
+  }
+  return null;
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
