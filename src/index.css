@@ -7,7 +7,9 @@
   --primary: #0b0b30;
   --primary-hover: #171754;
   --accent: #4f46e5;
-  --accent-light: rgba(79, 70, 229, 0.08);
+  --accent-rgb: 79, 70, 229;          /* drives every --p-* tint below */
+  --accent-light: rgba(var(--accent-rgb), 0.08);
+  --accent-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
   --bg-gradient: linear-gradient(135deg, #e0e7ff 0%, #f5f3ff 50%, #fae8ff 100%);
   --card-bg: rgba(255, 255, 255, 0.78);
   --card-bg-solid: #ffffff;
@@ -59,18 +61,18 @@
   --ink-40: rgba(11,11,48,0.40);
   --ink-50: rgba(11,11,48,0.50);
 
-  /* ── Accent tints ── */
-  --p-3:  rgba(79,70,229,0.03);
-  --p-4:  rgba(79,70,229,0.04);
-  --p-6:  rgba(79,70,229,0.06);
-  --p-8:  rgba(79,70,229,0.08);
-  --p-10: rgba(79,70,229,0.10);
-  --p-12: rgba(79,70,229,0.12);
-  --p-15: rgba(79,70,229,0.15);
-  --p-18: rgba(79,70,229,0.18);
-  --p-20: rgba(79,70,229,0.20);
-  --p-22: rgba(79,70,229,0.22);
-  --p-30: rgba(79,70,229,0.30);
+  /* ── Accent tints (all derived from --accent-rgb so palettes recolour them) ── */
+  --p-3:  rgba(var(--accent-rgb),0.03);
+  --p-4:  rgba(var(--accent-rgb),0.04);
+  --p-6:  rgba(var(--accent-rgb),0.06);
+  --p-8:  rgba(var(--accent-rgb),0.08);
+  --p-10: rgba(var(--accent-rgb),0.10);
+  --p-12: rgba(var(--accent-rgb),0.12);
+  --p-15: rgba(var(--accent-rgb),0.15);
+  --p-18: rgba(var(--accent-rgb),0.18);
+  --p-20: rgba(var(--accent-rgb),0.20);
+  --p-22: rgba(var(--accent-rgb),0.22);
+  --p-30: rgba(var(--accent-rgb),0.30);
 
   /* ── White tints ── */
   --w-5:  rgba(255,255,255,0.05);
@@ -123,7 +125,9 @@
   --primary: #c7d2fe;
   --primary-hover: #e0e7ff;
   --accent: #818cf8;
-  --accent-light: rgba(129,140,248,0.10);
+  --accent-rgb: 129, 140, 248;
+  --accent-light: rgba(var(--accent-rgb),0.10);
+  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
   --bg-gradient: linear-gradient(135deg, #0d0d2b 0%, #160d2e 50%, #0e1825 100%);
   --card-bg: rgba(255,255,255,0.05);
   --card-bg-solid: #1c1a38;
@@ -164,18 +168,18 @@
   --ink-40: rgba(0,0,20,0.72);   /* overlays stay dark */
   --ink-50: rgba(0,0,20,0.78);
 
-  /* Accent tints → indigo-400 based */
-  --p-3:  rgba(129,140,248,0.04);
-  --p-4:  rgba(129,140,248,0.05);
-  --p-6:  rgba(129,140,248,0.08);
-  --p-8:  rgba(129,140,248,0.10);
-  --p-10: rgba(129,140,248,0.12);
-  --p-12: rgba(129,140,248,0.14);
-  --p-15: rgba(129,140,248,0.18);
-  --p-18: rgba(129,140,248,0.20);
-  --p-20: rgba(129,140,248,0.22);
-  --p-22: rgba(129,140,248,0.25);
-  --p-30: rgba(129,140,248,0.35);
+  /* Accent tints → brighter alphas for dark surfaces, derived from --accent-rgb */
+  --p-3:  rgba(var(--accent-rgb),0.04);
+  --p-4:  rgba(var(--accent-rgb),0.05);
+  --p-6:  rgba(var(--accent-rgb),0.08);
+  --p-8:  rgba(var(--accent-rgb),0.10);
+  --p-10: rgba(var(--accent-rgb),0.12);
+  --p-12: rgba(var(--accent-rgb),0.14);
+  --p-15: rgba(var(--accent-rgb),0.18);
+  --p-18: rgba(var(--accent-rgb),0.20);
+  --p-20: rgba(var(--accent-rgb),0.22);
+  --p-22: rgba(var(--accent-rgb),0.25);
+  --p-30: rgba(var(--accent-rgb),0.35);
 
   /* White tints → dark surfaces */
   --w-5:  rgba(255,255,255,0.04);
@@ -208,6 +212,99 @@
   --c-teal-10:  rgba(52,211,153,0.10);
   --c-teal-12:  rgba(52,211,153,0.12);
   --c-slate:    #94a3b8;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ACCENT PALETTES
+   Each palette only re-defines the few "source" colours; every
+   --p-* tint, accent-light, chip, badge, etc. derives from
+   --accent-rgb automatically, so a swap recolours the whole app
+   identically in light AND dark mode.
+   Default (indigo) lives in :root / [data-theme="dark"] above.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Violet ── */
+[data-accent="violet"] {
+  --accent: #7c3aed; --accent-rgb: 124, 58, 237;
+  --primary: #2c0e57; --primary-hover: #42168a;
+  --accent-gradient: linear-gradient(135deg, #8b5cf6, #a855f7);
+  --bg-gradient: linear-gradient(135deg, #ede4ff 0%, #f3ecff 50%, #f7e8ff 100%);
+}
+[data-theme="dark"][data-accent="violet"] {
+  --accent: #a78bfa; --accent-rgb: 167, 139, 250;
+  --primary: #ddd6fe; --primary-hover: #ede9fe;
+  --accent-gradient: linear-gradient(135deg, #7c3aed, #9333ea);
+  --bg-gradient: linear-gradient(135deg, #190b2e 0%, #1f0d33 50%, #1a0b2b 100%);
+}
+
+/* ── Sky ── */
+[data-accent="sky"] {
+  --accent: #2563eb; --accent-rgb: 37, 99, 235;
+  --primary: #0c1f4d; --primary-hover: #163172;
+  --accent-gradient: linear-gradient(135deg, #3b82f6, #06b6d4);
+  --bg-gradient: linear-gradient(135deg, #dbe8ff 0%, #e8f1ff 50%, #def4ff 100%);
+}
+[data-theme="dark"][data-accent="sky"] {
+  --accent: #60a5fa; --accent-rgb: 96, 165, 250;
+  --primary: #bfdbfe; --primary-hover: #dbeafe;
+  --accent-gradient: linear-gradient(135deg, #2563eb, #0891b2);
+  --bg-gradient: linear-gradient(135deg, #0a142e 0%, #0c1a33 50%, #08182b 100%);
+}
+
+/* ── Teal ── */
+[data-accent="teal"] {
+  --accent: #0d9488; --accent-rgb: 13, 148, 136;
+  --primary: #0f3d38; --primary-hover: #155e56;
+  --accent-gradient: linear-gradient(135deg, #14b8a6, #0891b2);
+  --bg-gradient: linear-gradient(135deg, #d3f6f0 0%, #e0f7fa 50%, #dbf4ff 100%);
+}
+[data-theme="dark"][data-accent="teal"] {
+  --accent: #2dd4bf; --accent-rgb: 45, 212, 191;
+  --primary: #99f6e4; --primary-hover: #ccfbf1;
+  --accent-gradient: linear-gradient(135deg, #0d9488, #0891b2);
+  --bg-gradient: linear-gradient(135deg, #06201f 0%, #082a2e 50%, #07212b 100%);
+}
+
+/* ── Emerald ── */
+[data-accent="emerald"] {
+  --accent: #059669; --accent-rgb: 5, 150, 105;
+  --primary: #0a2e22; --primary-hover: #0f4733;
+  --accent-gradient: linear-gradient(135deg, #10b981, #059669);
+  --bg-gradient: linear-gradient(135deg, #d6f5e3 0%, #e7f9ef 50%, #def7ea 100%);
+}
+[data-theme="dark"][data-accent="emerald"] {
+  --accent: #34d399; --accent-rgb: 52, 211, 153;
+  --primary: #a7f3d0; --primary-hover: #d1fae5;
+  --accent-gradient: linear-gradient(135deg, #059669, #0d9488);
+  --bg-gradient: linear-gradient(135deg, #06231a 0%, #082a20 50%, #072420 100%);
+}
+
+/* ── Amber / Sunset ── */
+[data-accent="amber"] {
+  --accent: #ea580c; --accent-rgb: 234, 88, 12;
+  --primary: #451a06; --primary-hover: #6b2810;
+  --accent-gradient: linear-gradient(135deg, #f97316, #f59e0b);
+  --bg-gradient: linear-gradient(135deg, #ffe9d6 0%, #fff3e0 50%, #fff0d9 100%);
+}
+[data-theme="dark"][data-accent="amber"] {
+  --accent: #fb923c; --accent-rgb: 251, 146, 60;
+  --primary: #fed7aa; --primary-hover: #ffedd5;
+  --accent-gradient: linear-gradient(135deg, #ea580c, #d97706);
+  --bg-gradient: linear-gradient(135deg, #2b1408 0%, #2e1a08 50%, #281206 100%);
+}
+
+/* ── Rose ── */
+[data-accent="rose"] {
+  --accent: #e11d48; --accent-rgb: 225, 29, 72;
+  --primary: #4c0f21; --primary-hover: #6d1530;
+  --accent-gradient: linear-gradient(135deg, #f43f5e, #ec4899);
+  --bg-gradient: linear-gradient(135deg, #ffe4e9 0%, #fff0f3 50%, #ffe9f3 100%);
+}
+[data-theme="dark"][data-accent="rose"] {
+  --accent: #fb7185; --accent-rgb: 251, 113, 133;
+  --primary: #fecdd3; --primary-hover: #ffe4e9;
+  --accent-gradient: linear-gradient(135deg, #e11d48, #db2777);
+  --bg-gradient: linear-gradient(135deg, #2b0a13 0%, #2e0d1a 50%, #250a17 100%);
 }
 
 /* ── Reset ── */
@@ -535,7 +632,7 @@ body {
 .trip-card-icon {
   width: 52px; height: 52px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: var(--accent-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1049,7 +1146,7 @@ input[type="datetime-local"].form-control {
   appearance: none;
   -webkit-appearance: none;
   background-color: var(--w-85);
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: left 14px center;
   background-size: 14px;
@@ -1070,7 +1167,7 @@ input[type="datetime-local"].form-control {
   outline: none;
 }
 [data-theme="dark"] .category-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 .category-select:focus,
 .category-select:hover {
@@ -1286,16 +1383,16 @@ input[type="datetime-local"].form-control {
    for all button backgrounds that normally derive from --primary.           */
 [data-theme="dark"] .btn-primary {
   background: var(--accent);
-  box-shadow: 0 4px 14px rgba(129,140,248,0.25);
+  box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
 }
 [data-theme="dark"] .btn-add-circle {
   background: var(--accent);
-  box-shadow: 0 4px 14px rgba(129,140,248,0.25);
+  box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
 }
 [data-theme="dark"] .filter-chip.active {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 6px 16px rgba(129,140,248,0.30);
+  box-shadow: 0 6px 16px rgba(var(--accent-rgb),0.30);
 }
 [data-theme="dark"] .btn-tab-toggle.active {
   background: var(--accent);

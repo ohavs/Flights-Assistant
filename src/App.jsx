@@ -10,7 +10,7 @@ import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
-import { ThemeProvider, useTheme } from './ThemeContext';
+import { ThemeProvider, useTheme, PALETTES } from './ThemeContext';
 import { defaultPraguePlans } from './components/PlanningTab';
 import { defaultChecklist } from './components/ChecklistTab';
 import FlightTab, { defaultTrip } from './components/FlightTab';
@@ -24,7 +24,7 @@ import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -1080,6 +1080,72 @@ export default function App() {
   return <ThemeProvider><AppInner /></ThemeProvider>;
 }
 
+/* Accent-palette picker — small round button + swatch popover.
+   Sits next to the dark/light toggle in both headers. */
+function PalettePicker({ size = 34 }) {
+  const { accent, setAccent } = useTheme();
+  const [open, setOpen] = useState(false);
+  const iconSize = size >= 34 ? 16 : 15;
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: size, height: size, borderRadius: '50%',
+          background: 'var(--ink-5)', border: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: 'var(--accent)',
+          transition: 'color 0.2s ease, background 0.2s ease',
+        }}
+        title="בחר ערכת צבעים"
+        aria-expanded={open}
+      >
+        <Palette size={iconSize} />
+      </button>
+
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1999 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 2000,
+            background: 'var(--dropdown-bg)', border: '1px solid var(--ink-8)',
+            borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: 12,
+            direction: 'rtl', minWidth: 168,
+            animation: 'fadeIn 0.15s ease-out',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', marginBottom: 10, paddingRight: 2 }}>
+              ערכת צבעים
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              {PALETTES.map(p => {
+                const active = p.key === accent;
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => { setAccent(p.key); setOpen(false); }}
+                    title={p.label}
+                    style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: p.swatch, cursor: 'pointer', padding: 0,
+                      border: active ? '2.5px solid var(--text)' : '2.5px solid transparent',
+                      boxShadow: active ? `0 0 0 2px var(--surface), 0 2px 8px ${p.swatch}66` : `0 2px 6px ${p.swatch}55`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'transform 0.12s ease',
+                    }}
+                  >
+                    {active && <Check size={15} color="#fff" strokeWidth={3} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AppInner() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -1530,6 +1596,7 @@ function AppInner() {
             <h1 style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>עוזר טיסות</h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <PalettePicker size={34} />
             <button
               onClick={toggleTheme}
               style={{
@@ -1729,6 +1796,7 @@ function AppInner() {
               <Pencil size={15} />
             </button>
           )}
+          <PalettePicker size={34} />
           <button
             onClick={toggleTheme}
             style={{
