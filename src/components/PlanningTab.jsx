@@ -318,6 +318,7 @@ export default function PlanningTab({ tripId }) {
   const [showSortMenu, setShowSortMenu] = useState(false);
   // Proximity grouping view + bulk distance calculation
   const [groupByProximity, setGroupByProximity] = useState(false);
+  const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
   const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
   const [coordsCache, setCoordsCache] = useState({}); // planId → {lat,lng} | null
 
@@ -849,12 +850,13 @@ export default function PlanningTab({ tripId }) {
       .sort((a, b) => b.length - a.length);
     renderItems = [];
     clusters.forEach((cluster, i) => {
-      renderItems.push({ __header: true, id: `__h${i}`, label: `אזור ${i + 1}`, count: cluster.length });
-      cluster.forEach(p => renderItems.push(p));
+      const headerId = `__h${i}`;
+      renderItems.push({ __header: true, id: headerId, label: `אזור ${i + 1}`, count: cluster.length });
+      if (!collapsedAreas[headerId]) cluster.forEach(p => renderItems.push(p));
     });
     if (unlocated.length) {
       renderItems.push({ __header: true, id: '__hx', label: 'ללא מיקום', count: unlocated.length });
-      unlocated.forEach(p => renderItems.push(p));
+      if (!collapsedAreas['__hx']) unlocated.forEach(p => renderItems.push(p));
     }
   }
 
@@ -1706,20 +1708,36 @@ export default function PlanningTab({ tripId }) {
               renderItems.map((plan) => {
                 // Area-header sentinel rows in the proximity-grouping view
                 if (plan.__header) {
+                  const collapsed = !!collapsedAreas[plan.id];
                   return (
-                    <div key={plan.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '4px 2px', marginTop: plan.id === '__h0' ? 0 : 6,
-                      fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
-                    }}>
-                      <Layers size={14} style={{ color: 'var(--accent)' }} />
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                        padding: '4px 2px', marginTop: plan.id === '__h0' ? 0 : 6,
+                        fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        textAlign: 'right', direction: 'rtl',
+                      }}
+                    >
+                      <ChevronDown
+                        size={15}
+                        style={{
+                          color: 'var(--accent)', flexShrink: 0,
+                          transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                      <Layers size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                       <span>{plan.label}</span>
                       <span style={{
                         fontSize: 11, fontWeight: 700, color: 'var(--accent)',
-                        background: 'var(--p-8)', borderRadius: 8, padding: '1px 8px',
+                        background: 'var(--p-8)', borderRadius: 8, padding: '1px 8px', flexShrink: 0,
                       }}>{plan.count} מקומות</span>
                       <div style={{ flex: 1, height: 1, background: 'var(--ink-6)' }} />
-                    </div>
+                    </button>
                   );
                 }
                 const isOpen = !!expandedPlanIds[plan.id];
