@@ -942,7 +942,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
               >
                 {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
                 <span style={{ flex: 1, textAlign: 'right', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: opt.labelColor || 'inherit' }}>{opt.label}</span>
                   {opt.meta && (
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap', opacity: 0.85 }}>
                       {opt.meta}

@@ -3048,24 +3048,32 @@ export default function PlanningTab({ tripId }) {
                           onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
                           options={[
                             { value: '', label: 'בחר מקום' },
-                            ...unusedPlaces.map(p => {
+                            ...[...unusedPlaces].sort((a, b) => {
+                              const order = { must: 0, optional: 1 };
+                              return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+                            }).map(p => {
                               const originKey = p.distanceOriginId || 'hotel';
                               const cache = distanceCache[`${p.id}_${originKey}`];
                               const parts = [];
                               if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
                               if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
                               const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
-                              return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined };
+                              const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
+                              return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor };
                             }),
                             ...(usedPlaces.length > 0 ? [
-                              ...usedPlaces.map(p => {
+                              ...[...usedPlaces].sort((a, b) => {
+                                const order = { must: 0, optional: 1 };
+                                return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+                              }).map(p => {
                                 const originKey = p.distanceOriginId || 'hotel';
                                 const cache = distanceCache[`${p.id}_${originKey}`];
                                 const parts = [];
                                 if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
                                 if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
                                 const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
-                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined };
+                                const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
+                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor };
                               })
                             ] : [])
                           ]}
