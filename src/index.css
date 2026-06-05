@@ -393,7 +393,7 @@ body {
 
   .app-content {
     padding: 32px 40px;
-    padding-bottom: calc(var(--nav-height) + 32px);
+    padding-bottom: 32px;
   }
 
   /* All the per-tab roots are wrapped in `.animate-fade`. Centre them. */
@@ -460,7 +460,7 @@ body {
 @media (min-width: 1440px) {
   .app-content {
     padding: 40px 64px;
-    padding-bottom: calc(var(--nav-height) + 40px);
+    padding-bottom: 40px;
   }
   .app-content > .animate-fade { max-width: 1520px; }
   .dashboard-grid { gap: 32px; }
@@ -500,7 +500,7 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px;
-  padding-bottom: calc(var(--nav-height) + 40px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -511,8 +511,7 @@ body {
 
 /* ── Bottom Navigation ── */
 .bottom-nav {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
+  flex-shrink: 0;
   height: var(--nav-height);
   background: var(--nav-bg);
   backdrop-filter: blur(24px);
