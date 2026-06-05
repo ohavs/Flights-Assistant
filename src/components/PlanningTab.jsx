@@ -2430,16 +2430,16 @@ export default function PlanningTab({ tripId }) {
                             flexDirection: 'column',
                             gap: 6,
                           }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                              <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <div style={{ minWidth: 0, flex: 1 }}>
                                 {act.timeLabel && (
-                                  <span style={{ 
-                                    fontSize: 10, 
-                                    fontWeight: 900, 
-                                    color: '#fff', 
-                                    background: 'var(--accent)', 
-                                    padding: '2px 6px', 
-                                    borderRadius: 4, 
+                                  <span style={{
+                                    fontSize: 10,
+                                    fontWeight: 900,
+                                    color: '#fff',
+                                    background: 'var(--accent)',
+                                    padding: '2px 6px',
+                                    borderRadius: 4,
                                     marginLeft: 6,
                                     verticalAlign: 'middle',
                                     display: 'inline-block'
@@ -2447,10 +2447,10 @@ export default function PlanningTab({ tripId }) {
                                     {act.timeLabel}
                                   </span>
                                 )}
-                                <h4 style={{ 
-                                  fontSize: 14, 
-                                  fontWeight: 800, 
-                                  color: 'var(--primary)', 
+                                <h4 style={{
+                                  fontSize: 14,
+                                  fontWeight: 800,
+                                  color: 'var(--primary)',
                                   margin: 0,
                                   verticalAlign: 'middle',
                                   display: 'inline-block',
@@ -2459,6 +2459,30 @@ export default function PlanningTab({ tripId }) {
                                   {act.title}
                                 </h4>
                               </div>
+
+                              {/* Travel-time chips — same row, left of controls */}
+                              {(() => {
+                                if (!act.placeId || !hasGmapsKey()) return null;
+                                const linkedPlan = plans.find(p => p.id === act.placeId);
+                                const originKey = linkedPlan?.distanceOriginId || 'hotel';
+                                const cache = distanceCache[`${act.placeId}_${originKey}`];
+                                if (!cache || cache.loading || cache.error || cache.noLocation) return null;
+                                if (!cache.walk && !cache.transit) return null;
+                                return (
+                                  <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                                    {cache.walk && (
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                        🚶 {cache.walk.duration}
+                                      </span>
+                                    )}
+                                    {cache.transit && (
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                        🚌 {cache.transit.duration}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               {/* Controls */}
                               {canEdit && (
@@ -2515,24 +2539,6 @@ export default function PlanningTab({ tripId }) {
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
                                   <ExternalLink size={10} />
                                 </a>
-                                {/* Travel-time chips from hotel */}
-                                {(() => {
-                                  if (!act.placeId || !hasGmapsKey()) return null;
-                                  const cache = distanceCache[`${act.placeId}_hotel`];
-                                  if (!cache || cache.loading || cache.error || cache.noLocation) return null;
-                                  return (<>
-                                    {cache.walk && (
-                                      <span style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                        🚶 {cache.walk.duration}
-                                      </span>
-                                    )}
-                                    {cache.transit && (
-                                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                        🚌 {cache.transit.duration}
-                                      </span>
-                                    )}
-                                  </>);
-                                })()}
                               </div>
                             )}
                           </div>
