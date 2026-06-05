@@ -306,6 +306,9 @@ export default function PlanningTab({ tripId }) {
   const [eventEndDate, setEventEndDate] = useState('');
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
+  // Manual travel-time overrides (edit form only, in minutes)
+  const [editWalkMins, setEditWalkMins] = useState('');
+  const [editTransitMins, setEditTransitMins] = useState('');
 
   // Expanded plan cards (default: collapsed)
   const [expandedPlanIds, setExpandedPlanIds] = useState({});
@@ -486,9 +489,9 @@ export default function PlanningTab({ tripId }) {
     if (!hasGmapsKey()) return;
     const originId = plan.distanceOriginId || 'hotel';
     const cacheKey = `${plan.id}_${originId}`;
-    // Don't re-fetch if already loading or successfully fetched
+    // Don't re-fetch if already loading, successfully fetched, or manually overridden
     const existing = distanceCache[cacheKey];
-    if (existing && (existing.loading || existing.walk || existing.transit)) return;
+    if (existing && (existing.loading || existing.manualOverride || existing.walk || existing.transit)) return;
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     const origin = resolveOriginString(hotelDetails, customOrigin);
@@ -628,6 +631,16 @@ export default function PlanningTab({ tripId }) {
     setFormOriginId(plan.distanceOriginId || 'hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
+    // Pre-populate manual override fields from cache (only when already overridden)
+    const originKey = plan.distanceOriginId || 'hotel';
+    const cacheEntry = distanceCache[`${plan.id}_${originKey}`];
+    if (cacheEntry?.manualOverride) {
+      setEditWalkMins(cacheEntry.walk?.seconds ? String(Math.round(cacheEntry.walk.seconds / 60)) : '');
+      setEditTransitMins(cacheEntry.transit?.seconds ? String(Math.round(cacheEntry.transit.seconds / 60)) : '');
+    } else {
+      setEditWalkMins('');
+      setEditTransitMins('');
+    }
     setShowAddForm(true);
   };
 
@@ -698,6 +711,24 @@ export default function PlanningTab({ tripId }) {
         JSON.stringify(oldPlan.links || []) !== JSON.stringify(links) ||
         (oldPlan.distanceOriginId || null) !== originId;
 
+      // Build manual distance entry if the user entered values
+      const cacheOriginKey = formOriginId; // 'hotel' or custom ID
+      const walkMinsVal = editWalkMins !== '' ? parseInt(editWalkMins, 10) : null;
+      const transitMinsVal = editTransitMins !== '' ? parseInt(editTransitMins, 10) : null;
+      const hasManualTimes =
+        (walkMinsVal !== null && !isNaN(walkMinsVal)) ||
+        (transitMinsVal !== null && !isNaN(transitMinsVal));
+      const manualEntry = hasManualTimes ? {
+        ...(walkMinsVal !== null && !isNaN(walkMinsVal)
+          ? { walk: { duration: minsToHebDuration(walkMinsVal), seconds: walkMinsVal * 60 } }
+          : {}),
+        ...(transitMinsVal !== null && !isNaN(transitMinsVal)
+          ? { transit: { duration: minsToHebDuration(transitMinsVal), seconds: transitMinsVal * 60 } }
+          : {}),
+        manualOverride: true,
+        fetchedAt: Date.now(),
+      } : null;
+
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
       await updateDoc(docRef, {
         title: title.trim(),
@@ -708,13 +739,18 @@ export default function PlanningTab({ tripId }) {
         links: links,
         distanceOriginId: originId,
         event: eventData,
-        ...(locationChanged ? { distances: {}, coords: null } : {}),
+        ...(locationChanged
+          ? { distances: manualEntry ? { [cacheOriginKey]: manualEntry } : {}, coords: null }
+          : hasManualTimes
+            ? { [`distances.${cacheOriginKey}`]: manualEntry }
+            : {}),
       });
 
       if (locationChanged) {
         setDistanceCache(prev => {
           const next = { ...prev };
           Object.keys(next).forEach(k => { if (k.startsWith(`${editingId}_`)) delete next[k]; });
+          if (manualEntry) next[`${editingId}_${cacheOriginKey}`] = { ...manualEntry, loading: false };
           return next;
         });
         setCoordsCache(prev => {
@@ -722,6 +758,11 @@ export default function PlanningTab({ tripId }) {
           delete next[editingId];
           return next;
         });
+      } else if (manualEntry) {
+        setDistanceCache(prev => ({
+          ...prev,
+          [`${editingId}_${cacheOriginKey}`]: { ...manualEntry, loading: false },
+        }));
       }
     } else {
       const id = 'plan-' + Date.now();
@@ -749,6 +790,8 @@ export default function PlanningTab({ tripId }) {
     setEventEndDate('');
     setEventStartTime('');
     setEventEndTime('');
+    setEditWalkMins('');
+    setEditTransitMins('');
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -764,6 +807,16 @@ export default function PlanningTab({ tripId }) {
     if (ev.startTime) str += ` · ${ev.startTime}`;
     if (ev.endTime) str += `-${ev.endTime}`;
     return str;
+  };
+
+  // Convert integer minutes → compact Hebrew string ("45 דק'" / "1 שע' 30 דק'")
+  const minsToHebDuration = (m) => {
+    if (!m || m <= 0) return '';
+    const h = Math.floor(m / 60);
+    const mins = m % 60;
+    if (h === 0) return `${mins} דק'`;
+    if (mins === 0) return `${h} שע'`;
+    return `${h} שע' ${mins} דק'`;
   };
 
   const getCategoryIcon = (cat, size = 18) => {
@@ -1497,6 +1550,68 @@ export default function PlanningTab({ tripId }) {
                         )}
                       </div>
                     </div>
+
+                  {/* Manual travel-time overrides — edit mode only, requires Maps key */}
+                  {editingId && hasGmapsKey() && (() => {
+                    const cacheOriginKey = formOriginId;
+                    const cache = distanceCache[`${editingId}_${cacheOriginKey}`];
+                    const computed = cache && !cache.loading && !cache.error && !cache.noLocation;
+                    return (
+                      <div style={{
+                        background: 'var(--p-4)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 12,
+                        padding: 14,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Navigation size={14} /> זמני הגעה (דקות)
+                          </span>
+                          {cache?.manualOverride && (
+                            <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--c-orange)', background: 'var(--c-orange-12)', borderRadius: 999, padding: '2px 8px' }}>
+                              ידני
+                            </span>
+                          )}
+                        </div>
+                        <div className="row-2" style={{ gap: 10 }}>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 12 }}>🚶 הליכה</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              min="0"
+                              max="999"
+                              placeholder={computed && cache.walk?.seconds ? String(Math.round(cache.walk.seconds / 60)) : '—'}
+                              value={editWalkMins}
+                              onChange={e => setEditWalkMins(e.target.value)}
+                              style={{ fontSize: 14 }}
+                            />
+                          </div>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 12 }}>🚌 תחבורה ציבורית</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              min="0"
+                              max="999"
+                              placeholder={computed && cache.transit?.seconds ? String(Math.round(cache.transit.seconds / 60)) : '—'}
+                              value={editTransitMins}
+                              onChange={e => setEditTransitMins(e.target.value)}
+                              style={{ fontSize: 14 }}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {computed && (cache.walk || cache.transit)
+                            ? `ערכים מחושבים: ${cache.walk ? `🚶 ${cache.walk.duration}` : ''}${cache.walk && cache.transit ? ' · ' : ''}${cache.transit ? `🚌 ${cache.transit.duration}` : ''} — השאר ריק לשמור אוטומטי`
+                            : 'הזן דקות לעקיפה ידנית — השאר ריק להשאיר ללא שינוי'}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
