@@ -4,7 +4,7 @@
 Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) designed to assist travelers in planning, tracking, and managing their flight and hotel bookings, packing checklists, trip itineraries, and travel expenses. The app is optimized for mobile screens, supports full offline capability, synchronizes with Firestore in real-time, and supports collaborative editing between users.
 
 **Live URL:** https://listify-84018.web.app  
-**Current Version:** 7.2.0
+**Current Version:** 7.3.0
 
 ---
 
@@ -40,7 +40,9 @@ Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) d
 
 ## Styling & Design System (`index.css`)
 Custom glassmorphic design system:
-- **Colors**: Primary Navy `#0b0b30`, Accent Indigo `#4f46e5`, Success Green `#059669`, gradient background `#e0e7ff → #fae8ff`.
+- **Colors**: Primary Navy `#0b0b30`, Accent Indigo `#4f46e5` (default), Success Green `#059669`, gradient background `#e0e7ff → #fae8ff`.
+- **Theme switching**: `data-theme="dark"` on `<html>` activates dark-mode overrides; `data-accent="X"` activates a palette block. 7 palettes: indigo (default), violet, sky, teal, emerald, amber, rose — each defines `--accent`, `--accent-rgb`, `--primary`, `--accent-gradient`.
+- **`--accent-rgb`**: Single source for all `--p-*` tints (`rgba(var(--accent-rgb), alpha)`); swapping it recolors the entire app.
 - **Glassmorphism**: `.glass-card` — `rgba` fills, white border, `backdrop-filter: blur(16px)`.
 - **Micro-animations**: `.highlight-pulse` glow, FLIP card reorder animation (gated on order change only).
 
@@ -49,45 +51,53 @@ Custom glassmorphic design system:
 ## Key Components
 
 ### `App.jsx`
-Central state controller and shell. Handles Google Auth, trip list, multi-user sharing, and the `GlobalChecklistModal` for managing the permanent packing template (`globalChecklist` stored per user in Firestore). Passes `globalChecklist` prop to `ChecklistTab` so the tab can auto-sync missing items.
+Central state controller and shell. Handles Google Auth, trip list, multi-user sharing, and the `GlobalChecklistModal`. Contains `PalettePicker` component (palette selector popover) placed next to the dark/light toggle in both home and trip headers.
+
+### `ThemeContext.jsx`
+Provides `isDark` / `toggleTheme` / `accent` / `setAccent`. Persists both values to `localStorage` and sets `data-theme` / `data-accent` on `<html>`. Exports `PALETTES` array (7 entries with `key`, `label`, `swatch`).
 
 ### `FlightTab.jsx`
 Outbound + return flight cards with live status, aircraft details, gate info, and a Leaflet map showing the flight path. Auto-queries the local flight simulator when flight number + date are entered.
 
 ### `CustomDatePicker.jsx`
-Custom Hebrew RTL calendar and datetime picker — replaces native OS pickers to preserve theme aesthetics. Exposes `CustomDatePicker`, `CustomDateTimePicker`, and `CustomDropdown`. RTL positioning bug fixed: uses `right: 'auto'` in inline styles to prevent popup misalignment.
+Custom Hebrew RTL calendar and datetime picker. Exposes `CustomDatePicker`, `CustomDateTimePicker`, and `CustomDropdown`. `CustomDropdown` supports an optional `meta` string per option — rendered as small secondary text on the left of each dropdown row (not shown in the trigger button). RTL positioning: uses `right: 'auto'` in inline styles.
 
 ### `PlanningTab.jsx`
 Two sub-tabs:
-- **אטרקציות ומקומות** (pool): collapsible plan cards with FLIP reorder animation, visited toggle, description preview in collapsed state, quick-access Navigation button (opens location directly or shows multi-location modal), category filter chips (only used categories shown). Expanded card shows 🚶/🚌 travel-time chips (walk + transit duration from the configured origin).
-- **לוח זמנים יומי**: day-by-day timeline with drag-and-drop day reordering (`@dnd-kit`). Each activity row shows a 🚶/🚌 chip beside its Maps address. Smart day generation: "ייצר ימים לפי טיסה" button creates day cards from outbound→return dates; after sync shows a ✓ indicator; detects date drift and offers "עדכן ימים לפי טיסה". D&D semantics: only activities travel with the dragged day — title and date are positional anchors.
-- **Distance origin picker**: always visible in item edit form (no API key required to set preference); travel-time fetches use Google Maps Routes API + Places API (`VITE_GOOGLE_MAPS_KEY`).
-- **Category customization**: gear button opens a modal to set icon + color per category; settings stored in `trips/{tripId}/settings/categories`.
+
+**אטרקציות ומקומות (pool):**
+- Collapsible plan cards with FLIP reorder animation; visited toggle; description preview in collapsed state.
+- **Priority flag** (`plan.priority: 'must' | 'optional' | null`): toggled via star button in card header (cycles not-set → must → optional) or via 3-button selector in edit/add form. "חובה" = amber title + ⭐ badge; "אם ישאר זמן" = muted title + 🕐 badge. "⭐ חובה" filter chip shown when at least one must-visit exists.
+- **Event status badges**: "אירועים" category items show "✨ היום" (amber card border) when `startDate === todayISO`; "נגמר" (muted) when today is past the end date.
+- **Manual travel-time override**: edit form has numeric minute inputs for walk/transit. Saves to Firestore as `distances.{originId} = { …, manualOverride: true }`. Auto-fetch skips entries flagged with `manualOverride`.
+- **Proximity grouping**: haversine + greedy single-link clustering at 800 m; area headers collapsible via chevron.
+- **Filter row**: sticky, no background — chips + single `SlidersHorizontal` options button (avoids backdrop-filter stacking context artifact). Dropdown uses `position: fixed` anchored via `getBoundingClientRect`.
+- **Sort options**: default / walk asc-desc / transit asc-desc. Persisted per trip in `localStorage`.
+
+**לוח זמנים יומי:**
+- Day timeline with D&D reordering (`@dnd-kit`); smart day generation from flight dates.
+- Activity card header shows 🚶/🚌 chips on the left side (same row as title).
+- Activity title color reflects linked plan's priority (amber = must, muted = optional).
+- **Place-picker dropdown**: options include distance `meta` text + priority prefix (⭐/🕐).
+- Category customization persisted in `trips/{tripId}/settings/categories`.
 
 ### `ChecklistTab.jsx`
-Packing checklist synced with Firestore. Collapsible categories. Auto-syncs new items from the user's global template: on mount, any `globalChecklist` items missing from the trip's checklist are batch-written to Firestore. Intentionally deleted global items are tracked in `trips/{tripId}/settings/checklistSync.deletedGlobalIds`.
-
-**Reminders carousel** (`RemindersCard`): randomly shuffled on load, auto-advances every 3 seconds with a fade-up animation. Swipeable (touch). Count badge shows current position. "כל התזכורות" button opens a bottom sheet with the full list as checkable items; each row shows the author's avatar. Bottom sheet floats above the navigation bar.
+Packing checklist. Auto-syncs from global template. Reminders carousel (shuffle, auto-advance, swipeable). "כל התזכורות" bottom sheet uses `var(--modal-bg)` (dark-mode-safe).
 
 ### `ExpensesTab.jsx`
-Travel expense tracker:
-- Expenses grouped by **category** in collapsible sections; category header shows count + ILS total estimate.
-- **Expense form** split into two sections with "— או —" divider: "בחירה מרשימת הטיול" (auto-fills category from plan item) vs "הוספה ידנית" (free description + category dropdown + custom location).
-- **ILS snapshot**: foreign-currency expenses store the ILS equivalent at the time of entry (`ilsSnapshot`); displayed as `≈ ₪X` on each card, fixed permanently.
-- **Summary panel**: per-currency totals + total ILS estimate + per-person (÷2) row.
-- Category dropdown includes planning-tab categories for cross-tab consistency.
+Expense tracker with per-category collapsible groups, ILS snapshot for foreign currencies, split form, and per-person summary row.
 
 ### `InfoTab.jsx`
-Important trip information and contacts. Each item supports **extra fields** (text, phone, address, URL, number types). Phone/address/URL fields render as tappable links. Number fields open numeric keyboard on mobile.
+Trip information and contacts with extra fields (text, phone, address, URL, number).
 
 ### `exportTrip.js`
-Exports trip data to PDF (jsPDF), Word (docx), and Excel (ExcelJS). Price column removed; text size and color optimized for legibility.
+Exports to PDF (jsPDF), Word (docx), and Excel (ExcelJS).
 
 ### `TripContext.jsx`
-React context exposing `tripId`, `canEdit`, `isOwner`, `role`, and `ownerProfile` to all tab components.
+Exposes `tripId`, `canEdit`, `isOwner`, `role`, `ownerProfile`, `memberProfiles`.
 
 ### `ConfirmContext.jsx`
-App-wide styled confirm dialog via `useConfirm()` hook — replaces native `window.confirm` throughout the app.
+App-wide styled confirm dialog via `useConfirm()` hook.
 
 ---
 
@@ -97,16 +107,23 @@ App-wide styled confirm dialog via `useConfirm()` hook — replaces native `wind
 /users/{uid}
   displayName, email, photoURL
   globalChecklist: [{id, text, category, completed}]
-  tripIds: [...]          # legacy field, kept for migration
+  tripIds: [...]
 
 /trips/{tripId}
   name, destination, dates
   members: { uid: 'owner'|'editor'|'viewer' }
   memberIds: [uid, ...]
   outboundFlightDetails, returnFlightDetails, hotelDetails
+  distanceOrigins: [{id, name, mapsUrl}]
+  plannerDaysFromFlight: {out, ret}
 
   /planning/{planId}
     title, category, description, address, price, links, visited
+    priority: null | 'must' | 'optional'
+    distanceOriginId: null | string
+    distances: { [originId]: { walk, transit, manualOverride?, fetchedAt } }
+    coords: { lat, lng } | null
+    event: { startDate, endDate, startTime, endTime } | null
 
   /days/{dayId}
     title, date, order
@@ -118,7 +135,7 @@ App-wide styled confirm dialog via `useConfirm()` hook — replaces native `wind
   /expenses/{expenseId}
     amount, currency, category, description
     linkedPlanId, customPlace
-    ilsSnapshot          # ILS equivalent at time of entry (foreign currencies)
+    ilsSnapshot
     createdAt
 
   /info/{infoId}
@@ -130,8 +147,6 @@ App-wide styled confirm dialog via `useConfirm()` hook — replaces native `wind
 
   /settings/checklistSync
     deletedGlobalIds: [id, ...]
-
-  plannerDaysFromFlight: {out, ret}   # stored on trip root doc for sync indicator
 ```
 
 ---
@@ -143,4 +158,3 @@ App-wide styled confirm dialog via `useConfirm()` hook — replaces native `wind
 | `VITE_GOOGLE_MAPS_KEY` | Google Cloud key — Routes API + Places API (travel times) |
 
 Both are set in `.env.local` (gitignored). The app builds and runs without them but travel-time chips and live flight lookup will be disabled.
-

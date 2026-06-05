@@ -1,5 +1,62 @@
 # Changelog — Flights-Assistant
 
+## [7.3.0] - 2026-06-05
+
+### Added
+- **Accent Palette Selector** (`App.jsx`, `ThemeContext.jsx`, `index.css`):
+  - 7 selectable color palettes: indigo (default), violet, sky, teal, emerald, amber, rose.
+  - `PalettePicker` button (palette icon) placed next to the dark/light toggle in both the home and trip headers; opens a 4-column swatch grid popover.
+  - Each palette overrides `--accent`, `--accent-rgb`, `--primary`, `--primary-hover`, `--accent-gradient`, `--bg-gradient`. All `--p-*` tints use `rgba(var(--accent-rgb), alpha)` so the entire app recolors from a single variable.
+  - Preference persisted to `localStorage` and applied via `data-accent` attribute on `<html>`. Works in both light and dark mode.
+
+- **Must-Visit Priority Flag** (`PlanningTab.jsx`):
+  - New `plan.priority` field: `null` (unset) | `'must'` | `'optional'`.
+  - **Quick toggle**: star icon button in every plan card header cycles through the three states without opening the form.
+  - **Form control**: 3-button toggle (לא מוגדר / ⭐ חובה / 🕐 אם ישאר זמן) in the add/edit modal, right below the category selector.
+  - **Visual indicators**: "חובה" → amber title text + ⭐ חובה badge; "אם ישאר זמן" → muted title + 🕐 badge; unset → normal appearance.
+  - **Filter chip**: "⭐ חובה" chip appears in the filter row as soon as at least one must-visit is marked; filters to those places only.
+  - **Place-picker dropdown**: must-visit options prefixed with `⭐`, optional with `🕐`, so priority is visible when building the daily schedule.
+  - **Daily planner**: activity titles colored amber (must) or muted (optional) based on the linked plan's priority.
+
+- **Manual Travel-Time Override** (`PlanningTab.jsx`):
+  - Edit form shows a "זמני הגעה" section with two number inputs (minutes) for walk and transit.
+  - Auto-fetched values displayed as placeholder text; user can override either or both.
+  - Saved to Firestore as `distances.{originId} = { walk, transit, manualOverride: true, fetchedAt }`.
+  - Auto-fetch (`fetchPlanDistances`) skips any cache entry with `manualOverride: true`, so values persist until manually cleared.
+  - Pre-populated from cache when re-opening the form; "ידני" badge shown on the section header when override is active.
+
+- **Travel Times in Place-Picker Dropdown** (`PlanningTab.jsx`, `CustomDatePicker.jsx`):
+  - `CustomDropdown` gains an optional `meta` field per option: rendered as small secondary text on the left side of each row (not shown in the trigger button).
+  - Place options in the daily-activity form show `🚶 Xדק' 🚌 Yדק'` meta text so distances are visible while choosing a place.
+
+- **Travel Times in Daily Planner Activity Row** (`PlanningTab.jsx`):
+  - Walk (🚶) and transit (🚌) chips moved from below the address into the activity card **title row** — title on the right, times on the left, before the edit/delete controls.
+  - Uses the linked plan's `distanceOriginId` (falls back to hotel) for the correct cache lookup.
+
+- **Event Status Badges** (`PlanningTab.jsx`):
+  - Items in the "אירועים" category show a "✨ היום" badge (amber) and an orange right border when `event.startDate === todayISO`.
+  - Items show a "נגמר" badge (muted) when today is past `event.endDate` (or `startDate` when no end date is set).
+  - Today is evaluated once on module load (`todayISO` constant) — stale by at most one day if the tab stays open overnight.
+
+- **Proximity Area Collapse/Expand** (`PlanningTab.jsx`):
+  - Area header rows in the proximity-grouping view are clickable buttons with a rotating `ChevronDown` arrow.
+  - `collapsedAreas` state (headerId → boolean) persists for the session; collapsed areas hide their cards.
+
+### Changed
+- **Filter Row — No Background** (`PlanningTab.jsx`, `index.css`):
+  - Removed all background/blur from the sticky filter chips row; content behind it is fully visible while scrolling.
+  - Consolidated the three separate filter action buttons (sort / layers / refresh) into a single `SlidersHorizontal` options menu button.
+  - Options dropdown uses `position: fixed` anchored via `getBoundingClientRect()` — avoids the backdrop-filter stacking context artifact (ghost solid background on the button when scrolling).
+  - Filter chips and action button are now vertically aligned (removed `padding-bottom` on the scroll container that was causing height mismatch).
+
+- **Dark Mode Improvements** (`index.css`, `ChecklistTab.jsx`):
+  - `btn-primary`, `btn-add-circle`, `filter-chip.active`, `btn-tab-toggle.active`, `custom-checkbox.checked` all use `var(--accent)` as background in dark mode instead of `--primary` (which is a light tint, too bright as a background color).
+  - Reminders "כל התזכורות" bottom sheet: `background: var(--modal-bg)` replacing hardcoded near-white fallback.
+  - Daily schedule activity cards: removed hardcoded `rgba(255,255,255,0.7)` background; now fully theme-aware.
+  - Planning filter chips sticky row: removed hardcoded `rgba(245,243,255,…)` background.
+
+---
+
 ## [7.2.0] - 2026-06-03
 
 ### Added
