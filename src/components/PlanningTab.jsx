@@ -2520,16 +2520,17 @@ export default function PlanningTab({ tripId }) {
                   </div>
 
                   {/* Day Activities Timeline */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
                     {(day.activities || []).map((act, actIdx) => {
                       const isFirst = actIdx === 0;
                       const isLast = actIdx === (day.activities || []).length - 1;
+                      const linkedPlan = act.placeId ? plans.find(p => p.id === act.placeId) : null;
+                      const isVisited = linkedPlan?.visited === true;
 
                       return (
-                        <div key={act.id} style={{
+                        <React.Fragment key={act.id}>
+                        <div style={{
                           display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
-                          paddingBottom: isLast ? 0 : 12,
-                          borderBottom: isLast ? 'none' : '1px solid var(--ink-5)',
                         }}>
                           {/* Timeline vertical node and line */}
                           <div style={{ 
@@ -2553,9 +2554,9 @@ export default function PlanningTab({ tripId }) {
                             </div>
                             {!isLast && (
                               <div style={{
-                                position: 'absolute', 
-                                top: 28, 
-                                bottom: -12, 
+                                position: 'absolute',
+                                top: 28,
+                                bottom: -21,
                                 width: 2,
                                 background: 'var(--ink-6)',
                                 zIndex: 1
@@ -2616,9 +2617,11 @@ export default function PlanningTab({ tripId }) {
                                         </span>
                                       )}
                                       <h4 style={{
-                                        fontSize: 14, fontWeight: 800, color: titleColor, margin: 0,
+                                        fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
                                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                         minWidth: 0,
+                                        textDecoration: isVisited ? 'line-through' : 'none',
+                                        opacity: isVisited ? 0.7 : 1,
                                       }}>
                                         {act.title}
                                       </h4>
@@ -2689,6 +2692,10 @@ export default function PlanningTab({ tripId }) {
                             })()}
                           </div>
                         </div>
+                        {!isLast && (
+                          <div style={{ height: 1, background: 'var(--ink-15)', marginRight: 40 }} />
+                        )}
+                        </React.Fragment>
                       );
                     })}
 
