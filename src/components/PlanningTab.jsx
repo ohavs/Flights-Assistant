@@ -310,6 +310,8 @@ export default function PlanningTab({ tripId }) {
   // Manual travel-time overrides (edit form only, in minutes)
   const [editWalkMins, setEditWalkMins] = useState('');
   const [editTransitMins, setEditTransitMins] = useState('');
+  // Priority: null | 'must' | 'optional'
+  const [formPriority, setFormPriority] = useState(null);
 
   // Expanded plan cards (default: collapsed)
   const [expandedPlanIds, setExpandedPlanIds] = useState({});
@@ -590,6 +592,7 @@ export default function PlanningTab({ tripId }) {
     setFormOriginId('hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
+    setFormPriority(null);
     setShowAddForm(true);
   };
 
@@ -632,6 +635,7 @@ export default function PlanningTab({ tripId }) {
     setFormOriginId(plan.distanceOriginId || 'hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
+    setFormPriority(plan.priority || null);
     // Pre-populate manual override fields from cache (only when already overridden)
     const originKey = plan.distanceOriginId || 'hotel';
     const cacheEntry = distanceCache[`${plan.id}_${originKey}`];
@@ -746,6 +750,7 @@ export default function PlanningTab({ tripId }) {
         links: links,
         distanceOriginId: originId,
         event: eventData,
+        priority: formPriority || null,
         ...(locationChanged
           ? { distances: manualEntry ? { [cacheOriginKey]: manualEntry } : {}, coords: null }
           : hasManualTimes
@@ -784,6 +789,7 @@ export default function PlanningTab({ tripId }) {
         visited: false,
         distanceOriginId: originId,
         event: eventData,
+        priority: formPriority || null,
       });
     }
 
@@ -799,6 +805,7 @@ export default function PlanningTab({ tripId }) {
     setEventEndTime('');
     setEditWalkMins('');
     setEditTransitMins('');
+    setFormPriority(null);
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -1352,6 +1359,51 @@ export default function PlanningTab({ tripId }) {
                       saveCategorySettings(updated);
                     }}
                   />
+
+                  {/* Priority selector */}
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Star size={13} style={{ color: '#f59e0b' }} />
+                      עדיפות
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[
+                        { value: null,       label: 'לא מוגדר',      icon: null },
+                        { value: 'must',     label: 'חובה',          icon: <Star size={13} fill="#f59e0b" color="#f59e0b" /> },
+                        { value: 'optional', label: 'אם ישאר זמן',   icon: <Clock size={13} /> },
+                      ].map(opt => {
+                        const active = formPriority === opt.value;
+                        return (
+                          <button
+                            key={String(opt.value)}
+                            type="button"
+                            onClick={() => setFormPriority(opt.value)}
+                            style={{
+                              flex: 1,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                              padding: '9px 4px',
+                              borderRadius: 10,
+                              border: active
+                                ? `1.5px solid ${opt.value === 'must' ? '#f59e0b' : opt.value === 'optional' ? 'var(--ink-20)' : 'var(--accent)'}`
+                                : '1.5px solid var(--ink-10)',
+                              background: active
+                                ? opt.value === 'must' ? 'rgba(245,158,11,0.12)' : opt.value === 'optional' ? 'var(--ink-6)' : 'var(--p-8)'
+                                : 'transparent',
+                              color: active
+                                ? opt.value === 'must' ? '#f59e0b' : opt.value === 'optional' ? 'var(--text-muted)' : 'var(--accent)'
+                                : 'var(--text-muted)',
+                              fontFamily: 'var(--font-hebrew)',
+                              fontSize: 12, fontWeight: 800,
+                              cursor: 'pointer', transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {opt.icon}
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   {/* Event date/time — only for the events category */}
                   {category === EVENTS_CATEGORY && (
