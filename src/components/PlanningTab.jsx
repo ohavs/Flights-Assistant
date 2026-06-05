@@ -2880,9 +2880,23 @@ export default function PlanningTab({ tripId }) {
                               onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
                               options={[
                                 { value: '', label: 'בחר מקום' },
-                                ...unusedPlaces.map(p => ({ value: p.id, label: p.title })),
+                                ...unusedPlaces.map(p => {
+                                  const originKey = p.distanceOriginId || 'hotel';
+                                  const cache = distanceCache[`${p.id}_${originKey}`];
+                                  const parts = [];
+                                  if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
+                                  if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
+                                  return { value: p.id, label: p.title, meta: parts.join('  ') || undefined };
+                                }),
                                 ...(usedPlaces.length > 0 ? [
-                                  ...usedPlaces.map(p => ({ value: p.id, label: `✓ ${p.title}` }))
+                                  ...usedPlaces.map(p => {
+                                    const originKey = p.distanceOriginId || 'hotel';
+                                    const cache = distanceCache[`${p.id}_${originKey}`];
+                                    const parts = [];
+                                    if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
+                                    if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
+                                    return { value: p.id, label: `✓ ${p.title}`, meta: parts.join('  ') || undefined };
+                                  })
                                 ] : [])
                               ]}
                               placeholder="-- בחר מקום --"
