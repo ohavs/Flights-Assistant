@@ -2530,9 +2530,9 @@ export default function PlanningTab({ tripId }) {
                       return (
                         <div key={act.id} style={{
                           display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
-                          paddingTop: isFirst ? 0 : 12,
-                          paddingBottom: isLast ? 0 : 12,
-                          borderTop: isFirst ? 'none' : '1px solid rgba(0,0,0,0.1)',
+                          paddingTop: isFirst ? 0 : 14,
+                          paddingBottom: isLast ? 0 : 14,
+                          borderTop: isFirst ? 'none' : '1px solid rgba(0,0,0,0.18)',
                         }}>
                           {/* Timeline vertical node and line */}
                           <div style={{ 
