@@ -2567,122 +2567,122 @@ export default function PlanningTab({ tripId }) {
                             flexDirection: 'column',
                             gap: 6,
                           }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                {act.timeLabel && (
-                                  <span style={{
-                                    fontSize: 10,
-                                    fontWeight: 900,
-                                    color: '#fff',
-                                    background: 'var(--accent)',
-                                    padding: '2px 6px',
-                                    borderRadius: 4,
-                                    marginLeft: 6,
-                                    verticalAlign: 'middle',
-                                    display: 'inline-block'
-                                  }}>
-                                    {act.timeLabel}
-                                  </span>
-                                )}
-                                <h4 style={{
-                                  fontSize: 14,
-                                  fontWeight: 800,
-                                  color: (() => {
-                                    const p = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
-                                    return p?.priority === 'must' ? '#f59e0b' :
-                                           p?.priority === 'optional' ? 'var(--text-muted)' :
-                                           'var(--primary)';
-                                  })(),
-                                  margin: 0,
-                                  verticalAlign: 'middle',
-                                  display: 'inline-block',
-                                  wordBreak: 'break-word'
-                                }}>
-                                  {act.title}
-                                </h4>
-                              </div>
-
-                              {/* Travel-time chips — same row, left of controls */}
-                              {(() => {
-                                if (!act.placeId || !hasGmapsKey()) return null;
+                            {(() => {
+                              // Compute travel-time chips once — reused below the title.
+                              let chips = null;
+                              if (act.placeId && hasGmapsKey()) {
                                 const linkedPlan = plans.find(p => p.id === act.placeId);
                                 const originKey = linkedPlan?.distanceOriginId || 'hotel';
                                 const cache = distanceCache[`${act.placeId}_${originKey}`];
-                                if (!cache || cache.loading || cache.error || cache.noLocation) return null;
-                                if (!cache.walk && !cache.transit) return null;
-                                return (
-                                  <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
-                                    {cache.walk && (
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                        🚶 {cache.walk.duration}
-                                      </span>
-                                    )}
-                                    {cache.transit && (
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                        🚌 {cache.transit.duration}
-                                      </span>
+                                if (cache && !cache.loading && !cache.error && !cache.noLocation && (cache.walk || cache.transit)) {
+                                  chips = (
+                                    <>
+                                      {cache.walk && (
+                                        <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                          🚶 {cache.walk.duration}
+                                        </span>
+                                      )}
+                                      {cache.transit && (
+                                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                          🚌 {cache.transit.duration}
+                                        </span>
+                                      )}
+                                    </>
+                                  );
+                                }
+                              }
+                              const titleColor = (() => {
+                                const p = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
+                                return p?.priority === 'must' ? '#f59e0b' :
+                                       p?.priority === 'optional' ? 'var(--text-muted)' :
+                                       'var(--primary)';
+                              })();
+                              return (
+                                <>
+                                  {/* Row 1: time badge + title (single line, ellipsis) + controls */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      {act.timeLabel && (
+                                        <span style={{
+                                          fontSize: 10, fontWeight: 900, color: '#fff',
+                                          background: 'var(--accent)', padding: '2px 6px',
+                                          borderRadius: 4, flexShrink: 0,
+                                        }}>
+                                          {act.timeLabel}
+                                        </span>
+                                      )}
+                                      <h4 style={{
+                                        fontSize: 14, fontWeight: 800, color: titleColor, margin: 0,
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        minWidth: 0,
+                                      }}>
+                                        {act.title}
+                                      </h4>
+                                    </div>
+
+                                    {canEdit && (
+                                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                                        <button
+                                          onClick={() => moveActivity(day.id, act.id, -1)}
+                                          disabled={isFirst}
+                                          style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                                        >
+                                          <ArrowUp size={14} />
+                                        </button>
+                                        <button
+                                          onClick={() => moveActivity(day.id, act.id, 1)}
+                                          disabled={isLast}
+                                          style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                                        >
+                                          <ArrowDown size={14} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleStartEditActivity(day.id, act)}
+                                          style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                                        >
+                                          <Pencil size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteActivity(day.id, act.id)}
+                                          style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
-                                );
-                              })()}
 
-                              {/* Controls */}
-                              {canEdit && (
-                              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                                <button
-                                  onClick={() => moveActivity(day.id, act.id, -1)}
-                                  disabled={isFirst}
-                                  style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <ArrowUp size={14} />
-                                </button>
-                                <button
-                                  onClick={() => moveActivity(day.id, act.id, 1)}
-                                  disabled={isLast}
-                                  style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <ArrowDown size={14} />
-                                </button>
-                                <button
-                                  onClick={() => handleStartEditActivity(day.id, act)}
-                                  style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <Pencil size={13} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteActivity(day.id, act.id)}
-                                  style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                              )}
-                            </div>
+                                  {act.description && (
+                                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3 }}>
+                                      {act.description}
+                                    </p>
+                                  )}
 
-                            {act.description && (
-                              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3 }}>
-                                {act.description}
-                              </p>
-                            )}
-
-                            {act.address && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
-                                <a
-                                  href={`https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={{
-                                    fontSize: 11, color: 'var(--accent)', fontWeight: 700,
-                                    display: 'flex', alignItems: 'center', gap: 3,
-                                    textDecoration: 'none', minWidth: 0,
-                                  }}
-                                >
-                                  <MapPin size={11} />
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
-                                  <ExternalLink size={10} />
-                                </a>
-                              </div>
-                            )}
+                                  {/* Row 2: address link + travel-time chips */}
+                                  {(act.address || chips) && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                                      {act.address && (
+                                        <a
+                                          href={`https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{
+                                            fontSize: 11, color: 'var(--accent)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: 3,
+                                            textDecoration: 'none', minWidth: 0,
+                                          }}
+                                        >
+                                          <MapPin size={11} />
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
+                                          <ExternalLink size={10} />
+                                        </a>
+                                      )}
+                                      {chips}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -3003,9 +3003,9 @@ export default function PlanningTab({ tripId }) {
                         borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid rgba(79,70,229,0.08)' : 'none',
                         paddingBottom: idx < savedPlaceSelections.length - 1 ? 12 : 0
                       }}>
-                        {/* Category + Place + remove */}
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                          <div style={{ flex: 1 }}>
+                        {/* Category row (+ remove button) */}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
                             <CustomDropdown
                               value={sel.categoryFilter}
                               onChange={(v) => updateSavedPlaceSelection(idx, 'categoryFilter', v)}
@@ -3016,36 +3016,6 @@ export default function PlanningTab({ tripId }) {
                               placeholder="בחר קטגוריה"
                             />
                           </div>
-                          <div style={{ flex: 1.5 }}>
-                            <CustomDropdown
-                              value={sel.placeId}
-                              onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
-                              options={[
-                                { value: '', label: 'בחר מקום' },
-                                ...unusedPlaces.map(p => {
-                                  const originKey = p.distanceOriginId || 'hotel';
-                                  const cache = distanceCache[`${p.id}_${originKey}`];
-                                  const parts = [];
-                                  if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
-                                  if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
-                                  const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
-                                  return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined };
-                                }),
-                                ...(usedPlaces.length > 0 ? [
-                                  ...usedPlaces.map(p => {
-                                    const originKey = p.distanceOriginId || 'hotel';
-                                    const cache = distanceCache[`${p.id}_${originKey}`];
-                                    const parts = [];
-                                    if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
-                                    if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
-                                    const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
-                                    return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined };
-                                  })
-                                ] : [])
-                              ]}
-                              placeholder="-- בחר מקום --"
-                            />
-                          </div>
                           {savedPlaceSelections.length > 1 && (
                             <button
                               type="button"
@@ -3053,15 +3023,43 @@ export default function PlanningTab({ tripId }) {
                               style={{
                                 border: 'none', background: 'rgba(220,38,38,0.08)',
                                 color: 'rgb(220,38,38)', borderRadius: 8,
-                                width: 36, height: 36, cursor: 'pointer', flexShrink: 0,
+                                width: 40, height: 40, cursor: 'pointer', flexShrink: 0,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                marginTop: 0
                               }}
                             >
                               <X size={14} />
                             </button>
                           )}
                         </div>
+                        {/* Place selector — full width so name + travel times are readable */}
+                        <CustomDropdown
+                          value={sel.placeId}
+                          onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
+                          options={[
+                            { value: '', label: 'בחר מקום' },
+                            ...unusedPlaces.map(p => {
+                              const originKey = p.distanceOriginId || 'hotel';
+                              const cache = distanceCache[`${p.id}_${originKey}`];
+                              const parts = [];
+                              if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
+                              if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
+                              const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                              return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined };
+                            }),
+                            ...(usedPlaces.length > 0 ? [
+                              ...usedPlaces.map(p => {
+                                const originKey = p.distanceOriginId || 'hotel';
+                                const cache = distanceCache[`${p.id}_${originKey}`];
+                                const parts = [];
+                                if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
+                                if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
+                                const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined };
+                              })
+                            ] : [])
+                          ]}
+                          placeholder="-- בחר מקום --"
+                        />
                         {/* Time chips per row */}
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
