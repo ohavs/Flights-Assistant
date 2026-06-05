@@ -2520,11 +2520,11 @@ export default function PlanningTab({ tripId }) {
                   </div>
 
                   {/* Day Activities Timeline */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                     {(day.activities || []).map((act, actIdx) => {
                       const isFirst = actIdx === 0;
                       const isLast = actIdx === (day.activities || []).length - 1;
-                      const linkedPlan = act.placeId ? plans.find(p => p.id === act.placeId) : null;
+                      const linkedPlan = plans.find(p => act.placeId ? p.id === act.placeId : p.title === act.title);
                       const isVisited = linkedPlan?.visited === true;
 
                       return (
@@ -2571,6 +2571,8 @@ export default function PlanningTab({ tripId }) {
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 6,
+                            opacity: isVisited ? 0.6 : 1,
+                            borderColor: isVisited ? 'rgba(5,150,105,0.3)' : undefined,
                           }}>
                             {(() => {
                               // Compute travel-time chips once — reused below the title.
@@ -2607,11 +2609,28 @@ export default function PlanningTab({ tripId }) {
                                   {/* Row 1: time badge + title (single line, ellipsis) + controls */}
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                                     <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      {act.timeLabel && (
+                                      {isVisited && (
+                                        <span style={{
+                                          fontSize: 10, fontWeight: 900, color: '#059669',
+                                          background: 'rgba(5,150,105,0.12)', padding: '2px 6px',
+                                          borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
+                                        }}>
+                                          ✓ בוצע
+                                        </span>
+                                      )}
+                                      {!isVisited && act.timeLabel && (
                                         <span style={{
                                           fontSize: 10, fontWeight: 900, color: '#fff',
                                           background: 'var(--accent)', padding: '2px 6px',
                                           borderRadius: 4, flexShrink: 0,
+                                        }}>
+                                          {act.timeLabel}
+                                        </span>
+                                      )}
+                                      {isVisited && act.timeLabel && (
+                                        <span style={{
+                                          fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                          flexShrink: 0,
                                         }}>
                                           {act.timeLabel}
                                         </span>
@@ -2621,7 +2640,6 @@ export default function PlanningTab({ tripId }) {
                                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                         minWidth: 0,
                                         textDecoration: isVisited ? 'line-through' : 'none',
-                                        opacity: isVisited ? 0.7 : 1,
                                       }}>
                                         {act.title}
                                       </h4>
@@ -2693,7 +2711,7 @@ export default function PlanningTab({ tripId }) {
                           </div>
                         </div>
                         {!isLast && (
-                          <div style={{ height: 1, background: 'var(--ink-15)', marginRight: 40 }} />
+                          <div style={{ height: 1, background: 'rgba(0,0,0,0.1)' }} />
                         )}
                         </React.Fragment>
                       );
