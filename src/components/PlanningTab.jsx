@@ -51,6 +51,7 @@ import {
   ShoppingBag,
   Plane,
   Star,
+  Clock,
   Bike,
   Car,
   Landmark,
@@ -676,6 +677,12 @@ export default function PlanningTab({ tripId }) {
     });
   };
 
+  const cyclePriority = async (plan) => {
+    if (!tripId || !canEdit) return;
+    const next = !plan.priority ? 'must' : plan.priority === 'must' ? 'optional' : null;
+    await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { priority: next });
+  };
+
   const handleDelete = async (id) => {
     if (!tripId) return;
     const plan = plans.find(p => p.id === id);
@@ -858,7 +865,10 @@ export default function PlanningTab({ tripId }) {
   // Filter plans + sort
   const filteredPlans = plans
     .filter(plan => {
-      const matchesCategory = selectedFilter === 'הכל' || plan.category === selectedFilter;
+      const matchesCategory =
+        selectedFilter === 'הכל' ? true :
+        selectedFilter === '__must__' ? plan.priority === 'must' :
+        plan.category === selectedFilter;
       const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (plan.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (plan.address || '').toLowerCase().includes(searchQuery.toLowerCase());
@@ -1648,6 +1658,19 @@ export default function PlanningTab({ tripId }) {
           }}>
             {/* Scrollable chips */}
             <div className="horizontal-scroll filter-chips-row" style={{ flex: 1, gap: 10, paddingBottom: 0 }}>
+              {/* Must-visit filter chip */}
+              {plans.some(p => p.priority === 'must') && (
+                <button
+                  onClick={() => setSelectedFilter(selectedFilter === '__must__' ? 'הכל' : '__must__')}
+                  className={`filter-chip ${selectedFilter === '__must__' ? 'active' : ''}`}
+                  style={selectedFilter === '__must__'
+                    ? { background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }
+                    : { color: '#f59e0b', borderColor: '#f59e0b22' }}
+                >
+                  <Star size={13} fill={selectedFilter === '__must__' ? '#fff' : '#f59e0b'} />
+                  <span>חובה</span>
+                </button>
+              )}
               {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
                 const active = filter === selectedFilter;
                 const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
@@ -2012,12 +2035,51 @@ export default function PlanningTab({ tripId }) {
                         <h3 style={{
                           fontSize: 14,
                           fontWeight: 800,
-                          color: plan.visited ? 'var(--text-success)' : 'var(--primary-color)',
+                          color: plan.visited ? 'var(--text-success)' :
+                                 plan.priority === 'must' ? '#f59e0b' :
+                                 plan.priority === 'optional' ? 'var(--text-muted)' :
+                                 'var(--primary-color)',
                           textDecoration: plan.visited ? 'line-through' : 'none',
                           lineHeight: 1.25,
                           wordBreak: 'break-word',
                         }}>
                           {plan.title}
+                          {plan.priority === 'must' && !plan.visited && (
+                            <span style={{
+                              marginRight: 8,
+                              fontSize: 10, fontWeight: 900,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: 'rgba(245,158,11,0.15)',
+                              color: '#f59e0b',
+                              verticalAlign: 'middle',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                            }}>
+                              <Star size={9} fill="#f59e0b" />
+                              חובה
+                            </span>
+                          )}
+                          {plan.priority === 'optional' && !plan.visited && (
+                            <span style={{
+                              marginRight: 8,
+                              fontSize: 10, fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: 'var(--ink-6)',
+                              color: 'var(--text-muted)',
+                              verticalAlign: 'middle',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                            }}>
+                              <Clock size={9} />
+                              אם ישאר זמן
+                            </span>
+                          )}
                           {plan.visited && (
                             <span style={{
                               marginRight: 8,
@@ -2098,6 +2160,29 @@ export default function PlanningTab({ tripId }) {
                           </button>
                         );
                       })()}
+
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); cyclePriority(plan); }}
+                          title={
+                            plan.priority === 'must' ? 'חובה — לחץ לשנות לאם ישאר זמן' :
+                            plan.priority === 'optional' ? 'אם ישאר זמן — לחץ לנקות' :
+                            'לחץ לסמן כחובה'
+                          }
+                          style={{
+                            border: 'none', background: 'transparent', cursor: 'pointer',
+                            padding: 4, flexShrink: 0, display: 'flex', alignItems: 'center',
+                            color: plan.priority === 'must' ? '#f59e0b' :
+                                   plan.priority === 'optional' ? 'var(--text-muted)' :
+                                   'var(--ink-15)',
+                          }}
+                        >
+                          {plan.priority === 'optional'
+                            ? <Clock size={16} />
+                            : <Star size={16} fill={plan.priority === 'must' ? 'currentColor' : 'none'} />}
+                        </button>
+                      )}
 
                       <ChevronDown
                         size={18}
@@ -2450,7 +2535,12 @@ export default function PlanningTab({ tripId }) {
                                 <h4 style={{
                                   fontSize: 14,
                                   fontWeight: 800,
-                                  color: 'var(--primary)',
+                                  color: (() => {
+                                    const p = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
+                                    return p?.priority === 'must' ? '#f59e0b' :
+                                           p?.priority === 'optional' ? 'var(--text-muted)' :
+                                           'var(--primary)';
+                                  })(),
                                   margin: 0,
                                   verticalAlign: 'middle',
                                   display: 'inline-block',
@@ -2886,7 +2976,8 @@ export default function PlanningTab({ tripId }) {
                                   const parts = [];
                                   if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
                                   if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
-                                  return { value: p.id, label: p.title, meta: parts.join('  ') || undefined };
+                                  const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                                  return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined };
                                 }),
                                 ...(usedPlaces.length > 0 ? [
                                   ...usedPlaces.map(p => {
@@ -2895,7 +2986,8 @@ export default function PlanningTab({ tripId }) {
                                     const parts = [];
                                     if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
                                     if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
-                                    return { value: p.id, label: `✓ ${p.title}`, meta: parts.join('  ') || undefined };
+                                    const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                                    return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined };
                                   })
                                 ] : [])
                               ]}
