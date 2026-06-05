@@ -929,8 +929,9 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
             width: popupRect.width
           }}
         >
-          {normalized.map((opt) => {
+          {normalized.map((opt, optIdx) => {
             const isActive = opt.value === value;
+            const isFirst = optIdx === 0;
             return (
               <button
                 key={String(opt.value)}
@@ -939,10 +940,16 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
                 aria-selected={isActive}
                 onClick={() => handleSelect(opt.value)}
                 className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
+                style={!isFirst ? { borderTop: '1px solid var(--ink-8)' } : undefined}
               >
                 {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
                 <span style={{ flex: 1, textAlign: 'right', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: opt.labelColor || 'inherit' }}>{opt.label}</span>
+                  <span style={{
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    color: opt.labelColor || 'inherit',
+                    textDecoration: opt.visited ? 'line-through' : 'none',
+                    opacity: opt.visited ? 0.6 : 1,
+                  }}>{opt.label}</span>
                   {opt.meta && (
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap', opacity: 0.85 }}>
                       {opt.meta}
