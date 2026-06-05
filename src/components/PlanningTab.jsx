@@ -2526,7 +2526,11 @@ export default function PlanningTab({ tripId }) {
                       const isLast = actIdx === (day.activities || []).length - 1;
 
                       return (
-                        <div key={act.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative' }}>
+                        <div key={act.id} style={{
+                          display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
+                          paddingBottom: isLast ? 0 : 12,
+                          borderBottom: isLast ? 'none' : '1px solid var(--ink-5)',
+                        }}>
                           {/* Timeline vertical node and line */}
                           <div style={{ 
                             display: 'flex', 
