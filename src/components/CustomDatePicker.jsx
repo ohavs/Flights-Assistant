@@ -940,7 +940,10 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
                 aria-selected={isActive}
                 onClick={() => handleSelect(opt.value)}
                 className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
-                style={!isFirst ? { borderTop: '1px solid var(--ink-8)' } : undefined}
+                style={{
+                  ...((!isFirst) ? { borderTop: '1px solid var(--ink-8)' } : {}),
+                  ...(opt.inUse ? { background: 'rgba(79,70,229,0.07)', opacity: 0.75 } : {}),
+                }}
               >
                 {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
                 <span style={{ flex: 1, textAlign: 'right', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>

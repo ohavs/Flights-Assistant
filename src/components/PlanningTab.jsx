@@ -3089,7 +3089,7 @@ export default function PlanningTab({ tripId }) {
                                 if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
                                 const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
                                 const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
-                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor, visited: p.visited };
+                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor, visited: p.visited, inUse: true };
                               })
                             ] : [])
                           ]}
