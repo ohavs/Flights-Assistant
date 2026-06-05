@@ -2520,7 +2520,7 @@ export default function PlanningTab({ tripId }) {
                   </div>
 
                   {/* Day Activities Timeline */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
                     {(day.activities || []).map((act, actIdx) => {
                       const isFirst = actIdx === 0;
                       const isLast = actIdx === (day.activities || []).length - 1;
@@ -2528,9 +2528,11 @@ export default function PlanningTab({ tripId }) {
                       const isVisited = linkedPlan?.visited === true;
 
                       return (
-                        <React.Fragment key={act.id}>
-                        <div style={{
+                        <div key={act.id} style={{
                           display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
+                          paddingTop: isFirst ? 0 : 12,
+                          paddingBottom: isLast ? 0 : 12,
+                          borderTop: isFirst ? 'none' : '1px solid rgba(0,0,0,0.1)',
                         }}>
                           {/* Timeline vertical node and line */}
                           <div style={{ 
@@ -2556,7 +2558,7 @@ export default function PlanningTab({ tripId }) {
                               <div style={{
                                 position: 'absolute',
                                 top: 28,
-                                bottom: -21,
+                                bottom: -24,
                                 width: 2,
                                 background: 'var(--ink-6)',
                                 zIndex: 1
@@ -2710,10 +2712,6 @@ export default function PlanningTab({ tripId }) {
                             })()}
                           </div>
                         </div>
-                        {!isLast && (
-                          <div style={{ height: 1, background: 'rgba(0,0,0,0.1)' }} />
-                        )}
-                        </React.Fragment>
                       );
                     })}
 
