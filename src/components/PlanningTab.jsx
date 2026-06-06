@@ -2690,7 +2690,7 @@ export default function PlanningTab({ tripId }) {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                                       {act.address && (
                                         <a
-                                          href={`https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
+                                          href={/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
                                           target="_blank"
                                           rel="noreferrer"
                                           style={{
