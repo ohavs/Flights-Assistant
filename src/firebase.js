@@ -3,6 +3,8 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  enableNetwork,
+  disableNetwork,
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
@@ -28,3 +30,5 @@ export const db = initializeFirestore(app, {
 // Initialize Auth
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+export { enableNetwork, disableNetwork };

@@ -1156,6 +1156,18 @@ function AppInner() {
   const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline  = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online',  handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online',  handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   const [globalExtraCategories, setGlobalExtraCategories] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
 
@@ -1581,9 +1593,21 @@ function AppInner() {
   if (!user) return <LoginScreen onSignIn={signInWithGoogle} />;
 
   // ── Homepage ──
+  // Offline banner — rendered inside each screen container
+  const OfflineBanner = !isOnline ? (
+    <div style={{
+      background: '#dc2626', color: '#fff', textAlign: 'center',
+      fontSize: 12, fontWeight: 700, padding: '6px 16px',
+      letterSpacing: 0.2, flexShrink: 0,
+    }}>
+      ⚠️ אין חיבור לאינטרנט — שינויים נשמרים ויסונכרנו בהתחברות
+    </div>
+  ) : null;
+
   if (screen === 'home') {
     return (
       <div className="app-container">
+        {OfflineBanner}
         <header className="app-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             {user.photoURL ? (
@@ -1755,6 +1779,7 @@ function AppInner() {
   // ── Trip Detail ──
   return (
     <div className="app-container">
+      {OfflineBanner}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
           <button
