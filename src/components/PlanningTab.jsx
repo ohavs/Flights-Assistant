@@ -1177,7 +1177,7 @@ export default function PlanningTab({ tripId }) {
       const activityObj = {
         id: editingActivityId,
         title: place ? place.title : activityTitle.trim(),
-        timeLabel: activityTimeLabel.trim(),
+        timeLabel: firstSel?.placeId ? (firstSel.timeLabel || '') : activityTimeLabel.trim(),
         placeId: firstSel?.placeId || null,
         address: place ? (place.address || '') : activityAddress.trim(),
         description: place ? (place.description || '') : activityDescription.trim(),
