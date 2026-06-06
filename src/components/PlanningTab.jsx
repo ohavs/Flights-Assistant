@@ -357,6 +357,7 @@ export default function PlanningTab({ tripId }) {
 
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
+  const [collapsedDays, setCollapsedDays] = useState(new Set());
   const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
 
@@ -2497,8 +2498,8 @@ export default function PlanningTab({ tripId }) {
                             );
                           })()}
                         </div>
-                        {canEdit && (
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {canEdit && (<>
                           <button
                             onClick={() => { setEditingDayId(day.id); setEditingDayTitle(day.title); }}
                             style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
@@ -2513,13 +2514,25 @@ export default function PlanningTab({ tripId }) {
                           >
                             <Trash2 size={15} />
                           </button>
+                          </>)}
+                          <button
+                            onClick={() => setCollapsedDays(prev => {
+                              const next = new Set(prev);
+                              next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                              return next;
+                            })}
+                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: collapsedDays.has(day.id) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                            title={collapsedDays.has(day.id) ? 'פתח יום' : 'סגור יום'}
+                          >
+                            <ChevronDown size={18} />
+                          </button>
                         </div>
-                        )}
                       </>
                     )}
                   </div>
 
-                  {/* Day Activities Timeline */}
+                  {/* Day Activities + Add Button (collapsed when toggled) */}
+                  {!collapsedDays.has(day.id) && <>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
                     {(day.activities || []).map((act, actIdx) => {
                       const isFirst = actIdx === 0;
@@ -2727,12 +2740,12 @@ export default function PlanningTab({ tripId }) {
                   <button
                     onClick={() => handleOpenAddActivity(day.id)}
                     className="btn-secondary"
-                    style={{ 
-                      width: '100%', 
-                      padding: 10, 
-                      fontSize: 13, 
-                      fontWeight: 700, 
-                      border: '1.5px dashed rgba(79,70,229,0.18)', 
+                    style={{
+                      width: '100%',
+                      padding: 10,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      border: '1.5px dashed rgba(79,70,229,0.18)',
                       background: 'rgba(79,70,229,0.03)',
                       color: 'var(--accent)',
                       display: 'flex',
@@ -2746,6 +2759,7 @@ export default function PlanningTab({ tripId }) {
                     <span>הוסף פעילות</span>
                   </button>
                   )}
+                  </>}
                 </SortableDayCard>
               ))}
             </div>
