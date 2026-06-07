@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDownUp, Coins, ChevronDown, Search, Check, Wifi, WifiOff, Smartphone, Share2, X } from 'lucide-react';
+import { ArrowDownUp, Coins, ChevronDown, Search, Check, Wifi, WifiOff, Smartphone, Share2, X, Copy } from 'lucide-react';
 import {
   CURRENCY_META, getInitialRates, refreshRatesIfStale,
   convert, formatAmount
@@ -155,15 +155,15 @@ export default function CurrencyConverter() {
       return JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
     } catch { return {}; }
   });
-  const [amount, setAmount] = useState(prefs.amount ?? '100');
+  const [amount, setAmount] = useState('');
   const [from, setFrom] = useState(prefs.from && CURRENCY_META[prefs.from] ? prefs.from : 'ILS');
   const [to, setTo] = useState(prefs.to && CURRENCY_META[prefs.to] ? prefs.to : 'EUR');
 
   useEffect(() => {
     try {
-      localStorage.setItem(PREF_KEY, JSON.stringify({ amount, from, to }));
+      localStorage.setItem(PREF_KEY, JSON.stringify({ from, to }));
     } catch { /* ignore */ }
-  }, [amount, from, to]);
+  }, [from, to]);
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [refreshing, setRefreshing] = useState(false);
   const { canInstall, install, installed, isIOS } = useInstallPrompt();
@@ -296,18 +296,35 @@ export default function CurrencyConverter() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
-                  הוספה למסך הבית ב-iPhone
+                  הוספת קיצור דרך למסך הבית ב-iPhone
                 </h3>
-                <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, fontWeight: 600 }}>
-                  ב-iOS Safari ההתקנה היא ידנית:
+                <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, fontWeight: 600, marginBottom: 8 }}>
+                  כדי שהקיצור יפתח את המחשבון ישירות (ולא את האפליקציה כולה), חייבים לעשות זאת <strong>מ-Safari</strong> על הכתובת הזו:
                 </p>
-                <ol style={{ paddingRight: 18, fontSize: 14, color: 'var(--text)', fontWeight: 600, lineHeight: 1.8, margin: '6px 0 10px' }}>
-                  <li>לחץ על כפתור <strong>שיתוף <Share2 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /></strong> בתחתית/למעלה של Safari.</li>
-                  <li>גלול ובחר <strong>"הוסף למסך הבית"</strong>.</li>
-                  <li>אשר את השם של האפליקציה ולחץ <strong>"הוסף"</strong>.</li>
+                <div style={{
+                  background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.2)',
+                  borderRadius: 10, padding: '7px 12px', marginBottom: 12, direction: 'ltr',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    listify-84018.web.app/?screen=converter
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText('https://listify-84018.web.app/?screen=converter').catch(()=>{})}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 0, flexShrink: 0 }}
+                    title="העתק קישור"
+                  >
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <ol style={{ paddingRight: 18, fontSize: 14, color: 'var(--text)', fontWeight: 600, lineHeight: 1.8, margin: '0 0 10px' }}>
+                  <li>פתח Safari ונווט לכתובת למעלה.</li>
+                  <li>לחץ <strong>שיתוף <Share2 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /></strong> ← <strong>"הוסף למסך הבית"</strong>.</li>
+                  <li>אשר את השם ולחץ <strong>"הוסף"</strong>.</li>
                 </ol>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  ⚠️ הדפדפן חייב להיות Safari — לא Chrome או אחר.
+                <p style={{ fontSize: 12, color: '#b45309', lineHeight: 1.5, fontWeight: 600 }}>
+                  ⚠️ חשוב: Chrome לא תומך בהוספה כאפליקציה ב-iOS. חייב להיות Safari בדיוק על הכתובת הזו.
                 </p>
               </div>
               <button
