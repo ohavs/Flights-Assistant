@@ -724,18 +724,15 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     }
   };
 
-  const handleRenameCategory = async (oldCat, newCat) => {
+  const handleRenameCategory = (oldCat, newCat) => {
     const trimmed = newCat.trim();
     setEditingCat(null);
     if (!trimmed || trimmed === oldCat) return;
     const updatedList = (globalChecklist || []).map(item =>
       item.category === oldCat ? { ...item, category: trimmed } : item
     );
-    try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
-    } catch (err) {
-      console.error('Error renaming category:', err);
-    }
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error renaming category:', err));
   };
 
   const isDirty = !!newItemText.trim();
@@ -757,7 +754,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     onClose();
   };
 
-  const doAdd = async (overrideCategory) => {
+  const doAdd = (overrideCategory) => {
     const text = newItemText.trim();
     if (!text || !userId) return;
     const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
@@ -770,17 +767,14 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     } else {
       updatedList = [...globalChecklist, { id: 'global-' + Date.now(), text, completed: false, category: cat }];
     }
-    try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
-      setNewItemText('');
-    } catch (err) {
-      console.error('Error updating global checklist:', err);
-    }
+    setNewItemText('');
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error updating global checklist:', err));
   };
 
-  const handleAdd = async (e) => {
+  const handleAdd = (e) => {
     e.preventDefault();
-    await doAdd();
+    doAdd();
   };
 
   const handleDelete = async (id) => {
@@ -795,11 +789,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     });
     if (!ok) return;
     const updatedList = globalChecklist.filter(item => item.id !== id);
-    try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
-    } catch (err) {
-      console.error('Error deleting from global checklist:', err);
-    }
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error deleting from global checklist:', err));
   };
 
   const handleStartEdit = (item) => {
@@ -825,20 +816,17 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     setNewItemCategory('מסמכים וסידורים');
   };
 
-  const handleQuickAdd = async (e, cat) => {
+  const handleQuickAdd = (e, cat) => {
     e.preventDefault();
     if (!quickAddText.trim() || !userId) return;
     const updatedList = [
       ...globalChecklist,
       { id: 'global-' + Date.now(), text: quickAddText.trim(), completed: false, category: cat },
     ];
-    try {
-      await updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList });
-      setQuickAddText('');
-      setQuickAddCat(null);
-    } catch (err) {
-      console.error('Error adding to global checklist:', err);
-    }
+    setQuickAddText('');
+    setQuickAddCat(null);
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error adding to global checklist:', err));
   };
 
   return (

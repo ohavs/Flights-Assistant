@@ -109,35 +109,44 @@ function RemindersCard({ tripId, canEdit }) {
     startAutoAdvance();
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     const text = inputText.trim();
     if (!text) { setMode(null); return; }
     if (mode === 'add') {
       const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
-      await setDoc(newRef, {
+      const newIdx = reminders.length;
+      setMode(null); setInputText('');
+      setTimeout(() => goTo(newIdx), 50);
+      setDoc(newRef, {
         text, createdAt: Date.now(),
         addedByUid: currentUid || '',
         addedByName: currentUserProfile?.displayName || currentUserProfile?.email || '',
         addedByPhoto: currentUserProfile?.photoURL || '',
       });
-      const newIdx = reminders.length;
-      setMode(null); setInputText('');
-      setTimeout(() => goTo(newIdx), 50);
     } else if (mode === 'edit' && editId) {
-      await updateDoc(doc(db, 'trips', tripId, 'reminders', editId), { text });
       setMode(null); setInputText(''); setEditId(null);
+      updateDoc(doc(db, 'trips', tripId, 'reminders', editId), { text });
     }
   };
 
   const handleDeleteById = async (id) => {
     const ok = await confirm({ message: 'למחוק את התזכורת?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
     if (!ok) return;
-    await deleteDoc(doc(db, 'trips', tripId, 'reminders', id));
     setIdx(i => Math.max(0, i - 1));
+    deleteDoc(doc(db, 'trips', tripId, 'reminders', id));
   };
 
-  const handlePickUser = async (remId, member) => {
-    await updateDoc(doc(db, 'trips', tripId, 'reminders', remId), {
+  const handleBulkDelete = async () => {
+    if (checkedIds.size === 0) return;
+    const ok = await confirm({ message: `למחוק ${checkedIds.size} תזכורות?`, confirmText: 'מחק', cancelText: 'בטל', danger: true });
+    if (!ok) return;
+    const ids = [...checkedIds];
+    setCheckedIds(new Set());
+    ids.forEach(id => deleteDoc(doc(db, 'trips', tripId, 'reminders', id)));
+  };
+
+  const handlePickUser = (remId, member) => {
+    updateDoc(doc(db, 'trips', tripId, 'reminders', remId), {
       addedByUid: member.uid,
       addedByName: member.displayName,
       addedByPhoto: member.photoURL,
@@ -359,13 +368,18 @@ function RemindersCard({ tripId, canEdit }) {
                 }}>{reminders.length}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {checkedIds.size > 0 && (
+                {checkedIds.size > 0 && (<>
+                  <button onClick={handleBulkDelete} style={{
+                    fontSize: 12, color: '#fff', background: 'rgba(220,38,38,0.85)',
+                    border: 'none', borderRadius: 20,
+                    cursor: 'pointer', padding: '3px 10px', fontWeight: 700,
+                  }}>מחק ({checkedIds.size})</button>
                   <button onClick={() => setCheckedIds(new Set())} style={{
-                    fontSize: 12, color: 'var(--accent)', background: 'var(--p-8)',
-                    border: '1px solid var(--p-15)', borderRadius: 20,
+                    fontSize: 12, color: 'var(--text-muted)', background: 'var(--ink-6)',
+                    border: 'none', borderRadius: 20,
                     cursor: 'pointer', padding: '3px 10px', fontWeight: 600,
-                  }}>נקה ({checkedIds.size})</button>
-                )}
+                  }}>בטל בחירה</button>
+                </>)}
                 <button onClick={() => setShowAll(false)} style={{
                   background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
                   color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
@@ -826,23 +840,23 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   };
 
   // ── Item actions ─────────────────────────────────────────────────────────
-  const handleToggle = async (item) => {
+  const handleToggle = (item) => {
     if (!tripId) return;
-    await updateDoc(doc(db, 'trips', tripId, 'checklist', item.id), {
+    updateDoc(doc(db, 'trips', tripId, 'checklist', item.id), {
       completed: !item.completed,
     });
   };
 
   // Two-tap delete: first tap → pending (highlighted), second tap → delete
-  const handleDeleteItem = async (id) => {
+  const handleDeleteItem = (id) => {
     if (!tripId) return;
     if (pendingDeleteId === id) {
       clearTimeout(pendingDeleteTimer.current);
       setPendingDeleteId(null);
-      await deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
+      deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
       if (mergedGlobalChecklist.some(g => g.id === id)) {
         const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-        await setDoc(syncRef, {
+        setDoc(syncRef, {
           deletedGlobalIds: [...new Set([...deletedGlobalIds, id])],
         }, { merge: true });
       }
@@ -853,22 +867,22 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     }
   };
 
-  const doAdd = async (overrideCategory) => {
+  const doAdd = (overrideCategory) => {
     const text = newItemText.trim();
     if (!text || !tripId) return;
     const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
+    setNewItemText('');
     if (editingItemId) {
-      await updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat });
       setEditingItemId(null);
+      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat });
     } else {
-      await setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
+      setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
         text, completed: false, category: cat,
       });
     }
-    setNewItemText('');
   };
 
-  const handleAdd = async (e) => { e.preventDefault(); await doAdd(); };
+  const handleAdd = (e) => { e.preventDefault(); doAdd(); };
 
   const handleCancelEdit = () => {
     setEditingItemId(null);
@@ -885,14 +899,15 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleQuickAdd = async (e, cat) => {
+  const handleQuickAdd = (e, cat) => {
     e.preventDefault();
     if (!quickAddText.trim() || !tripId) return;
-    await setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
-      text: quickAddText.trim(), completed: false, category: cat,
-    });
+    const text = quickAddText.trim();
     setQuickAddText('');
     setQuickAddCat(null);
+    setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
+      text, completed: false, category: cat,
+    });
   };
 
   // ── Progress ─────────────────────────────────────────────────────────────
