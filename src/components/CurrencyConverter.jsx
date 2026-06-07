@@ -168,28 +168,25 @@ export default function CurrencyConverter() {
   const [refreshing, setRefreshing] = useState(false);
   const { canInstall, install, installed, isIOS } = useInstallPrompt();
   const [showIosTip, setShowIosTip] = useState(false);
+  const [showShortcutTip, setShowShortcutTip] = useState(false);
 
   const handleInstallClick = async () => {
     if (canInstall) {
       await install();
-    } else if (installed) {
-      // Already installed — open the converter as a standalone window.
-      window.open('/?screen=converter', '_blank');
+    } else if (installed && !isIOS) {
+      setShowShortcutTip(true);
     } else {
-      // No native prompt available (iOS Safari or browser hasn't fired it yet).
       setShowIosTip(true);
     }
   };
-  // Always show the button so the user has a clear path to install the
-  // app or open the converter as a standalone window. The label changes
-  // based on what the platform actually supports.
   const showInstallButton = true;
-  const installLabel = installed ? 'פתח את המחשבון כוידג\'ט עצמאי'
+  const installLabel = installed
+    ? 'פתח את המחשבון כקיצור דרך עצמאי'
     : canInstall ? 'הוסף את האפליקציה למסך הבית'
     : isIOS ? 'הוסף למסך הבית ב-iPhone'
     : 'הוסף למסך הבית';
   const installSubLabel = installed
-    ? 'פתיחה בחלון נפרד עם מחשבון ההמרות בלבד.'
+    ? 'קיצור דרך שפותח רק את מחשבון ההמרות.'
     : 'גישה מהירה למחשבון, וגם אופליין.';
 
   // Refresh rates on mount (and whenever we come back online), but always
@@ -276,6 +273,63 @@ export default function CurrencyConverter() {
             </div>
           </span>
         </button>
+      )}
+
+      {/* Android long-press shortcut tip */}
+      {showShortcutTip && createPortal(
+        <div className="modal-overlay" style={{ alignItems: 'center' }} onClick={() => setShowShortcutTip(false)}>
+          <div
+            className="modal-content"
+            style={{ height: 'auto', maxHeight: '80%', maxWidth: 420, margin: 16, padding: '24px 20px', borderRadius: 'var(--radius-xl)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%',
+                background: 'rgba(79,70,229,0.12)', color: 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <Smartphone size={22} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
+                  קיצור דרך למחשבון
+                </h3>
+                <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, fontWeight: 600, marginBottom: 10 }}>
+                  האפליקציה כבר מותקנת. כדי לפתוח ישירות את המחשבון מבלי לנווט בתוך האפליקציה:
+                </p>
+                <div style={{
+                  background: 'rgba(79,70,229,0.07)', border: '1px solid rgba(79,70,229,0.15)',
+                  borderRadius: 12, padding: '12px 14px', marginBottom: 10,
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                }}>
+                  <span style={{ fontSize: 22, flexShrink: 0 }}>👆</span>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary)', lineHeight: 1.6, margin: 0 }}>
+                    לחיצה ארוכה על אייקון האפליקציה במסך הבית ← בחר <strong>"המרת מטבעות"</strong>
+                  </p>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  קיצור הדרך פותח ישירות את מחשבון ההמרות בלבד, ללא שאר האפליקציה.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShortcutTip(false)}
+                style={{
+                  background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
+                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <button onClick={() => setShowShortcutTip(false)} className="btn-primary" style={{ width: '100%', marginTop: 18 }}>
+              הבנתי
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* iOS manual instructions modal */}
