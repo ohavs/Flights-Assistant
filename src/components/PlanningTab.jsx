@@ -3306,28 +3306,25 @@ export default function PlanningTab({ tripId }) {
           style={{
             position: 'fixed', inset: 0, zIndex: 2000,
             background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            paddingBottom: 'calc(64px + env(safe-area-inset-bottom))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
           }}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              width: '100%', maxWidth: 520,
+              width: '100%', maxWidth: 420,
               background: 'var(--modal-bg)',
-              borderRadius: '24px 24px 0 0',
+              borderRadius: 'var(--radius-xl)',
               boxShadow: 'var(--shadow-lg)',
               display: 'flex', flexDirection: 'column',
-              maxHeight: 'calc(70vh - 64px)',
+              maxHeight: '80vh',
               overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-12)' }} />
-            </div>
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 20px 10px', flexShrink: 0,
+              padding: '16px 20px 12px', flexShrink: 0,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
@@ -3354,24 +3351,23 @@ export default function PlanningTab({ tripId }) {
               </button>
             </div>
             <div style={{
-              overflowX: 'auto', overflowY: 'hidden',
-              padding: '6px 16px 16px',
-              display: 'flex', gap: 0,
-              scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+              overflowY: 'auto',
+              padding: '0 12px 16px',
+              display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 2,
             }}>
               {(weather?.hourlyByDate?.[hourlyWeatherDate] || [])
                 .filter((_, i) => i % 2 === 0)
                 .map(h => (
                 <div key={h.hour} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                  padding: '8px 8px', minWidth: 50, flexShrink: 0,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  padding: '8px 6px', width: 58,
                   borderRadius: 12,
                 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
                     {String(h.hour).padStart(2,'0')}:00
                   </span>
-                  <span style={{ fontSize: 22, lineHeight: 1 }}>{getWeatherIcon(h.code)}</span>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{h.temp}°</span>
+                  <span style={{ fontSize: 20, lineHeight: 1 }}>{getWeatherIcon(h.code)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{h.temp}°</span>
                   {h.rain > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 700, color: h.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
                       💧{h.rain}%
