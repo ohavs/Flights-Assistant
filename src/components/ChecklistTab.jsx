@@ -552,7 +552,7 @@ function SortableCategoryBlock({
       {isOpen && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categoryItems.map(item => {
-            const assignedMember = item.assignedTo ? allMembers.find(x => x.uid === item.assignedTo) : null;
+            const assigned = item.assignedTo || [];
             return (
               <div key={item.id}
                 className="glass-card checklist-item-row"
@@ -575,12 +575,27 @@ function SortableCategoryBlock({
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
                     {allMembers.length > 1 && (
                       <button type="button" onClick={e => { e.stopPropagation(); setAssignPickerItemId(item.id); }}
-                        title="שייך לחבר"
+                        title="שייך לחברים"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                        {assignedMember ? (
-                          assignedMember.photoURL
-                            ? <img src={assignedMember.photoURL} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                            : <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', fontWeight: 800 }}>{(assignedMember.displayName || '?')[0]}</div>
+                        {assigned.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center' }}>
+                            {assigned.slice(0, 3).map((uid, idx) => {
+                              const m = allMembers.find(x => x.uid === uid);
+                              return (
+                                <div key={uid} style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, marginLeft: idx > 0 ? -6 : 0, position: 'relative', zIndex: assigned.length - idx }}>
+                                  {m?.photoURL
+                                    ? <img src={m.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
+                                    : <span style={{ fontSize: 9, fontWeight: 800, color: '#fff' }}>{(m?.displayName || '?')[0]}</span>
+                                  }
+                                </div>
+                              );
+                            })}
+                            {assigned.length > 3 && (
+                              <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--ink-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0, marginLeft: -6 }}>
+                                +{assigned.length - 3}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <User size={15} style={{ color: 'var(--text-muted)', opacity: 0.35 }} />
                         )}
@@ -679,15 +694,16 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // Form state
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
-  const [newItemAssignedTo, setNewItemAssignedTo] = useState(null);
+  const [newItemAssignedTo, setNewItemAssignedTo] = useState([]);
   const [editingItemId, setEditingItemId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
 
   // Filter by assigned user
   const [filterAssignee, setFilterAssignee] = useState(null);
 
-  // Assignment picker (item id whose picker is open)
+  // Assignment picker (item id whose picker is open + current toggle selections)
   const [assignPickerItemId, setAssignPickerItemId] = useState(null);
+  const [pickerSelected, setPickerSelected] = useState(new Set());
 
   // Category open/close — default ALL closed (empty obj = all closed)
   const [openCategories, setOpenCategories] = useState({});
@@ -708,6 +724,13 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   useEffect(() => () => {
     clearTimeout(longPressTimer.current);
   }, []);
+
+  // Seed picker selection from item's current assignedTo when picker opens
+  useEffect(() => {
+    if (!assignPickerItemId) return;
+    const item = items.find(i => i.id === assignPickerItemId);
+    setPickerSelected(new Set(item?.assignedTo || []));
+  }, [assignPickerItemId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const defaultCategoryNames = [
     'מסמכים וסידורים', 'בגדים', 'אלקטרוניקה',
@@ -893,9 +916,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     }
   };
 
-  const handleAssignItem = (itemId, uid) => {
+  const handleSaveAssignment = (itemId) => {
     if (!tripId) return;
-    updateDoc(doc(db, 'trips', tripId, 'checklist', itemId), { assignedTo: uid || null });
+    const arr = [...pickerSelected];
+    updateDoc(doc(db, 'trips', tripId, 'checklist', itemId), { assignedTo: arr.length > 0 ? arr : null });
     setAssignPickerItemId(null);
   };
 
@@ -906,10 +930,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setNewItemText('');
     if (editingItemId) {
       setEditingItemId(null);
-      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: newItemAssignedTo || null });
+      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: newItemAssignedTo.length > 0 ? newItemAssignedTo : null });
     } else {
       setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
-        text, completed: false, category: cat, assignedTo: newItemAssignedTo || null,
+        text, completed: false, category: cat, assignedTo: newItemAssignedTo.length > 0 ? newItemAssignedTo : null,
       });
     }
   };
@@ -920,14 +944,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setEditingItemId(null);
     setNewItemText('');
     setNewItemCategory('מסמכים וסידורים');
-    setNewItemAssignedTo(null);
+    setNewItemAssignedTo([]);
   };
 
   const handleStartEdit = (item) => {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
-    setNewItemAssignedTo(item.assignedTo || null);
+    setNewItemAssignedTo(item.assignedTo || []);
     setShowAddForm(true);
     document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1032,24 +1056,25 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                 />
                 {allMembers.length > 1 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>שייך ל</label>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>שייך ל (ניתן לבחור כמה)</label>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button type="button"
-                        onClick={() => setNewItemAssignedTo(null)}
-                        style={{ padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: newItemAssignedTo === null ? 'var(--ink-10)' : 'var(--ink-5)', color: newItemAssignedTo === null ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                        לא משויך
-                      </button>
-                      {allMembers.map(m => (
-                        <button type="button" key={m.uid}
-                          onClick={() => setNewItemAssignedTo(m.uid)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: newItemAssignedTo === m.uid ? 'var(--accent)' : 'var(--ink-5)', color: newItemAssignedTo === m.uid ? '#fff' : 'var(--text-muted)' }}>
-                          {m.photoURL
-                            ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                            : <div style={{ width: 18, height: 18, borderRadius: '50%', background: newItemAssignedTo === m.uid ? 'rgba(255,255,255,0.3)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
-                          }
-                          {m.displayName}
-                        </button>
-                      ))}
+                      {allMembers.map(m => {
+                        const isSelected = newItemAssignedTo.includes(m.uid);
+                        return (
+                          <button type="button" key={m.uid}
+                            onClick={() => setNewItemAssignedTo(prev =>
+                              prev.includes(m.uid) ? prev.filter(x => x !== m.uid) : [...prev, m.uid]
+                            )}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: isSelected ? 'var(--p-10)' : 'var(--ink-5)', color: isSelected ? 'var(--accent)' : 'var(--text-muted)' }}>
+                            {m.photoURL
+                              ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--accent)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                            }
+                            {m.displayName}
+                            {isSelected && <Check size={12} />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1098,7 +1123,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
             {categories.map((category) => {
               const categoryItems = items.filter(item => {
                 if (item.category !== category) return false;
-                if (filterAssignee !== null && item.assignedTo !== filterAssignee) return false;
+                if (filterAssignee !== null && !(item.assignedTo || []).includes(filterAssignee)) return false;
                 return true;
               });
               if (categoryItems.length === 0 && (filterAssignee !== null || !extraCategories.includes(category))) return null;
@@ -1143,7 +1168,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         </SortableContext>
       </DndContext>
 
-      {/* Assign-to-member picker portal */}
+      {/* Assign-to-member picker portal — multi-select with toggle + confirm */}
       {assignPickerItemId && createPortal(
         <div
           onClick={() => setAssignPickerItemId(null)}
@@ -1154,24 +1179,40 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
             style={{ background: 'var(--modal-bg)', borderRadius: 20, padding: '20px', width: '85%', maxWidth: 320, direction: 'rtl', boxShadow: 'var(--shadow-lg)' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>שייך לחבר</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>שייך לחברים</span>
               <button onClick={() => setAssignPickerItemId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {allMembers.map(m => (
-                <button key={m.uid} onClick={() => handleAssignItem(assignPickerItemId, m.uid)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: 'var(--ink-4)', border: 'none', borderRadius: 12, cursor: 'pointer', textAlign: 'right' }}>
-                  {m.photoURL
-                    ? <img src={m.photoURL} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                    : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
-                  }
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>{m.displayName}</span>
-                </button>
-              ))}
-              <button onClick={() => handleAssignItem(assignPickerItemId, null)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: 'var(--ink-4)', border: 'none', borderRadius: 12, cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600 }}>
-                <X size={16} />
-                הסר שיוך
+              {allMembers.map(m => {
+                const isSelected = pickerSelected.has(m.uid);
+                return (
+                  <button key={m.uid}
+                    onClick={() => setPickerSelected(prev => {
+                      const next = new Set(prev);
+                      isSelected ? next.delete(m.uid) : next.add(m.uid);
+                      return next;
+                    })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: isSelected ? 'var(--p-10)' : 'var(--ink-4)', border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', borderRadius: 12, cursor: 'pointer', textAlign: 'right' }}>
+                    {m.photoURL
+                      ? <img src={m.photoURL} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                      : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                    }
+                    <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-main)', flex: 1 }}>{m.displayName}</span>
+                    {isSelected && <Check size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button
+                onClick={() => setPickerSelected(new Set())}
+                style={{ flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'var(--ink-6)', color: 'var(--text-muted)', fontSize: 13, fontWeight: 700 }}>
+                נקה הכל
+              </button>
+              <button
+                onClick={() => handleSaveAssignment(assignPickerItemId)}
+                style={{ flex: 2, padding: '9px 0', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700 }}>
+                אשר
               </button>
             </div>
           </div>
