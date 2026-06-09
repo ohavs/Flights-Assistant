@@ -7,6 +7,7 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import MapComponent from './MapComponent';
 import CurrencyConverter from './CurrencyConverter';
+import { useWeather, getWeatherIcon } from '../hooks/useWeather';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
@@ -740,6 +741,16 @@ export default function FlightTab({ tripId }) {
   const returning = tripData.returnFlightDetails || emptyFlightDetails;
   const hotel = tripData.hotelDetails || emptyHotelDetails;
 
+  const destCoords = outbound.arrAirport || returning.depAirport;
+  const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
+
+  const tripDayForecasts = (() => {
+    if (!weather?.daily || !outbound.date || !returning.date) return [];
+    const start = outbound.date;
+    const end = returning.date;
+    return weather.daily.filter(d => d.date >= start && d.date <= end);
+  })();
+
   // Render a flight card (extracted to share between outbound + return)
   const renderFlightCard = (flight, kind) => {
     const label = kind === 'outbound' ? 'טיסת הלוך' : 'טיסת חזור';
@@ -905,12 +916,71 @@ export default function FlightTab({ tripId }) {
         </div>
       )}
 
-      {/* Map at the very top — no header, no toggle buttons */}
-      <MapComponent
-        depCoords={mapFlight.depAirport}
-        arrCoords={mapFlight.arrAirport}
-        progressPercent={mapProgress.progressPercent}
-      />
+      {/* Map + weather forecast card */}
+      <div className="map-weather-card" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', border: 'var(--card-border)' }}>
+        <MapComponent
+          depCoords={mapFlight.depAirport}
+          arrCoords={mapFlight.arrAirport}
+          progressPercent={mapProgress.progressPercent}
+        />
+        {/* Current weather + trip days forecast */}
+        {weather && (
+          <div style={{ background: 'var(--card-bg)', padding: '12px 14px 10px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Current weather strip */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 28, lineHeight: 1 }}>{getWeatherIcon(weather.current.code)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>
+                  {destCoords?.city || tripData?.destination || 'יעד'} עכשיו
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>
+                  רוח {weather.current.wind} קמ״ש · לחות {weather.current.humidity}%
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary)', lineHeight: 1 }}>{weather.current.temp}°</div>
+              </div>
+            </div>
+
+            {/* Trip days forecast */}
+            {tripDayForecasts.length > 0 && (
+              <div style={{
+                display: 'flex', gap: 0, overflowX: 'auto',
+                margin: '0 -14px', padding: '0 14px',
+                scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+              }}>
+                {tripDayForecasts.map((d, i) => {
+                  const dayDate = new Date(d.date);
+                  const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dayDate.getDay()];
+                  const dd = String(dayDate.getDate()).padStart(2,'0');
+                  const mm = String(dayDate.getMonth()+1).padStart(2,'0');
+                  const isToday = d.date === new Date().toISOString().slice(0,10);
+                  return (
+                    <div key={d.date} style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                      padding: '8px 10px', minWidth: 54, flexShrink: 0,
+                      borderRadius: 12,
+                      background: isToday ? 'rgba(79,70,229,0.08)' : 'transparent',
+                      border: isToday ? '1px solid rgba(79,70,229,0.18)' : '1px solid transparent',
+                    }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: isToday ? 'var(--accent)' : 'var(--text-muted)' }}>{dow}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{dd}.{mm}</span>
+                      <span style={{ fontSize: 20, lineHeight: 1 }}>{getWeatherIcon(d.code)}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)' }}>{d.max}°</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{d.min}°</span>
+                      {d.rain > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: d.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
+                          💧{d.rain}%
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Outbound flight card */}
       {renderFlightCard(outbound, 'outbound')}

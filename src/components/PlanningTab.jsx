@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { db } from '../firebase';
+import { useWeather, getWeatherIcon } from '../hooks/useWeather';
 import {
   collection,
   onSnapshot,
@@ -360,6 +361,7 @@ export default function PlanningTab({ tripId }) {
   const [collapsedDays, setCollapsedDays] = useState(new Set());
   const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
+  const [destCoords, setDestCoords] = useState(null);
 
   const defaultCategoryNames = [
     'אטרקציות ודברים לעשות',
@@ -470,10 +472,20 @@ export default function PlanningTab({ tripId }) {
           ret: d.returnFlightDetails?.date || null,
           plannerSync: d.plannerDaysFromFlight || null,
         });
+        const arr = d.outboundFlightDetails?.arrAirport || d.returnFlightDetails?.depAirport;
+        if (arr?.lat && arr?.lng) setDestCoords(arr);
       }
     });
     return () => unsubscribe();
   }, [tripId]);
+
+  const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
+  const weatherByDate = useMemo(() => {
+    if (!weather?.daily) return {};
+    const map = {};
+    weather.daily.forEach(d => { map[d.date] = d; });
+    return map;
+  }, [weather]);
 
   // Persist sort preference per trip
   useEffect(() => {
@@ -2485,7 +2497,8 @@ export default function PlanningTab({ tripId }) {
                             const [, mm, dd] = day.date.split('-');
                             const dowIdx = new Date(day.date).getDay();
                             const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dowIdx];
-                            return (
+                            const dayW = weatherByDate[day.date];
+                            return (<>
                               <span style={{
                                 fontSize: 11, fontWeight: 700, flexShrink: 0,
                                 background: 'rgba(79,70,229,0.08)',
@@ -2495,7 +2508,21 @@ export default function PlanningTab({ tripId }) {
                               }}>
                                 {`${dow} ${dd}.${mm}`}
                               </span>
-                            );
+                              {dayW && (
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, flexShrink: 0,
+                                  background: 'rgba(245,158,11,0.08)',
+                                  border: '1px solid rgba(245,158,11,0.15)',
+                                  borderRadius: 8, padding: '2px 7px',
+                                  display: 'flex', alignItems: 'center', gap: 3,
+                                  color: 'var(--primary)',
+                                }}>
+                                  <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
+                                  <span>{dayW.max}°/{dayW.min}°</span>
+                                  {dayW.rain > 0 && <span style={{ color: '#2563eb' }}>💧{dayW.rain}%</span>}
+                                </span>
+                              )}
+                            </>);
                           })()}
                         </div>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

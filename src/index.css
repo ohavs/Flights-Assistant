@@ -410,6 +410,7 @@ body {
   }
   .dashboard-grid > .owner-banner,
   .dashboard-grid > .map-wrapper,
+  .dashboard-grid > .map-weather-card,
   .dashboard-grid > .full-width {
     grid-column: 1 / -1;
   }
@@ -420,6 +421,7 @@ body {
 
   /* Map is taller on desktop */
   .map-wrapper { height: 380px; }
+  .map-weather-card > .map-wrapper { height: 340px; }
 
   /* Glass cards and trip cards get larger padding */
   .glass-card { padding: 22px; border-radius: 20px; }
@@ -465,6 +467,7 @@ body {
   .app-content > .animate-fade { max-width: 1520px; }
   .dashboard-grid { gap: 32px; }
   .map-wrapper { height: 440px; }
+  .map-weather-card > .map-wrapper { height: 400px; }
   .glass-card { padding: 26px; }
 }
 
@@ -875,6 +878,11 @@ input[type="datetime-local"].form-control {
   border: var(--card-border);
   position: relative;
   z-index: 1;
+}
+.map-weather-card > .map-wrapper {
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
 }
 
 .leaflet-container {

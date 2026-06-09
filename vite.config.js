@@ -108,6 +108,14 @@ export default defineConfig({
             }
           },
           {
+            urlPattern: /^https:\/\/api\.open-meteo\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'weather-cache',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 }
+            }
+          },
+          {
             // Hebrew TTF served from /fonts (for PDF export) — cache long.
             urlPattern: /\/fonts\/.*\.ttf$/i,
             handler: 'CacheFirst',
