@@ -359,7 +359,17 @@ export default function PlanningTab({ tripId }) {
 
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
-  const [collapsedDays, setCollapsedDays] = useState(new Set());
+  const [collapsedDays, setCollapsedDays] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`collapsed_days_${tripId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`collapsed_days_${tripId}`, JSON.stringify([...collapsedDays]));
+    } catch { /* ignore */ }
+  }, [collapsedDays, tripId]);
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
   const [activityDetail, setActivityDetail] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
