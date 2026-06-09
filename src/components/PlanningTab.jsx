@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { db } from '../firebase';
-import { useWeather, getWeatherIcon } from '../hooks/useWeather';
+import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
+import { createPortal } from 'react-dom';
 import {
   collection,
   onSnapshot,
@@ -359,6 +360,7 @@ export default function PlanningTab({ tripId }) {
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
   const [collapsedDays, setCollapsedDays] = useState(new Set());
+  const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
   const [destCoords, setDestCoords] = useState(null);
@@ -2490,13 +2492,13 @@ export default function PlanningTab({ tripId }) {
                       </form>
                     ) : (
                       <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
                           {canEdit && <DayDragHandle />}
-                          <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
+                          <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
                           {day.date && (() => {
                             const [, mm, dd] = day.date.split('-');
                             const dowIdx = new Date(day.date).getDay();
-                            const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dowIdx];
+                            const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
                             const dayW = weatherByDate[day.date];
                             return (<>
                               <span style={{
@@ -2504,23 +2506,28 @@ export default function PlanningTab({ tripId }) {
                                 background: 'rgba(79,70,229,0.08)',
                                 color: 'var(--accent)',
                                 border: '1px solid rgba(79,70,229,0.15)',
-                                borderRadius: 8, padding: '2px 8px',
+                                borderRadius: 8, padding: '2px 6px',
                               }}>
                                 {`${dow} ${dd}.${mm}`}
                               </span>
                               {dayW && (
-                                <span style={{
-                                  fontSize: 11, fontWeight: 700, flexShrink: 0,
-                                  background: 'rgba(245,158,11,0.08)',
-                                  border: '1px solid rgba(245,158,11,0.15)',
-                                  borderRadius: 8, padding: '2px 7px',
-                                  display: 'flex', alignItems: 'center', gap: 3,
-                                  color: 'var(--primary)',
-                                }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setHourlyWeatherDate(day.date); }}
+                                  style={{
+                                    fontSize: 11, fontWeight: 700, flexShrink: 0,
+                                    background: 'rgba(245,158,11,0.08)',
+                                    border: '1px solid rgba(245,158,11,0.15)',
+                                    borderRadius: 8, padding: '2px 7px',
+                                    display: 'flex', alignItems: 'center', gap: 3,
+                                    color: 'var(--primary)', cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                >
                                   <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
                                   <span>{dayW.max}°/{dayW.min}°</span>
                                   {dayW.rain > 0 && <span style={{ color: '#2563eb' }}>💧{dayW.rain}%</span>}
-                                </span>
+                                </button>
                               )}
                             </>);
                           })()}
@@ -2609,6 +2616,8 @@ export default function PlanningTab({ tripId }) {
                           {/* Activity Card */}
                           <div className="glass-card" style={{
                             flex: 1,
+                            minWidth: 0,
+                            overflow: 'hidden',
                             padding: '12px 14px',
                             display: 'flex',
                             flexDirection: 'column',
@@ -2720,7 +2729,7 @@ export default function PlanningTab({ tripId }) {
                                   </div>
 
                                   {act.description && (
-                                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3 }}>
+                                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                                       {act.description}
                                     </p>
                                   )}
@@ -3280,6 +3289,88 @@ export default function PlanningTab({ tripId }) {
           </div>
         );
       })()}
+
+      {/* Hourly weather popup */}
+      {hourlyWeatherDate && weather?.hourlyByDate?.[hourlyWeatherDate] && createPortal(
+        <div
+          className="modal-overlay"
+          style={{ alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 'calc(64px + env(safe-area-inset-bottom))' }}
+          onClick={() => setHourlyWeatherDate(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 520,
+              background: 'var(--modal-bg)',
+              borderRadius: '24px 24px 0 0',
+              boxShadow: 'var(--shadow-lg)',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: 'calc(70vh - 64px)',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-12)' }} />
+            </div>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '12px 20px 10px', flexShrink: 0,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
+                  {(() => {
+                    const d = new Date(hourlyWeatherDate);
+                    const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][d.getDay()];
+                    return `יום ${dow} ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`;
+                  })()}
+                </span>
+                {weatherByDate[hourlyWeatherDate] && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, background: 'rgba(245,158,11,0.1)',
+                    color: '#b45309', borderRadius: 8, padding: '2px 8px',
+                  }}>
+                    {weatherByDate[hourlyWeatherDate].max}° / {weatherByDate[hourlyWeatherDate].min}°
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setHourlyWeatherDate(null)} style={{
+                background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
+                color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
+              }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{
+              overflowX: 'auto', overflowY: 'hidden',
+              padding: '6px 16px 16px',
+              display: 'flex', gap: 0,
+              scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+            }}>
+              {weather.hourlyByDate[hourlyWeatherDate]
+                .filter((_, i) => i % 2 === 0)
+                .map(h => (
+                <div key={h.hour} style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  padding: '8px 8px', minWidth: 50, flexShrink: 0,
+                  borderRadius: 12,
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {String(h.hour).padStart(2,'0')}:00
+                  </span>
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>{getWeatherIcon(h.code)}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{h.temp}°</span>
+                  {h.rain > 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: h.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
+                      💧{h.rain}%
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );

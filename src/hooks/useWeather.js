@@ -62,11 +62,28 @@ async function fetchWeather(lat, lon) {
   const url = `https://api.open-meteo.com/v1/forecast`
     + `?latitude=${lat}&longitude=${lon}`
     + `&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m`
+    + `&hourly=temperature_2m,weathercode,precipitation_probability`
     + `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max`
     + `&timezone=auto&forecast_days=16`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('Weather fetch failed');
   const json = await res.json();
+
+  const hourlyByDate = {};
+  if (json.hourly?.time) {
+    json.hourly.time.forEach((t, i) => {
+      const date = t.slice(0, 10);
+      const hour = parseInt(t.slice(11, 13), 10);
+      if (!hourlyByDate[date]) hourlyByDate[date] = [];
+      hourlyByDate[date].push({
+        hour,
+        temp: Math.round(json.hourly.temperature_2m[i]),
+        code: json.hourly.weathercode[i],
+        rain: json.hourly.precipitation_probability[i],
+      });
+    });
+  }
+
   return {
     current: {
       temp: Math.round(json.current.temperature_2m),
@@ -81,6 +98,7 @@ async function fetchWeather(lat, lon) {
       min: Math.round(json.daily.temperature_2m_min[i]),
       rain: json.daily.precipitation_probability_max[i],
     })),
+    hourlyByDate,
   };
 }
 
