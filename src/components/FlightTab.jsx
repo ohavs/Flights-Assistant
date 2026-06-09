@@ -918,10 +918,7 @@ export default function FlightTab({ tripId }) {
       {/* Return flight card — same gap as flight→hotel (handled by .dashboard-grid gap) */}
       {renderFlightCard(returning, 'return')}
 
-      {/* Currency converter widget — works offline thanks to localStorage cache */}
-      <CurrencyConverter />
-
-      {/* Hotel — bigger gap above (handled by the grid's row-gap), same gap as outbound→return originally was) */}
+      {/* Hotel */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '8px' }}>
           <Building size={18} style={{ color: 'var(--primary-color)' }} />
@@ -1019,6 +1016,9 @@ export default function FlightTab({ tripId }) {
           )}
         </div>
       </div>
+
+      {/* Currency converter widget — works offline thanks to localStorage cache */}
+      <CurrencyConverter />
 
       {/* Edit Modal */}
       {showEditModal && (
