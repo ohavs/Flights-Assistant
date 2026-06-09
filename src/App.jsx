@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import {
@@ -737,6 +737,12 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
 
   const isDirty = !!newItemText.trim();
 
+  const duplicateSuggestions = useMemo(() => {
+    if (!newItemText.trim() || newItemText.trim().length < 2) return [];
+    const q = newItemText.toLowerCase();
+    return (globalChecklist || []).filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
+  }, [globalChecklist, newItemText, editingItemId]);
+
   const attemptClose = async () => {
     if (isDirty || editingItemId) {
       const ok = await confirm({
@@ -870,6 +876,17 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                     onChange={(e) => setNewItemText(e.target.value)}
                     required
                   />
+                  {duplicateSuggestions.length > 0 && (
+                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', direction: 'rtl' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(180,120,0,0.85)', display: 'block', marginBottom: 4 }}>פריטים דומים ברשימה הקבועה:</span>
+                      {duplicateSuggestions.slice(0, 4).map(s => (
+                        <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13, color: 'var(--text-main)' }}>
+                          <span style={{ flex: 1, textAlign: 'right' }}>{s.text}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 8, flexShrink: 0 }}>{s.category}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <CustomDropdown
                   label="קטגוריה"
