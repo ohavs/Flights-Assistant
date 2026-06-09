@@ -1,5 +1,52 @@
 # Changelog — Flights-Assistant
 
+## [7.4.0] - 2026-06-09
+
+### Added
+- **Live Weather Forecast** (`useWeather.js`, `FlightTab.jsx`, `PlanningTab.jsx`):
+  - New `useWeather(lat, lon)` hook fetches current conditions + 16-day daily + hourly forecast from Open-Meteo (free, no API key).
+  - Cached in localStorage for 1 hour; service worker also caches the API response (StaleWhileRevalidate). Fully offline-ready.
+  - **Flight tab — map card split**: the map card now includes a weather section below the map showing current temperature/conditions at the destination, plus a horizontally scrollable forecast strip for each trip day (outbound→return). Today's date highlighted. Each day: weather icon, high/low temps, rain probability.
+  - **Daily planner — day header badge**: each day shows a small weather tag (icon + max°/min° + rain %) next to the date.
+  - **Hourly weather popup**: clicking the weather badge on any day opens a centered modal with temperature + icon + rain % every 2 hours, displayed in a wrapping grid (2-3 rows, no horizontal scroll).
+
+- **Activity Detail Popup** (`PlanningTab.jsx`):
+  - Clicking an activity title in the daily planner opens a centered popup with the full title (word-break), time label, description, and Google Maps link. Useful for activities with long truncated names.
+
+- **Day Collapse/Expand Toggle** (`PlanningTab.jsx`):
+  - Each day header has a chevron button that hides/shows the activities timeline and add-activity button, keeping the day title visible.
+
+- **Bulk Delete in Reminders Modal** (`ChecklistTab.jsx`):
+  - When items are selected via checkbox in the "כל התזכורות" bottom sheet, a red "מחק (N)" button appears alongside a "בטל בחירה" button. Bulk delete with confirmation dialog.
+
+### Fixed
+- **Offline UX — fire-and-forget Firestore writes** (`ChecklistTab.jsx`, `App.jsx`):
+  - All Firestore writes (add/edit/delete reminders, checklist items, global checklist) changed from `await setDoc/updateDoc` to fire-and-forget. UI cleanup (clear input, close form) now happens synchronously before the write. Fixes the bug where adding items offline appeared to do nothing — the button "didn't work" because `await` never resolved.
+
+- **timeLabel not saving when editing activities** (`PlanningTab.jsx`):
+  - Edit path now reads `savedPlaceSelections[0].timeLabel` for place-linked activities instead of the stale `activityTimeLabel` state.
+
+- **Day header text overflow** (`PlanningTab.jsx`):
+  - Day title ("יום 1") now truncates with ellipsis instead of wrapping to a second line. Day-of-week abbreviated (א׳/ב׳/...).
+
+- **Activity card text overflow** (`PlanningTab.jsx`):
+  - Added `minWidth: 0` + `overflow: hidden` to activity cards; descriptions use `word-break: break-word`.
+
+- **Currency converter default value** (`CurrencyConverter.jsx`):
+  - Amount input now starts empty instead of pre-filled with "100".
+
+- **Currency converter standalone mode** (`CurrencyConverter.jsx`):
+  - Replaced broken `window.open` (which opened Chrome Custom Tab → full app) with a tip modal explaining the Android long-press shortcut for opening the converter directly.
+
+### Changed
+- **"הוסף יום" button position** (`PlanningTab.jsx`):
+  - Moved from center to left side; title + sync status text stay on the right.
+
+- **Currency converter position** (`FlightTab.jsx`):
+  - Moved below hotel details (was between flights and hotel).
+
+---
+
 ## [7.3.0] - 2026-06-05
 
 ### Added

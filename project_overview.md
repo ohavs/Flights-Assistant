@@ -4,7 +4,7 @@
 Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) designed to assist travelers in planning, tracking, and managing their flight and hotel bookings, packing checklists, trip itineraries, and travel expenses. The app is optimized for mobile screens, supports full offline capability, synchronizes with Firestore in real-time, and supports collaborative editing between users.
 
 **Live URL:** https://listify-84018.web.app  
-**Current Version:** 7.3.0
+**Current Version:** 7.4.0
 
 ---
 
@@ -24,10 +24,13 @@ Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) d
   - User profiles: `/users/{uid}` — stores `globalChecklist` template, `tripIds`, display info
 - **Multi-User Collaboration**: Role-based access (owner / editor / viewer) enforced by Firestore security rules and mirrored in the UI via `TripContext`.
 - **Currency Rates**: `src/services/currency.js` — fetches and caches exchange rates; exposes `convert()` and `refreshRatesIfStale()`.
+- **Weather Data**: `src/hooks/useWeather.js` — fetches current + hourly + 16-day daily forecast from Open-Meteo (free, no API key). Cached in localStorage for 1 hour; service worker also caches (StaleWhileRevalidate). Exports `useWeather(lat, lon)`, `getWeatherIcon(code)`, `getWeatherLabel(code)`.
 
 ### PWA Capabilities
 - **vite-plugin-pwa** + Workbox `generateSW` mode: pre-caches all static assets.
-- **Web App Manifest**: standalone window mode, themed splash, custom icons.
+- **Web App Manifest**: standalone window mode, themed splash, custom icons. Shortcuts: "הטיולים שלי" and "המרת מטבעות" (long-press on Android).
+- **Offline resilience**: Firestore writes are fire-and-forget (UI updates immediately, writes queue in local cache). `visibilitychange` + `online` events re-enable Firestore network and check for SW updates. Offline banner shown when connectivity is lost.
+- **Runtime caching**: Google Fonts, Leaflet tiles, currency rates, Open-Meteo weather API all cached by the service worker.
 
 ---
 
@@ -57,7 +60,7 @@ Central state controller and shell. Handles Google Auth, trip list, multi-user s
 Provides `isDark` / `toggleTheme` / `accent` / `setAccent`. Persists both values to `localStorage` and sets `data-theme` / `data-accent` on `<html>`. Exports `PALETTES` array (7 entries with `key`, `label`, `swatch`).
 
 ### `FlightTab.jsx`
-Outbound + return flight cards with live status, aircraft details, gate info, and a Leaflet map showing the flight path. Auto-queries the local flight simulator when flight number + date are entered.
+Outbound + return flight cards with live status, aircraft details, gate info, and a Leaflet map showing the flight path. Auto-queries the local flight simulator when flight number + date are entered. Map card includes a live weather section: current conditions at the destination + scrollable forecast strip for each trip day (icon, high/low, rain %). Currency converter positioned below hotel details.
 
 ### `CustomDatePicker.jsx`
 Custom Hebrew RTL calendar and datetime picker. Exposes `CustomDatePicker`, `CustomDateTimePicker`, and `CustomDropdown`. `CustomDropdown` supports an optional `meta` string per option — rendered as small secondary text on the left of each dropdown row (not shown in the trigger button). RTL positioning: uses `right: 'auto'` in inline styles.
@@ -76,13 +79,16 @@ Two sub-tabs:
 
 **לוח זמנים יומי:**
 - Day timeline with D&D reordering (`@dnd-kit`); smart day generation from flight dates.
+- **Collapse/expand toggle**: chevron on each day header hides/shows activities.
+- **Weather badge**: each day header shows forecast tag (icon + max°/min° + rain %). Clicking opens an hourly weather popup (centered modal, wrapping grid, every 2 hours).
+- **Activity detail popup**: clicking an activity title opens a centered card with full title, time label, description, and Maps link.
 - Activity card header shows 🚶/🚌 chips on the left side (same row as title).
 - Activity title color reflects linked plan's priority (amber = must, muted = optional).
 - **Place-picker dropdown**: options include distance `meta` text + priority prefix (⭐/🕐).
 - Category customization persisted in `trips/{tripId}/settings/categories`.
 
 ### `ChecklistTab.jsx`
-Packing checklist. Auto-syncs from global template. Reminders carousel (shuffle, auto-advance, swipeable). "כל התזכורות" bottom sheet uses `var(--modal-bg)` (dark-mode-safe).
+Packing checklist. Auto-syncs from global template. Reminders carousel (shuffle, auto-advance, swipeable). "כל התזכורות" bottom sheet uses `var(--modal-bg)` (dark-mode-safe) with bulk-delete button when items are selected. All Firestore writes are fire-and-forget for instant offline UX.
 
 ### `ExpensesTab.jsx`
 Expense tracker with per-category collapsible groups, ILS snapshot for foreign currencies, split form, and per-person summary row.
