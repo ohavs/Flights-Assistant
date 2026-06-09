@@ -878,11 +878,28 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     });
     setLongPressedCat(null);
     if (!ok) return;
+
+    // Optimistic state updates BEFORE batch so the re-sync effect doesn't
+    // immediately re-add deleted global items or show the empty category again.
+    const deletingGlobalIds = catItems
+      .filter(item => mergedGlobalChecklist.some(g => g.id === item.id))
+      .map(i => i.id);
+    const newDeletedIds = [...new Set([...deletedGlobalIds, ...deletingGlobalIds])];
+    const newExtraCategories = extraCategories.filter(c => c !== cat);
+    const newCategoryOrder = categoryOrder.filter(c => c !== cat);
+    setDeletedGlobalIds(newDeletedIds);
+    setExtraCategories(newExtraCategories);
+    setCategoryOrder(newCategoryOrder);
+
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
     const batch = writeBatch(db);
     catItems.forEach(item => batch.delete(doc(db, 'trips', tripId, 'checklist', item.id)));
-    await batch.commit();
-    await setDoc(syncRef, { extraCategories: extraCategories.filter(c => c !== cat) }, { merge: true });
+    batch.commit();
+    setDoc(syncRef, {
+      deletedGlobalIds: newDeletedIds,
+      extraCategories: newExtraCategories,
+      categoryOrder: newCategoryOrder,
+    }, { merge: true });
   };
 
   const handleRenameCategory = async (oldCat, newCat) => {
@@ -1003,20 +1020,20 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
             {/* Progress ring */}
             <div style={{ width: 54, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
-              <div style={{ position: 'relative', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width={44} height={44} viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
-                  <circle cx={22} cy={22} r={17} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={4} />
-                  <circle cx={22} cy={22} r={17} fill="none" stroke="var(--primary-color)" strokeWidth={4}
+              <div style={{ position: 'relative', width: 52, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width={52} height={52} viewBox="0 0 52 52" style={{ position: 'absolute', top: 0, left: 0 }}>
+                  <circle cx={26} cy={26} r={20} fill="none" stroke="rgba(11,11,48,0.08)" strokeWidth={4} />
+                  <circle cx={26} cy={26} r={20} fill="none" stroke="var(--primary-color)" strokeWidth={4}
                     strokeLinecap="round"
-                    strokeDasharray="106.81"
-                    strokeDashoffset={`${(106.81 * (1 - progressPercent / 100)).toFixed(2)}`}
-                    transform="rotate(-90 22 22)"
+                    strokeDasharray="125.66"
+                    strokeDashoffset={`${(125.66 * (1 - progressPercent / 100)).toFixed(2)}`}
+                    transform="rotate(-90 26 26)"
                     style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
                   />
                 </svg>
                 <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-                  <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
-                  <span style={{ fontSize: 7, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>{completedCount}/{totalCount}</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginTop: 2 }}>{completedCount}/{totalCount}</span>
                 </div>
               </div>
             </div>
