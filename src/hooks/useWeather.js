@@ -38,8 +38,10 @@ export function getWeatherLabel(code) {
   return WMO_LABELS[code] ?? '';
 }
 
+const CACHE_VER = 2;
+
 function cacheKey(lat, lon) {
-  return `weather_${lat.toFixed(2)}_${lon.toFixed(2)}`;
+  return `weather_v${CACHE_VER}_${lat.toFixed(2)}_${lon.toFixed(2)}`;
 }
 
 function readCache(lat, lon) {
@@ -47,7 +49,7 @@ function readCache(lat, lon) {
     const raw = localStorage.getItem(cacheKey(lat, lon));
     if (!raw) return null;
     const cached = JSON.parse(raw);
-    if (Date.now() - cached.ts < CACHE_TTL) return cached.data;
+    if (Date.now() - cached.ts < CACHE_TTL && cached.data?.hourlyByDate) return cached.data;
   } catch { /* ignore */ }
   return null;
 }

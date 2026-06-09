@@ -2397,25 +2397,22 @@ export default function PlanningTab({ tripId }) {
       ) : (
         /* DAILY PLANNER SUB-TAB */
         <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
-            {canEdit && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {tripFlightDates.out && tripFlightDates.ret && (() => {
-                  const synced = tripFlightDates.plannerSync?.out === tripFlightDates.out &&
-                                 tripFlightDates.plannerSync?.ret === tripFlightDates.ret;
-                  if (synced) {
-                    return (
-                      <span style={{
-                        fontSize: 12, color: 'var(--success, #16a34a)',
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        opacity: 0.8,
-                      }}>
-                        <CheckCircle2 size={13} />
-                        ימים מסונכרנים עם הטיסה
-                      </span>
-                    );
-                  }
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {canEdit && (
+                <button
+                  onClick={handleAddDay}
+                  className="btn-primary"
+                  style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
+                >
+                  <Plus size={15} />
+                  <span>הוסף יום</span>
+                </button>
+              )}
+              {canEdit && tripFlightDates.out && tripFlightDates.ret && (() => {
+                const synced = tripFlightDates.plannerSync?.out === tripFlightDates.out &&
+                               tripFlightDates.plannerSync?.ret === tripFlightDates.ret;
+                if (!synced) {
                   return (
                     <button
                       onClick={handleInitDaysFromFlight}
@@ -2427,17 +2424,25 @@ export default function PlanningTab({ tripId }) {
                       <span>{tripFlightDates.plannerSync ? 'עדכן ימים לפי טיסה' : 'ייצר ימים לפי טיסה'}</span>
                     </button>
                   );
-                })()}
-                <button
-                  onClick={handleAddDay}
-                  className="btn-primary"
-                  style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
-                >
-                  <Plus size={15} />
-                  <span>הוסף יום</span>
-                </button>
-              </div>
-            )}
+                }
+                return null;
+              })()}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
+              {tripFlightDates.out && tripFlightDates.ret &&
+                tripFlightDates.plannerSync?.out === tripFlightDates.out &&
+                tripFlightDates.plannerSync?.ret === tripFlightDates.ret && (
+                <span style={{
+                  fontSize: 12, color: 'var(--success, #16a34a)',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  opacity: 0.8,
+                }}>
+                  <CheckCircle2 size={13} />
+                  ימים מסונכרנים עם הטיסה
+                </span>
+              )}
+            </div>
           </div>
 
           {days.length === 0 ? (
@@ -3295,7 +3300,7 @@ export default function PlanningTab({ tripId }) {
       })()}
 
       {/* Hourly weather popup */}
-      {hourlyWeatherDate && weather?.hourlyByDate?.[hourlyWeatherDate] && createPortal(
+      {hourlyWeatherDate && createPortal(
         <div
           onClick={() => setHourlyWeatherDate(null)}
           style={{
@@ -3354,7 +3359,7 @@ export default function PlanningTab({ tripId }) {
               display: 'flex', gap: 0,
               scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
             }}>
-              {weather.hourlyByDate[hourlyWeatherDate]
+              {(weather?.hourlyByDate?.[hourlyWeatherDate] || [])
                 .filter((_, i) => i % 2 === 0)
                 .map(h => (
                 <div key={h.hour} style={{
