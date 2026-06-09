@@ -66,6 +66,7 @@ import {
   Layers,
   RefreshCw,
   SlidersHorizontal,
+  MessageSquare,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -1206,7 +1207,7 @@ export default function PlanningTab({ tripId }) {
         timeLabel: firstSel?.placeId ? (firstSel.timeLabel || '') : activityTimeLabel.trim(),
         placeId: firstSel?.placeId || null,
         address: place ? (place.address || '') : activityAddress.trim(),
-        description: place ? (place.description || '') : activityDescription.trim(),
+        description: activityDescription.trim(),
         category: place ? place.category : activityCategory
       };
       updatedActivities = updatedActivities.map(act =>
@@ -2748,9 +2749,12 @@ export default function PlanningTab({ tripId }) {
                                   </div>
 
                                   {act.description && (
-                                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                                      {act.description}
-                                    </p>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 3 }}>
+                                      <MessageSquare size={11} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
+                                      <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.35, wordBreak: 'break-word' }}>
+                                        {act.description}
+                                      </span>
+                                    </div>
                                   )}
 
                                   {/* Row 2: address link + travel-time chips */}
