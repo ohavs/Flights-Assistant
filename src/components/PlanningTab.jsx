@@ -361,6 +361,7 @@ export default function PlanningTab({ tripId }) {
   const [editingDayId, setEditingDayId] = useState(null);
   const [collapsedDays, setCollapsedDays] = useState(new Set());
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
+  const [activityDetail, setActivityDetail] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
   const [destCoords, setDestCoords] = useState(null);
@@ -2686,12 +2687,15 @@ export default function PlanningTab({ tripId }) {
                                           {act.timeLabel}
                                         </span>
                                       )}
-                                      <h4 style={{
-                                        fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
-                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                        minWidth: 0,
-                                        textDecoration: isVisited ? 'line-through' : 'none',
-                                      }}>
+                                      <h4
+                                        onClick={() => setActivityDetail(act)}
+                                        style={{
+                                          fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
+                                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                          minWidth: 0, cursor: 'pointer',
+                                          textDecoration: isVisited ? 'line-through' : 'none',
+                                        }}
+                                      >
                                         {act.title}
                                       </h4>
                                     </div>
@@ -3293,9 +3297,13 @@ export default function PlanningTab({ tripId }) {
       {/* Hourly weather popup */}
       {hourlyWeatherDate && weather?.hourlyByDate?.[hourlyWeatherDate] && createPortal(
         <div
-          className="modal-overlay"
-          style={{ alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 'calc(64px + env(safe-area-inset-bottom))' }}
           onClick={() => setHourlyWeatherDate(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            paddingBottom: 'calc(64px + env(safe-area-inset-bottom))',
+          }}
         >
           <div
             onClick={e => e.stopPropagation()}
@@ -3367,6 +3375,91 @@ export default function PlanningTab({ tripId }) {
                 </div>
               ))}
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Activity detail popup */}
+      {activityDetail && createPortal(
+        <div
+          onClick={() => setActivityDetail(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 420,
+              background: 'var(--modal-bg)',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: '22px 20px',
+              display: 'flex', flexDirection: 'column', gap: 12,
+              maxHeight: '80vh', overflow: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: `${getCategoryColor(activityDetail.category)}18`,
+                  color: getCategoryColor(activityDetail.category),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: `1.5px solid ${getCategoryColor(activityDetail.category)}40`,
+                }}>
+                  {getCategoryIcon(activityDetail.category, 16)}
+                </div>
+                <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0, wordBreak: 'break-word' }}>
+                  {activityDetail.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActivityDetail(null)}
+                style={{
+                  background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
+                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0,
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {activityDetail.timeLabel && (
+              <span style={{
+                fontSize: 12, fontWeight: 800, color: '#fff', alignSelf: 'flex-start',
+                background: 'var(--accent)', padding: '3px 10px', borderRadius: 6,
+              }}>
+                {activityDetail.timeLabel}
+              </span>
+            )}
+
+            {activityDetail.description && (
+              <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, margin: 0, wordBreak: 'break-word' }}>
+                {activityDetail.description}
+              </p>
+            )}
+
+            {activityDetail.address && (
+              <a
+                href={/^https?:\/\//i.test(activityDetail.address) ? activityDetail.address : `https://maps.google.com/?q=${encodeURIComponent(activityDetail.address)}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  fontSize: 13, color: 'var(--accent)', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  textDecoration: 'none',
+                }}
+              >
+                <MapPin size={14} />
+                <span style={{ wordBreak: 'break-all' }}>{/^https?:\/\//i.test(activityDetail.address) ? 'פתח בגוגל מפות' : activityDetail.address}</span>
+              </a>
+            )}
           </div>
         </div>,
         document.body
