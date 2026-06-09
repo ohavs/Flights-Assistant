@@ -676,6 +676,12 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     ...(globalChecklist || []).map(i => i.category).filter(Boolean),
   ]));
 
+  const duplicateSuggestions = useMemo(() => {
+    if (!newItemText.trim() || newItemText.trim().length < 2) return [];
+    const q = newItemText.toLowerCase();
+    return (globalChecklist || []).filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
+  }, [globalChecklist, newItemText, editingItemId]);
+
   if (!isOpen) return null;
 
   const toggleCategory = (cat) =>
@@ -736,12 +742,6 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
   };
 
   const isDirty = !!newItemText.trim();
-
-  const duplicateSuggestions = useMemo(() => {
-    if (!newItemText.trim() || newItemText.trim().length < 2) return [];
-    const q = newItemText.toLowerCase();
-    return (globalChecklist || []).filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
-  }, [globalChecklist, newItemText, editingItemId]);
 
   const attemptClose = async () => {
     if (isDirty || editingItemId) {
