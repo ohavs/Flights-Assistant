@@ -552,7 +552,8 @@ function SortableCategoryBlock({
       {isOpen && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categoryItems.map(item => {
-            const assigned = item.assignedTo || [];
+            const assigned = Array.isArray(item.assignedTo) ? item.assignedTo
+              : item.assignedTo ? [item.assignedTo] : [];
             return (
               <div key={item.id}
                 className="glass-card checklist-item-row"
@@ -729,7 +730,8 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   useEffect(() => {
     if (!assignPickerItemId) return;
     const item = items.find(i => i.id === assignPickerItemId);
-    setPickerSelected(new Set(item?.assignedTo || []));
+    const cur = item?.assignedTo;
+    setPickerSelected(new Set(Array.isArray(cur) ? cur : cur ? [cur] : []));
   }, [assignPickerItemId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const defaultCategoryNames = [
@@ -951,7 +953,8 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
-    setNewItemAssignedTo(item.assignedTo || []);
+    const a = item.assignedTo;
+    setNewItemAssignedTo(Array.isArray(a) ? a : a ? [a] : []);
     setShowAddForm(true);
     document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1123,7 +1126,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
             {categories.map((category) => {
               const categoryItems = items.filter(item => {
                 if (item.category !== category) return false;
-                if (filterAssignee !== null && !(item.assignedTo || []).includes(filterAssignee)) return false;
+                if (filterAssignee !== null) {
+                  const a = Array.isArray(item.assignedTo) ? item.assignedTo : (item.assignedTo ? [item.assignedTo] : []);
+                  if (!a.includes(filterAssignee)) return false;
+                }
                 return true;
               });
               if (categoryItems.length === 0 && (filterAssignee !== null || !extraCategories.includes(category))) return null;
