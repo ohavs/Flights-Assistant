@@ -909,13 +909,16 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     if (!tripId) return;
     const ok = await confirm({ message: 'למחוק את הפריט?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
     if (!ok) return;
-    deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
-    if (mergedGlobalChecklist.some(g => g.id === id)) {
+    // Optimistically update deletedGlobalIds BEFORE deleteDoc so the re-sync
+    // effect (which runs when items changes) doesn't immediately re-add the item.
+    const isGlobal = mergedGlobalChecklist.some(g => g.id === id);
+    if (isGlobal) {
+      const newDeletedIds = [...new Set([...deletedGlobalIds, id])];
+      setDeletedGlobalIds(newDeletedIds);
       const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-      setDoc(syncRef, {
-        deletedGlobalIds: [...new Set([...deletedGlobalIds, id])],
-      }, { merge: true });
+      setDoc(syncRef, { deletedGlobalIds: newDeletedIds }, { merge: true });
     }
+    deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
   };
 
   const handleSaveAssignment = (itemId) => {
@@ -932,6 +935,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setNewItemText('');
     if (editingItemId) {
       setEditingItemId(null);
+      setShowAddForm(false);
       updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: newItemAssignedTo.length > 0 ? newItemAssignedTo : null });
     } else {
       setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
