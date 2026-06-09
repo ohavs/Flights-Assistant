@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import {
   collection,
@@ -9,7 +10,7 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List, User } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -453,9 +454,10 @@ function SortableCategoryBlock({
   editingCat, editCatText, setEditCatText, setEditingCat, handleRenameCategory,
   toggleCategory, longPressActive, startLongPress, cancelLongPress,
   setLongPressedCat, handleDeleteCategory,
-  pendingDeleteId, handleToggle, handleStartEdit, handleDeleteItem,
+  handleToggle, handleStartEdit, handleDeleteItem,
   quickAddCat, setQuickAddCat, quickAddText, setQuickAddText,
   quickAddInputRef, handleQuickAdd,
+  allMembers, setAssignPickerItemId,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category });
   const style = {
@@ -550,37 +552,47 @@ function SortableCategoryBlock({
       {isOpen && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categoryItems.map(item => {
-            const isPending = pendingDeleteId === item.id;
+            const assignedMember = item.assignedTo ? allMembers.find(x => x.uid === item.assignedTo) : null;
             return (
               <div key={item.id}
                 className="glass-card checklist-item-row"
-                onClick={canEdit && !isPending ? () => handleToggle(item) : undefined}
+                onClick={canEdit ? () => handleToggle(item) : undefined}
                 style={{
                   padding: '12px 14px',
-                  cursor: canEdit && !isPending ? 'pointer' : 'default',
-                  background: isPending ? 'rgba(239,68,68,0.06)' : item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
-                  border: isPending ? '1.5px solid rgba(239,68,68,0.25)' : item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
+                  cursor: canEdit ? 'pointer' : 'default',
+                  background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
+                  border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
                   transition: 'background 0.2s, border 0.2s',
                 }}
               >
                 <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid rgba(11,11,48,0.18)', background: item.completed ? 'var(--primary-color)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
                   {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
                 </div>
-                <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: isPending ? 'rgb(239,68,68)' : item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
+                <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
                   {item.text}
                 </span>
                 {canEdit ? (
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                    {!isPending && (
-                      <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
-                        <Pencil size={15} />
+                    {allMembers.length > 1 && (
+                      <button type="button" onClick={e => { e.stopPropagation(); setAssignPickerItemId(item.id); }}
+                        title="שייך לחבר"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        {assignedMember ? (
+                          assignedMember.photoURL
+                            ? <img src={assignedMember.photoURL} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                            : <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', fontWeight: 800 }}>{(assignedMember.displayName || '?')[0]}</div>
+                        ) : (
+                          <User size={15} style={{ color: 'var(--text-muted)', opacity: 0.35 }} />
+                        )}
                       </button>
                     )}
+                    <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+                      <Pencil size={15} />
+                    </button>
                     <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
-                      style={{ background: isPending ? 'rgba(239,68,68,0.12)' : 'transparent', border: isPending ? '1px solid rgba(239,68,68,0.3)' : 'none', borderRadius: 7, color: isPending ? 'rgb(239,68,68)' : 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.15s' }}>
+                      style={{ background: 'transparent', border: 'none', borderRadius: 7, color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center' }}>
                       <Trash2 size={14} />
-                      {isPending && <span style={{ fontSize: 11, fontWeight: 800 }}>מחק?</span>}
                     </button>
                   </div>
                 ) : <div />}
@@ -654,7 +666,7 @@ export const defaultChecklist = [
 ];
 
 export default function ChecklistTab({ tripId, globalChecklist = [] }) {
-  const { canEdit, tripMembers } = useTrip();
+  const { canEdit, tripMembers, currentUid, currentUserProfile, memberProfiles } = useTrip();
   const confirm = useConfirm();
 
   const [items, setItems] = useState([]);
@@ -667,8 +679,15 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // Form state
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
+  const [newItemAssignedTo, setNewItemAssignedTo] = useState(null);
   const [editingItemId, setEditingItemId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+
+  // Filter by assigned user
+  const [filterAssignee, setFilterAssignee] = useState(null);
+
+  // Assignment picker (item id whose picker is open)
+  const [assignPickerItemId, setAssignPickerItemId] = useState(null);
 
   // Category open/close — default ALL closed (empty obj = all closed)
   const [openCategories, setOpenCategories] = useState({});
@@ -680,10 +699,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [editingCat, setEditingCat] = useState(null);
   const [editCatText, setEditCatText] = useState('');
 
-  // Two-tap delete for items
-  const [pendingDeleteId, setPendingDeleteId] = useState(null);
-  const pendingDeleteTimer = useRef(null);
-
   // Quick-add inside an open category
   const [quickAddCat, setQuickAddCat] = useState(null);
   const [quickAddText, setQuickAddText] = useState('');
@@ -692,7 +707,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // Cleanup timers on unmount
   useEffect(() => () => {
     clearTimeout(longPressTimer.current);
-    clearTimeout(pendingDeleteTimer.current);
   }, []);
 
   const defaultCategoryNames = [
@@ -710,6 +724,25 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     const rest = all.filter(c => !categoryOrder.includes(c));
     return [...ordered, ...rest];
   }, [extraCategories, items, categoryOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const allMembers = useMemo(() => {
+    const list = [];
+    if (currentUid && currentUserProfile) {
+      list.push({ uid: currentUid, displayName: currentUserProfile.displayName || currentUserProfile.email || '', photoURL: currentUserProfile.photoURL || '' });
+    }
+    Object.keys(tripMembers || {}).forEach(uid => {
+      if (uid === currentUid) return;
+      const p = memberProfiles?.[uid] || {};
+      list.push({ uid, displayName: p.displayName || p.email || uid, photoURL: p.photoURL || '' });
+    });
+    return list;
+  }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
+
+  const duplicateSuggestions = useMemo(() => {
+    if (!newItemText.trim() || newItemText.trim().length < 2) return [];
+    const q = newItemText.toLowerCase();
+    return items.filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
+  }, [items, newItemText, editingItemId]);
 
   // ── Firestore listeners ──────────────────────────────────────────────────
   useEffect(() => {
@@ -847,24 +880,23 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     });
   };
 
-  // Two-tap delete: first tap → pending (highlighted), second tap → delete
-  const handleDeleteItem = (id) => {
+  const handleDeleteItem = async (id) => {
     if (!tripId) return;
-    if (pendingDeleteId === id) {
-      clearTimeout(pendingDeleteTimer.current);
-      setPendingDeleteId(null);
-      deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
-      if (mergedGlobalChecklist.some(g => g.id === id)) {
-        const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-        setDoc(syncRef, {
-          deletedGlobalIds: [...new Set([...deletedGlobalIds, id])],
-        }, { merge: true });
-      }
-    } else {
-      clearTimeout(pendingDeleteTimer.current);
-      setPendingDeleteId(id);
-      pendingDeleteTimer.current = setTimeout(() => setPendingDeleteId(null), 3000);
+    const ok = await confirm({ message: 'למחוק את הפריט?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
+    if (!ok) return;
+    deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
+    if (mergedGlobalChecklist.some(g => g.id === id)) {
+      const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+      setDoc(syncRef, {
+        deletedGlobalIds: [...new Set([...deletedGlobalIds, id])],
+      }, { merge: true });
     }
+  };
+
+  const handleAssignItem = (itemId, uid) => {
+    if (!tripId) return;
+    updateDoc(doc(db, 'trips', tripId, 'checklist', itemId), { assignedTo: uid || null });
+    setAssignPickerItemId(null);
   };
 
   const doAdd = (overrideCategory) => {
@@ -874,10 +906,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setNewItemText('');
     if (editingItemId) {
       setEditingItemId(null);
-      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat });
+      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: newItemAssignedTo || null });
     } else {
       setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
-        text, completed: false, category: cat,
+        text, completed: false, category: cat, assignedTo: newItemAssignedTo || null,
       });
     }
   };
@@ -888,13 +920,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setEditingItemId(null);
     setNewItemText('');
     setNewItemCategory('מסמכים וסידורים');
+    setNewItemAssignedTo(null);
   };
 
   const handleStartEdit = (item) => {
-    setPendingDeleteId(null);
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
+    setNewItemAssignedTo(item.assignedTo || null);
     setShowAddForm(true);
     document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -980,12 +1013,46 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   <label>מה להביא?</label>
                   <input type="text" className="form-control" placeholder="למשל: סוודר, מטען"
                     value={newItemText} onChange={e => setNewItemText(e.target.value)} required />
+                  {duplicateSuggestions.length > 0 && (
+                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', direction: 'rtl' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(180,120,0,0.85)', display: 'block', marginBottom: 4 }}>פריטים דומים כבר ברשימה:</span>
+                      {duplicateSuggestions.slice(0, 4).map(s => (
+                        <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13, color: 'var(--text-main)' }}>
+                          <span style={{ flex: 1, textAlign: 'right' }}>{s.text}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 8, flexShrink: 0 }}>{s.category}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <CustomDropdown
                   label="קטגוריה" value={newItemCategory} onChange={setNewItemCategory}
                   options={categories} addable addLabel="הוסף קטגוריה חדשה"
                   onCommit={cat => saveExtraCategory(cat)}
                 />
+                {allMembers.length > 1 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>שייך ל</label>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button type="button"
+                        onClick={() => setNewItemAssignedTo(null)}
+                        style={{ padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: newItemAssignedTo === null ? 'var(--ink-10)' : 'var(--ink-5)', color: newItemAssignedTo === null ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                        לא משויך
+                      </button>
+                      {allMembers.map(m => (
+                        <button type="button" key={m.uid}
+                          onClick={() => setNewItemAssignedTo(m.uid)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: newItemAssignedTo === m.uid ? 'var(--accent)' : 'var(--ink-5)', color: newItemAssignedTo === m.uid ? '#fff' : 'var(--text-muted)' }}>
+                          {m.photoURL
+                            ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                            : <div style={{ width: 18, height: 18, borderRadius: '50%', background: newItemAssignedTo === m.uid ? 'rgba(255,255,255,0.3)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                          }
+                          {m.displayName}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {editingItemId ? (
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -1002,13 +1069,39 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         </div>
       )}
 
+      {/* User filter chips — shown only when trip has multiple members */}
+      {allMembers.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', direction: 'rtl' }}>
+          <button type="button"
+            onClick={() => setFilterAssignee(null)}
+            style={{ padding: '5px 13px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: filterAssignee === null ? 'var(--accent)' : 'var(--ink-6)', color: filterAssignee === null ? '#fff' : 'var(--text-muted)', transition: 'all 0.15s' }}>
+            הכל
+          </button>
+          {allMembers.map(m => (
+            <button type="button" key={m.uid}
+              onClick={() => setFilterAssignee(prev => prev === m.uid ? null : m.uid)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 13px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: filterAssignee === m.uid ? 'var(--accent)' : 'var(--ink-6)', color: filterAssignee === m.uid ? '#fff' : 'var(--text-muted)', transition: 'all 0.15s' }}>
+              {m.photoURL
+                ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                : <div style={{ width: 18, height: 18, borderRadius: '50%', background: filterAssignee === m.uid ? 'rgba(255,255,255,0.25)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+              }
+              {m.displayName}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Checklist categories — sortable, all closed by default */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={categories} strategy={verticalListSortingStrategy}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {categories.map((category) => {
-              const categoryItems = items.filter(item => item.category === category);
-              if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
+              const categoryItems = items.filter(item => {
+                if (item.category !== category) return false;
+                if (filterAssignee !== null && item.assignedTo !== filterAssignee) return false;
+                return true;
+              });
+              if (categoryItems.length === 0 && (filterAssignee !== null || !extraCategories.includes(category))) return null;
               const isOpen = !!openCategories[category];
               const isLongPressed = longPressedCat === category;
               const doneCount = categoryItems.filter(i => i.completed).length;
@@ -1032,7 +1125,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   cancelLongPress={cancelLongPress}
                   setLongPressedCat={setLongPressedCat}
                   handleDeleteCategory={handleDeleteCategory}
-                  pendingDeleteId={pendingDeleteId}
                   handleToggle={handleToggle}
                   handleStartEdit={handleStartEdit}
                   handleDeleteItem={handleDeleteItem}
@@ -1042,12 +1134,50 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   setQuickAddText={setQuickAddText}
                   quickAddInputRef={quickAddInputRef}
                   handleQuickAdd={handleQuickAdd}
+                  allMembers={allMembers}
+                  setAssignPickerItemId={setAssignPickerItemId}
                 />
               );
             })}
           </div>
         </SortableContext>
       </DndContext>
+
+      {/* Assign-to-member picker portal */}
+      {assignPickerItemId && createPortal(
+        <div
+          onClick={() => setAssignPickerItemId(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(11,11,48,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--modal-bg)', borderRadius: 20, padding: '20px', width: '85%', maxWidth: 320, direction: 'rtl', boxShadow: 'var(--shadow-lg)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>שייך לחבר</span>
+              <button onClick={() => setAssignPickerItemId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {allMembers.map(m => (
+                <button key={m.uid} onClick={() => handleAssignItem(assignPickerItemId, m.uid)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: 'var(--ink-4)', border: 'none', borderRadius: 12, cursor: 'pointer', textAlign: 'right' }}>
+                  {m.photoURL
+                    ? <img src={m.photoURL} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                    : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                  }
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>{m.displayName}</span>
+                </button>
+              ))}
+              <button onClick={() => handleAssignItem(assignPickerItemId, null)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: 'var(--ink-4)', border: 'none', borderRadius: 12, cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600 }}>
+                <X size={16} />
+                הסר שיוך
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );
