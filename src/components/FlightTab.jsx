@@ -728,18 +728,9 @@ export default function FlightTab({ tripId }) {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} בשעה ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
-  if (loading || !tripData) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, height: '100%', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: '12px', height: '12px' }}></div>
-        <span style={{ marginRight: '10px', color: 'var(--text-muted)', fontSize: '15px' }}>טוען נתוני טיסה ומלון...</span>
-      </div>
-    );
-  }
-
-  const outbound = tripData.outboundFlightDetails || emptyFlightDetails;
-  const returning = tripData.returnFlightDetails || emptyFlightDetails;
-  const hotel = tripData.hotelDetails || emptyHotelDetails;
+  const outbound = tripData?.outboundFlightDetails || emptyFlightDetails;
+  const returning = tripData?.returnFlightDetails || emptyFlightDetails;
+  const hotel = tripData?.hotelDetails || emptyHotelDetails;
 
   const destCoords = outbound.arrAirport || returning.depAirport;
   const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
@@ -750,6 +741,15 @@ export default function FlightTab({ tripId }) {
     const end = returning.date;
     return weather.daily.filter(d => d.date >= start && d.date <= end);
   })();
+
+  if (loading || !tripData) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, height: '100%', padding: '40px 0' }}>
+        <div className="pulsing-dot" style={{ width: '12px', height: '12px' }}></div>
+        <span style={{ marginRight: '10px', color: 'var(--text-muted)', fontSize: '15px' }}>טוען נתוני טיסה ומלון...</span>
+      </div>
+    );
+  }
 
   // Render a flight card (extracted to share between outbound + return)
   const renderFlightCard = (flight, kind) => {
