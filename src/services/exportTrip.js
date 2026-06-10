@@ -210,10 +210,14 @@ export async function exportTripPdf(data, scope = 'all') {
   const newPage = () => { doc.addPage(); y = margin; };
 
   // ── Cover ──
-  doc.setFontSize(30);
+  doc.setFontSize(36);
   doc.setTextColor(...C_HEADING);
-  doc.text(shape(trip?.name || 'הטיול שלי'), rightX, y + 26, { ...TEXT_OPTS });
-  y += 40;
+  doc.text(shape(trip?.name || 'הטיול שלי'), rightX, y + 30, { ...TEXT_OPTS });
+  y += 48;
+  // Accent bar under title
+  doc.setFillColor(...C_ACCENT);
+  doc.rect(leftX, y, contentW, 3, 'F');
+  y += 14;
   if (trip?.destination) {
     doc.setFontSize(16);
     doc.setTextColor(...C_MUTED);
@@ -354,7 +358,7 @@ export async function exportTripPdf(data, scope = 'all') {
         for (let i = 0; i < PLAN_COLS.length; i++) {
           const isAddr = i === 2 && !!addrUrl;
           doc.setFontSize(CELL_FS);
-          doc.setTextColor(...(isAddr ? C_ACCENT : [0, 0, 0]));
+          doc.setTextColor(...(isAddr ? C_ACCENT : C_TEXT));
           const lines = doc.splitTextToSize(String(cellTexts[i]), PLAN_COLS[i].w - CELL_PAD * 2);
           let ty = y + CELL_PAD + CELL_FS;
           for (const line of lines) {
@@ -380,13 +384,13 @@ export async function exportTripPdf(data, scope = 'all') {
       banner(day.title || `יום ${i + 1}`);
       const acts = day.activities || [];
       if (acts.length === 0) {
-        write('אין פעילויות מתוכננות', { size: 12, color: [148, 163, 184] });
+        write('אין פעילויות מתוכננות', { size: 12, color: C_MUTED });
       } else {
         for (const act of acts) {
           ensureSpace(60);
           const labelPart = act.timeLabel ? `[${act.timeLabel}]   ` : '';
           write(`• ${labelPart}${act.title}`, { size: 14 });
-          if (act.category) write(act.category, { size: 11, color: [148, 163, 184], indent: 16 });
+          if (act.category) write(act.category, { size: 11, color: C_MUTED, indent: 16 });
           if (act.description) write(act.description, { size: 11, color: C_MUTED, indent: 16 });
           if (act.address) writeLink(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
           y += 10;
@@ -437,6 +441,15 @@ export async function exportTripPdf(data, scope = 'all') {
       }
       y += 6;
     }
+  }
+
+  // Page numbers
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(9);
+    doc.setTextColor(160, 160, 180);
+    doc.text(shape(`עמוד ${p} מתוך ${totalPages}`), rightX, pageH - 22, { ...TEXT_OPTS });
   }
 
   doc.save(`${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.pdf`);
@@ -599,12 +612,12 @@ export async function exportTripDocx(data, scope = 'all') {
       dayChildren.push(para(day.title || `יום ${i + 1}`, { bold: true, size: 44, color: '4f46e5', heading: HeadingLevel.TITLE, spacing: { after: 240 } }));
       const acts = day.activities || [];
       if (acts.length === 0) {
-        dayChildren.push(para('אין פעילויות מתוכננות', { color: '94a3b8' }));
+        dayChildren.push(para('אין פעילויות מתוכננות', { color: '64748b' }));
       } else {
         for (const act of acts) {
           const labelPart = act.timeLabel ? `[${act.timeLabel}]   ` : '';
           dayChildren.push(para(`• ${labelPart}${act.title}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2 }));
-          if (act.category) dayChildren.push(para(act.category, { color: '94a3b8' }));
+          if (act.category) dayChildren.push(para(act.category, { color: '64748b' }));
           if (act.description) dayChildren.push(para(act.description, { color: '475569' }));
           if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`));
           dayChildren.push(spacer());
@@ -812,7 +825,7 @@ export async function exportTripXlsx(data, scope = 'all') {
     },
     bodyAlt: {
       font: { ...FONT, size: 12, color: { argb: 'FF1F2937' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } },
       alignment: { horizontal: 'right', vertical: 'middle', wrapText: true, readingOrder: 'rtl' },
     },
     link: {
