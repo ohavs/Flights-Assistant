@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
-import { CustomDropdown } from './CustomDatePicker';
 import { useTrip } from '../TripContext';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
@@ -69,6 +68,14 @@ export default function ExpensesTab({ tripId }) {
 
   // Collapsed state per expense category group
   const [collapsedCategories, setCollapsedCategories] = useState({});
+
+  // Inline new-category input in form + categories added this session
+  const [showNewCatInput, setShowNewCatInput] = useState(false);
+  const [newCatDraft, setNewCatDraft] = useState('');
+  const [sessionCategories, setSessionCategories] = useState([]);
+
+  // Detailed statistics section inside summary
+  const [showStats, setShowStats] = useState(false);
 
   // Currency selector in form
   const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
@@ -157,6 +164,8 @@ export default function ExpensesTab({ tripId }) {
     setFormQuickCurrencies(base);
     setShowCurrencyList(false);
     setCurrencySearch('');
+    setShowNewCatInput(false);
+    setNewCatDraft('');
     setShowPlanDropdown(false);
     setPlanFilter('');
     setShowPayerDropdown(false);
@@ -221,7 +230,8 @@ export default function ExpensesTab({ tripId }) {
     ...DEFAULT_EXPENSE_CATEGORIES,
     ...expenses.map(e => e.category || 'כללי'),
     ...plans.map(p => p.category).filter(Boolean),
-  ])), [expenses, plans]);
+    ...sessionCategories,
+  ])), [expenses, plans, sessionCategories]);
 
   // Expenses grouped by category, only categories with items
   const expensesByCategory = useMemo(() => {
@@ -259,6 +269,36 @@ export default function ExpensesTab({ tripId }) {
       .map(([uid, total]) => ({ uid, total, profile: getPayerProfile(uid) }))
       .sort((a, b) => b.total - a.total);
   }, [expenses, rates, currentUid, getPayerProfile]);
+
+  // ── Statistics breakdowns (all in ILS) ──────────────────────────────────
+  const statsByCategory = useMemo(() => {
+    if (!rates) return [];
+    const totals = {};
+    expenses.forEach(e => {
+      const cat = e.category || 'כללי';
+      totals[cat] = (totals[cat] || 0) + convert(e.amount, e.currency, 'ILS', rates);
+    });
+    const grand = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
+    return Object.entries(totals)
+      .map(([cat, total]) => ({ cat, total, pct: Math.round((total / grand) * 100) }))
+      .sort((a, b) => b.total - a.total);
+  }, [expenses, rates]);
+
+  const topExpenses = useMemo(() => {
+    if (!rates) return [];
+    return expenses
+      .map(e => ({ ...e, ils: convert(e.amount, e.currency, 'ILS', rates) }))
+      .sort((a, b) => b.ils - a.ils)
+      .slice(0, 3);
+  }, [expenses, rates]);
+
+  const dailyAvg = useMemo(() => {
+    if (ilsTotal == null || expenses.length === 0) return null;
+    const days = new Set(expenses.map(e => (e.createdAt || '').slice(0, 10)).filter(Boolean)).size || 1;
+    return { avg: ilsTotal / days, days };
+  }, [expenses, ilsTotal]);
+
+  const memberCount = Math.max(memberUids.length, 1);
 
   // Currencies available to add (not yet in formQuickCurrencies)
   const addableCurrencies = useMemo(
@@ -315,39 +355,43 @@ export default function ExpensesTab({ tripId }) {
         </div>
       </div>
 
-      {/* Summary panel */}
-      {showSummary && summary.length > 0 && (
+      {/* Summary panel — condensed: total → per person → per payer → stats */}
+      {showSummary && expenses.length > 0 && (
         <div className="glass-card animate-fade" style={{ padding: 16 }}>
-          <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', marginBottom: 10 }}>סיכום לפי מטבע</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {summary.map(({ code, symbol, name, total }) => (
-              <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--p-4)', borderRadius: 10 }}>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>{name}</span>
-                <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--accent)' }}>
-                  {symbol}{total.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+
+            {/* 1. Grand total in ILS */}
+            {ilsTotal !== null ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 14px', background: 'var(--c-green-7)', borderRadius: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--c-green)' }}>סה"כ בשקלים</span>
+                <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--c-green)' }}>
+                  ₪{ilsTotal.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
                 </span>
               </div>
-            ))}
-            {ilsTotal !== null && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 12px', background: 'var(--c-green-7)', borderRadius: 10, marginTop: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--c-green)' }}>סה"כ מוערך בשקלים</span>
-                <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--c-green)' }}>
-                  ₪{ilsTotal.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                </span>
-              </div>
+            ) : (
+              summary.map(({ code, symbol, name, total }) => (
+                <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--p-4)', borderRadius: 10 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>{name}</span>
+                  <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--accent)' }}>
+                    {symbol}{total.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ))
             )}
-            {ilsTotal !== null && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: 'var(--c-green-7)', borderRadius: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-green)', opacity: 0.85 }}>לאדם (÷2)</span>
+
+            {/* 2. Per person */}
+            {ilsTotal !== null && memberCount >= 2 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: 'var(--c-green-7)', borderRadius: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-green)', opacity: 0.85 }}>לאדם (÷{memberCount})</span>
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--c-green)', opacity: 0.85 }}>
-                  ₪{(ilsTotal / 2).toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                  ₪{(ilsTotal / memberCount).toLocaleString('he-IL', { maximumFractionDigits: 0 })}
                 </span>
               </div>
             )}
-            {/* Per-payer breakdown — shown when at least one expense has paidBy */}
+
+            {/* 3. Per payer */}
             {summaryByPayer.length > 0 && expenses.some(e => e.paidBy) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, marginTop: 2, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
-                <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0, marginBottom: 2 }}>פירוט לפי משלם</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {summaryByPayer.map(({ uid, total, profile }) => (
                   <div key={uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--p-4)', borderRadius: 9 }}>
                     <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
@@ -364,10 +408,96 @@ export default function ExpensesTab({ tripId }) {
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 4, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>סה"כ רשומות</span>
-              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>{expenses.length}</span>
-            </div>
+
+            {/* 4. Statistics toggle */}
+            <button
+              type="button"
+              onClick={() => setShowStats(s => !s)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '9px 0', borderRadius: 10, border: '1.5px dashed rgba(79,70,229,0.3)',
+                background: showStats ? 'var(--p-6)' : 'transparent', color: 'var(--accent)',
+                fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 2,
+              }}
+            >
+              <TrendingUp size={14} />
+              סטטיסטיקות
+              <ChevronDown size={14} style={{ transition: 'transform 0.2s', transform: showStats ? 'rotate(180deg)' : 'none' }} />
+            </button>
+
+            {showStats && (
+              <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 8 }}>
+
+                {/* By category — bar per category */}
+                {statsByCategory.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0 }}>לפי קטגוריות</p>
+                    {statsByCategory.map(({ cat, total, pct }) => (
+                      <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>{cat}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+                            ₪{total.toLocaleString('he-IL', { maximumFractionDigits: 0 })} · {pct}%
+                          </span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 3, background: 'var(--ink-6)', overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 3, transition: 'width 0.4s ease' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Daily average */}
+                {dailyAvg && dailyAvg.days > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--p-4)', borderRadius: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>ממוצע ליום ({dailyAvg.days} ימים)</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
+                      ₪{dailyAvg.avg.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                )}
+
+                {/* Top expenses */}
+                {topExpenses.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0 }}>ההוצאות הגדולות</p>
+                    {topExpenses.map(e => {
+                      const linked = plans.find(p => p.id === e.linkedPlanId);
+                      const label = e.description || linked?.title || e.customPlace || e.category || 'הוצאה';
+                      return (
+                        <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--ink-3)', borderRadius: 9, gap: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'right' }}>{label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
+                            ₪{e.ils.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Original currency totals — only when foreign currencies used */}
+                {ilsTotal !== null && summary.some(s => s.code !== 'ILS') && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0 }}>לפי מטבע מקורי</p>
+                    {summary.map(({ code, symbol, name, total }) => (
+                      <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--ink-3)', borderRadius: 9 }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>{name}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>
+                          {symbol}{total.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>סה"כ רשומות</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{expenses.length}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -761,14 +891,73 @@ export default function ExpensesTab({ tripId }) {
                   />
                 </div>
 
-                <CustomDropdown
-                  label="קטגוריה"
-                  value={category}
-                  onChange={setCategory}
-                  options={expenseCategories}
-                  addable
-                  addLabel="הוסף קטגוריה חדשה"
-                />
+                {/* Category — inline chips (same pattern as currency above) */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12 }}>קטגוריה</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {expenseCategories.map(cat => (
+                      <button key={cat} type="button" onClick={() => setCategory(cat)}
+                        style={{
+                          padding: '6px 14px', borderRadius: 20, border: 'none',
+                          background: category === cat ? 'var(--accent)' : 'var(--ink-6)',
+                          color: category === cat ? '#fff' : 'var(--primary)',
+                          fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                        }}>
+                        {cat}
+                      </button>
+                    ))}
+                    {showNewCatInput ? (
+                      <div style={{ display: 'flex', gap: 6, width: '100%', alignItems: 'center' }}>
+                        <input
+                          type="text" autoFocus className="form-control"
+                          value={newCatDraft}
+                          onChange={e => setNewCatDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const val = newCatDraft.trim();
+                              if (val) {
+                                setSessionCategories(prev => [...new Set([...prev, val])]);
+                                setCategory(val);
+                              }
+                              setShowNewCatInput(false); setNewCatDraft('');
+                            }
+                            if (e.key === 'Escape') { setShowNewCatInput(false); setNewCatDraft(''); }
+                          }}
+                          placeholder="שם קטגוריה חדשה"
+                          style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                        />
+                        <button type="button"
+                          onClick={() => {
+                            const val = newCatDraft.trim();
+                            if (val) {
+                              setSessionCategories(prev => [...new Set([...prev, val])]);
+                              setCategory(val);
+                            }
+                            setShowNewCatInput(false); setNewCatDraft('');
+                          }}
+                          className="btn-primary" style={{ minHeight: 38, padding: '6px 14px', fontSize: 13, flexShrink: 0 }}>
+                          הוסף
+                        </button>
+                        <button type="button" onClick={() => { setShowNewCatInput(false); setNewCatDraft(''); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex', flexShrink: 0 }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button"
+                        onClick={() => { setShowNewCatInput(true); setNewCatDraft(''); }}
+                        style={{
+                          padding: '6px 14px', borderRadius: 20, fontFamily: 'inherit',
+                          border: '1.5px dashed rgba(79,70,229,0.3)', background: 'transparent',
+                          color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 4,
+                        }}>
+                        <Plus size={13} /> קטגוריה
+                      </button>
+                    )}
+                  </div>
+                </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
