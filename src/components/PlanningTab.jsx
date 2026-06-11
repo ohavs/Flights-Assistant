@@ -2520,15 +2520,25 @@ export default function PlanningTab({ tripId }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {days.map((day) => (
                 <SortableDayCard key={day.id} id={day.id}>
-                  {/* Day Header */}
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    borderBottom: '1px solid rgba(11,11,48,0.06)', 
-                    paddingBottom: 8,
-                    minHeight: 36
-                  }}>
+                  {/* Day Header — whole row toggles collapse (inner controls stop propagation) */}
+                  <div
+                    onClick={() => {
+                      if (editingDayId === day.id) return;
+                      setCollapsedDays(prev => {
+                        const next = new Set(prev);
+                        next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: '1px solid rgba(11,11,48,0.06)',
+                      paddingBottom: 8,
+                      minHeight: 36,
+                      cursor: editingDayId === day.id ? 'default' : 'pointer',
+                    }}>
                     {editingDayId === day.id ? (
                       <form 
                         onSubmit={(e) => { e.preventDefault(); handleSaveDayTitle(day.id, editingDayTitle); }} 
@@ -2548,7 +2558,7 @@ export default function PlanningTab({ tripId }) {
                     ) : (
                       <>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
-                          {canEdit && <DayDragHandle />}
+                          {canEdit && <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}><DayDragHandle /></span>}
                           <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
                           {day.date && (() => {
                             const [, mm, dd] = day.date.split('-');
@@ -2590,14 +2600,14 @@ export default function PlanningTab({ tripId }) {
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           {canEdit && (<>
                           <button
-                            onClick={() => { setEditingDayId(day.id); setEditingDayTitle(day.title); }}
+                            onClick={(e) => { e.stopPropagation(); setEditingDayId(day.id); setEditingDayTitle(day.title); }}
                             style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                             title="ערוך כותרת יום"
                           >
                             <Pencil size={15} />
                           </button>
                           <button
-                            onClick={() => handleDeleteDay(day.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDeleteDay(day.id); }}
                             style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
                             title="מחק יום"
                           >
@@ -2605,11 +2615,11 @@ export default function PlanningTab({ tripId }) {
                           </button>
                           </>)}
                           <button
-                            onClick={() => setCollapsedDays(prev => {
+                            onClick={(e) => { e.stopPropagation(); setCollapsedDays(prev => {
                               const next = new Set(prev);
                               next.has(day.id) ? next.delete(day.id) : next.add(day.id);
                               return next;
-                            })}
+                            }); }}
                             style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: collapsedDays.has(day.id) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
                             title={collapsedDays.has(day.id) ? 'פתח יום' : 'סגור יום'}
                           >
@@ -2863,17 +2873,20 @@ export default function PlanningTab({ tripId }) {
                             <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>
                               {g.label || 'ללא תיוג זמן'}
                             </span>
+                            {/* Pushed to the row's end so counts align across groups */}
                             <span style={{
                               fontSize: 10, fontWeight: 800, color: 'var(--accent)',
-                              background: 'rgba(79,70,229,0.12)', padding: '2px 7px',
+                              background: 'rgba(79,70,229,0.12)', padding: '2px 0',
                               borderRadius: 999, lineHeight: 1.4,
+                              marginInlineStart: 'auto', flexShrink: 0,
+                              width: 26, textAlign: 'center',
                             }}>
                               {g.acts.length}
                             </span>
                             <ChevronDown
                               size={16}
                               style={{
-                                marginInlineStart: 'auto', color: 'var(--text-muted)',
+                                color: 'var(--text-muted)', flexShrink: 0,
                                 transition: 'transform 0.2s',
                                 transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
                               }}
