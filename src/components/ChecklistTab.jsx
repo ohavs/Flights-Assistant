@@ -146,6 +146,10 @@ function RemindersCard({ tripId, canEdit }) {
     ids.forEach(id => deleteDoc(doc(db, 'trips', tripId, 'reminders', id)));
   };
 
+  const handleToggleReminder = (id, currentCompleted) => {
+    updateDoc(doc(db, 'trips', tripId, 'reminders', id), { completed: !currentCompleted });
+  };
+
   const handlePickUser = (remId, member) => {
     updateDoc(doc(db, 'trips', tripId, 'reminders', remId), {
       addedByUid: member.uid,
@@ -290,12 +294,30 @@ function RemindersCard({ tripId, canEdit }) {
               </div>
 
               {/* Animated text */}
-              <div key={`${r.id}-${idx}`} style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', animation: 'remFadeUp 0.35s ease' }}>
+              <div key={`${r.id}-${idx}`} style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 10, animation: 'remFadeUp 0.35s ease' }}>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleReminder(r.id, !!r.completed)}
+                    style={{
+                      width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                      border: r.completed ? 'none' : '2px solid rgba(79,70,229,0.3)',
+                      background: r.completed ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', padding: 0, transition: 'all 0.2s',
+                      boxShadow: r.completed ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
+                    }}
+                  >
+                    {r.completed && <Check size={14} color="#fff" strokeWidth={3} />}
+                  </button>
+                )}
                 <p style={{
-                  fontSize: 17, fontWeight: 600, color: 'var(--text-main)',
-                  textAlign: 'right', lineHeight: 1.55, margin: 0, width: '100%',
+                  fontSize: 17, fontWeight: r.completed ? 400 : 600,
+                  color: r.completed ? 'var(--text-muted)' : 'var(--text-main)',
+                  textAlign: 'right', lineHeight: 1.55, margin: 0, flex: 1,
                   display: '-webkit-box', WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  textDecoration: r.completed ? 'line-through' : 'none',
                   userSelect: 'none',
                 }}>{r.text}</p>
               </div>
@@ -396,48 +418,67 @@ function RemindersCard({ tripId, canEdit }) {
                 <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '28px 0' }}>אין תזכורות</p>
               ) : reminders.map((r, ri) => {
                 const checked = checkedIds.has(r.id);
+                const done = !!r.completed;
                 return (
-                  <button
+                  <div
                     key={r.id}
-                    onClick={() => setCheckedIds(prev => {
-                      const next = new Set(prev);
-                      checked ? next.delete(r.id) : next.add(r.id);
-                      return next;
-                    })}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 14,
-                      padding: '13px 10px', borderRadius: 14,
-                      background: checked ? 'var(--p-8)' : ri % 2 === 0 ? 'transparent' : 'var(--ink-2)',
-                      border: 'none', cursor: 'pointer', textAlign: 'right', width: '100%',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 10px', borderRadius: 14,
+                      background: done ? 'var(--ink-2)' : checked ? 'var(--p-8)' : ri % 2 === 0 ? 'transparent' : 'var(--ink-2)',
                       transition: 'background 0.15s',
                     }}
                   >
-                    {/* Checkbox */}
-                    <div style={{
-                      width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-                      border: checked ? 'none' : '2px solid rgba(79,70,229,0.25)',
-                      background: checked ? 'var(--accent)' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.18s', boxShadow: checked ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
-                    }}>
-                      {checked && <Check size={13} color="#fff" strokeWidth={3} />}
-                    </div>
+                    {/* Completion checkbox */}
+                    <button
+                      onClick={() => canEdit && handleToggleReminder(r.id, done)}
+                      style={{
+                        width: 24, height: 24, borderRadius: 7, flexShrink: 0,
+                        border: done ? 'none' : '2px solid rgba(79,70,229,0.25)',
+                        background: done ? 'var(--accent)' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: canEdit ? 'pointer' : 'default',
+                        transition: 'all 0.18s', boxShadow: done ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
+                        padding: 0,
+                      }}
+                    >
+                      {done && <Check size={13} color="#fff" strokeWidth={3} />}
+                    </button>
+                    {/* Select-for-delete checkbox */}
+                    {canEdit && (
+                      <button
+                        onClick={() => setCheckedIds(prev => {
+                          const next = new Set(prev);
+                          checked ? next.delete(r.id) : next.add(r.id);
+                          return next;
+                        })}
+                        style={{
+                          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                          border: checked ? 'none' : '1.5px solid rgba(11,11,48,0.18)',
+                          background: checked ? 'rgba(220,38,38,0.7)' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', padding: 0, transition: 'all 0.15s',
+                        }}
+                      >
+                        {checked && <Check size={10} color="#fff" strokeWidth={3} />}
+                      </button>
+                    )}
                     {/* Text */}
                     <span style={{
-                      fontSize: 15, fontWeight: checked ? 400 : 500,
-                      color: 'var(--text-main)', lineHeight: 1.45, flex: 1,
-                      textDecoration: checked ? 'line-through' : 'none',
+                      fontSize: 15, fontWeight: done ? 400 : 500,
+                      color: done ? 'var(--text-muted)' : 'var(--text-main)', lineHeight: 1.45, flex: 1,
+                      textDecoration: done ? 'line-through' : 'none',
                       opacity: checked ? 0.4 : 1, transition: 'all 0.18s',
                     }}>
                       {r.text}
                     </span>
                     {/* Author avatar */}
                     {(r.addedByPhoto || r.addedByName) && (
-                      <div title={r.addedByName || ''} style={{ flexShrink: 0, opacity: checked ? 0.35 : 0.85, transition: 'opacity 0.18s' }}>
+                      <div title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.35 : 0.85, transition: 'opacity 0.18s' }}>
                         <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
