@@ -3283,29 +3283,39 @@ export default function PlanningTab({ tripId }) {
                           ]}
                           placeholder="-- בחר מקום --"
                         />
-                        {/* Time chips per row */}
+                        {/* Time chips per row — when no place selected, they drive activityTimeLabel directly */}
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
-                            <button
-                              key={label}
-                              type="button"
-                              onClick={() => updateSavedPlaceSelection(idx, 'timeLabel', sel.timeLabel === label ? '' : label)}
-                              style={{
-                                border: `1.5px solid ${sel.timeLabel === label ? 'var(--accent)' : 'rgba(11,11,48,0.1)'}`,
-                                background: sel.timeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
-                                color: sel.timeLabel === label ? '#fff' : 'var(--text-muted)',
-                                borderRadius: 20,
-                                padding: '3px 11px',
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                                boxShadow: sel.timeLabel === label ? '0 2px 6px rgba(79,70,229,0.2)' : 'none'
-                              }}
-                            >
-                              {label}
-                            </button>
-                          ))}
+                          {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => {
+                            const activeLabel = sel.placeId ? sel.timeLabel : activityTimeLabel;
+                            const isActive = activeLabel === label;
+                            return (
+                              <button
+                                key={label}
+                                type="button"
+                                onClick={() => {
+                                  if (sel.placeId) {
+                                    updateSavedPlaceSelection(idx, 'timeLabel', isActive ? '' : label);
+                                  } else {
+                                    setActivityTimeLabel(isActive ? '' : label);
+                                  }
+                                }}
+                                style={{
+                                  border: `1.5px solid ${isActive ? 'var(--accent)' : 'rgba(11,11,48,0.1)'}`,
+                                  background: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
+                                  color: isActive ? '#fff' : 'var(--text-muted)',
+                                  borderRadius: 20,
+                                  padding: '3px 11px',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  boxShadow: isActive ? '0 2px 6px rgba(79,70,229,0.2)' : 'none'
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     );
