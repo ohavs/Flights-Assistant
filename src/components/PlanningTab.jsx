@@ -248,6 +248,28 @@ export const defaultPraguePlans = [
   }
 ];
 
+// Group a day's activities by their time-of-day label.
+// Known labels come first in canonical order, custom labels (e.g. "10:30")
+// follow by first appearance, and unlabeled activities are grouped last.
+const TIME_GROUP_ORDER = ['בוקר', 'צהריים', 'ערב', 'לילה'];
+const TIME_GROUP_ICONS = { 'בוקר': '🌅', 'צהריים': '☀️', 'ערב': '🌆', 'לילה': '🌙' };
+
+function groupActivitiesByTime(acts) {
+  const map = new Map();
+  acts.forEach((act, i) => {
+    const label = (act.timeLabel || '').trim();
+    if (!map.has(label)) map.set(label, { label, acts: [], firstIdx: i });
+    map.get(label).acts.push(act);
+  });
+  const rank = (g) => g.label === '' ? 3 : TIME_GROUP_ORDER.includes(g.label) ? 1 : 2;
+  return [...map.values()].sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 1) return TIME_GROUP_ORDER.indexOf(a.label) - TIME_GROUP_ORDER.indexOf(b.label);
+    return a.firstIdx - b.firstIdx;
+  });
+}
+
 export default function PlanningTab({ tripId }) {
   const { canEdit } = useTrip();
   const confirm = useConfirm();
@@ -371,6 +393,18 @@ export default function PlanningTab({ tripId }) {
       localStorage.setItem(`collapsed_days_${tripId}`, JSON.stringify([...collapsedDays]));
     } catch { /* ignore */ }
   }, [collapsedDays, tripId]);
+  // Collapsed time-of-day groups inside day cards, keyed `${dayId}|${label}`
+  const [collapsedTimeGroups, setCollapsedTimeGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`collapsed_timegroups_${tripId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`collapsed_timegroups_${tripId}`, JSON.stringify([...collapsedTimeGroups]));
+    } catch { /* ignore */ }
+  }, [collapsedTimeGroups, tripId]);
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
   const [activityDetail, setActivityDetail] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState('');
@@ -1164,7 +1198,9 @@ export default function PlanningTab({ tripId }) {
     await updateDoc(docRef, { activities: updatedActivities });
   };
 
-  const moveActivity = async (dayId, activityId, direction) => {
+  // When activities render grouped by time label, the visual neighbor may not
+  // be the array neighbor — `swapWithId` names the exact activity to swap with.
+  const moveActivity = async (dayId, activityId, direction, swapWithId = null) => {
     if (!tripId) return;
     const day = days.find(d => d.id === dayId);
     if (!day) return;
@@ -1173,7 +1209,9 @@ export default function PlanningTab({ tripId }) {
     const idx = list.findIndex(act => act.id === activityId);
     if (idx === -1) return;
 
-    const targetIdx = idx + direction;
+    const targetIdx = swapWithId != null
+      ? list.findIndex(act => act.id === swapWithId)
+      : idx + direction;
     if (targetIdx < 0 || targetIdx >= list.length) return;
 
     // Swap elements
@@ -2585,9 +2623,16 @@ export default function PlanningTab({ tripId }) {
                   {/* Day Activities + Add Button (collapsed when toggled) */}
                   {!collapsedDays.has(day.id) && <>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
-                    {(day.activities || []).map((act, actIdx) => {
+                    {(() => {
+                    const dayActs = day.activities || [];
+                    const timeGroups = groupActivitiesByTime(dayActs);
+                    const showTimeHeaders = dayActs.some(a => (a.timeLabel || '').trim());
+
+                    const renderActivityRow = (act, actIdx, groupList) => {
                       const isFirst = actIdx === 0;
-                      const isLast = actIdx === (day.activities || []).length - 1;
+                      const isLast = actIdx === groupList.length - 1;
+                      const prevActId = groupList[actIdx - 1]?.id ?? null;
+                      const nextActId = groupList[actIdx + 1]?.id ?? null;
                       const linkedPlan = plans.find(p => act.placeId ? p.id === act.placeId : p.title === act.title);
                       const isVisited = linkedPlan?.visited === true;
 
@@ -2686,7 +2731,7 @@ export default function PlanningTab({ tripId }) {
                                           ✓ בוצע
                                         </span>
                                       )}
-                                      {!isVisited && act.timeLabel && (
+                                      {!isVisited && act.timeLabel && !showTimeHeaders && (
                                         <span style={{
                                           fontSize: 10, fontWeight: 900, color: '#fff',
                                           background: 'var(--accent)', padding: '2px 6px',
@@ -2695,7 +2740,7 @@ export default function PlanningTab({ tripId }) {
                                           {act.timeLabel}
                                         </span>
                                       )}
-                                      {isVisited && act.timeLabel && (
+                                      {isVisited && act.timeLabel && !showTimeHeaders && (
                                         <span style={{
                                           fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
                                           flexShrink: 0,
@@ -2719,14 +2764,14 @@ export default function PlanningTab({ tripId }) {
                                     {canEdit && (
                                       <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                                         <button
-                                          onClick={() => moveActivity(day.id, act.id, -1)}
+                                          onClick={() => moveActivity(day.id, act.id, -1, prevActId)}
                                           disabled={isFirst}
                                           style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                         >
                                           <ArrowUp size={14} />
                                         </button>
                                         <button
-                                          onClick={() => moveActivity(day.id, act.id, 1)}
+                                          onClick={() => moveActivity(day.id, act.id, 1, nextActId)}
                                           disabled={isLast}
                                           style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                         >
@@ -2785,7 +2830,64 @@ export default function PlanningTab({ tripId }) {
                           </div>
                         </div>
                       );
-                    })}
+                    };
+
+                    // No time labels at all — keep the flat timeline as before
+                    if (!showTimeHeaders) {
+                      return dayActs.map((act, i) => renderActivityRow(act, i, dayActs));
+                    }
+
+                    // Grouped by time of day, each group collapsible as one unit
+                    return timeGroups.map(g => {
+                      const gKey = `${day.id}|${g.label}`;
+                      const isGroupCollapsed = collapsedTimeGroups.has(gKey);
+                      return (
+                        <div key={gKey} style={{ marginBottom: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => setCollapsedTimeGroups(prev => {
+                              const next = new Set(prev);
+                              next.has(gKey) ? next.delete(gKey) : next.add(gKey);
+                              return next;
+                            })}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '7px 10px', marginBottom: isGroupCollapsed ? 0 : 10,
+                              borderRadius: 10, border: 'none', cursor: 'pointer',
+                              background: 'var(--p-8)', fontFamily: 'inherit',
+                            }}
+                          >
+                            <span style={{ fontSize: 14, lineHeight: 1 }}>
+                              {TIME_GROUP_ICONS[g.label] || (g.label ? '🕐' : '📌')}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>
+                              {g.label || 'ללא תיוג זמן'}
+                            </span>
+                            <span style={{
+                              fontSize: 10, fontWeight: 800, color: 'var(--accent)',
+                              background: 'rgba(79,70,229,0.12)', padding: '2px 7px',
+                              borderRadius: 999, lineHeight: 1.4,
+                            }}>
+                              {g.acts.length}
+                            </span>
+                            <ChevronDown
+                              size={16}
+                              style={{
+                                marginInlineStart: 'auto', color: 'var(--text-muted)',
+                                transition: 'transform 0.2s',
+                                transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                              }}
+                            />
+                          </button>
+                          {!isGroupCollapsed && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              {g.acts.map((act, i) => renderActivityRow(act, i, g.acts))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                    })()}
 
                     {(day.activities || []).length === 0 && (
                       <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0', margin: 0 }}>
