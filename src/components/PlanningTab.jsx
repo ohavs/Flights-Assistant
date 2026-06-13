@@ -802,7 +802,7 @@ export default function PlanningTab({ tripId }) {
       } : null;
 
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
-      await updateDoc(docRef, {
+      updateDoc(docRef, {
         title: title.trim(),
         category,
         description: description.trim(),
@@ -817,7 +817,7 @@ export default function PlanningTab({ tripId }) {
           : hasManualTimes
             ? { [`distances.${cacheOriginKey}`]: manualEntry }
             : {}),
-      });
+      }).catch(err => console.error('Planning update error:', err));
 
       if (locationChanged) {
         setDistanceCache(prev => {
@@ -840,7 +840,7 @@ export default function PlanningTab({ tripId }) {
     } else {
       const id = 'plan-' + Date.now();
       const docRef = doc(db, 'trips', tripId, 'planning', id);
-      await setDoc(docRef, {
+      setDoc(docRef, {
         title: title.trim(),
         category,
         description: description.trim(),
@@ -851,7 +851,7 @@ export default function PlanningTab({ tripId }) {
         distanceOriginId: originId,
         event: eventData,
         priority: formPriority || null,
-      });
+      }).catch(err => console.error('Planning add error:', err));
     }
 
     // Reset Form
@@ -996,17 +996,15 @@ export default function PlanningTab({ tripId }) {
   /* ══════════════════════════════════════════════════════════
      DAILY PLANNER OPERATIONS
      ══════════════════════════════════════════════════════════ */
-  const handleAddDay = async () => {
+  const handleAddDay = () => {
     if (!tripId) return;
     const nextDayNum = days.length + 1;
     const dayId = 'day-' + Date.now();
-    const docRef = doc(db, 'trips', tripId, 'days', dayId);
-    
-    await setDoc(docRef, {
+    setDoc(doc(db, 'trips', tripId, 'days', dayId), {
       title: `יום ${nextDayNum}`,
       order: nextDayNum,
       activities: []
-    });
+    }).catch(err => console.error('Add day error:', err));
   };
 
   const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -1095,11 +1093,11 @@ export default function PlanningTab({ tripId }) {
     await batch.commit();
   };
 
-  const handleSaveDayTitle = async (dayId, newTitle) => {
+  const handleSaveDayTitle = (dayId, newTitle) => {
     if (!tripId || !newTitle.trim()) return;
-    const docRef = doc(db, 'trips', tripId, 'days', dayId);
-    await updateDoc(docRef, { title: newTitle.trim() });
     setEditingDayId(null);
+    updateDoc(doc(db, 'trips', tripId, 'days', dayId), { title: newTitle.trim() })
+      .catch(err => console.error('Save day title error:', err));
   };
 
   const handleDeleteDay = async (dayId) => {
@@ -1281,14 +1279,10 @@ export default function PlanningTab({ tripId }) {
       }
     }
 
-    try {
-      const docRef = doc(db, 'trips', tripId, 'days', selectedDayId);
-      await updateDoc(docRef, { activities: updatedActivities });
-      setShowActivityForm(false);
-      setEditingActivityId(null);
-    } catch (err) {
-      console.error('Error saving activity:', err);
-    }
+    setShowActivityForm(false);
+    setEditingActivityId(null);
+    const docRef = doc(db, 'trips', tripId, 'days', selectedDayId);
+    updateDoc(docRef, { activities: updatedActivities }).catch(err => console.error('Activity save error:', err));
   };
 
   if (loading) {

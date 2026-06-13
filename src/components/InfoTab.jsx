@@ -160,7 +160,7 @@ export default function InfoTab({ tripId }) {
     setEditingId(null);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!tripId || !fTitle.trim()) return;
     const payload = {
@@ -172,15 +172,16 @@ export default function InfoTab({ tripId }) {
         .filter(f => f.label.trim() || f.value.trim())
         .map(f => ({ id: f.id, label: f.label.trim(), type: f.type, value: f.value.trim() })),
     };
-    if (editingId) {
-      await updateDoc(doc(db, 'trips', tripId, 'info', editingId), payload);
-    } else {
-      const id = 'info-' + Date.now();
-      await setDoc(doc(db, 'trips', tripId, 'info', id), payload);
-    }
+    // Close form immediately; write is fire-and-forget (offline cache queues locally)
+    const id = editingId || ('info-' + Date.now());
     setShowForm(false);
     setEditingId(null);
     setFTitle(''); setFValue('');
+    if (editingId) {
+      updateDoc(doc(db, 'trips', tripId, 'info', id), payload).catch(err => console.error('Info save error:', err));
+    } else {
+      setDoc(doc(db, 'trips', tripId, 'info', id), payload).catch(err => console.error('Info save error:', err));
+    }
   };
 
   const handleDelete = async (item) => {

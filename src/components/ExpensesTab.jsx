@@ -172,7 +172,7 @@ export default function ExpensesTab({ tripId }) {
     setShowForm(true);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!amount || !tripId) return;
     const id = editingId || 'exp-' + Date.now();
@@ -189,7 +189,11 @@ export default function ExpensesTab({ tripId }) {
       ilsSnapshot = existing.ilsSnapshot;
     }
 
-    await setDoc(doc(db, 'trips', tripId, 'expenses', id), {
+    // Close the form immediately (fire-and-forget write — offline persistence queues locally)
+    setShowForm(false);
+    setEditingId(null);
+
+    setDoc(doc(db, 'trips', tripId, 'expenses', id), {
       amount: parsedAmount,
       currency,
       category: category || 'כללי',
@@ -199,9 +203,7 @@ export default function ExpensesTab({ tripId }) {
       ilsSnapshot: ilsSnapshot,
       paidBy: paidBy || currentUid || null,
       createdAt: existing?.createdAt || new Date().toISOString(),
-    });
-    setShowForm(false);
-    setEditingId(null);
+    }).catch(err => console.error('Expense save error:', err));
   };
 
   const handleDelete = async (id) => {
