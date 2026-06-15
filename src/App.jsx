@@ -1154,6 +1154,7 @@ function PalettePicker({ size = 34 }) {
 function AppInner() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const confirm = useConfirm();
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
   const [selectedTripId, setSelectedTripId] = useState(null);
@@ -1640,7 +1641,10 @@ function AppInner() {
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <button
-              onClick={signOut}
+              onClick={async () => {
+                const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
+                if (ok) signOut();
+              }}
               style={{
                 width: 34, height: 34, borderRadius: '50%',
                 background: 'var(--ink-5)', border: 'none',
