@@ -570,7 +570,8 @@ export async function exportTripPdf(data, scope = 'all') {
     const rep = computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning);
     const C_GREEN = [5, 150, 105];
     const fmtNum = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
-    newPage();
+    const hasPrecedingContent = SS.flight || SS.planning || SS.days || SS.checklist || SS.info;
+    if (hasPrecedingContent) { newPage(); } else { y += 16; }
     banner('דוח הוצאות', C_GREEN);
 
     // Grand total card
@@ -643,11 +644,11 @@ export async function exportTripPdf(data, scope = 'all') {
     ensureSpace(40);
     subHeader('פירוט כל ההוצאות');
     const EXP_COLS = [
-      { label: 'תאריך',      w: 58 },
+      { label: 'תאריך',      w: 72 },
       { label: 'קטגוריה',    w: 82 },
       { label: 'פירוט',      w: 137 },
       { label: 'סכום מקורי', w: 106 },
-      { label: 'בשקלים',     w: 108 },
+      { label: 'בשקלים',     w: 94 },
     ];
     const ECELL_FS = 10, ECELL_PAD = 5, ECOL_HDR_H = 20, EMIN_ROW_H = 18;
     const expColRX = [];
