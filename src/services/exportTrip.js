@@ -1,8 +1,9 @@
 // Trip export to PDF / Word / Excel — Hebrew, RTL.
 // Heavy libraries are dynamic-imported so they don't bloat the main bundle.
 
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from './currency';
 
 // ──────────────────────────────────────────────────────────────────────
 // Shared helpers
@@ -23,7 +24,127 @@ export async function loadTripExportData(tripId, trip) {
   const infoSnap = await getDocs(collection(db, 'trips', tripId, 'info'));
   const info = infoSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  return { trip, planning, days, checklist, info };
+  const expensesSnap = await getDocs(collection(db, 'trips', tripId, 'expenses'));
+  const expenses = expensesSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  // Currency rates for ILS conversion — refresh if stale, fall back to seeded.
+  let rates = null;
+  try {
+    rates = (await refreshRatesIfStale())?.rates || getInitialRates().rates;
+  } catch {
+    rates = getInitialRates().rates;
+  }
+
+  // Member profiles (for "paid by" names) — fetch users/{uid} for each member.
+  const memberProfiles = {};
+  const memberUids = Object.keys(trip?.members || {});
+  await Promise.all(memberUids.map(async (uid) => {
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      if (snap.exists()) memberProfiles[uid] = snap.data();
+    } catch { /* ignore individual profile failures */ }
+  }));
+
+  return { trip, planning, days, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1) };
+}
+
+// Build a full expense report (totals, breakdowns, statistics) for export.
+// Mirrors the figures shown in the in-app Expenses summary panel.
+function computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning) {
+  const curMeta = (code) => CURRENCY_META[code] || { name: code, symbol: code, flag: '' };
+  const planById = {};
+  (planning || []).forEach(p => { planById[p.id] = p; });
+
+  // ILS value: prefer live conversion (matches app), fall back to stored snapshot.
+  const ilsOf = (e) => {
+    const live = rates ? convert(e.amount, e.currency, 'ILS', rates) : 0;
+    if (live) return live;
+    if (e.ilsSnapshot != null) return Number(e.ilsSnapshot) || 0;
+    return e.currency === 'ILS' ? (Number(e.amount) || 0) : 0;
+  };
+  const payerName = (uid) => {
+    const p = memberProfiles?.[uid];
+    return p?.displayName || p?.email || (uid ? 'משתמש' : 'לא ידוע');
+  };
+  const placeOf = (e) => {
+    const linked = e.linkedPlanId ? planById[e.linkedPlanId] : null;
+    return linked?.title || e.customPlace || '';
+  };
+  const fmtDate = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  };
+
+  const ilsTotal = expenses.reduce((s, e) => s + ilsOf(e), 0);
+
+  // Original-currency totals
+  const curTotals = {};
+  expenses.forEach(e => { curTotals[e.currency] = (curTotals[e.currency] || 0) + (Number(e.amount) || 0); });
+  const byCurrency = Object.entries(curTotals)
+    .map(([code, total]) => ({ code, total, ...curMeta(code) }))
+    .sort((a, b) => b.total - a.total);
+
+  // Category breakdown (ILS)
+  const catTotals = {};
+  expenses.forEach(e => { const c = e.category || 'כללי'; catTotals[c] = (catTotals[c] || 0) + ilsOf(e); });
+  const catGrand = Object.values(catTotals).reduce((a, b) => a + b, 0) || 1;
+  const byCategory = Object.entries(catTotals)
+    .map(([cat, total]) => ({ cat, total, pct: Math.round((total / catGrand) * 100) }))
+    .sort((a, b) => b.total - a.total);
+
+  // Per-payer breakdown (ILS)
+  const payerTotals = {};
+  expenses.forEach(e => { const u = e.paidBy || 'unknown'; payerTotals[u] = (payerTotals[u] || 0) + ilsOf(e); });
+  const payGrand = Object.values(payerTotals).reduce((a, b) => a + b, 0) || 1;
+  const byPayer = Object.entries(payerTotals)
+    .map(([uid, total]) => ({ uid, name: payerName(uid), total, pct: Math.round((total / payGrand) * 100) }))
+    .sort((a, b) => b.total - a.total);
+
+  // Daily average
+  const dayKeys = new Set(expenses.map(e => (e.createdAt || '').slice(0, 10)).filter(Boolean));
+  const days = dayKeys.size || 1;
+  const daily = expenses.length > 0 ? { avg: ilsTotal / days, days } : null;
+
+  // Top expenses (ILS)
+  const enriched = expenses.map(e => ({
+    ils: ilsOf(e),
+    amount: Number(e.amount) || 0,
+    currency: e.currency,
+    symbol: curMeta(e.currency).symbol,
+    category: e.category || 'כללי',
+    description: e.description || '',
+    place: placeOf(e),
+    payer: payerName(e.paidBy),
+    date: fmtDate(e.createdAt),
+    label: e.description || placeOf(e) || (e.category || 'הוצאה'),
+  }));
+  const topExpenses = [...enriched].sort((a, b) => b.ils - a.ils).slice(0, 5);
+
+  // Full itemized list, newest first (already sorted on load)
+  const items = enriched;
+
+  const hasForeign = byCurrency.some(c => c.code !== 'ILS');
+  const perPerson = memberCount >= 2 ? ilsTotal / memberCount : null;
+
+  return {
+    count: expenses.length, ilsTotal, perPerson, memberCount,
+    byCurrency, byCategory, byPayer, daily, topExpenses, items, hasForeign,
+  };
+}
+
+// Format an ILS amount with thousands separators, no fraction.
+function ils(n) {
+  return '₪' + Math.round(Number(n) || 0).toLocaleString('en-US');
+}
+// Format an original-currency amount.
+function curAmt(symbol, n) {
+  const v = Number(n) || 0;
+  const s = v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return `${symbol}${s}`;
 }
 
 function safeFileName(name) {
@@ -60,17 +181,18 @@ function groupByCategory(items) {
   return map;
 }
 
-// Scope is one of: 'flight' | 'planning' | 'checklist' | 'all'
+// Scope is one of: 'flight' | 'planning' | 'checklist' | 'info' | 'expenses' | 'all'
 // It controls which sections each export includes.
 const SCOPE = {
-  flight:   { flight: true,  planning: false, days: false, checklist: false, info: false },
-  planning: { flight: false, planning: true,  days: true,  checklist: false, info: false },
-  checklist:{ flight: false, planning: false, days: false, checklist: true,  info: false },
-  info:     { flight: false, planning: false, days: false, checklist: false, info: true  },
-  all:      { flight: true,  planning: true,  days: true,  checklist: true,  info: true  },
+  flight:   { flight: true,  planning: false, days: false, checklist: false, info: false, expenses: false },
+  planning: { flight: false, planning: true,  days: true,  checklist: false, info: false, expenses: false },
+  checklist:{ flight: false, planning: false, days: false, checklist: true,  info: false, expenses: false },
+  info:     { flight: false, planning: false, days: false, checklist: false, info: true,  expenses: false },
+  expenses: { flight: false, planning: false, days: false, checklist: false, info: false, expenses: true  },
+  all:      { flight: true,  planning: true,  days: true,  checklist: true,  info: true,  expenses: true  },
 };
 
-const SCOPE_LABEL = { flight: 'טיסה', planning: 'תכנון', checklist: 'ציוד', info: 'מידע', all: 'מלא' };
+const SCOPE_LABEL = { flight: 'טיסה', planning: 'תכנון', checklist: 'ציוד', info: 'מידע', expenses: 'הוצאות', all: 'מלא' };
 
 // ──────────────────────────────────────────────────────────────────────
 // PDF
@@ -111,7 +233,7 @@ function shapeBidi(bidi, text) {
 }
 
 export async function exportTripPdf(data, scope = 'all') {
-  const { trip, planning, days, checklist, info } = data;
+  const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { jsPDF } = await import('jspdf');
   const [fontBase64, bidi] = await Promise.all([loadHebrewFont(), getBidi()]);
@@ -443,6 +565,163 @@ export async function exportTripPdf(data, scope = 'all') {
     }
   }
 
+  // ── Expenses report ──
+  if (SS.expenses && expenses?.length > 0) {
+    const rep = computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning);
+    const C_GREEN = [5, 150, 105];
+    const fmtNum = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    newPage();
+    banner('דוח הוצאות', C_GREEN);
+
+    // Grand total card
+    ensureSpace(56);
+    doc.setFillColor(236, 253, 245);
+    doc.roundedRect(leftX, y, contentW, 48, 6, 6, 'F');
+    doc.setFontSize(12);
+    doc.setTextColor(6, 95, 70);
+    doc.text(shape('סך כל ההוצאות (בשקלים)'), rightX - 14, y + 19, { ...TEXT_OPTS });
+    doc.setFontSize(22);
+    doc.setTextColor(...C_GREEN);
+    doc.text(shape(ils(rep.ilsTotal)), rightX - 14, y + 41, { ...TEXT_OPTS });
+    y += 58;
+
+    // Headline figures
+    if (rep.perPerson != null) write(`עלות לאדם (חלוקה ל-${rep.memberCount} משתתפים): ${ils(rep.perPerson)}`, { size: 12, color: C_TEXT });
+    if (rep.daily) write(`ממוצע הוצאה יומי (${rep.daily.days} ימים): ${ils(rep.daily.avg)}`, { size: 12, color: C_TEXT });
+    write(`סך הכל ${rep.count} רשומות הוצאה`, { size: 12, color: C_MUTED });
+    y += 8;
+
+    // Category breakdown with bars
+    if (rep.byCategory.length > 0) {
+      subHeader('התפלגות לפי קטגוריה');
+      for (const { cat, total, pct } of rep.byCategory) {
+        ensureSpace(30);
+        doc.setFontSize(11);
+        doc.setTextColor(...C_TEXT);
+        doc.text(shape(cat), rightX, y + 10, { ...TEXT_OPTS });
+        doc.setTextColor(...C_MUTED);
+        doc.text(shape(`${ils(total)} · ${pct}%`), leftX, y + 10, { align: 'left', isInputVisual: true, isOutputVisual: true });
+        y += 14;
+        doc.setFillColor(229, 231, 235);
+        doc.roundedRect(leftX, y, contentW, 7, 3, 3, 'F');
+        const fillW = Math.max(3, (contentW * pct) / 100);
+        doc.setFillColor(...C_GREEN);
+        doc.roundedRect(rightX - fillW, y, fillW, 7, 3, 3, 'F');
+        y += 15;
+      }
+      y += 6;
+    }
+
+    // Per-payer breakdown
+    if (rep.byPayer.length > 0 && expenses.some(e => e.paidBy)) {
+      subHeader('מי שילם');
+      for (const { name, total, pct } of rep.byPayer) {
+        write(`${name} — ${ils(total)} (${pct}%)`, { size: 12, color: C_TEXT, indent: 6 });
+      }
+      y += 6;
+    }
+
+    // Original-currency totals
+    if (rep.hasForeign) {
+      subHeader('סכומים לפי מטבע מקורי');
+      for (const c of rep.byCurrency) {
+        write(`${c.name} (${c.code}): ${fmtNum(c.total)} ${c.code}`, { size: 12, color: C_TEXT, indent: 6 });
+      }
+      y += 6;
+    }
+
+    // Top expenses
+    if (rep.topExpenses.length > 0) {
+      subHeader('ההוצאות הגדולות ביותר');
+      rep.topExpenses.forEach((e, i) => {
+        write(`${i + 1}. ${e.label} — ${ils(e.ils)}`, { size: 12, color: C_TEXT, indent: 6 });
+      });
+      y += 6;
+    }
+
+    // Full itemized table
+    ensureSpace(40);
+    subHeader('פירוט כל ההוצאות');
+    const EXP_COLS = [
+      { label: 'תאריך',      w: 58 },
+      { label: 'קטגוריה',    w: 82 },
+      { label: 'פירוט',      w: 137 },
+      { label: 'סכום מקורי', w: 106 },
+      { label: 'בשקלים',     w: 108 },
+    ];
+    const ECELL_FS = 10, ECELL_PAD = 5, ECOL_HDR_H = 20, EMIN_ROW_H = 18;
+    const expColRX = [];
+    let _ex = rightX;
+    for (const col of EXP_COLS) { expColRX.push(_ex); _ex -= col.w; }
+    const drawExpHeaders = () => {
+      ensureSpace(ECOL_HDR_H + 2);
+      doc.setFillColor(...C_GREEN);
+      doc.rect(leftX, y, contentW, ECOL_HDR_H, 'F');
+      for (let i = 0; i < EXP_COLS.length; i++) {
+        const col = EXP_COLS[i];
+        if (i < EXP_COLS.length - 1) {
+          doc.setDrawColor(255, 255, 255);
+          doc.setLineWidth(0.4);
+          doc.line(expColRX[i] - col.w, y, expColRX[i] - col.w, y + ECOL_HDR_H);
+        }
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.text(shape(col.label), expColRX[i] - ECELL_PAD, y + ECOL_HDR_H - 6, { ...TEXT_OPTS });
+      }
+      y += ECOL_HDR_H;
+    };
+    drawExpHeaders();
+    for (let idx = 0; idx < rep.items.length; idx++) {
+      const it = rep.items[idx];
+      const cells = [
+        it.date,
+        it.category,
+        it.description || it.place || '',
+        `${fmtNum(it.amount)} ${it.currency}`,
+        ils(it.ils),
+      ];
+      doc.setFontSize(ECELL_FS);
+      const rowH = Math.max(EMIN_ROW_H, ...EXP_COLS.map((col, i) => {
+        const lines = doc.splitTextToSize(String(cells[i]), col.w - ECELL_PAD * 2);
+        return lines.length * (ECELL_FS * 1.4) + ECELL_PAD * 2;
+      }));
+      const pBefore = doc.internal.getNumberOfPages();
+      ensureSpace(rowH + 1);
+      if (doc.internal.getNumberOfPages() !== pBefore) drawExpHeaders();
+
+      const bg = idx % 2 === 0 ? [255, 255, 255] : [240, 253, 244];
+      doc.setFillColor(...bg);
+      doc.setDrawColor(209, 213, 219);
+      doc.setLineWidth(0.4);
+      doc.rect(leftX, y, contentW, rowH, 'FD');
+      let sepX = rightX;
+      for (let i = 0; i < EXP_COLS.length - 1; i++) {
+        sepX -= EXP_COLS[i].w;
+        doc.line(sepX, y, sepX, y + rowH);
+      }
+      for (let i = 0; i < EXP_COLS.length; i++) {
+        doc.setFontSize(ECELL_FS);
+        doc.setTextColor(...(i === 4 ? C_GREEN : C_TEXT));
+        const lines = doc.splitTextToSize(String(cells[i]), EXP_COLS[i].w - ECELL_PAD * 2);
+        let ty = y + ECELL_PAD + ECELL_FS;
+        for (const line of lines) {
+          doc.text(shape(line), expColRX[i] - ECELL_PAD, ty, { ...TEXT_OPTS });
+          ty += ECELL_FS * 1.4;
+        }
+      }
+      y += rowH;
+    }
+    // Total row
+    ensureSpace(EMIN_ROW_H + 2);
+    doc.setFillColor(209, 250, 229);
+    doc.rect(leftX, y, contentW, EMIN_ROW_H + 2, 'F');
+    doc.setFontSize(11);
+    doc.setTextColor(6, 95, 70);
+    doc.text(shape('סה"כ'), rightX - ECELL_PAD, y + EMIN_ROW_H - 4, { ...TEXT_OPTS });
+    doc.text(shape(ils(rep.ilsTotal)), expColRX[4] - ECELL_PAD, y + EMIN_ROW_H - 4, { ...TEXT_OPTS });
+    y += EMIN_ROW_H + 2;
+  }
+
   // Page numbers
   const totalPages = doc.internal.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
@@ -460,7 +739,7 @@ export async function exportTripPdf(data, scope = 'all') {
 // ──────────────────────────────────────────────────────────────────────
 
 export async function exportTripDocx(data, scope = 'all') {
-  const { trip, planning, days, checklist, info } = data;
+  const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType,
           Table, TableRow, TableCell, WidthType, Footer, Header } = await import('docx');
@@ -686,6 +965,114 @@ export async function exportTripDocx(data, scope = 'all') {
     });
   }
 
+  // Expenses report section
+  if (SS.expenses && expenses?.length > 0) {
+    const rep = computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning);
+    const fmtNum = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    const exp = [];
+
+    const expCell = (text, { isHeader = false, widthPct = 20, color, bold = false, fill } = {}) => new TableCell({
+      width: { size: widthPct, type: WidthType.PERCENTAGE },
+      shading: isHeader ? { fill: '059669', color: '059669', type: 'solid' } : (fill ? { fill, color: fill, type: 'solid' } : undefined),
+      margins: { top: 60, bottom: 60, left: 100, right: 100 },
+      children: [new Paragraph({
+        bidirectional: true,
+        alignment: AlignmentType.RIGHT,
+        children: [new TextRun({
+          text: String(text ?? ''),
+          bold: isHeader || bold,
+          color: isHeader ? 'FFFFFF' : (color || '0b0b26'),
+          rtl: true, font: 'David', size: isHeader ? 21 : 19,
+        })],
+      })],
+    });
+
+    exp.push(para('דוח הוצאות', { bold: true, size: 44, color: '059669', heading: HeadingLevel.TITLE, spacing: { after: 200 } }));
+
+    // Headline figures
+    exp.push(para(`סך כל ההוצאות: ${ils(rep.ilsTotal)}`, { bold: true, size: 32, color: '059669', spacing: { after: 80 } }));
+    if (rep.perPerson != null) exp.push(para(`עלות לאדם (חלוקה ל-${rep.memberCount} משתתפים): ${ils(rep.perPerson)}`, { size: 24, color: '0b0b26' }));
+    if (rep.daily) exp.push(para(`ממוצע הוצאה יומי (${rep.daily.days} ימים): ${ils(rep.daily.avg)}`, { size: 24, color: '0b0b26' }));
+    exp.push(para(`סך הכל ${rep.count} רשומות`, { size: 22, color: '475569' }));
+    exp.push(spacer());
+
+    // Category breakdown table
+    if (rep.byCategory.length > 0) {
+      exp.push(para('התפלגות לפי קטגוריה', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 80 } }));
+      exp.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE }, bidi: true,
+        rows: [
+          new TableRow({ tableHeader: true, children: [
+            expCell('קטגוריה', { isHeader: true, widthPct: 50 }),
+            expCell('סכום (₪)', { isHeader: true, widthPct: 30 }),
+            expCell('אחוז', { isHeader: true, widthPct: 20 }),
+          ]}),
+          ...rep.byCategory.map((c, i) => new TableRow({ children: [
+            expCell(c.cat, { widthPct: 50, fill: i % 2 ? 'F0FDF4' : undefined }),
+            expCell(ils(c.total), { widthPct: 30, fill: i % 2 ? 'F0FDF4' : undefined }),
+            expCell(`${c.pct}%`, { widthPct: 20, fill: i % 2 ? 'F0FDF4' : undefined }),
+          ]})),
+        ],
+      }));
+      exp.push(spacer());
+    }
+
+    // Per-payer
+    if (rep.byPayer.length > 0 && expenses.some(e => e.paidBy)) {
+      exp.push(para('מי שילם', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 80 } }));
+      for (const { name, total, pct } of rep.byPayer) {
+        exp.push(para(`${name} — ${ils(total)} (${pct}%)`, { size: 24, color: '0b0b26' }));
+      }
+      exp.push(spacer());
+    }
+
+    // Original-currency totals
+    if (rep.hasForeign) {
+      exp.push(para('סכומים לפי מטבע מקורי', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 80 } }));
+      for (const c of rep.byCurrency) {
+        exp.push(para(`${c.name} (${c.code}): ${fmtNum(c.total)} ${c.code}`, { size: 24, color: '0b0b26' }));
+      }
+      exp.push(spacer());
+    }
+
+    // Full itemized table
+    exp.push(para('פירוט כל ההוצאות', { bold: true, size: 28, color: '0b0b26', heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 80 } }));
+    exp.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE }, bidi: true,
+      rows: [
+        new TableRow({ tableHeader: true, children: [
+          expCell('תאריך', { isHeader: true, widthPct: 13 }),
+          expCell('קטגוריה', { isHeader: true, widthPct: 18 }),
+          expCell('פירוט', { isHeader: true, widthPct: 31 }),
+          expCell('סכום מקורי', { isHeader: true, widthPct: 19 }),
+          expCell('בשקלים', { isHeader: true, widthPct: 19 }),
+        ]}),
+        ...rep.items.map((it, i) => new TableRow({ children: [
+          expCell(it.date, { widthPct: 13, fill: i % 2 ? 'F0FDF4' : undefined }),
+          expCell(it.category, { widthPct: 18, fill: i % 2 ? 'F0FDF4' : undefined }),
+          expCell(it.description || it.place || '', { widthPct: 31, fill: i % 2 ? 'F0FDF4' : undefined }),
+          expCell(`${fmtNum(it.amount)} ${it.currency}`, { widthPct: 19, fill: i % 2 ? 'F0FDF4' : undefined }),
+          expCell(ils(it.ils), { widthPct: 19, color: '059669', bold: true, fill: i % 2 ? 'F0FDF4' : undefined }),
+        ]})),
+        new TableRow({ children: [
+          expCell('סה"כ', { widthPct: 13, bold: true, fill: 'D1FAE5' }),
+          expCell('', { widthPct: 18, fill: 'D1FAE5' }),
+          expCell('', { widthPct: 31, fill: 'D1FAE5' }),
+          expCell('', { widthPct: 19, fill: 'D1FAE5' }),
+          expCell(ils(rep.ilsTotal), { widthPct: 19, color: '065f46', bold: true, fill: 'D1FAE5' }),
+        ]}),
+      ],
+    }));
+
+    sections.push({
+      properties: {
+        bidi: true,
+        page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+      },
+      children: exp,
+    });
+  }
+
   const documentInstance = new Document({
     creator: 'Flights Assistant',
     title: trip?.name || 'Trip',
@@ -780,7 +1167,7 @@ function decodeRange(ref) {
 }
 
 export async function exportTripXlsx(data, scope = 'all') {
-  const { trip, planning, days, checklist, info } = data;
+  const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const ExcelJS = (await import('exceljs')).default || (await import('exceljs'));
   const { saveAs } = await import('file-saver');
@@ -991,6 +1378,110 @@ export async function exportTripXlsx(data, scope = 'all') {
     const typeLabel = { phone: 'טלפון', address: 'כתובת', url: 'קישור', text: 'טקסט' };
     const rows = info.map(item => [item.category || '', item.title || '', typeLabel[item.type] || 'טקסט', item.value || '']);
     addTableSheet('מידע חשוב', ['קטגוריה', 'כותרת', 'סוג', 'ערך'], rows, [22, 32, 14, 50]);
+  }
+
+  // ── Expenses: summary + detail sheets ──
+  if (SS.expenses && expenses?.length > 0) {
+    const rep = computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning);
+    const colLetter = (i) => String.fromCharCode(65 + i);
+
+    // Summary sheet
+    const ws = addSheet('סיכום הוצאות', { cols: [34, 24, 14] });
+    let r = 1;
+    ws.mergeCells(`A${r}:C${r}`);
+    const titleCell = ws.getCell(`A${r}`);
+    titleCell.value = 'דוח הוצאות';
+    applyCellStyle(titleCell, stylesPalette.title);
+    ws.getRow(r).height = 30;
+    r += 2;
+
+    const expSection = (title) => {
+      ws.mergeCells(`A${r}:C${r}`);
+      const h = ws.getCell(`A${r}`);
+      h.value = title;
+      applyCellStyle(h, stylesPalette.subHeader);
+      ws.getRow(r).height = 24;
+      r++;
+    };
+    const expHeaderRow = (cells) => {
+      cells.forEach((c, i) => {
+        const cell = ws.getCell(`${colLetter(i)}${r}`);
+        cell.value = c;
+        applyCellStyle(cell, stylesPalette.header);
+      });
+      ws.getRow(r).height = 22;
+      r++;
+    };
+    const expRow = (cells, alt, fmts = {}) => {
+      cells.forEach((c, i) => {
+        const cell = ws.getCell(`${colLetter(i)}${r}`);
+        cell.value = c;
+        applyCellStyle(cell, alt ? stylesPalette.bodyAlt : stylesPalette.body);
+        if (fmts[i]) cell.numFmt = fmts[i];
+      });
+      r++;
+    };
+    const kv = (label, val, numFmt) => {
+      ws.getCell(`A${r}`).value = label;
+      applyCellStyle(ws.getCell(`A${r}`), stylesPalette.label);
+      const c = ws.getCell(`B${r}`);
+      c.value = val;
+      applyCellStyle(c, stylesPalette.body);
+      if (numFmt) c.numFmt = numFmt;
+      r++;
+    };
+
+    // Headline figures
+    kv('סך כל ההוצאות', Math.round(rep.ilsTotal), '₪#,##0');
+    if (rep.perPerson != null) kv(`עלות לאדם (÷${rep.memberCount})`, Math.round(rep.perPerson), '₪#,##0');
+    if (rep.daily) kv(`ממוצע יומי (${rep.daily.days} ימים)`, Math.round(rep.daily.avg), '₪#,##0');
+    kv('מספר רשומות', rep.count);
+    r++;
+
+    // Category breakdown
+    if (rep.byCategory.length > 0) {
+      expSection('התפלגות לפי קטגוריה');
+      expHeaderRow(['קטגוריה', 'סכום (₪)', 'אחוז']);
+      rep.byCategory.forEach((c, i) => expRow([c.cat, Math.round(c.total), c.pct / 100], i % 2 === 1, { 1: '₪#,##0', 2: '0%' }));
+      r++;
+    }
+
+    // Per-payer
+    if (rep.byPayer.length > 0 && expenses.some(e => e.paidBy)) {
+      expSection('מי שילם');
+      expHeaderRow(['משתתף', 'סכום (₪)', 'אחוז']);
+      rep.byPayer.forEach((p, i) => expRow([p.name, Math.round(p.total), p.pct / 100], i % 2 === 1, { 1: '₪#,##0', 2: '0%' }));
+      r++;
+    }
+
+    // Original-currency totals
+    if (rep.hasForeign) {
+      expSection('סכומים לפי מטבע מקורי');
+      expHeaderRow(['מטבע', 'קוד', 'סכום']);
+      rep.byCurrency.forEach((c, i) => expRow([c.name, c.code, c.total], i % 2 === 1, { 2: '#,##0.00' }));
+    }
+
+    // Detail sheet
+    const ds = addSheet('פירוט הוצאות', { cols: [14, 20, 34, 15, 9, 16, 22] });
+    ds.addRow(['תאריך', 'קטגוריה', 'פירוט', 'סכום מקורי', 'מטבע', 'בשקלים', 'שילם/ה']);
+    applyRowStyle(ds.getRow(1), stylesPalette.header);
+    ds.getRow(1).height = 26;
+    ds.views = [{ rightToLeft: true, state: 'frozen', ySplit: 1 }];
+    ds.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
+    rep.items.forEach((it, i) => {
+      const row = ds.addRow([
+        it.date, it.category, it.description || it.place || '',
+        it.amount, it.currency, Math.round(it.ils), it.payer,
+      ]);
+      applyRowStyle(row, i % 2 === 0 ? stylesPalette.body : stylesPalette.bodyAlt);
+      row.getCell(4).numFmt = '#,##0.00';
+      row.getCell(6).numFmt = '₪#,##0';
+      row.height = 22;
+    });
+    const totalRow = ds.addRow(['סה"כ', '', '', '', '', Math.round(rep.ilsTotal), '']);
+    applyRowStyle(totalRow, stylesPalette.subHeader);
+    totalRow.getCell(6).numFmt = '₪#,##0';
+    totalRow.height = 24;
   }
 
   const buf = await wb.xlsx.writeBuffer();
