@@ -195,59 +195,6 @@ export const defaultGironaPlans = [
   }
 ];
 
-export const defaultPraguePlans = [
-  {
-    id: 'plan-1',
-    title: 'גשר קארל (Charles Bridge)',
-    category: 'אטרקציות ודברים לעשות',
-    description: 'הגשר ההיסטורי המפורסם ביותר בפראג, המחבר בין העיר העתיקה לרובע מאלה סטרנה. מומלץ לבקר מוקדם בבוקר או בשקיעה לצילומים מרהיבים ללא המוני תיירים.',
-    address: 'Karlův most, 110 00 Praha 1',
-    rating: 4.9,
-    price: 'חינם',
-    visited: false
-  },
-  {
-    id: 'plan-2',
-    title: 'מצודת פראג (Prague Castle)',
-    category: 'מקומות לבקר',
-    description: 'מתחם המצודות העתיק הגדול בעולם. כולל את קתדרלת ויטוס הקדוש המרשימה, סמטת הזהב וארמון המלוכה הישן. כדאי להקדיש למקום לפחות חצי יום.',
-    address: 'Hradčany, 119 08 Prague 1',
-    rating: 4.8,
-    price: '250 CZK',
-    visited: false
-  },
-  {
-    id: 'plan-3',
-    title: 'השעון האסטרונומי בכיכר העיר העתיקה (Astronomical Clock)',
-    category: 'אטרקציות ודברים לעשות',
-    description: 'שעון ימי-ביניימי מפורסם המציג מופע של דמויות השליחים בכל שעה עגולה. מומלץ לעלות גם לראש מגדל בית העירייה לתצפית פנורמית על פראג.',
-    address: 'Staroměstské nám. 1, 110 00 Josefov',
-    rating: 4.7,
-    price: 'חינם',
-    visited: false
-  },
-  {
-    id: 'plan-4',
-    title: 'בית הקפה קפה סאבוי (Café Savoy)',
-    category: 'מסעדות ומקומות אכילה',
-    description: 'בית קפה ומסעדה היסטורית בעיצוב ניאו-רנסנסי מרהיב. מומלץ במיוחד לארוחות בוקר עשירות או לשטרודל תפוחים מסורתי לצד קפה משובח.',
-    address: 'Vítězná 124/5, Malá Strana, 150 00 Praha',
-    rating: 4.6,
-    price: '150-400 CZK',
-    visited: false
-  },
-  {
-    id: 'plan-5',
-    title: 'רכישת כרטיס נסיעה יומי בתחבורה ציבורית',
-    category: 'תחבורה ציבורית',
-    description: 'החשמליות והמטרו בפראג יעילים וזולים במיוחד. מומלץ לקנות כרטיס ל-24 שעות או 72 שעות המאפשר נסיעה חופשית בכל אמצעי התחבורה.',
-    address: 'Prague Metro Stations',
-    rating: 4.8,
-    price: '120 CZK',
-    visited: false
-  }
-];
-
 // Group a day's activities by their time-of-day label.
 // Known labels come first in canonical order, custom labels (e.g. "10:30")
 // follow by first appearance, and unlabeled activities are grouped last.

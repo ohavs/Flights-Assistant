@@ -474,18 +474,14 @@ export default function FlightTab({ tripId }) {
       } else {
         setLoading(true);
         const currentData = docSnap.data() || {};
-        const isPrague = currentData.destination?.includes('פראג') || currentData.name?.includes('פראג') || tripId.includes('prague');
-
-        if (isPrague) {
-          await setDoc(docRef, { ...defaultTrip, ...currentData }, { merge: true });
-        } else {
-          await setDoc(docRef, {
-            outboundFlightDetails: emptyFlightDetails,
-            returnFlightDetails: emptyFlightDetails,
-            hotelDetails: emptyHotelDetails,
-            ...currentData
-          }, { merge: true });
-        }
+        // Always seed EMPTY details — never copy any other trip's data in.
+        // Each trip is fully self-contained.
+        await setDoc(docRef, {
+          outboundFlightDetails: emptyFlightDetails,
+          returnFlightDetails: emptyFlightDetails,
+          hotelDetails: emptyHotelDetails,
+          ...currentData
+        }, { merge: true });
         setLoading(false);
       }
     });
@@ -556,7 +552,7 @@ export default function FlightTab({ tripId }) {
     setFormOutSchedArr(toTime24(out.scheduledArr));
     setFormOutEstArr(toTime24(out.estimatedArr));
     setFormOutStatus(out.status || 'בזמן');
-    setFormOutDate(out.date || '2026-06-15');
+    setFormOutDate(out.date || '');
     setFormOutGate(out.gate || '');
     outAirportsRef.current = {
       dep: out.depAirport || outAirportsRef.current.dep,
@@ -572,7 +568,7 @@ export default function FlightTab({ tripId }) {
     setFormRetSchedArr(toTime24(ret.scheduledArr));
     setFormRetEstArr(toTime24(ret.estimatedArr));
     setFormRetStatus(ret.status || 'בזמן');
-    setFormRetDate(ret.date || '2026-06-22');
+    setFormRetDate(ret.date || '');
     setFormRetGate(ret.gate || '');
     retAirportsRef.current = {
       dep: ret.depAirport || retAirportsRef.current.dep,
@@ -599,7 +595,7 @@ export default function FlightTab({ tripId }) {
       formOutSchedArr: out.scheduledArr || '',
       formOutEstArr: out.estimatedArr || '',
       formOutStatus: out.status || 'בזמן',
-      formOutDate: out.date || '2026-06-15',
+      formOutDate: out.date || '',
       formOutGate: out.gate || '',
       formRetFlightNum: ret.flightNumber || '',
       formRetAirline: ret.airline || '',
@@ -610,7 +606,7 @@ export default function FlightTab({ tripId }) {
       formRetSchedArr: ret.scheduledArr || '',
       formRetEstArr: ret.estimatedArr || '',
       formRetStatus: ret.status || 'בזמן',
-      formRetDate: ret.date || '2026-06-22',
+      formRetDate: ret.date || '',
       formRetGate: ret.gate || '',
       formHotelName: htl.name || '',
       formHotelAddress: htl.address || '',
@@ -818,7 +814,7 @@ export default function FlightTab({ tripId }) {
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>תאריך טיסה</div>
             {canEdit ? (
               <CustomDatePicker
-                value={flight.date || (kind === 'outbound' ? '2026-06-15' : '2026-06-22')}
+                value={flight.date || ''}
                 onChange={(val) => handleUpdateFlightDate(kind, val)}
                 variant="compact"
               />
