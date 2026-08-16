@@ -352,11 +352,14 @@ body {
   width: 100%;
   max-width: 520px;
   height: 100%;
+  height: 100dvh;          /* bind directly to the dynamic viewport */
+  max-height: 100dvh;
   background: var(--bg-gradient);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  isolation: isolate;      /* clean stacking/compositing root for children */
 }
 
 /* Homepage trip cards stack on mobile, grid on desktop. */
@@ -526,6 +529,13 @@ body {
   padding: 0 8px;
   padding-bottom: env(safe-area-inset-bottom);
   z-index: 1000;
+  /* Pin to its own GPU layer so it always paints. Without this, some
+     mobile browsers intermittently fail to composite the backdrop-filter
+     layer after the tab content's enter animation, leaving the bar blank
+     until a scroll/refresh forces a repaint. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
 }
 
 .nav-item {

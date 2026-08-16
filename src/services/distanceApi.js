@@ -161,7 +161,7 @@ async function findPlaceCoords(planId, title, origin) {
 }
 
 // ── Location resolvers ────────────────────────────────────────────────────────
-export function resolveOriginString(hotelDetails, customOrigin) {
+export function resolveOriginString(hotelDetails, customOrigin, fallbackText) {
   if (customOrigin?.mapsUrl) {
     const c = extractCoordsFromMapsUrl(customOrigin.mapsUrl);
     if (c) return c;
@@ -171,7 +171,17 @@ export function resolveOriginString(hotelDetails, customOrigin) {
     const c = extractCoordsFromMapsUrl(hotelDetails.link);
     if (c) return c;
   }
+  // Last resort: use the trip destination (e.g. "בודפשט, הונגריה") so travel
+  // times can still be computed from the city centre before a hotel is set.
+  if (fallbackText?.trim()) return fallbackText.trim();
   return null;
+}
+
+// Does the hotel/custom origin resolve to a real location on its own,
+// i.e. WITHOUT falling back to the trip destination? Used to label the
+// distance readout honestly ("from hotel" vs "from city centre").
+export function hasPreciseOrigin(hotelDetails, customOrigin) {
+  return !!resolveOriginString(hotelDetails, customOrigin, null);
 }
 
 // Sync fast-path: text address or embedded coords in URL

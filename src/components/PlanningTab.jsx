@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   hasGmapsKey,
   resolveOriginString,
+  hasPreciseOrigin,
   resolveDestinationAsync,
   resolvePlanCoords,
   fetchTravelTimes,
@@ -307,6 +308,7 @@ export default function PlanningTab({ tripId }) {
 
   // Distance from hotel/origin
   const [hotelDetails, setHotelDetails] = useState(null);
+  const [tripDestination, setTripDestination] = useState('');
   const [distanceOrigins, setDistanceOrigins] = useState([]); // [{id,name,mapsUrl}]
   const [distanceCache, setDistanceCache] = useState({}); // cacheKey → {walk,transit,loading,error}
   // Form: distance origin selector
@@ -390,6 +392,7 @@ export default function PlanningTab({ tripId }) {
       if (!snap.exists()) return;
       const d = snap.data();
       setHotelDetails(d.hotelDetails || null);
+      setTripDestination(d.destination || '');
       setDistanceOrigins(Array.isArray(d.distanceOrigins) ? d.distanceOrigins : []);
     });
     return () => unsub();
@@ -505,7 +508,7 @@ export default function PlanningTab({ tripId }) {
     if (existing && (existing.loading || existing.manualOverride || existing.walk || existing.transit)) return;
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
-    const origin = resolveOriginString(hotelDetails, customOrigin);
+    const origin = resolveOriginString(hotelDetails, customOrigin, tripDestination);
     if (!origin) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
@@ -554,7 +557,7 @@ export default function PlanningTab({ tripId }) {
   // re-pressing is cheap. Runs sequentially to stay gentle on the API quota.
   const handleCalculateAll = async () => {
     if (!hasGmapsKey() || bulkCalc) return;
-    const origin = resolveOriginString(hotelDetails, null);
+    const origin = resolveOriginString(hotelDetails, null, tripDestination);
     const list = [...plans];
     setBulkCalc({ done: 0, total: list.length });
     for (let i = 0; i < list.length; i++) {
@@ -1002,7 +1005,7 @@ export default function PlanningTab({ tripId }) {
 
   // Lazy-fetch travel times for all day-planner activities that link to a saved place
   useEffect(() => {
-    if (!hasGmapsKey() || !hotelDetails) return;
+    if (!hasGmapsKey() || (!hotelDetails && !tripDestination)) return;
     const allPlaceIds = new Set(
       days.flatMap(d => (d.activities || []).map(a => a.placeId).filter(Boolean))
     );
@@ -1012,7 +1015,7 @@ export default function PlanningTab({ tripId }) {
       const plan = plans.find(p => p.id === placeId);
       if (plan) fetchPlanDistances(plan);
     });
-  }, [days, plans, hotelDetails]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [days, plans, hotelDetails, tripDestination]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const daySensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -2295,13 +2298,22 @@ export default function PlanningTab({ tripId }) {
                         )}
 
                         {/* Distance from hotel / origin */}
-                        {hasGmapsKey() && hotelDetails && (() => {
+                        {hasGmapsKey() && (hotelDetails || distanceOrigins.length > 0 || tripDestination) && (() => {
                           const originId = plan.distanceOriginId || 'hotel';
                           const cacheKey = `${plan.id}_${originId}`;
                           const cache = distanceCache[cacheKey];
+                          const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+                          // Precise = hotel/custom origin resolved without falling
+                          // back to the trip destination (city centre).
+                          const precise = originId === 'hotel'
+                            ? hasPreciseOrigin(hotelDetails, null)
+                            : hasPreciseOrigin(hotelDetails, customOrigin);
+                          const cityName = (tripDestination || '').split(',')[0].trim();
                           const originLabel = originId === 'hotel'
-                            ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
-                            : (distanceOrigins.find(o => o.id === originId)?.name || 'מהמיקום');
+                            ? (precise
+                                ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
+                                : (cityName ? `ממרכז ${cityName}` : 'מהמיקום'))
+                            : (customOrigin?.name || (cityName ? `ממרכז ${cityName}` : 'מהמיקום'));
 
                           if (!cache || cache.loading) return (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
