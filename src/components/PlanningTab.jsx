@@ -522,13 +522,35 @@ export default function PlanningTab({ tripId }) {
     // Fingerprint of every input the origin derives from. If the user edits
     // the hotel address/link, this changes and the cached numbers are stale.
     const fp = originFingerprint(hotelDetails, customOrigin, tripDestination);
-    const hasResult = !!(existing?.walk || existing?.transit);
+
+    // Decide against the value saved on the plan document as well as the
+    // runtime cache. The hydration effect and this one both run off the same
+    // `plans` update, so on the first load after opening a trip the runtime
+    // cache is still empty in this closure — relying on it alone would
+    // re-measure everything over the network despite having saved results.
+    // `plan.distances` comes straight from the snapshot and is never stale.
+    const persisted = plan.distances?.[originId];
+    const saved = (persisted && isSaneTravel(persisted)) ? persisted : null;
+    const known = existing || saved;
+    const hasResult = !!(known?.walk || known?.transit);
 
     if (existing && (existing.loading || existing.manualOverride)) return;
-    if (hasResult && existing.originFp === fp) return;
-    // Offline: never discard a good cached result to re-measure it.
+    // Nothing about the origin changed → reuse the saved result, no network.
+    if (hasResult && known.originFp === fp) {
+      // Make sure the saved value is actually on screen.
+      if (!existing && saved) {
+        setDistanceCache(prev => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: saved }));
+      }
+      return;
+    }
+    // Offline: never discard a good result to re-measure it — show what we have.
     const online = isOnlineNow();
-    if (!online && hasResult) return;
+    if (!online && hasResult) {
+      if (!existing && saved) {
+        setDistanceCache(prev => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: saved }));
+      }
+      return;
+    }
 
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
 
@@ -592,7 +614,7 @@ export default function PlanningTab({ tripId }) {
       setDistanceCache(prev => ({
         ...prev,
         [cacheKey]: (networkFailed || !online)
-          ? (hasResult ? existing : { offline: true })
+          ? (hasResult ? known : { offline: true })
           : { noLocation: true },
       }));
       return;
