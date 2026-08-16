@@ -503,12 +503,22 @@ export default function PlanningTab({ tripId }) {
     if (!hasGmapsKey()) return;
     const originId = plan.distanceOriginId || 'hotel';
     const cacheKey = `${plan.id}_${originId}`;
-    // Don't re-fetch if already loading, successfully fetched, or manually overridden
     const existing = distanceCache[cacheKey];
-    if (existing && (existing.loading || existing.manualOverride || existing.walk || existing.transit)) return;
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     const origin = resolveOriginString(hotelDetails, customOrigin, tripDestination);
+    // Which source actually produced `origin` — so the UI can label the
+    // numbers honestly and so we know when to recompute.
+    const originKind = (customOrigin && hasPreciseOrigin(null, customOrigin))
+      ? 'custom'
+      : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city');
+
+    // Skip only when the cached result was computed from the SAME origin.
+    // If the hotel address was added/corrected since, the old numbers are
+    // stale and must be recomputed rather than shown under a new label.
+    if (existing && (existing.loading || existing.manualOverride)) return;
+    if (existing && (existing.walk || existing.transit) && existing.origin === origin) return;
+
     if (!origin) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
@@ -526,7 +536,12 @@ export default function PlanningTab({ tripId }) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: false, error: true } }));
       return;
     }
-    const value = { walk: result.walk || null, transit: result.transit || null, fetchedAt: Date.now() };
+    // `origin` + `originKind` are persisted so the label always matches the
+    // numbers, and so a later hotel change invalidates these results.
+    const value = {
+      walk: result.walk || null, transit: result.transit || null,
+      fetchedAt: Date.now(), origin, originKind,
+    };
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { ...value, loading: false } }));
     // Persist so it survives reloads — no API call needed next time.
     if (tripId) {
@@ -1010,9 +1025,10 @@ export default function PlanningTab({ tripId }) {
       days.flatMap(d => (d.activities || []).map(a => a.placeId).filter(Boolean))
     );
     allPlaceIds.forEach(placeId => {
-      const cacheKey = `${placeId}_hotel`;
-      if (distanceCache[cacheKey]) return;
       const plan = plans.find(p => p.id === placeId);
+      // No cache guard here: fetchPlanDistances() cheaply no-ops when the
+      // cached result already matches the current origin, and re-fetches
+      // when the hotel address changed underneath it.
       if (plan) fetchPlanDistances(plan);
     });
   }, [days, plans, hotelDetails, tripDestination]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2303,17 +2319,22 @@ export default function PlanningTab({ tripId }) {
                           const cacheKey = `${plan.id}_${originId}`;
                           const cache = distanceCache[cacheKey];
                           const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
-                          // Precise = hotel/custom origin resolved without falling
-                          // back to the trip destination (city centre).
-                          const precise = originId === 'hotel'
-                            ? hasPreciseOrigin(hotelDetails, null)
-                            : hasPreciseOrigin(hotelDetails, customOrigin);
+                          // Label from what the SHOWN numbers were actually
+                          // computed from (recorded on the cached value), so a
+                          // city-centre result is never labelled "from hotel".
+                          // Older cached entries have no originKind — fall back
+                          // to resolving the current origin.
+                          const kind = cache?.originKind || (
+                            (customOrigin && hasPreciseOrigin(null, customOrigin))
+                              ? 'custom'
+                              : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city')
+                          );
                           const cityName = (tripDestination || '').split(',')[0].trim();
-                          const originLabel = originId === 'hotel'
-                            ? (precise
-                                ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
-                                : (cityName ? `ממרכז ${cityName}` : 'מהמיקום'))
-                            : (customOrigin?.name || (cityName ? `ממרכז ${cityName}` : 'מהמיקום'));
+                          const cityLabel = cityName ? `ממרכז ${cityName}` : 'מהמיקום';
+                          const originLabel =
+                            kind === 'custom' ? (customOrigin?.name || cityLabel)
+                            : kind === 'hotel' ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
+                            : cityLabel;
 
                           if (!cache || cache.loading) return (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
