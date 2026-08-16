@@ -20,6 +20,9 @@ import {
   hasGmapsKey,
   resolveOriginString,
   hasPreciseOrigin,
+  buildOriginCandidates,
+  originFingerprint,
+  isOnlineNow,
   resolveDestinationAsync,
   resolvePlanCoords,
   fetchTravelTimes,
@@ -309,6 +312,10 @@ export default function PlanningTab({ tripId }) {
   // Distance from hotel/origin
   const [hotelDetails, setHotelDetails] = useState(null);
   const [tripDestination, setTripDestination] = useState('');
+  // Bumped when connectivity returns, so distances that failed while offline
+  // are retried automatically instead of staying stuck.
+  const [netEpoch, setNetEpoch] = useState(0);
+  const [online, setOnline] = useState(isOnlineNow());
   const [distanceOrigins, setDistanceOrigins] = useState([]); // [{id,name,mapsUrl}]
   const [distanceCache, setDistanceCache] = useState({}); // cacheKey → {walk,transit,loading,error}
   // Form: distance origin selector
@@ -506,50 +513,72 @@ export default function PlanningTab({ tripId }) {
     const existing = distanceCache[cacheKey];
 
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
-    const origin = resolveOriginString(hotelDetails, customOrigin, tripDestination);
-    // Which source actually produced `origin` — so the UI can label the
-    // numbers honestly and so we know when to recompute.
-    const originKind = (customOrigin && hasPreciseOrigin(null, customOrigin))
-      ? 'custom'
-      : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city');
+    // Fingerprint of every input the origin derives from. If the user edits
+    // the hotel address/link, this changes and the cached numbers are stale.
+    const fp = originFingerprint(hotelDetails, customOrigin, tripDestination);
+    const hasResult = !!(existing?.walk || existing?.transit);
 
-    // Skip only when the cached result was computed from the SAME origin.
-    // If the hotel address was added/corrected since, the old numbers are
-    // stale and must be recomputed rather than shown under a new label.
     if (existing && (existing.loading || existing.manualOverride)) return;
-    if (existing && (existing.walk || existing.transit) && existing.origin === origin) return;
-
-    if (!origin) {
-      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
-      return;
-    }
+    if (hasResult && existing.originFp === fp) return;
+    // Offline: never discard a good cached result to re-measure it.
+    const online = isOnlineNow();
+    if (!online && hasResult) return;
 
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
-    const dest = await resolveDestinationAsync(plan, origin);
-    if (!dest) {
+
+    // Ordered origin options: custom → hotel coords → hotel address →
+    // expanded hotel link → hotel name → city centre.
+    const candidates = await buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online });
+    if (candidates.length === 0) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
     }
 
-    const result = await fetchTravelTimes(origin, dest);
-    if (!result) {
-      setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: false, error: true } }));
+    // Destination resolves once; the best origin only biases the place search.
+    const dest = await resolveDestinationAsync(plan, candidates[0].value);
+    if (!dest) {
+      setDistanceCache(prev => ({
+        ...prev,
+        [cacheKey]: online ? { noLocation: true } : { offline: true },
+      }));
       return;
     }
-    // `origin` + `originKind` are persisted so the label always matches the
-    // numbers, and so a later hotel change invalidates these results.
-    const value = {
-      walk: result.walk || null, transit: result.transit || null,
-      fetchedAt: Date.now(), origin, originKind,
-    };
+
+    // Try each origin until one yields a route, so a mistyped address or an
+    // unresolvable link falls through to the next option instead of failing.
+    let value = null;
+    let networkFailed = false;
+    for (const cand of candidates) {
+      const result = await fetchTravelTimes(cand.value, dest);
+      if (result?.networkError) { networkFailed = true; break; }
+      if (result && (result.walk || result.transit)) {
+        value = {
+          walk: result.walk || null, transit: result.transit || null,
+          fetchedAt: Date.now(),
+          origin: cand.value, originKind: cand.kind, originFp: fp,
+        };
+        break;
+      }
+    }
+
+    if (!value) {
+      // Keep whatever we had rather than replacing it with an error state.
+      setDistanceCache(prev => ({
+        ...prev,
+        [cacheKey]: (networkFailed || !online)
+          ? (hasResult ? existing : { offline: true })
+          : { noLocation: true },
+      }));
+      return;
+    }
+
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { ...value, loading: false } }));
-    // Persist so it survives reloads — no API call needed next time.
+    // Persist so it survives reloads — no API call needed next time. Firestore
+    // queues this locally when offline and syncs it on reconnect.
     if (tripId) {
-      try {
-        await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
-          [`distances.${originId}`]: value,
-        });
-      } catch { /* non-fatal: runtime cache still holds the result */ }
+      updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+        [`distances.${originId}`]: value,
+      }).catch(() => { /* non-fatal: runtime cache still holds the result */ });
     }
   };
 
@@ -572,6 +601,9 @@ export default function PlanningTab({ tripId }) {
   // re-pressing is cheap. Runs sequentially to stay gentle on the API quota.
   const handleCalculateAll = async () => {
     if (!hasGmapsKey() || bulkCalc) return;
+    // Offline there is nothing to measure — bail out instead of walking every
+    // place only to fail on each one.
+    if (!isOnlineNow()) return;
     const origin = resolveOriginString(hotelDetails, null, tripDestination);
     const list = [...plans];
     setBulkCalc({ done: 0, total: list.length });
@@ -1018,6 +1050,31 @@ export default function PlanningTab({ tripId }) {
     await batch.commit();
   };
 
+  // When the connection comes back, drop the "offline" markers and bump the
+  // epoch so anything that couldn't be measured is retried automatically.
+  useEffect(() => {
+    const onBackOnline = () => {
+      setOnline(true);
+      setDistanceCache(prev => {
+        const next = {};
+        let changed = false;
+        for (const [k, v] of Object.entries(prev)) {
+          if (v?.offline) { changed = true; continue; }
+          next[k] = v;
+        }
+        return changed ? next : prev;
+      });
+      setNetEpoch(e => e + 1);
+    };
+    const onWentOffline = () => setOnline(false);
+    window.addEventListener('online', onBackOnline);
+    window.addEventListener('offline', onWentOffline);
+    return () => {
+      window.removeEventListener('online', onBackOnline);
+      window.removeEventListener('offline', onWentOffline);
+    };
+  }, []);
+
   // Lazy-fetch travel times for all day-planner activities that link to a saved place
   useEffect(() => {
     if (!hasGmapsKey() || (!hotelDetails && !tripDestination)) return;
@@ -1031,7 +1088,7 @@ export default function PlanningTab({ tripId }) {
       // when the hotel address changed underneath it.
       if (plan) fetchPlanDistances(plan);
     });
-  }, [days, plans, hotelDetails, tripDestination]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [days, plans, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const daySensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1911,12 +1968,13 @@ export default function PlanningTab({ tripId }) {
                             <button
                               type="button"
                               onClick={handleCalculateAll}
-                              disabled={!!bulkCalc}
+                              disabled={!!bulkCalc || !online}
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center',
                                 gap: 8, padding: '10px 14px', border: 'none',
                                 background: 'var(--surface)',
-                                cursor: bulkCalc ? 'default' : 'pointer',
+                                cursor: (bulkCalc || !online) ? 'default' : 'pointer',
+                                opacity: !online && !bulkCalc ? 0.5 : 1,
                                 fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
                                 color: 'var(--accent)', textAlign: 'right',
                               }}
@@ -1925,6 +1983,11 @@ export default function PlanningTab({ tripId }) {
                                 <>
                                   <Loader2 size={14} className="spinning" />
                                   <span>מחשב… {bulkCalc.done}/{bulkCalc.total}</span>
+                                </>
+                              ) : !online ? (
+                                <>
+                                  <RefreshCw size={14} />
+                                  <span>חשב ושמור מרחקים (דרוש חיבור)</span>
                                 </>
                               ) : (
                                 <>
@@ -2340,6 +2403,11 @@ export default function PlanningTab({ tripId }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
                               <Loader2 size={13} className="spinning" />
                               <span>מחשב מרחק...</span>
+                            </div>
+                          );
+                          if (cache.offline) return (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+                              📡 אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
                             </div>
                           );
                           if (cache.noLocation) return (

@@ -15,6 +15,9 @@ const PLACE_CACHE = 'gmaps_place_v2_';  // Places-search results
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
+export const isOnlineNow = () =>
+  (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+
 // ── Coordinate extraction from URLs ──────────────────────────────────────────
 export function extractCoordsFromMapsUrl(url) {
   if (!url || typeof url !== 'string') return null;
@@ -67,6 +70,8 @@ async function expandShortUrl(url) {
   const cacheKey = SHORT_CACHE + url;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return cached;
+  // Offline: the cache above is all we can offer — don't wait on timeouts.
+  if (!isOnlineNow()) return null;
 
   const enc = encodeURIComponent(url);
   // Try both proxies in parallel; use whichever succeeds first
@@ -98,11 +103,20 @@ function fmtDistance(meters) {
 }
 
 async function queryRoute(origin, destination, travelMode) {
-  const res = await fetch(`${ROUTES_URL}?key=${GMAPS_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
-    body: JSON.stringify({ origin: toWaypoint(origin), destination: toWaypoint(destination), travelMode }),
-  });
+  let res;
+  try {
+    res = await fetch(`${ROUTES_URL}?key=${GMAPS_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
+      body: JSON.stringify({ origin: toWaypoint(origin), destination: toWaypoint(destination), travelMode }),
+    });
+  } catch {
+    // Connection failed (offline / blocked) — distinct from "no route found",
+    // so the caller can keep cached data instead of marking it unresolvable.
+    const err = new Error('network');
+    err.network = true;
+    throw err;
+  }
   if (!res.ok) return null;
   const data = await res.json();
   const route = data?.routes?.[0];
@@ -128,6 +142,7 @@ async function findPlaceCoords(planId, title, origin) {
   const cacheKey = PLACE_CACHE + planId;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return cached;
+  if (!isOnlineNow()) return null;
 
   try {
     const body = {};
@@ -161,14 +176,21 @@ async function findPlaceCoords(planId, title, origin) {
 }
 
 // ── Location resolvers ────────────────────────────────────────────────────────
+// Sync read of a previously expanded short URL — lets us resolve a shared
+// Maps link while offline, with no network call.
+export function readShortUrlCache(url) {
+  if (!url) return null;
+  try { return localStorage.getItem(SHORT_CACHE + url); } catch { return null; }
+}
+
 export function resolveOriginString(hotelDetails, customOrigin, fallbackText) {
   if (customOrigin?.mapsUrl) {
-    const c = extractCoordsFromMapsUrl(customOrigin.mapsUrl);
+    const c = extractCoordsFromMapsUrl(customOrigin.mapsUrl) || readShortUrlCache(customOrigin.mapsUrl);
     if (c) return c;
   }
   if (hotelDetails?.address?.trim()) return hotelDetails.address.trim();
   if (hotelDetails?.link) {
-    const c = extractCoordsFromMapsUrl(hotelDetails.link);
+    const c = extractCoordsFromMapsUrl(hotelDetails.link) || readShortUrlCache(hotelDetails.link);
     if (c) return c;
   }
   // Last resort: use the trip destination (e.g. "בודפשט, הונגריה") so travel
@@ -177,11 +199,65 @@ export function resolveOriginString(hotelDetails, customOrigin, fallbackText) {
   return null;
 }
 
-// Does the hotel/custom origin resolve to a real location on its own,
-// i.e. WITHOUT falling back to the trip destination? Used to label the
-// distance readout honestly ("from hotel" vs "from city centre").
+// Best guess at the origin source before anything is fetched. Used only to
+// label legacy cached results; fresh results carry their own recorded kind.
 export function hasPreciseOrigin(hotelDetails, customOrigin) {
-  return !!resolveOriginString(hotelDetails, customOrigin, null);
+  if (customOrigin?.mapsUrl) return true;
+  return !!(hotelDetails?.address?.trim() || hotelDetails?.link || hotelDetails?.name?.trim());
+}
+
+// Identity of everything the origin is derived from. When this changes the
+// user edited the hotel/origin, so cached travel times must be recomputed.
+export function originFingerprint(hotelDetails, customOrigin, fallbackText) {
+  return [
+    customOrigin?.mapsUrl || '',
+    hotelDetails?.address || '',
+    hotelDetails?.link || '',
+    hotelDetails?.name || '',
+    fallbackText || '',
+  ].join('|');
+}
+
+// Ordered list of origin candidates, best first. The caller tries each until
+// one produces a route, so a wrong address or an unresolvable link silently
+// degrades to the next option instead of surfacing an error.
+//
+// Both hotel inputs are supported: a typed address AND a shared Maps link
+// (including short maps.app.goo.gl links, expanded + cached on first use).
+export async function buildOriginCandidates(hotelDetails, customOrigin, fallbackText, { online = true } = {}) {
+  const out = [];
+  const push = (value, kind) => {
+    const v = typeof value === 'string' ? value.trim() : '';
+    if (!v || out.some(c => c.value === v)) return;
+    out.push({ value: v, kind });
+  };
+
+  // 1. Explicitly chosen custom origin wins.
+  if (customOrigin?.mapsUrl) {
+    push(extractCoordsFromMapsUrl(customOrigin.mapsUrl), 'custom');
+    push(readShortUrlCache(customOrigin.mapsUrl), 'custom');
+    if (online) push(await expandShortUrl(customOrigin.mapsUrl), 'custom');
+  }
+
+  // 2. Hotel — exact coordinates first (free + unambiguous), then the typed
+  //    address, then network-resolved forms of the link.
+  if (hotelDetails?.link) {
+    push(extractCoordsFromMapsUrl(hotelDetails.link), 'hotel');
+    push(readShortUrlCache(hotelDetails.link), 'hotel');
+  }
+  push(hotelDetails?.address, 'hotel');
+  if (online && hotelDetails?.link) {
+    push(await expandShortUrl(hotelDetails.link), 'hotel');
+  }
+  // Hotel name + city is a decent geocodable query when address/link fail.
+  if (hotelDetails?.name?.trim()) {
+    const city = (fallbackText || '').trim();
+    push(city ? `${hotelDetails.name.trim()}, ${city}` : hotelDetails.name.trim(), 'hotel');
+  }
+
+  // 3. City centre, so something is always shown.
+  push(fallbackText, 'city');
+  return out;
 }
 
 // Sync fast-path: text address or embedded coords in URL
@@ -247,6 +323,7 @@ async function geocodeAddress(address) {
   const cacheKey = GEO_CACHE + address.trim();
   const cached = localStorage.getItem(cacheKey);
   if (cached) return cached;
+  if (!isOnlineNow()) return null;
   try {
     const res = await fetch(PLACES_URL, {
       method: 'POST',
@@ -280,13 +357,21 @@ export async function resolvePlanCoords(plan, origin) {
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
+// Returns { walk, transit } on success, { networkError: true } when the
+// connection failed, or null when this origin/destination pair yielded no
+// route at all (so the caller can try the next origin candidate).
 export async function fetchTravelTimes(origin, destination) {
   if (!GMAPS_KEY || !origin || !destination) return null;
+  if (!isOnlineNow()) return { networkError: true };
   try {
     const [walk, transit] = await Promise.all([
       queryRoute(origin, destination, 'WALK'),
       queryRoute(origin, destination, 'TRANSIT'),
     ]);
+    if (!walk && !transit) return null;
     return { walk, transit };
-  } catch { return null; }
+  } catch (err) {
+    if (err?.network) return { networkError: true };
+    return null;
+  }
 }
