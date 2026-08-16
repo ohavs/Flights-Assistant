@@ -149,7 +149,10 @@ function CurrencyPicker({ value, onChange, exclude }) {
 export default function CurrencyConverter() {
   const [{ rates, fetchedAt }, setCache] = useState(getInitialRates);
   // Remember the user's currency picks + last amount across reloads.
-  const PREF_KEY = 'currencyConverterPrefsV1';
+  // V2: reset stale picks (e.g. the old Prague-era ILS→CZK) so the
+  // converter starts from the clean ILS→EUR default. Picks made from here
+  // on are still remembered across reloads.
+  const PREF_KEY = 'currencyConverterPrefsV2';
   const [prefs] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
