@@ -12,6 +12,7 @@ import {
   writeBatch,
   arrayUnion,
   arrayRemove,
+  deleteField,
 } from 'firebase/firestore';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -23,6 +24,8 @@ import {
   buildOriginCandidates,
   originFingerprint,
   isOnlineNow,
+  isSaneTravel,
+  clearPlaceCache,
   resolveDestinationAsync,
   resolvePlanCoords,
   fetchTravelTimes,
@@ -436,6 +439,9 @@ export default function PlanningTab({ tripId }) {
         if (!plan.distances) continue;
         for (const [originId, val] of Object.entries(plan.distances)) {
           const key = `${plan.id}_${originId}`;
+          // Skip implausible values saved before the geocoding fix — leaving
+          // them out means they get recomputed instead of shown.
+          if (!isSaneTravel(val)) continue;
           if (!next[key]) next[key] = val;
         }
       }
@@ -548,10 +554,19 @@ export default function PlanningTab({ tripId }) {
     // unresolvable link falls through to the next option instead of failing.
     let value = null;
     let networkFailed = false;
+    let bogusLocation = false;
     for (const cand of candidates) {
       const result = await fetchTravelTimes(cand.value, dest);
       if (result?.networkError) { networkFailed = true; break; }
       if (result && (result.walk || result.transit)) {
+        // An implausible route means `dest` geocoded to the wrong place —
+        // trying other origins would only produce more nonsense. Drop the
+        // cached title match so it can be resolved cleanly next time.
+        if (!isSaneTravel(result)) {
+          clearPlaceCache(plan.id);
+          bogusLocation = true;
+          break;
+        }
         value = {
           walk: result.walk || null, transit: result.transit || null,
           fetchedAt: Date.now(),
@@ -559,6 +574,17 @@ export default function PlanningTab({ tripId }) {
         };
         break;
       }
+    }
+
+    if (bogusLocation) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      // Remove the bad value already persisted, so it isn't rehydrated.
+      if (tripId) {
+        updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+          [`distances.${originId}`]: deleteField(),
+        }).catch(() => { /* non-fatal */ });
+      }
+      return;
     }
 
     if (!value) {

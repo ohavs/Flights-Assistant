@@ -128,6 +128,32 @@ async function queryRoute(origin, destination, travelMode) {
   return { duration: fmtDuration(secs), distance: fmtDistance(meters), seconds: secs, meters };
 }
 
+// ── Sanity guard ─────────────────────────────────────────────────────────────
+// A "walk from your hotel" measured in days means the destination geocoded to
+// the wrong place, not a real journey. Thresholds are deliberately loose so a
+// genuine long day-trip still passes; only nonsense is rejected.
+const MAX_SANE_SECONDS = 24 * 3600;   // 24 h
+const MAX_SANE_METERS  = 500 * 1000;  // 500 km
+
+function isSaneLeg(leg) {
+  if (!leg) return true; // a missing leg is fine (e.g. no transit route)
+  if (typeof leg.seconds === 'number' && leg.seconds > MAX_SANE_SECONDS) return false;
+  if (typeof leg.meters === 'number'  && leg.meters  > MAX_SANE_METERS)  return false;
+  return true;
+}
+
+// True when a stored/received travel-time value is believable.
+export function isSaneTravel(value) {
+  if (!value) return true;
+  return isSaneLeg(value.walk) && isSaneLeg(value.transit);
+}
+
+// Forget a title-based Places match that produced a bogus location, so the
+// place can be resolved again from scratch.
+export function clearPlaceCache(planId) {
+  try { localStorage.removeItem(PLACE_CACHE + planId); } catch { /* ignore */ }
+}
+
 // Parse a "lat,lng" string into numeric coordinates.
 export function parseLatLng(str) {
   if (!str || typeof str !== 'string') return null;
@@ -148,13 +174,26 @@ async function findPlaceCoords(planId, title, origin) {
     const body = {};
     const coordMatch = origin?.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
     if (coordMatch) {
-      body.locationBias = {
-        circle: { center: { latitude: parseFloat(coordMatch[1]), longitude: parseFloat(coordMatch[2]) }, radius: 50000 },
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      // locationRestriction, not locationBias: a bias is only a preference,
+      // so a generic title could still match a same-named place in another
+      // country. A restriction hard-limits results to the trip's region
+      // (~85 km), which is what produced absurd travel times before.
+      const dLat = 0.75;
+      const dLng = 0.75 / Math.max(0.2, Math.cos(lat * Math.PI / 180));
+      body.locationRestriction = {
+        rectangle: {
+          low:  { latitude: Math.max(-90, lat - dLat), longitude: Math.max(-180, lng - dLng) },
+          high: { latitude: Math.min(90, lat + dLat),  longitude: Math.min(180, lng + dLng) },
+        },
       };
       body.textQuery = title.trim();
     } else if (origin) {
+      // No coords to restrict by — qualify the query with the city/country so
+      // the title alone can't match the wrong side of the world.
       const parts = origin.split(',').map(s => s.trim()).filter(Boolean);
-      const hint = parts[parts.length - 1];
+      const hint = parts.slice(-2).join(', ');
       body.textQuery = hint ? `${title.trim()}, ${hint}` : title.trim();
     } else {
       body.textQuery = title.trim();
@@ -295,25 +334,20 @@ export async function resolveDestinationAsync(plan, origin) {
   const placeHit = localStorage.getItem(PLACE_CACHE + plan.id);
   if (placeHit) return placeHit;
 
-  // 3. Nothing cached — run proxy expansion AND Places Search in parallel,
-  //    take whichever succeeds first.
-  const proxyRace = (async () => {
-    for (const url of urls) {
-      const c = await expandShortUrl(url);
-      if (c) return c;
-    }
-    return null;
-  })();
-  const placesRace = findPlaceCoords(plan.id, plan.title, origin);
-
-  try {
-    return await Promise.any([
-      proxyRace.then(c => { if (!c) throw new Error(); return c; }),
-      placesRace.then(c => { if (!c) throw new Error(); return c; }),
-    ]);
-  } catch {
-    return null;
+  // 3. Nothing cached — resolve by PRIORITY, not by whoever answers first.
+  //
+  //    These two sources are not equally trustworthy: the saved link points
+  //    at the exact place the user chose, while a Places lookup by title is
+  //    only a guess. Racing them (Promise.any) let the guess win, because the
+  //    link goes through a slow CORS proxy while Places is one fast call to
+  //    Google — so a generic title could silently resolve to a same-named
+  //    place on another continent, producing absurd travel times.
+  //    Always give the link a chance to answer first.
+  for (const url of urls) {
+    const c = await expandShortUrl(url);
+    if (c) return c;
   }
+  return await findPlaceCoords(plan.id, plan.title, origin);
 }
 
 // ── Geocode a plain text address → coords (cached) ───────────────────────────
