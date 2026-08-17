@@ -48,9 +48,22 @@ function extractCoordsFromHtml(html) {
 }
 
 // ── Short-URL expansion via CORS proxies ──────────────────────────────────────
+// Resolve with the first task that yields a truthy value, without waiting for
+// the slower ones. Promise.any rejects only once every task has failed, so a
+// hung proxy can never hold up a proxy that already answered.
+function firstSuccess(tasks) {
+  return Promise.any(
+    tasks.map(async (task) => {
+      const value = await task();
+      if (!value) throw new Error('empty');
+      return value;
+    })
+  ).catch(() => null);
+}
+
 async function tryProxy(proxyUrl) {
   try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const ct = res.headers.get('content-type') || '';
     if (ct.includes('json')) {
@@ -74,12 +87,14 @@ async function expandShortUrl(url) {
   if (!isOnlineNow()) return null;
 
   const enc = encodeURIComponent(url);
-  // Try both proxies in parallel; use whichever succeeds first
-  const results = await Promise.allSettled([
-    tryProxy(`https://api.allorigins.win/get?url=${enc}`),
-    tryProxy(`https://corsproxy.io/?url=${enc}`),
+  // Both proxies at once, first real answer wins — previously this awaited
+  // Promise.allSettled, so a proxy that hung until its timeout delayed the
+  // result even when the other had already responded.
+  const coords = await firstSuccess([
+    () => tryProxy(`https://api.allorigins.win/get?url=${enc}`),
+    () => tryProxy(`https://corsproxy.io/?url=${enc}`),
+    () => tryProxy(`https://r.jina.ai/${url}`),
   ]);
-  const coords = results.find(r => r.status === 'fulfilled' && r.value)?.value ?? null;
   if (coords) localStorage.setItem(cacheKey, coords);
   return coords;
 }
@@ -128,6 +143,23 @@ async function queryRoute(origin, destination, travelMode) {
   return { duration: fmtDuration(secs), distance: fmtDistance(meters), seconds: secs, meters };
 }
 
+// Great-circle distance in metres between two "lat,lng" strings.
+function metersBetween(aStr, bStr) {
+  const a = parseLatLng(aStr);
+  const b = parseLatLng(bStr);
+  if (!a || !b) return null;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+}
+
+// How far from the trip destination a title match may plausibly be. Generous
+// enough for day-trips out of the city, tight enough to exclude another country.
+const MAX_REGION_METERS = 150000; // 150 km
+
 // ── Sanity guard ─────────────────────────────────────────────────────────────
 // A "walk from your hotel" measured in days means the destination geocoded to
 // the wrong place, not a real journey. Thresholds are deliberately loose so a
@@ -163,7 +195,13 @@ export function parseLatLng(str) {
 }
 
 // ── Places API: geocode by title when all else fails ─────────────────────────
-async function findPlaceCoords(planId, title, origin) {
+// A title is only meaningful inside the trip's destination — the user is
+// planning one trip, so "the museum" means the one in that city. The search is
+// therefore anchored to the destination three ways: a hard locationRestriction
+// rectangle, the destination appended to the query text, and a final distance
+// check on the result. Without this a generic title could match a same-named
+// place abroad and produce the 600-hour walks seen before.
+async function findPlaceCoords(planId, title, { originHint, regionCoords, regionText } = {}) {
   if (!title?.trim() || !GMAPS_KEY) return null;
   const cacheKey = PLACE_CACHE + planId;
   const cached = localStorage.getItem(cacheKey);
@@ -172,32 +210,27 @@ async function findPlaceCoords(planId, title, origin) {
 
   try {
     const body = {};
-    const coordMatch = origin?.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
-    if (coordMatch) {
-      const lat = parseFloat(coordMatch[1]);
-      const lng = parseFloat(coordMatch[2]);
-      // locationRestriction, not locationBias: a bias is only a preference,
-      // so a generic title could still match a same-named place in another
-      // country. A restriction hard-limits results to the trip's region
-      // (~85 km), which is what produced absurd travel times before.
-      const dLat = 0.75;
-      const dLng = 0.75 / Math.max(0.2, Math.cos(lat * Math.PI / 180));
+    // Anchor on the trip destination when known, else on the origin.
+    const anchor = regionCoords || (parseLatLng(originHint) ? originHint : null);
+    const anchorPt = parseLatLng(anchor);
+
+    if (anchorPt) {
+      const dLat = 1.0; // ~110 km
+      const dLng = 1.0 / Math.max(0.2, Math.cos(anchorPt.lat * Math.PI / 180));
       body.locationRestriction = {
         rectangle: {
-          low:  { latitude: Math.max(-90, lat - dLat), longitude: Math.max(-180, lng - dLng) },
-          high: { latitude: Math.min(90, lat + dLat),  longitude: Math.min(180, lng + dLng) },
+          low:  { latitude: Math.max(-90, anchorPt.lat - dLat), longitude: Math.max(-180, anchorPt.lng - dLng) },
+          high: { latitude: Math.min(90, anchorPt.lat + dLat),  longitude: Math.min(180, anchorPt.lng + dLng) },
         },
       };
-      body.textQuery = title.trim();
-    } else if (origin) {
-      // No coords to restrict by — qualify the query with the city/country so
-      // the title alone can't match the wrong side of the world.
-      const parts = origin.split(',').map(s => s.trim()).filter(Boolean);
-      const hint = parts.slice(-2).join(', ');
-      body.textQuery = hint ? `${title.trim()}, ${hint}` : title.trim();
-    } else {
-      body.textQuery = title.trim();
     }
+    // Always name the destination in the query as well, so even without a
+    // usable rectangle the search is pinned to the right city/country.
+    const qualifier = (regionText || '').trim()
+      || (originHint && !parseLatLng(originHint)
+            ? originHint.split(',').map(s => s.trim()).filter(Boolean).slice(-2).join(', ')
+            : '');
+    body.textQuery = qualifier ? `${title.trim()}, ${qualifier}` : title.trim();
 
     const res = await fetch(PLACES_URL, {
       method: 'POST',
@@ -209,6 +242,12 @@ async function findPlaceCoords(planId, title, origin) {
     const loc = data?.places?.[0]?.location;
     if (!loc) return null;
     const coords = `${loc.latitude},${loc.longitude}`;
+    // Final guard: a match far outside the trip region is the wrong place,
+    // however confident the API was. Don't cache it, don't use it.
+    if (anchor) {
+      const away = metersBetween(anchor, coords);
+      if (away != null && away > MAX_REGION_METERS) return null;
+    }
     localStorage.setItem(cacheKey, coords);
     return coords;
   } catch { return null; }
@@ -314,8 +353,10 @@ function resolveDestinationSync(plan) {
   return null;
 }
 
-// Async resolver with fast cache checks + parallel fallback
-export async function resolveDestinationAsync(plan, origin) {
+// Async resolver with fast cache checks + prioritised fallback.
+// `region` = { coords, text } describing the trip destination, used to keep a
+// title-only lookup inside the destination.
+export async function resolveDestinationAsync(plan, origin, region = {}) {
   // 1. Instant: text address or embedded coords
   const sync = resolveDestinationSync(plan);
   if (sync) return sync;
@@ -342,12 +383,24 @@ export async function resolveDestinationAsync(plan, origin) {
   //    link goes through a slow CORS proxy while Places is one fast call to
   //    Google — so a generic title could silently resolve to a same-named
   //    place on another continent, producing absurd travel times.
-  //    Always give the link a chance to answer first.
-  for (const url of urls) {
-    const c = await expandShortUrl(url);
-    if (c) return c;
+  //    The link is decisive; the title is only consulted if it yields nothing.
+  //    All links are expanded concurrently so several don't serialise.
+  if (urls.length > 0) {
+    const fromLink = await firstSuccess(urls.map(url => () => expandShortUrl(url)));
+    if (fromLink) return fromLink;
   }
-  return await findPlaceCoords(plan.id, plan.title, origin);
+  return await findPlaceCoords(plan.id, plan.title, {
+    originHint: origin,
+    regionCoords: region.coords || null,
+    regionText: region.text || '',
+  });
+}
+
+// Coordinates of the trip destination ("בודפשט, הונגריה" → "47.49,19.04"),
+// geocoded once and cached in localStorage. Used to scope title lookups.
+export async function resolveRegionCoords(destinationText) {
+  if (!destinationText?.trim()) return null;
+  return await geocodeAddress(destinationText.trim());
 }
 
 // ── Geocode a plain text address → coords (cached) ───────────────────────────
@@ -377,10 +430,10 @@ async function geocodeAddress(address) {
 // Resolve a plan to numeric {lat,lng} for proximity clustering.
 // Uses every cheap source first (embedded coords, cached expansions/places),
 // and only geocodes a plain address as a last resort.
-export async function resolvePlanCoords(plan, origin) {
+export async function resolvePlanCoords(plan, origin, region = {}) {
   const direct = parseLatLng(resolveDestinationSync(plan));
   if (direct) return direct;
-  const resolved = await resolveDestinationAsync(plan, origin);
+  const resolved = await resolveDestinationAsync(plan, origin, region);
   const c = parseLatLng(resolved);
   if (c) return c;
   if (resolved) {

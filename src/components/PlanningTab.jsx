@@ -26,6 +26,7 @@ import {
   isOnlineNow,
   isSaneTravel,
   clearPlaceCache,
+  resolveRegionCoords,
   resolveDestinationAsync,
   resolvePlanCoords,
   fetchTravelTimes,
@@ -315,6 +316,9 @@ export default function PlanningTab({ tripId }) {
   // Distance from hotel/origin
   const [hotelDetails, setHotelDetails] = useState(null);
   const [tripDestination, setTripDestination] = useState('');
+  // Coordinates of the destination city, resolved once and cached. Keeps a
+  // title-only place lookup inside the trip's region.
+  const [regionCoords, setRegionCoords] = useState(null);
   // Bumped when connectivity returns, so distances that failed while offline
   // are retried automatically instead of staying stuck.
   const [netEpoch, setNetEpoch] = useState(0);
@@ -427,6 +431,15 @@ export default function PlanningTab({ tripId }) {
 
     return () => unsubscribe();
   }, [tripId]);
+
+  // Geocode the trip destination once so title lookups can be scoped to it.
+  useEffect(() => {
+    let cancelled = false;
+    resolveRegionCoords(tripDestination)
+      .then(c => { if (!cancelled) setRegionCoords(prev => (prev === (c || null) ? prev : (c || null))); })
+      .catch(() => { /* falls back to text-only scoping */ });
+    return () => { cancelled = true; };
+  }, [tripDestination]);
 
   // Hydrate runtime caches from persisted Firestore data (distances + coords)
   // so we don't re-hit the Routes API on every reload. Runtime values already
@@ -554,16 +567,24 @@ export default function PlanningTab({ tripId }) {
 
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
 
-    // Ordered origin options: custom → hotel coords → hotel address →
-    // expanded hotel link → hotel name → city centre.
-    const candidates = await buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online });
+    // Resolve origin and destination CONCURRENTLY. Both may need to expand a
+    // short Maps link over the network, and running them in sequence made
+    // adding a new place noticeably slow. The destination only needs a hint
+    // for its (fallback) title lookup, and resolveOriginString gives that
+    // synchronously from already-cached data.
+    const originHint = resolveOriginString(hotelDetails, customOrigin, tripDestination);
+    const region = { coords: regionCoords, text: tripDestination };
+    const [candidates, dest] = await Promise.all([
+      // Ordered origin options: custom → hotel coords → hotel address →
+      // expanded hotel link → hotel name → city centre.
+      buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online }),
+      resolveDestinationAsync(plan, originHint, region),
+    ]);
+
     if (candidates.length === 0) {
       setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
       return;
     }
-
-    // Destination resolves once; the best origin only biases the place search.
-    const dest = await resolveDestinationAsync(plan, candidates[0].value);
     if (!dest) {
       setDistanceCache(prev => ({
         ...prev,
@@ -659,7 +680,8 @@ export default function PlanningTab({ tripId }) {
       const plan = list[i];
       await fetchPlanDistances(plan);
       if (!(plan.id in coordsCache)) {
-        const c = await resolvePlanCoords(plan, origin).catch(() => null);
+        const c = await resolvePlanCoords(plan, origin, { coords: regionCoords, text: tripDestination })
+          .catch(() => null);
         setCoordsCache(prev => ({ ...prev, [plan.id]: c }));
         if (c && tripId) {
           try { await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: c }); } catch { /* keep runtime */ }
