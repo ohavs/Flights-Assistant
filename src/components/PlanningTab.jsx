@@ -72,6 +72,9 @@ import {
   ArrowUpDown,
   Check,
   Layers,
+  LayoutList,
+  LayoutGrid,
+  Rows3,
   RefreshCw,
   SlidersHorizontal,
   MessageSquare,
@@ -203,6 +206,45 @@ export const defaultGironaPlans = [
   }
 ];
 
+// Card layouts for the places list. Each entry drives the density of the
+// card chrome, so every layout keeps the same behaviour (expand, navigate,
+// mark visited) and only the spacing changes.
+const PLAN_LAYOUTS = {
+  comfortable: {
+    label: 'מרווח',
+    icon: LayoutList,
+    listGap: 14,
+    cardPad: '12px 14px',
+    iconBox: 32,
+    titleSize: 14,
+    headerGap: 10,
+    showSubtitle: true,
+    columns: 1,
+  },
+  compact: {
+    label: 'קומפקטי',
+    icon: Rows3,
+    listGap: 8,
+    cardPad: '8px 10px',
+    iconBox: 26,
+    titleSize: 13,
+    headerGap: 8,
+    showSubtitle: true,
+    columns: 1,
+  },
+  grid: {
+    label: 'רשת',
+    icon: LayoutGrid,
+    listGap: 8,
+    cardPad: '10px 11px',
+    iconBox: 26,
+    titleSize: 12.5,
+    headerGap: 7,
+    showSubtitle: false,
+    columns: 2,
+  },
+};
+
 // Group a day's activities by their time-of-day label.
 // Known labels come first in canonical order, custom labels (e.g. "10:30")
 // follow by first appearance, and unlabeled activities are grouped last.
@@ -317,6 +359,16 @@ export default function PlanningTab({ tripId }) {
   const [showCategoryMenu, setShowCategoryMenu] = useState(false);
   const [categoryMenuRect, setCategoryMenuRect] = useState(null);
   const categoryBtnRef = useRef(null);
+  // Card layout, remembered per trip.
+  const [planLayout, setPlanLayout] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`planLayout_${tripId}`);
+      return saved && PLAN_LAYOUTS[saved] ? saved : 'comfortable';
+    } catch { return 'comfortable'; }
+  });
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const [layoutMenuRect, setLayoutMenuRect] = useState(null);
+  const layoutBtnRef = useRef(null);
   // Proximity grouping view + bulk distance calculation
   const [groupByProximity, setGroupByProximity] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
@@ -534,6 +586,13 @@ export default function PlanningTab({ tripId }) {
   useEffect(() => {
     if (tripId) localStorage.setItem(`sortBy_${tripId}`, sortBy);
   }, [sortBy, tripId]);
+
+  // Persist the chosen card layout per trip. It is read back by the useState
+  // initializer above — the trip UI unmounts when you go back to the trip
+  // list, so the layout is re-read on every entry into a trip.
+  useEffect(() => {
+    if (tripId) localStorage.setItem(`planLayout_${tripId}`, planLayout);
+  }, [planLayout, tripId]);
 
   /* ══════════════════════════════════════════════════════════
      DISTANCE HELPERS
@@ -1050,6 +1109,12 @@ export default function PlanningTab({ tripId }) {
       if (!!a.visited === !!b.visited) return 0;
       return a.visited ? 1 : -1;
     });
+
+  // Active card layout (density + column count).
+  const LO = PLAN_LAYOUTS[planLayout] || PLAN_LAYOUTS.comfortable;
+  // Small enough that two tiles still fit on a ~360px phone; auto-fill adds
+  // more columns on wider screens.
+  const gridMinCol = 148;
 
   // Proximity-grouping view: flatten filteredPlans into a single render list
   // interleaved with area-header sentinels ({ __header: true }). Places without
@@ -2018,6 +2083,86 @@ export default function PlanningTab({ tripId }) {
               );
             })()}
 
+            {/* Card layout picker — same row, same chip sizing as the other
+                icon buttons so the row stays balanced. */}
+            {(() => {
+              const CurrentIcon = PLAN_LAYOUTS[planLayout]?.icon || LayoutList;
+              const rect = showLayoutMenu ? layoutMenuRect : null;
+              return (
+                <>
+                  <button
+                    ref={layoutBtnRef}
+                    type="button"
+                    onClick={() => {
+                      const r = layoutBtnRef.current?.getBoundingClientRect();
+                      if (r) setLayoutMenuRect({ bottom: r.bottom, right: r.right });
+                      setShowLayoutMenu(v => !v);
+                    }}
+                    title={`תצוגת כרטיסים — ${PLAN_LAYOUTS[planLayout]?.label || ''}`}
+                    className="filter-chip"
+                    style={{
+                      flexShrink: 0, gap: 4,
+                      color: showLayoutMenu ? '#fff' : 'var(--text-muted)',
+                      background: showLayoutMenu ? 'var(--accent)' : 'var(--ink-5)',
+                      borderColor: showLayoutMenu ? 'var(--accent)' : undefined,
+                    }}
+                  >
+                    <CurrentIcon size={14} />
+                  </button>
+
+                  {showLayoutMenu && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowLayoutMenu(false)} />
+                      <div style={{
+                        position: 'fixed',
+                        top: rect ? rect.bottom + 6 : 120,
+                        right: rect ? Math.max(8, window.innerWidth - rect.right) : 8,
+                        zIndex: 50,
+                        background: 'var(--surface)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 14,
+                        boxShadow: 'var(--shadow-lg)',
+                        overflow: 'hidden',
+                        width: 190,
+                        maxWidth: 'calc(100vw - 16px)',
+                        direction: 'rtl',
+                      }}>
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>תצוגת כרטיסים</div>
+                        {Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => {
+                          const Icon = cfg.icon;
+                          const active = key === planLayout;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => { setPlanLayout(key); setShowLayoutMenu(false); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                                padding: '10px 14px', border: 'none',
+                                background: active ? 'var(--p-6)' : 'var(--surface)',
+                                color: active ? 'var(--accent)' : 'var(--primary)',
+                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                                fontSize: 13, fontWeight: 700,
+                                borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
+                              }}
+                            >
+                              <Icon size={15} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1 }}>{cfg.label}</span>
+                              {active && <Check size={14} style={{ flexShrink: 0 }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
             {/* Category settings — unchanged */}
             {canEdit && (
               <button
@@ -2212,10 +2357,20 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Planning Cards List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Planning Cards List — density and column count come from the
+              selected layout. Grid falls back to one column on narrow phones,
+              and an expanded card spans the full width so its contents stay
+              readable. Area headers always span all columns. */}
+          <div style={LO.columns > 1 ? {
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinCol}px, 1fr))`,
+            gap: LO.listGap,
+            alignItems: 'start',
+          } : {
+            display: 'flex', flexDirection: 'column', gap: LO.listGap,
+          }}>
             {filteredPlans.length === 0 ? (
-              <div className="glass-card" style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <div className="glass-card" style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
                 <p style={{ fontSize: '15px', fontWeight: '700' }}>לא נמצאו פריטי תכנון העונים לסינון.</p>
               </div>
             ) : (
@@ -2234,6 +2389,7 @@ export default function PlanningTab({ tripId }) {
                         fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
                         background: 'transparent', border: 'none', cursor: 'pointer',
                         textAlign: 'right', direction: 'rtl',
+                        gridColumn: '1 / -1',
                       }}
                     >
                       <ChevronDown
@@ -2255,6 +2411,9 @@ export default function PlanningTab({ tripId }) {
                   );
                 }
                 const isOpen = !!expandedPlanIds[plan.id];
+                // Narrow grid tile: only while collapsed — an expanded card
+                // spans the full row and renders exactly like the other layouts.
+                const isTile = LO.columns > 1 && !isOpen;
 
                 // Event status badges (only for the events category)
                 const ev = plan.event;
@@ -2320,17 +2479,25 @@ export default function PlanningTab({ tripId }) {
                     className={`glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`}
                     onClick={() => togglePlanExpanded(plan.id)}
                     style={{
-                      padding: '12px 14px',
+                      padding: LO.cardPad,
                       display: 'flex',
                       flexDirection: 'column',
                       gap: isOpen ? '12px' : '0',
                       cursor: 'pointer',
                       willChange: 'transform',
+                      // An expanded card takes the whole row in grid mode so
+                      // its details aren't squeezed into a narrow column.
+                      ...(LO.columns > 1 && isOpen ? { gridColumn: '1 / -1' } : {}),
                     }}
                   >
                     {/* Header — always visible. Visited toggle here so the
                         user can mark/unmark without expanding the card. */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: LO.headerGap,
+                      // In grid mode the tile is too narrow for one row, so the
+                      // controls sit on top and the title wraps beneath them.
+                      ...(isTile ? { flexWrap: 'wrap', rowGap: 6 } : {}),
+                    }}>
                       {/* Big checkbox-style toggle on the right (visual start in RTL) */}
                       {canEdit ? (
                         <button
@@ -2351,18 +2518,18 @@ export default function PlanningTab({ tripId }) {
                       )}
 
                       <span style={{
-                        width: 32, height: 32, borderRadius: 10,
+                        width: LO.iconBox, height: LO.iconBox, borderRadius: 10,
                         background: `${getCategoryColor(plan.category)}18`,
                         color: getCategoryColor(plan.category),
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
                       }}>
-                        {getCategoryIcon(plan.category)}
+                        {getCategoryIcon(plan.category, LO.iconBox <= 26 ? 15 : undefined)}
                       </span>
 
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ minWidth: 0, flex: 1, ...(isTile ? { flexBasis: '100%', order: 2 } : {}) }}>
                         <h3 style={{
-                          fontSize: 14,
+                          fontSize: LO.titleSize,
                           fontWeight: 800,
                           color: plan.visited ? 'var(--text-success)' :
                                  plan.priority === 'must' ? '#f59e0b' :
@@ -2449,16 +2616,18 @@ export default function PlanningTab({ tripId }) {
                             }}>נגמר</span>
                           )}
                         </h3>
-                        <span style={{
-                          fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
-                        }}>
-                          {plan.category === EVENTS_CATEGORY && plan.event?.startDate
-                            ? `🗓️ ${formatEventWhen(plan.event)}`
-                            : plan.description
-                              ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
-                              : plan.category}
-                        </span>
+                        {(LO.showSubtitle || isOpen) && (
+                          <span style={{
+                            fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
+                          }}>
+                            {plan.category === EVENTS_CATEGORY && plan.event?.startDate
+                              ? `🗓️ ${formatEventWhen(plan.event)}`
+                              : plan.description
+                                ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
+                                : plan.category}
+                          </span>
+                        )}
                       </div>
 
                       {(() => {
@@ -2490,7 +2659,7 @@ export default function PlanningTab({ tripId }) {
                         );
                       })()}
 
-                      {canEdit && (
+                      {canEdit && !isTile && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); cyclePriority(plan); }}
@@ -2513,15 +2682,17 @@ export default function PlanningTab({ tripId }) {
                         </button>
                       )}
 
-                      <ChevronDown
-                        size={18}
-                        style={{
-                          color: 'var(--text-muted)',
-                          transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
-                          transition: 'transform 0.2s ease',
-                          flexShrink: 0,
-                        }}
-                      />
+                      {!isTile && (
+                        <ChevronDown
+                          size={18}
+                          style={{
+                            color: 'var(--text-muted)',
+                            transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
+                            transition: 'transform 0.2s ease',
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
                     </div>
 
                     {/* Expanded body */}
