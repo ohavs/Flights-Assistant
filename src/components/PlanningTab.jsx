@@ -226,8 +226,15 @@ function groupActivitiesByTime(acts) {
 }
 
 export default function PlanningTab({ tripId }) {
-  const { canEdit } = useTrip();
+  const { canEdit, currentUid, currentUserProfile, memberProfiles } = useTrip();
   const confirm = useConfirm();
+
+  // Profile of whoever added a place, for the little avatar on the card.
+  const profileFor = (uid) => {
+    if (!uid) return null;
+    if (uid === currentUid && currentUserProfile) return currentUserProfile;
+    return memberProfiles?.[uid] || null;
+  };
 
   // FLIP animation: only fires when the sorted order of cards changes
   // (i.e. a visited-toggle moves a card to the bottom). Expanding/collapsing
@@ -304,6 +311,12 @@ export default function PlanningTab({ tripId }) {
   const [sortBy, setSortBy] = useState('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const optionsBtnRef = useRef(null);
+  // Category filter dropdown (replaces the old row of filter pills). The
+  // trigger's position is captured on click rather than read during render,
+  // so the popup can be positioned without touching a ref mid-render.
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const [categoryMenuRect, setCategoryMenuRect] = useState(null);
+  const categoryBtnRef = useRef(null);
   // Proximity grouping view + bulk distance calculation
   const [groupByProximity, setGroupByProximity] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
@@ -918,6 +931,8 @@ export default function PlanningTab({ tripId }) {
         distanceOriginId: originId,
         event: eventData,
         priority: formPriority || null,
+        addedBy: currentUid || null,
+        addedAt: new Date().toISOString(),
       }).catch(err => console.error('Planning add error:', err));
     }
 
@@ -1860,56 +1875,160 @@ export default function PlanningTab({ tripId }) {
             alignItems: 'center',
             gap: 4,
           }}>
-            {/* Scrollable chips */}
-            <div className="horizontal-scroll filter-chips-row" style={{ flex: 1, gap: 10, paddingBottom: 0 }}>
-              {/* Must-visit filter chip */}
-              {plans.some(p => p.priority === 'must') && (
-                <button
-                  onClick={() => setSelectedFilter(selectedFilter === '__must__' ? 'הכל' : '__must__')}
-                  className={`filter-chip ${selectedFilter === '__must__' ? 'active' : ''}`}
-                  style={selectedFilter === '__must__'
-                    ? { background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }
-                    : { color: '#f59e0b', borderColor: '#f59e0b22' }}
-                >
-                  <Star size={13} fill={selectedFilter === '__must__' ? '#fff' : '#f59e0b'} />
-                  <span>חובה</span>
-                </button>
-              )}
-              {['הכל', ...categories.filter(cat => plans.some(p => p.category === cat))].map((filter, idx) => {
-                const active = filter === selectedFilter;
-                const color = filter !== 'הכל' ? getCategoryColor(filter) : undefined;
-                return (
+            {/* Category filter — a single dropdown instead of a pill per
+                category, so the row stays readable however many there are.
+                Fixed positioning (anchored via getBoundingClientRect) because
+                the sticky, backdrop-filtered parent breaks absolute popups. */}
+            {(() => {
+              const usedCategories = categories.filter(cat => plans.some(p => p.category === cat));
+              const mustCount = plans.filter(p => p.priority === 'must').length;
+              const countFor = (cat) => plans.filter(p => p.category === cat).length;
+
+              const isMust = selectedFilter === '__must__';
+              const isAll = selectedFilter === 'הכל';
+              const activeColor = isMust ? '#f59e0b' : (isAll ? null : getCategoryColor(selectedFilter));
+              const rect = showCategoryMenu ? categoryMenuRect : null;
+
+              const options = [
+                ...(mustCount > 0 ? [{
+                  key: '__must__', label: 'חובה', color: '#f59e0b', count: mustCount,
+                  icon: <Star size={15} fill="#f59e0b" color="#f59e0b" />,
+                }] : []),
+                { key: 'הכל', label: 'הכל', color: null, count: plans.length, icon: <Layers size={15} /> },
+                ...usedCategories.map(cat => ({
+                  key: cat, label: cat, color: getCategoryColor(cat), count: countFor(cat),
+                  icon: getCategoryIcon(cat, 15),
+                })),
+              ];
+              const current = options.find(o => o.key === selectedFilter) || options.find(o => o.key === 'הכל');
+
+              return (
+                <>
                   <button
-                    key={idx}
-                    onClick={() => setSelectedFilter(filter)}
-                    className={`filter-chip ${active ? 'active' : ''}`}
-                    style={active && filter !== 'הכל' ? {
-                      background: color,
-                      borderColor: color,
-                      color: '#fff',
-                    } : {}}
+                    ref={categoryBtnRef}
+                    type="button"
+                    onClick={() => {
+                      const r = categoryBtnRef.current?.getBoundingClientRect();
+                      if (r) setCategoryMenuRect({ bottom: r.bottom, right: r.right, width: r.width });
+                      setShowCategoryMenu(v => !v);
+                    }}
+                    title="סינון לפי קטגוריה"
+                    style={{
+                      flex: 1, minWidth: 0,
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '9px 12px',
+                      borderRadius: 12,
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-hebrew)',
+                      fontSize: 13, fontWeight: 800,
+                      textAlign: 'right',
+                      background: activeColor ? `${activeColor}14` : 'var(--surface)',
+                      border: `1.5px solid ${activeColor || 'var(--p-12)'}`,
+                      color: activeColor || 'var(--primary)',
+                      boxShadow: 'var(--shadow-sm)',
+                    }}
                   >
-                    {filter !== 'הכל' && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', color: active ? '#fff' : color }}>
-                        {getCategoryIcon(filter, 14)}
-                      </span>
-                    )}
-                    <span>{filter}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--accent)', flexShrink: 0 }}>
+                      {current?.icon}
+                    </span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {current?.label || 'הכל'}
+                    </span>
+                    <span style={{
+                      flexShrink: 0, fontSize: 11, fontWeight: 800,
+                      background: activeColor ? `${activeColor}22` : 'var(--ink-5)',
+                      color: activeColor || 'var(--text-muted)',
+                      padding: '2px 7px', borderRadius: 999,
+                    }}>
+                      {current?.count ?? 0}
+                    </span>
+                    <ChevronDown
+                      size={15}
+                      style={{
+                        flexShrink: 0, opacity: 0.7,
+                        transform: showCategoryMenu ? 'rotate(180deg)' : 'rotate(0)',
+                        transition: 'transform 0.2s ease',
+                      }}
+                    />
                   </button>
-                );
-              })}
-              {/* Settings button inside scrollable row */}
-              {canEdit && (
-                <button
-                  onClick={() => setShowCategorySettings(true)}
-                  title="הגדרות קטגוריות"
-                  className="filter-chip"
-                  style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'var(--ink-5)' }}
-                >
-                  <Settings size={13} />
-                </button>
-              )}
-            </div>
+
+                  {showCategoryMenu && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowCategoryMenu(false)} />
+                      <div style={{
+                        position: 'fixed',
+                        top: rect ? rect.bottom + 6 : 120,
+                        right: rect ? Math.max(8, window.innerWidth - rect.right) : 8,
+                        width: rect ? Math.max(rect.width, 220) : 240,
+                        maxWidth: 'calc(100vw - 16px)',
+                        maxHeight: '60vh',
+                        overflowY: 'auto',
+                        zIndex: 50,
+                        background: 'var(--surface)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 14,
+                        boxShadow: 'var(--shadow-lg)',
+                        direction: 'rtl',
+                      }}>
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                          position: 'sticky', top: 0,
+                        }}>סינון לפי קטגוריה</div>
+                        {options.map(opt => {
+                          const active = opt.key === selectedFilter;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => { setSelectedFilter(opt.key); setShowCategoryMenu(false); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                                padding: '10px 14px', border: 'none',
+                                background: active ? (opt.color ? `${opt.color}14` : 'var(--p-6)') : 'var(--surface)',
+                                color: active ? (opt.color || 'var(--accent)') : 'var(--primary)',
+                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                                fontSize: 13, fontWeight: 700,
+                                borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
+                              }}
+                            >
+                              <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, color: opt.color || (active ? 'var(--accent)' : 'var(--text-muted)') }}>
+                                {opt.icon}
+                              </span>
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {opt.label}
+                              </span>
+                              <span style={{
+                                fontSize: 11, fontWeight: 800, flexShrink: 0,
+                                background: opt.color ? `${opt.color}1f` : 'var(--ink-5)',
+                                color: opt.color || 'var(--text-muted)',
+                                padding: '2px 7px', borderRadius: 999,
+                              }}>
+                                {opt.count}
+                              </span>
+                              {active && <Check size={14} style={{ flexShrink: 0 }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* Category settings — unchanged */}
+            {canEdit && (
+              <button
+                onClick={() => setShowCategorySettings(true)}
+                title="הגדרות קטגוריות"
+                className="filter-chip"
+                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'var(--ink-5)' }}
+              >
+                <Settings size={13} />
+              </button>
+            )}
 
             {/* Single options button — no wrapper div (backdrop-filter parent
                 causes positioned wrapper divs to get implicit solid bg).
@@ -2545,6 +2664,46 @@ export default function PlanningTab({ tripId }) {
                               </div>
                             </a>
                           ))}
+
+                          {/* Who added this place — trailing end of the
+                              location/links row. Places added before this
+                              feature have no addedBy, so nothing is shown. */}
+                          {(() => {
+                            const who = profileFor(plan.addedBy);
+                            if (!who) return null;
+                            const name = who.displayName || who.email || 'משתמש';
+                            return (
+                              <div
+                                title={`נוסף על ידי ${name}`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                                  marginInlineStart: 'auto', flexShrink: 0,
+                                  background: 'var(--ink-4)',
+                                  padding: '3px 4px 3px 10px',
+                                  borderRadius: 999,
+                                }}
+                              >
+                                <div style={{
+                                  width: 22, height: 22, borderRadius: '50%', overflow: 'hidden',
+                                  flexShrink: 0, background: 'var(--accent)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                  {who.photoURL
+                                    ? <img src={who.photoURL} alt="" referrerPolicy="no-referrer"
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    : <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>
+                                        {name[0]}
+                                      </span>}
+                                </div>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+                                  maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                  {name}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
