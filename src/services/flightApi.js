@@ -85,6 +85,19 @@ function adaptFlight(api) {
   };
 }
 
+// Whole days between today and a YYYY-MM-DD date (negative for the past).
+function daysAhead(dateStr) {
+  if (!dateStr) return 0;
+  const target = new Date(`${dateStr.slice(0, 10)}T00:00:00Z`).getTime();
+  if (Number.isNaN(target)) return 0;
+  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime();
+  return Math.round((target - today) / 86400000);
+}
+
+// Beyond roughly this many days the schedule feed generally has nothing yet,
+// so an empty result says more about the horizon than about the flight.
+const FUTURE_HORIZON_DAYS = 90;
+
 function humaniseHttp(status, body) {
   const snippet = (body || '').slice(0, 140);
   if (status === 401 || status === 403) return `מפתח ה-API לא מאושר (HTTP ${status}). יש להחליף או לחדש את המפתח בקוד. ${snippet}`;
@@ -134,7 +147,13 @@ export async function lookupFlightLive(flightNumber, dateStr) {
     const noResults = () => ({
       flight: localFallback(),
       status: 'no-results',
-      message: 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין. ייתכן שהתאריך רחוק מדי או שמספר הטיסה שגוי.',
+      // A far-future date is the common, benign reason for an empty result:
+      // the schedule simply isn't in the data source yet. Saying "wrong flight
+      // number" there would send the user looking for a mistake that isn't
+      // theirs, so distinguish the two cases.
+      message: daysAhead(date) > FUTURE_HORIZON_DAYS
+        ? `לוחות הזמנים לתאריך הזה עדיין לא זמינים במאגר (התאריך בעוד כ-${daysAhead(date)} ימים). זה תקין — הנתונים יתעדכנו אוטומטית ככל שנתקרב למועד. בינתיים אפשר למלא את הפרטים ידנית.`
+        : 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין. כדאי לוודא את מספר הטיסה ואת התאריך מול הכרטיס.',
     });
     if (!raw.trim()) return noResults();
 
