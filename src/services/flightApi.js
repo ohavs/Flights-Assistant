@@ -180,14 +180,19 @@ export async function lookupFlightLive(flightNumber, dateStr) {
       const probe = await queryApi('');
       if (!probe.fail && probe.list.length > 0) {
         const near = adaptFlight(probe.list[0]);
-        return {
-          flight: localFallback(),
-          status: 'no-results',
-          knownDate: near.date || '',
-          message: near.date
-            ? `מספר הטיסה ${num} קיים במאגר, אבל לא בתאריך שביקשת. התאריך הקרוב שנמצא עבורו הוא ${near.date.split('-').reverse().join('/')} — כנראה שהטיסה לא מופעלת בכל יום.`
-            : `מספר הטיסה ${num} קיים במאגר, אבל אין לו תוצאה בתאריך שביקשת — כנראה שהטיסה לא מופעלת באותו יום.`,
-        };
+        const nearHuman = near.date ? near.date.split('-').reverse().join('/') : '';
+        const nearAge = near.date ? daysAhead(near.date) : null;
+        let message;
+        if (!near.date) {
+          message = `מספר הטיסה ${num} קיים במאגר, אבל אין לו תוצאה בתאריך שביקשת — כנראה שהטיסה לא מופעלת באותו יום.`;
+        } else if (nearAge < 0) {
+          // The only record is in the past: the feed has history for this
+          // number but no forward schedule, so no future date will resolve.
+          message = `במאגר יש רק היסטוריה עבור ${num} — הרשומה האחרונה היא מ-${nearHuman}, ואין לו לוח זמנים עתידי. לכן שום תאריך עתידי לא יימצא, וצריך למלא את הפרטים ידנית. ייתכן שהמאגר יעדכן סטטוס חי סמוך למועד ההמראה.`;
+        } else {
+          message = `מספר הטיסה ${num} קיים במאגר, אבל לא בתאריך שביקשת. התאריך הקרוב שנמצא עבורו הוא ${nearHuman} — כנראה שהטיסה לא מופעלת בכל יום.`;
+        }
+        return { flight: localFallback(), status: 'no-results', knownDate: near.date || '', message };
       }
       if (!probe.fail) {
         // Not found on the date and not found at all → the number itself is
