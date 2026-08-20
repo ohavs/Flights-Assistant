@@ -124,18 +124,46 @@ export async function lookupFlightLive(flightNumber, dateStr) {
       const text = await res.text().catch(() => '');
       return { flight: localFallback(), status: 'http-error', code: res.status, message: humaniseHttp(res.status, text) };
     }
-    const data = await res.json();
-    const list = Array.isArray(data) ? data : (data && data.flights) || [];
-    if (list.length === 0) {
-      return { flight: localFallback(), status: 'no-results', message: 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין.' };
+
+    // AeroDataBox answers "I have nothing for this flight/date" with 204 or a
+    // 200 carrying an empty body. Calling res.json() on that throws
+    // "Unexpected end of JSON input", which used to surface to the user as a
+    // raw English error. Read the body as text first and treat empty as
+    // no-results, which is what it actually means.
+    const raw = res.status === 204 ? '' : await res.text().catch(() => '');
+    const noResults = () => ({
+      flight: localFallback(),
+      status: 'no-results',
+      message: 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין. ייתכן שהתאריך רחוק מדי או שמספר הטיסה שגוי.',
+    });
+    if (!raw.trim()) return noResults();
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      // A 200 with a body we can't parse is a service-side problem, not
+      // something the user can act on — say so in Hebrew rather than leaking
+      // the parser's message.
+      return {
+        flight: localFallback(),
+        status: 'http-error',
+        code: res.status,
+        message: 'התקבלה תשובה לא תקינה משירות הטיסות. נסה שוב מאוחר יותר.',
+      };
     }
+
+    const list = Array.isArray(data) ? data : (data && data.flights) || [];
+    if (list.length === 0) return noResults();
     return { flight: adaptFlight(list[0]), status: 'api' };
   } catch (e) {
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     return {
       flight: localFallback(),
       status: 'network-error',
-      message: offline ? 'אין חיבור לאינטרנט — מציג נתונים שמורים.' : (e?.message || 'שגיאת רשת'),
+      message: offline
+        ? 'אין חיבור לאינטרנט — מציג נתונים שמורים.'
+        : `לא הצלחנו להתחבר לשירות הטיסות (${e?.name || 'שגיאה'}). נסה שוב.`,
     };
   }
 }
