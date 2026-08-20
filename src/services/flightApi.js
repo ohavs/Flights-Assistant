@@ -80,6 +80,9 @@ function adaptFlight(api) {
     estimatedArr: localTimeTo24((arr.predictedTime || arr.revisedTime || arr.actualTime || {}).local || (arr.predictedTime || arr.revisedTime || arr.actualTime || {}).utc || (arr.scheduledTime && (arr.scheduledTime.local || arr.scheduledTime.utc))),
     status: statusFromApi(api.status),
     gate: dep.gate || arr.gate || '',
+    // Local departure date (YYYY-MM-DD) as the API reports it — used to tell
+    // the user which date this flight number actually operates on.
+    date: String((dep.scheduledTime && (dep.scheduledTime.local || dep.scheduledTime.utc)) || '').slice(0, 10),
     matched: true,
     source: 'api',
   };
@@ -136,57 +139,74 @@ export async function lookupFlightLive(flightNumber, dateStr) {
   }
 
   const date = (dateStr || '').match(/^\d{4}-\d{2}-\d{2}/) ? dateStr.slice(0, 10) : '';
-  const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}` + (date ? `/${date}` : '');
 
-  try {
+  // One call to the flights-by-number endpoint. Returns { list } on success,
+  // or { fail } holding the wrapper to hand back to the caller.
+  const queryApi = async (forDate) => {
+    const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}` + (forDate ? `/${forDate}` : '');
     const res = await fetch(url + '?dateLocalRole=Both&withAircraftImage=false&withLocation=true', {
-      headers: {
-        'X-RapidAPI-Key': API_KEY,
-        'X-RapidAPI-Host': API_HOST,
-      },
+      headers: { 'X-RapidAPI-Key': API_KEY, 'X-RapidAPI-Host': API_HOST },
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      return { flight: localFallback(), status: 'http-error', code: res.status, message: humaniseHttp(res.status, text) };
+      return { fail: { flight: localFallback(), status: 'http-error', code: res.status, message: humaniseHttp(res.status, text) } };
     }
-
-    // AeroDataBox answers "I have nothing for this flight/date" with 204 or a
-    // 200 carrying an empty body. Calling res.json() on that throws
-    // "Unexpected end of JSON input", which used to surface to the user as a
-    // raw English error. Read the body as text first and treat empty as
-    // no-results, which is what it actually means.
+    // "Nothing for this flight/date" comes back as 204, or as 200 with an
+    // empty body. res.json() on that throws "Unexpected end of JSON input",
+    // which used to surface as a raw English error — so read text first.
     const raw = res.status === 204 ? '' : await res.text().catch(() => '');
-    const noResults = () => ({
-      flight: localFallback(),
-      status: 'no-results',
-      // A far-future date is the common, benign reason for an empty result:
-      // the schedule simply isn't in the data source yet. Saying "wrong flight
-      // number" there would send the user looking for a mistake that isn't
-      // theirs, so distinguish the two cases.
-      message: daysAhead(date) > FUTURE_HORIZON_DAYS
-        ? `לוחות הזמנים לתאריך הזה עדיין לא זמינים במאגר (התאריך בעוד כ-${daysAhead(date)} ימים). זה תקין — הנתונים יתעדכנו אוטומטית ככל שנתקרב למועד. בינתיים אפשר למלא את הפרטים ידנית.`
-        : 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין. כדאי לוודא את מספר הטיסה ואת התאריך מול הכרטיס.',
-    });
-    if (!raw.trim()) return noResults();
-
+    if (!raw.trim()) return { list: [] };
     let data;
     try {
       data = JSON.parse(raw);
     } catch {
-      // A 200 with a body we can't parse is a service-side problem, not
-      // something the user can act on — say so in Hebrew rather than leaking
-      // the parser's message.
-      return {
-        flight: localFallback(),
-        status: 'http-error',
-        code: res.status,
-        message: 'התקבלה תשובה לא תקינה משירות הטיסות. נסה שוב מאוחר יותר.',
-      };
+      return { fail: { flight: localFallback(), status: 'http-error', code: res.status,
+        message: 'התקבלה תשובה לא תקינה משירות הטיסות. נסה שוב מאוחר יותר.' } };
+    }
+    return { list: Array.isArray(data) ? data : (data && data.flights) || [] };
+  };
+
+  try {
+    const first = await queryApi(date);
+    if (first.fail) return first.fail;
+    if (first.list.length > 0) return { flight: adaptFlight(first.list[0]), status: 'api' };
+
+    // Nothing on that date. Ask the same endpoint without a date, which
+    // returns the nearest known operation of this flight number. That
+    // separates the two cases the user otherwise can't tell apart:
+    // an unknown flight number, versus a valid one that simply doesn't
+    // operate on the requested date.
+    if (date) {
+      const probe = await queryApi('');
+      if (!probe.fail && probe.list.length > 0) {
+        const near = adaptFlight(probe.list[0]);
+        return {
+          flight: localFallback(),
+          status: 'no-results',
+          knownDate: near.date || '',
+          message: near.date
+            ? `מספר הטיסה ${num} קיים במאגר, אבל לא בתאריך שביקשת. התאריך הקרוב שנמצא עבורו הוא ${near.date.split('-').reverse().join('/')} — כנראה שהטיסה לא מופעלת בכל יום.`
+            : `מספר הטיסה ${num} קיים במאגר, אבל אין לו תוצאה בתאריך שביקשת — כנראה שהטיסה לא מופעלת באותו יום.`,
+        };
+      }
+      if (!probe.fail) {
+        // Not found on the date and not found at all → the number itself is
+        // not in the database, whatever the date.
+        return {
+          flight: localFallback(),
+          status: 'no-results',
+          message: `מספר הטיסה ${num} לא נמצא במאגר של AeroDataBox באף תאריך. ייתכן שהוא מופעל בפועל תחת מספר אחר (code-share), או שהמאגר לא מכסה את הטיסה הזו. כדאי להשוות למספר שמופיע בכרטיס העלייה למטוס.`,
+        };
+      }
     }
 
-    const list = Array.isArray(data) ? data : (data && data.flights) || [];
-    if (list.length === 0) return noResults();
-    return { flight: adaptFlight(list[0]), status: 'api' };
+    return {
+      flight: localFallback(),
+      status: 'no-results',
+      message: daysAhead(date) > FUTURE_HORIZON_DAYS
+        ? `לוחות הזמנים לתאריך הזה עדיין לא זמינים במאגר (התאריך בעוד כ-${daysAhead(date)} ימים). זה תקין — הנתונים יתעדכנו אוטומטית ככל שנתקרב למועד. בינתיים אפשר למלא את הפרטים ידנית.`
+        : 'AeroDataBox לא החזיר תוצאות עבור מספר הטיסה הזה בתאריך שצוין. כדאי לוודא את מספר הטיסה ואת התאריך מול הכרטיס.',
+    };
   } catch (e) {
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     return {
