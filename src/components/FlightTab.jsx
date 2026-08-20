@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
-import { lookupFlightLive } from '../services/flightApi';
+import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import MapComponent from './MapComponent';
@@ -656,7 +656,9 @@ export default function FlightTab({ tripId }) {
       name: formTripName,
       dates: formatDateRange(formOutDate, formRetDate),
       outboundFlightDetails: {
-        flightNumber: formOutFlightNum,
+        // Store the compact designator so saved flights always match what the
+        // lookup and refresh calls send.
+        flightNumber: normaliseFlightNumber(formOutFlightNum),
         airline: formOutAirline,
         depAirport: { ...outAirportsRef.current.dep, timezone: formOutDepTz },
         arrAirport: { ...outAirportsRef.current.arr, timezone: formOutArrTz },
@@ -669,7 +671,7 @@ export default function FlightTab({ tripId }) {
         gate: formOutGate
       },
       returnFlightDetails: {
-        flightNumber: formRetFlightNum,
+        flightNumber: normaliseFlightNumber(formRetFlightNum),
         airline: formRetAirline,
         depAirport: { ...retAirportsRef.current.dep, timezone: formRetDepTz },
         arrAirport: { ...retAirportsRef.current.arr, timezone: formRetArrTz },

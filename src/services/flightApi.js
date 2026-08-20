@@ -85,6 +85,12 @@ function adaptFlight(api) {
   };
 }
 
+// "W6 2329" / "w6-2329" → "W62329". Airlines print the designator with a
+// space; the API expects it without one.
+export function normaliseFlightNumber(input) {
+  return String(input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 // Whole days between today and a YYYY-MM-DD date (negative for the past).
 function daysAhead(dateStr) {
   if (!dateStr) return 0;
@@ -108,7 +114,13 @@ function humaniseHttp(status, body) {
 
 // Returns: { flight, status: 'api'|'no-key'|'http-error'|'no-results'|'network-error', code?, message? }
 export async function lookupFlightLive(flightNumber, dateStr) {
-  const num = String(flightNumber || '').trim().toUpperCase();
+  // AeroDataBox matches the compact IATA designator ("W62329"), so anything
+  // the user typed with a space or dash ("W6 2329", "W6-2329") has to be
+  // normalised first — otherwise the request asks for "W6%202329", matches
+  // nothing, and comes back empty. adaptFlight() already stores numbers this
+  // way, so a flight that was looked up once would work while the same flight
+  // typed by hand would not.
+  const num = normaliseFlightNumber(flightNumber);
   if (!num) return { flight: null, status: 'no-key', message: 'מספר טיסה חסר' };
 
   const localFallback = () => {
