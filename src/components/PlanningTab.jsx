@@ -331,6 +331,10 @@ export default function PlanningTab({ tripId }) {
   const [links, setLinks] = useState([]); // [{ label, url }]
   const [newLinkLabel, setNewLinkLabel] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
+  // Inline editing of an already-added link (index into `links`).
+  const [editingLinkIdx, setEditingLinkIdx] = useState(null);
+  const [editLinkLabel, setEditLinkLabel] = useState('');
+  const [editLinkUrl, setEditLinkUrl] = useState('');
   // Event fields (shown only when category === EVENTS_CATEGORY)
   const [eventStartDate, setEventStartDate] = useState('');
   const [eventEndDate, setEventEndDate] = useState('');
@@ -780,6 +784,7 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setPrice('');
     setLinks([]);
+    setEditingLinkIdx(null);
     setNewLinkLabel('');
     setNewLinkUrl('');
     setEventStartDate('');
@@ -823,6 +828,7 @@ export default function PlanningTab({ tripId }) {
     setAddress(plan.address || '');
     setPrice(plan.price || '');
     setLinks(Array.isArray(plan.links) ? plan.links : []);
+    setEditingLinkIdx(null);
     setNewLinkLabel('');
     setNewLinkUrl('');
     setEventStartDate(plan.event?.startDate || '');
@@ -855,8 +861,44 @@ export default function PlanningTab({ tripId }) {
     setNewLinkUrl('');
   };
 
-  const handleRemoveLinkRow = (idx) => {
+  const handleRemoveLinkRow = async (idx) => {
+    const link = links[idx];
+    const ok = await confirm({
+      title: 'מחיקת קישור',
+      message: link?.label
+        ? <>האם למחוק את הקישור <strong>{link.label}</strong>?</>
+        : 'האם למחוק את הקישור?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     setLinks(prev => prev.filter((_, i) => i !== idx));
+    // The edited row may have shifted or disappeared — drop the edit state.
+    setEditingLinkIdx(null);
+  };
+
+  const handleStartEditLink = (idx) => {
+    const link = links[idx] || {};
+    setEditingLinkIdx(idx);
+    setEditLinkLabel(link.label || '');
+    setEditLinkUrl(link.url || '');
+  };
+
+  const handleCancelEditLink = () => {
+    setEditingLinkIdx(null);
+    setEditLinkLabel('');
+    setEditLinkUrl('');
+  };
+
+  const handleSaveEditLink = () => {
+    const url = editLinkUrl.trim();
+    if (!url) return;
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    setLinks(prev => prev.map((l, i) => (
+      i === editingLinkIdx ? { label: editLinkLabel.trim() || normalized, url: normalized } : l
+    )));
+    handleCancelEditLink();
   };
 
   const togglePlanExpanded = (id) => {
@@ -998,6 +1040,7 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setPrice('');
     setLinks([]);
+    setEditingLinkIdx(null);
     setEventStartDate('');
     setEventEndDate('');
     setEventStartTime('');
@@ -1676,16 +1719,64 @@ export default function PlanningTab({ tripId }) {
                     {links.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                         {links.map((link, idx) => (
-                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1px solid var(--p-12)' }}>
-                            <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.label}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">{link.url}</div>
+                          editingLinkIdx === idx ? (
+                            // Edit mode — same two fields as when adding, so a
+                            // link's name and address can both be corrected.
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--accent)' }}>
+                              <input
+                                type="text"
+                                className="form-control"
+                                placeholder="שם הקישור (אופציונלי)"
+                                value={editLinkLabel}
+                                onChange={(e) => setEditLinkLabel(e.target.value)}
+                                style={{ fontSize: 13 }}
+                              />
+                              <input
+                                type="url"
+                                className="form-control"
+                                placeholder="https://..."
+                                value={editLinkUrl}
+                                onChange={(e) => setEditLinkUrl(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveEditLink(); } }}
+                                dir="ltr"
+                                style={{ fontSize: 13 }}
+                              />
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveEditLink}
+                                  disabled={!editLinkUrl.trim()}
+                                  className="btn-primary"
+                                  style={{ flex: 1, minHeight: 34, fontSize: 12, padding: '6px', gap: 5, opacity: editLinkUrl.trim() ? 1 : 0.5 }}
+                                >
+                                  <Check size={13} />
+                                  <span>שמור</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditLink}
+                                  className="btn-secondary"
+                                  style={{ flex: 1, minHeight: 34, fontSize: 12, padding: '6px' }}
+                                >
+                                  ביטול
+                                </button>
+                              </div>
                             </div>
-                            <button type="button" onClick={() => handleRemoveLinkRow(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex' }}>
-                              <X size={14} />
-                            </button>
-                          </div>
+                          ) : (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1px solid var(--p-12)' }}>
+                              <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.label}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">{link.url}</div>
+                              </div>
+                              <button type="button" onClick={() => handleStartEditLink(idx)} title="ערוך קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 4, display: 'flex', flexShrink: 0 }}>
+                                <Pencil size={14} />
+                              </button>
+                              <button type="button" onClick={() => handleRemoveLinkRow(idx)} title="מחק קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex', flexShrink: 0 }}>
+                                <X size={14} />
+                              </button>
+                            </div>
+                          )
                         ))}
                       </div>
                     )}
