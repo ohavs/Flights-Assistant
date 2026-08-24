@@ -2688,7 +2688,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             display: 'grid',
             gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinCol}px, 1fr))`,
             gap: LO.listGap,
-            alignItems: 'start',
+            // Tiles in the same row share a height, so a two-line name next to
+            // a one-line name doesn't leave a ragged edge.
+            alignItems: 'stretch',
           } : {
             display: 'flex', flexDirection: 'column', gap: LO.listGap,
           }}>
@@ -2786,20 +2788,92 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     ? { text: 'חובה', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', star: true }
                     : null;
 
+                const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
+                const cardRef = (node) => {
+                  if (node) itemRefs.current.set(plan.id, node);
+                  else itemRefs.current.delete(plan.id);
+                };
+                const openOnKey = (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlanDetail(plan.id); }
+                };
+
+                /* ── Grid tile ──────────────────────────────────────────────
+                   A tile is too small to hold controls: no checkbox, no chip
+                   around the icon, no badge. Just the name, one small mark
+                   for what it is (or a check once visited), and at most one
+                   tiny flag for "must" / "happening today". Everything else
+                   is one tap away in the details sheet.                     */
+                if (isTile) {
+                  const flag =
+                    isTodayEvent && !plan.visited ? { emoji: '✨', title: 'היום' }
+                    : plan.priority === 'must' && !plan.visited ? { star: true, title: 'חובה' }
+                    : null;
+                  return (
+                    <div
+                      key={plan.id}
+                      ref={cardRef}
+                      className={cardClass}
+                      onClick={() => openPlanDetail(plan.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={openOnKey}
+                      title={plan.title}
+                      style={{
+                        // .glass-card is a column flexbox — row has to be explicit.
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '11px 12px',
+                        minHeight: 62,
+                        boxSizing: 'border-box',
+                        cursor: 'pointer',
+                        willChange: 'transform',
+                      }}
+                    >
+                      <span style={{
+                        display: 'flex', flexShrink: 0,
+                        color: plan.visited ? 'var(--text-success)' : getCategoryColor(plan.category),
+                      }}>
+                        {plan.visited
+                          ? <Check size={15} strokeWidth={3} />
+                          : getCategoryIcon(plan.category, 15)}
+                      </span>
+
+                      <h3 style={{
+                        flex: 1, minWidth: 0, margin: 0,
+                        fontSize: 12.5, fontWeight: 800, lineHeight: 1.3,
+                        color: plan.visited ? 'var(--text-success)' : 'var(--primary-color)',
+                        textDecoration: plan.visited ? 'line-through' : 'none',
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        wordBreak: 'break-word',
+                      }}>
+                        {plan.title}
+                      </h3>
+
+                      {flag && (
+                        <span title={flag.title} style={{
+                          display: 'flex', alignItems: 'center', flexShrink: 0,
+                          color: '#f59e0b', fontSize: 11, lineHeight: 1,
+                        }}>
+                          {flag.star ? <Star size={12} fill="#f59e0b" /> : flag.emoji}
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+
+                /* ── List row (מרווח / קומפקטי) ───────────────────────────── */
                 return (
                   <div
                     key={plan.id}
-                    ref={(node) => {
-                      if (node) itemRefs.current.set(plan.id, node);
-                      else itemRefs.current.delete(plan.id);
-                    }}
-                    className={`glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`}
+                    ref={cardRef}
+                    className={cardClass}
                     onClick={() => openPlanDetail(plan.id)}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlanDetail(plan.id); }
-                    }}
+                    onKeyDown={openOnKey}
                     style={{
                       padding: LO.cardPad,
                       // .glass-card is a column flexbox — the row direction has
@@ -2810,7 +2884,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       gap: LO.headerGap,
                       cursor: 'pointer',
                       willChange: 'transform',
-                      ...(isTile ? { flexWrap: 'wrap', rowGap: 6 } : {}),
                     }}
                   >
                     {/* Visited toggle — the one action that stays on the card,
@@ -2843,7 +2916,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       {getCategoryIcon(plan.category, LO.iconBox <= 26 ? 15 : undefined)}
                     </span>
 
-                    <div style={{ minWidth: 0, flex: 1, ...(isTile ? { flexBasis: '100%', order: 2 } : {}) }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <h3 style={{
                         fontSize: LO.titleSize,
                         fontWeight: 800,
@@ -2852,9 +2925,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         lineHeight: 1.3,
                         margin: 0,
                         display: 'flex', alignItems: 'center', gap: 6,
-                        ...(isTile ? {} : { overflow: 'hidden' }),
+                        overflow: 'hidden',
                       }}>
-                        <span style={isTile ? { wordBreak: 'break-word' } : {
+                        <span style={{
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>{plan.title}</span>
                         {pill && (
@@ -2881,14 +2954,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       )}
                     </div>
 
-                    {/* Quiet "opens a panel" affordance (RTL: points inward).
-                        Grid tiles are too narrow to spare the room. */}
-                    {!isTile && (
-                      <ChevronLeft
-                        size={16}
-                        style={{ color: 'var(--ink-15)', flexShrink: 0 }}
-                      />
-                    )}
+                    {/* Quiet "opens a panel" affordance (RTL: points inward) */}
+                    <ChevronLeft size={16} style={{ color: 'var(--ink-15)', flexShrink: 0 }} />
                   </div>
                 );
               })

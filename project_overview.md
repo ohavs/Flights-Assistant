@@ -69,7 +69,8 @@ Custom Hebrew RTL calendar and datetime picker. Exposes `CustomDatePicker`, `Cus
 Two sub-tabs:
 
 **אטרקציות ומקומות (pool):**
-- **Text-first place cards**: a card is one row — visited toggle, category icon, title, a single quiet meta line (category / event date · travel time · link count) and a chevron. No action buttons on the card itself; tapping it opens the details sheet. FLIP reorder animation kept for the visited-sinks-to-bottom move.
+- **Grid tiles (`רשת`)** get their own minimal layout: name (2-line clamp), a small category icon, and at most one tiny flag (amber star for "חובה", ✨ for an event today; a green check replaces the icon once visited). No checkbox, no chips, no badges — the details sheet holds every action. Grid rows use `alignItems: 'stretch'` so tiles line up.
+- **Text-first place cards**: a list card is one row — visited toggle, category icon, title, a single quiet meta line (category / event date · travel time · link count) and a chevron. No action buttons on the card itself; tapping it opens the details sheet. FLIP reorder animation kept for the visited-sinks-to-bottom move.
 - **Place details sheet** (`detailPlanId`): bottom sheet with the description, travel times, every location/link as a tappable row, who added the place, and a fixed action footer — ניווט / עריכה / עדיפות / מחיקה plus a full-width "סמן כנצפה". Reads the plan from the live `plans` array, so Firestore updates (and deletes) are reflected while it is open.
 - **Grouping** (`groupBy`: `'none' | 'category' | 'area'`, persisted per trip in `localStorage`): category sections or proximity clusters render as collapsible sticky pill headers (icon + name + count) at `top: 64`, just under the sticky toolbar.
 - **Hide visited** toggle + **active-view summary bar** ("N מתוך M מקומות" + the active filters + "הצג הכל") shown whenever anything is filtered out. The place open in the details sheet is never hidden mid-read.

@@ -1,5 +1,13 @@
 # Changelog — Flights-Assistant
 
+## [7.6.1] - 2026-08-24
+
+### Changed
+- **תצוגת רשת — ריבועים נקיים** (`PlanningTab.jsx`):
+  - A grid tile is too small to hold controls, so it no longer carries the visited checkbox, the icon chip or the "חובה" badge. What is left is the name (up to two lines), a small category icon, and at most one tiny flag — an amber star for "חובה" or ✨ for an event happening today. A visited place shows a green check in place of the icon, with the name struck through.
+  - Tiles in the same row now share a height, so a two-line name next to a one-line name no longer leaves a ragged edge.
+  - Everything removed from the tile is still one tap away: the details sheet opens on tap, with navigation, editing, priority, delete and "סמן כנצפה" laid out in it.
+
 ## [7.6.0] - 2026-08-24
 
 ### Added
