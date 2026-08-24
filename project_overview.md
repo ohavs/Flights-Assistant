@@ -102,6 +102,15 @@ Packing checklist. Auto-syncs from global template. All Firestore writes are fir
 
 **Top area**: reminders strip → progress ring + add-item card → member filter chips in a single scrollable row with per-member counts. Container gap is 14 px.
 
+### `ShareTargetScreen.jsx` + `services/shareTarget.js`
+Entry point for places shared from Google Maps (Android, installed PWA only — iOS Safari has no Web Share Target).
+
+- The manifest declares `share_target: { action: '/share', method: 'GET', params: { title, text, url } }`; Firebase hosting rewrites `**` → `index.html` and the SW's `navigateFallback` covers it offline, so `/share?…` boots the normal app.
+- `readSharedPlace()` runs in a `useState` initializer in `AppInner`, parses the params, and mirrors the result into `sessionStorage`. That mirror matters: `main.jsx` reloads the page on `controllerchange`, so a service-worker update mid-share would otherwise drop the shared place. `clearShareUrl()` then takes the params out of the address bar; `clearSharedPlace()` drops the mirror once the place is placed or the user backs out.
+- `parseSharedPlace()` handles every shape Maps sends — name + link inside `text`, a separate `title`, a bare `url`, and a full `/maps/place/<name>/` URL it can derive a name from. Leftover lines become the description.
+- `cacheTripsForShare(trips, uid)` keeps `{id, name, destination, canEdit}` in `localStorage` on every trips snapshot, so the picker has something to show before auth and Firestore respond. The live list replaces it as soon as it arrives.
+- The screen renders **before** the auth gate. Picking a trip while signed out stores the choice, triggers Google sign-in, and `AppInner` replays it once `user` appears. `PlanningTab` receives the place through `sharedPlace` / `onSharedPlaceHandled` and opens its add form pre-filled (name, Maps link as the address, extra lines as notes).
+
 ### `ExpensesTab.jsx`
 Expense tracker with per-category collapsible groups, ILS snapshot for foreign currencies, split form, and per-person summary row.
 

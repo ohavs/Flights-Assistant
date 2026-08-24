@@ -1,5 +1,16 @@
 # Changelog — Flights-Assistant
 
+## [7.6.0] - 2026-08-24
+
+### Added
+- **שיתוף מגוגל מפות ישירות לאפליקציה (Web Share Target)**:
+  - The manifest now declares a `share_target` (`GET /share`), so the installed PWA shows up in the Android share sheet. Sharing a place from Google Maps opens the app on a dedicated screen.
+  - **`ShareTargetScreen.jsx`** — shows what was shared (name, address line, link) and the list of trips to add it to. The trip list is written to `localStorage` on every trips snapshot, so it renders immediately — before auth resolves and before Firestore answers on a cold start.
+  - Picking a trip jumps straight to that trip's planning tab and opens the add-place form pre-filled: name → "שם המקום", the Maps link → "כתובת / מיקום" (so navigation and travel-time calculation work off it), and any extra line Maps shared (usually the street address) → the notes field.
+  - Works while signed out: the cached trips are listed, and choosing one signs in with Google and then continues to the same trip automatically.
+  - Trips where the user has view-only access are shown greyed out and marked "צפייה בלבד".
+  - **`services/shareTarget.js`** — parses whatever shape Maps sends (name+link in `text`, `title`, or a bare `url`, including deriving a name from a full `/maps/place/<name>/` URL), keeps the pending place in `sessionStorage` so the service-worker update reload can't swallow it, and clears the share params out of the address bar so a refresh doesn't replay the share.
+
 ## [7.5.0] - 2026-08-24
 
 ### Changed

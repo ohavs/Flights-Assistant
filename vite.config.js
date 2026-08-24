@@ -37,6 +37,19 @@ export default defineConfig({
             purpose: 'maskable'
           }
         ],
+        // Share Target (Android/Chrome, installed PWA) — puts the app in the
+        // system share sheet, so sharing a place from Google Maps lands on
+        // /share with the place name and its link as query params.
+        share_target: {
+          action: '/share',
+          method: 'GET',
+          enctype: 'application/x-www-form-urlencoded',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+          },
+        },
         // Long-press shortcuts (Android) — show up next to the home-screen
         // icon so the user can jump directly to a feature without first
         // opening the app and tapping through tabs.

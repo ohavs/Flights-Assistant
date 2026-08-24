@@ -19,6 +19,8 @@ import ChecklistTab from './components/ChecklistTab';
 import InfoTab, { defaultInfoItems } from './components/InfoTab';
 import ExpensesTab from './components/ExpensesTab';
 import CurrencyConverter from './components/CurrencyConverter';
+import ShareTargetScreen from './components/ShareTargetScreen';
+import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
@@ -1162,6 +1164,13 @@ function AppInner() {
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // ── Share target (Google Maps → share → this app) ──
+  // Read once, on the very first render, before anything can rewrite the URL.
+  const [sharedPlace, setSharedPlace] = useState(() => readSharedPlace());
+  // Trip chosen in the picker while signed out — replayed after sign-in.
+  const [pendingTripPick, setPendingTripPick] = useState(null);
+  // Handed to PlanningTab, which opens the add-place form pre-filled with it.
+  const [pendingSharedPlace, setPendingSharedPlace] = useState(null);
 
   useEffect(() => {
     const handleOnline  = () => setIsOnline(true);
@@ -1236,6 +1245,20 @@ function AppInner() {
 
     checkAndSeed().catch(err => console.error("Error in checkAndSeed:", err));
   }, [user]);
+
+  // A share hands us /share?title=…&text=…&url=… — take it out of the address
+  // bar right away so a refresh or the back button can't replay it.
+  useEffect(() => {
+    if (sharedPlace) clearShareUrl();
+    // Intentionally runs once: sharedPlace only ever goes from set to null.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep a light copy of the trip list on the device, so the share picker can
+  // list the trips immediately — before auth resolves and before Firestore
+  // answers on a cold start from the share sheet.
+  useEffect(() => {
+    if (user && trips.length > 0) cacheTripsForShare(trips, user.uid);
+  }, [trips, user]);
 
   // Listen for the user's globalChecklist
   useEffect(() => {
@@ -1510,6 +1533,24 @@ function AppInner() {
     }
   };
 
+  // Trip picked in the share screen: jump straight into that trip's planning
+  // tab and hand the place to PlanningTab, which opens the add form filled in.
+  const openSharedPlaceInTrip = (tripId) => {
+    if (!tripId) return;
+    setSelectedTripId(tripId);
+    setActiveTab('planning');
+    setScreen('trip');
+    setPendingSharedPlace(sharedPlace);
+    setSharedPlace(null);
+    setPendingTripPick(null);
+    clearSharedPlace();
+  };
+
+  // Signing in from the share screen resumes the pick that triggered it.
+  useEffect(() => {
+    if (user && pendingTripPick && sharedPlace) openSharedPlaceInTrip(pendingTripPick);
+  }, [user, pendingTripPick]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getHeaderTitle = () => {
     switch (activeTab) {
       case 'flight':   return 'טיסה ומלון';
@@ -1530,6 +1571,30 @@ function AppInner() {
   // installed app icon (long-press → "המרת מטבעות"). No auth required.
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('screen') === 'converter') {
     return <ConverterScreen />;
+  }
+
+  // ── Opened from the share sheet ── shown before the auth gate: the trips
+  // (from the local cache) are on screen straight away, and signing in only
+  // becomes necessary at the moment we actually need to save.
+  if (sharedPlace) {
+    return (
+      <ShareTargetScreen
+        place={sharedPlace}
+        trips={trips.map(t => ({
+          id: t.id,
+          name: t.name || '',
+          destination: t.destination || '',
+          canEdit: ['owner', 'editor', 'member'].includes(t.members?.[user?.uid]),
+        }))}
+        signedIn={!!user}
+        onPickTrip={(tripId) => {
+          if (user) openSharedPlaceInTrip(tripId);
+          else { setPendingTripPick(tripId); signInWithGoogle(); }
+        }}
+        onCancel={() => { setSharedPlace(null); setPendingTripPick(null); clearSharedPlace(); }}
+        onSignIn={signInWithGoogle}
+      />
+    );
   }
 
   // ── Not signed in ──
@@ -1800,7 +1865,13 @@ function AppInner() {
           tripMembers: selectedTrip?.members || {},
         }}>
           {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
-          {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
+          {activeTab === 'planning'  && (
+            <PlanningTab
+              tripId={selectedTripId}
+              sharedPlace={pendingSharedPlace}
+              onSharedPlaceHandled={() => setPendingSharedPlace(null)}
+            />
+          )}
           {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
           {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
           {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}

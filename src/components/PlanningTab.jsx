@@ -280,7 +280,7 @@ function groupActivitiesByTime(acts) {
   });
 }
 
-export default function PlanningTab({ tripId }) {
+export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceHandled }) {
   const { canEdit, currentUid, currentUserProfile, memberProfiles } = useTrip();
   const confirm = useConfirm();
 
@@ -823,6 +823,23 @@ export default function PlanningTab({ tripId }) {
     setFormPriority(null);
     setShowAddForm(true);
   };
+
+  // A place shared from Google Maps: open the add form on the places sub-tab
+  // with the name, the maps link (as the address, so navigation and travel
+  // times work off it) and anything else the share carried already filled in.
+  useEffect(() => {
+    if (!sharedPlace) return;
+    // Nothing to fill in a trip this user can only view — release it rather
+    // than leaving it pending forever.
+    if (!canEdit) { onSharedPlaceHandled?.(); return; }
+    setSubTab('pool');
+    handleOpenAdd();
+    if (sharedPlace.name) setTitle(sharedPlace.name);
+    if (sharedPlace.url) setAddress(sharedPlace.url);
+    if (sharedPlace.note) setDescription(sharedPlace.note);
+    onSharedPlaceHandled?.();
+    // handleOpenAdd is recreated every render; the place itself is the trigger.
+  }, [sharedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compute whether the add-plan form has content (used by the
   // "unsaved changes" prompt when the user tries to close).
