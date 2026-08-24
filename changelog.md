@@ -1,5 +1,32 @@
 # Changelog — Flights-Assistant
 
+## [7.5.0] - 2026-08-24
+
+### Changed
+- **Places list — text-first cards + details sheet** (`PlanningTab.jsx`):
+  - A place card is now a single quiet row: visited toggle, category icon, title, one meta line (category or event date · travel time · link count), chevron. The navigate button, priority star, status badge stack and inline expansion were all removed from the card.
+  - Tapping a card opens a **details sheet** holding everything that used to be crammed into the card: description, travel times, each location/link as a tappable row, who added the place, and a fixed action footer (ניווט / עריכה / עדיפות / מחיקה) with a full-width "סמן כנצפה". The sheet reads from the live plans list, so it stays in sync with Firestore and closes by itself if the place is deleted.
+  - At most one status pill per card (today's event → expired event → "חובה"), so a long list has a single thing to catch the eye.
+
+- **Finding your way around a long list** (`PlanningTab.jsx`):
+  - New **grouping** control (רשימה / קטגוריה / איזור) in the options menu, remembered per trip. Category sections and proximity clusters both render as collapsible **sticky pill headers** with an icon and a count.
+  - New **"הסתר מקומות שנצפו"** toggle.
+  - New **summary bar** — "N מתוך M מקומות" plus the active search/filter/visibility, with a one-tap "הצג הכל". Shown only when something is actually filtered out.
+  - The sticky filter row is now frosted and bled to the content edges, so cards scroll under it instead of showing through.
+
+- **Reminders rebuilt** (`ChecklistTab.jsx`):
+  - Adding and editing a reminder now happen in a **bottom sheet** (textarea + "של מי התזכורת" picker + delete), instead of an inline form that replaced the card and made the layout jump.
+  - The reminder strip is compact and auto-sized: done/total count, "כל התזכורות" and "+" in the header; checkbox + text + owner avatar in the body; dots below. Tapping the text edits it. Auto-advance slowed to 5 s and pauses while a sheet is open.
+  - The "כל התזכורות" sheet gained an explicit **"בחירה"** multi-select mode (replacing the two competing checkboxes per row), a per-row edit pencil, and a "תזכורת חדשה" footer button.
+
+- **Checklist top area tightened** (`ChecklistTab.jsx`): smaller progress ring, tighter card padding, container gap 20 → 14, and the member filter chips moved into a single scrollable row with a count per member.
+
+### Fixed
+- **Link name vs. link address were indistinguishable** (`PlanningTab.jsx`):
+  - Adding a link without a name no longer copies the URL into the name field, which is why editing one showed the same address in both inputs.
+  - Add and edit rows are stacked, each under an explicit caption ("שם הקישור (אופציונלי)" / "כתובת הקישור (URL)"). Unnamed links read as "ללא שם" in the form and as a shortened address (`prettyUrl`) everywhere else, instead of printing the raw URL twice.
+- **Progress ring track invisible in dark mode** (`ChecklistTab.jsx`): hard-coded `rgba(11,11,48,0.08)` replaced with `var(--ink-8)`.
+
 ## [7.4.0] - 2026-06-09
 
 ### Added

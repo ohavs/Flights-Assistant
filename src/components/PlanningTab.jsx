@@ -53,6 +53,10 @@ import {
   Hotel,
   Calendar,
   ChevronDown,
+  ChevronLeft,
+  Eye,
+  EyeOff,
+  Tag,
   Link2,
   X,
   Settings,
@@ -122,6 +126,15 @@ const todayISO = (() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 })();
+
+// Short, readable form of a URL — used whenever a link has no name of its
+// own, so the UI never has to fall back to showing the raw address twice.
+function prettyUrl(url) {
+  if (!url) return '';
+  let s = String(url).trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+  s = s.replace(/\/$/, '');
+  return s.length > 42 ? s.slice(0, 40) + '…' : s;
+}
 
 // Great-circle distance between two {lat,lng} points, in metres.
 function haversineMeters(a, b) {
@@ -346,8 +359,9 @@ export default function PlanningTab({ tripId }) {
   // Priority: null | 'must' | 'optional'
   const [formPriority, setFormPriority] = useState(null);
 
-  // Expanded plan cards (default: collapsed)
-  const [expandedPlanIds, setExpandedPlanIds] = useState({});
+  // Tapping a place card opens a details sheet instead of expanding the card
+  // in place — the card itself stays plain text, every action lives here.
+  const [detailPlanId, setDetailPlanId] = useState(null);
 
   // Category customisation (icon + color), synced with Firestore
   const [categorySettings, setCategorySettings] = useState({});
@@ -370,8 +384,16 @@ export default function PlanningTab({ tripId }) {
       return saved && PLAN_LAYOUTS[saved] ? saved : 'comfortable';
     } catch { return 'comfortable'; }
   });
-  // Proximity grouping view + bulk distance calculation
-  const [groupByProximity, setGroupByProximity] = useState(false);
+  // How the list is broken into sections: none, by category, or by area
+  // (proximity clusters). Remembered per trip, like the card layout.
+  const [groupBy, setGroupBy] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`planGroupBy_${tripId}`);
+      return ['none', 'category', 'area'].includes(saved) ? saved : 'none';
+    } catch { return 'none'; }
+  });
+  // Quick way to get finished places out of the way in a long list.
+  const [hideVisited, setHideVisited] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
   const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
   const [coordsCache, setCoordsCache] = useState({}); // planId → {lat,lng} | null
@@ -594,6 +616,10 @@ export default function PlanningTab({ tripId }) {
   useEffect(() => {
     if (tripId) localStorage.setItem(`planLayout_${tripId}`, planLayout);
   }, [planLayout, tripId]);
+
+  useEffect(() => {
+    if (tripId) localStorage.setItem(`planGroupBy_${tripId}`, groupBy);
+  }, [groupBy, tripId]);
 
   /* ══════════════════════════════════════════════════════════
      DISTANCE HELPERS
@@ -856,7 +882,9 @@ export default function PlanningTab({ tripId }) {
     const url = newLinkUrl.trim();
     if (!url) return;
     const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    setLinks(prev => [...prev, { label: newLinkLabel.trim() || normalized, url: normalized }]);
+    // An empty name stays empty — the URL is never copied into the name
+    // field, so editing the link later shows the two values distinctly.
+    setLinks(prev => [...prev, { label: newLinkLabel.trim(), url: normalized }]);
     setNewLinkLabel('');
     setNewLinkUrl('');
   };
@@ -865,9 +893,7 @@ export default function PlanningTab({ tripId }) {
     const link = links[idx];
     const ok = await confirm({
       title: 'מחיקת קישור',
-      message: link?.label
-        ? <>האם למחוק את הקישור <strong>{link.label}</strong>?</>
-        : 'האם למחוק את הקישור?',
+      message: <>האם למחוק את הקישור <strong>{link?.label || prettyUrl(link?.url)}</strong>?</>,
       confirmText: 'מחק',
       cancelText: 'בטל',
       danger: true,
@@ -896,20 +922,15 @@ export default function PlanningTab({ tripId }) {
     if (!url) return;
     const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     setLinks(prev => prev.map((l, i) => (
-      i === editingLinkIdx ? { label: editLinkLabel.trim() || normalized, url: normalized } : l
+      i === editingLinkIdx ? { label: editLinkLabel.trim(), url: normalized } : l
     )));
     handleCancelEditLink();
   };
 
-  const togglePlanExpanded = (id) => {
-    setExpandedPlanIds(prev => {
-      const next = { ...prev, [id]: !prev[id] };
-      if (next[id]) {
-        const plan = plans.find(p => p.id === id);
-        if (plan) setTimeout(() => fetchPlanDistances(plan), 0);
-      }
-      return next;
-    });
+  const openPlanDetail = (id) => {
+    setDetailPlanId(id);
+    const plan = plans.find(p => p.id === id);
+    if (plan) setTimeout(() => fetchPlanDistances(plan), 0);
   };
 
   const handleToggleVisited = async (plan) => {
@@ -1089,6 +1110,12 @@ export default function PlanningTab({ tripId }) {
     }
   };
 
+  // Small caption above each link field, so "name" vs "address" is explicit.
+  const linkFieldLabel = {
+    fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+    marginBottom: 0, display: 'block',
+  };
+
   const getPlanLocations = (plan) => {
     const locs = [];
     if (plan.address) {
@@ -1099,9 +1126,88 @@ export default function PlanningTab({ tripId }) {
       });
     }
     if (Array.isArray(plan.links)) {
-      plan.links.forEach(link => locs.push({ label: link.label || link.url, url: link.url }));
+      plan.links.forEach(link => locs.push({ label: link.label || prettyUrl(link.url), url: link.url }));
     }
     return locs;
+  };
+
+  // Cached travel times for a place, if they were already measured. Used for
+  // the one-line card summary and for the details sheet header.
+  const travelSummary = (plan) => {
+    const originId = plan.distanceOriginId || 'hotel';
+    const cache = distanceCache[`${plan.id}_${originId}`];
+    if (!cache || cache.loading || cache.error) return { walk: null, transit: null };
+    return {
+      walk: cache.walk?.duration || null,
+      transit: cache.transit?.duration || null,
+    };
+  };
+
+  // Small caption above a section inside the details sheet.
+  const sheetSectionLabel = {
+    fontSize: 11, fontWeight: 800, color: 'var(--text-muted)',
+    letterSpacing: '0.3px',
+  };
+
+  // Travel time from the hotel / chosen origin, rendered inside the details
+  // sheet. Lives here (rather than inline) so the card stays free of it.
+  const renderDistanceBlock = (plan) => {
+    if (!hasGmapsKey()) return null;
+    if (!hotelDetails && distanceOrigins.length === 0 && !tripDestination) return null;
+
+    const originId = plan.distanceOriginId || 'hotel';
+    const cacheKey = `${plan.id}_${originId}`;
+    const cache = distanceCache[cacheKey];
+    const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+    // Label from what the SHOWN numbers were actually computed from, so a
+    // city-centre result is never labelled "from hotel". Older cached entries
+    // have no originKind — fall back to resolving the current origin.
+    const kind = cache?.originKind || (
+      (customOrigin && hasPreciseOrigin(null, customOrigin))
+        ? 'custom'
+        : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city')
+    );
+    const cityName = (tripDestination || '').split(',')[0].trim();
+    const cityLabel = cityName ? `ממרכז ${cityName}` : 'מהמיקום';
+    const originLabel =
+      kind === 'custom' ? (customOrigin?.name || cityLabel)
+      : kind === 'hotel' ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
+      : cityLabel;
+
+    if (!cache || cache.loading) return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+        <Loader2 size={13} className="spinning" />
+        <span>מחשב מרחק...</span>
+      </div>
+    );
+    if (cache.offline) return (
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+        📡 אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
+      </div>
+    );
+    if (cache.noLocation) return (
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+        📍 לא נמצא מיקום לחישוב זמן הגעה
+      </div>
+    );
+    if (cache.error || (!cache.walk && !cache.transit)) return null;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--p-4)', borderRadius: 12, border: '1px solid var(--p-10)' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
+          {originLabel}:
+        </span>
+        {cache.walk && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+            🚶 {cache.walk.duration}
+          </span>
+        )}
+        {cache.transit && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+            🚌 {cache.transit.duration}
+          </span>
+        )}
+      </div>
+    );
   };
 
   const parseDurationMins = (str) => {
@@ -1121,7 +1227,10 @@ export default function PlanningTab({ tripId }) {
       const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (plan.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (plan.address || '').toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
+      // "Hide visited" never hides the card currently open in the sheet, so
+      // marking a place as visited from there doesn't make it vanish mid-read.
+      const matchesVisibility = !hideVisited || !plan.visited || plan.id === detailPlanId;
+      return matchesCategory && matchesSearch && matchesVisibility;
     })
     .sort((a, b) => {
       // When viewing the events category, order chronologically by date+time.
@@ -1150,6 +1259,10 @@ export default function PlanningTab({ tripId }) {
       return a.visited ? 1 : -1;
     });
 
+  // The place shown in the details sheet, read from the live list so the
+  // sheet updates as Firestore pushes changes (visited, priority, edits).
+  const detailPlan = detailPlanId ? plans.find(p => p.id === detailPlanId) || null : null;
+
   // Active card layout (density + column count).
   const LO = PLAN_LAYOUTS[planLayout] || PLAN_LAYOUTS.comfortable;
   // Small enough that two tiles still fit on a ~360px phone; auto-fill adds
@@ -1161,7 +1274,7 @@ export default function PlanningTab({ tripId }) {
   // resolved coordinates land in a trailing "ללא מיקום" group.
   const locatedCount = filteredPlans.filter(p => coordsCache[p.id]).length;
   let renderItems = filteredPlans;
-  if (groupByProximity) {
+  if (groupBy === 'area') {
     const located = filteredPlans
       .filter(p => coordsCache[p.id])
       .map(p => ({ ...p, coords: coordsCache[p.id] }));
@@ -1178,6 +1291,29 @@ export default function PlanningTab({ tripId }) {
       renderItems.push({ __header: true, id: '__hx', label: 'ללא מיקום', count: unlocated.length });
       if (!collapsedAreas['__hx']) unlocated.forEach(p => renderItems.push(p));
     }
+  } else if (groupBy === 'category') {
+    // One collapsible section per category, in the order categories are
+    // configured, so a long mixed list reads as a handful of short lists.
+    const byCat = new Map();
+    filteredPlans.forEach(p => {
+      const cat = p.category || 'ללא קטגוריה';
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(p);
+    });
+    const ordered = [
+      ...categories.filter(c => byCat.has(c)),
+      ...[...byCat.keys()].filter(c => !categories.includes(c)),
+    ];
+    renderItems = [];
+    ordered.forEach(cat => {
+      const items = byCat.get(cat) || [];
+      const headerId = `__cat:${cat}`;
+      renderItems.push({
+        __header: true, id: headerId, label: cat, count: items.length,
+        category: cat,
+      });
+      if (!collapsedAreas[headerId]) items.forEach(p => renderItems.push(p));
+    });
   }
 
   /* ══════════════════════════════════════════════════════════
@@ -1713,34 +1849,43 @@ export default function PlanningTab({ tripId }) {
                     />
                   </div>
 
-                  {/* Free-form links */}
+                  {/* Free-form links — each row is a NAME (optional, shown
+                      on the card) plus the ADDRESS itself. The two fields are
+                      labelled explicitly so it is never ambiguous which is
+                      which, and an empty name is left empty rather than being
+                      filled with the URL. */}
                   <div className="form-group">
                     <label>קישורים נוספים</label>
                     {links.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                         {links.map((link, idx) => (
                           editingLinkIdx === idx ? (
-                            // Edit mode — same two fields as when adding, so a
-                            // link's name and address can both be corrected.
-                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--accent)' }}>
-                              <input
-                                type="text"
-                                className="form-control"
-                                placeholder="שם הקישור (אופציונלי)"
-                                value={editLinkLabel}
-                                onChange={(e) => setEditLinkLabel(e.target.value)}
-                                style={{ fontSize: 13 }}
-                              />
-                              <input
-                                type="url"
-                                className="form-control"
-                                placeholder="https://..."
-                                value={editLinkUrl}
-                                onChange={(e) => setEditLinkUrl(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveEditLink(); } }}
-                                dir="ltr"
-                                style={{ fontSize: 13 }}
-                              />
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--accent)' }}>
+                              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)' }}>עריכת קישור</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  placeholder="למשל: אתר רשמי, פוסט בפייסבוק"
+                                  value={editLinkLabel}
+                                  onChange={(e) => setEditLinkLabel(e.target.value)}
+                                  style={{ fontSize: 13 }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
+                                <input
+                                  type="url"
+                                  className="form-control"
+                                  placeholder="https://..."
+                                  value={editLinkUrl}
+                                  onChange={(e) => setEditLinkUrl(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveEditLink(); } }}
+                                  dir="ltr"
+                                  style={{ fontSize: 13, textAlign: 'left' }}
+                                />
+                              </div>
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button
                                   type="button"
@@ -1766,8 +1911,10 @@ export default function PlanningTab({ tripId }) {
                             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1px solid var(--p-12)' }}>
                               <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.label}</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">{link.url}</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: link.label ? 'var(--primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {link.label || 'ללא שם'}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">{prettyUrl(link.url)}</div>
                               </div>
                               <button type="button" onClick={() => handleStartEditLink(idx)} title="ערוך קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 4, display: 'flex', flexShrink: 0 }}>
                                 <Pencil size={14} />
@@ -1780,32 +1927,44 @@ export default function PlanningTab({ tripId }) {
                         ))}
                       </div>
                     )}
-                    <div className="row-2" style={{ gap: 8 }}>
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="שם הקישור (אופציונלי)"
-                        value={newLinkLabel}
-                        onChange={(e) => setNewLinkLabel(e.target.value)}
-                      />
-                      <input
-                        type="url"
-                        className="form-control"
-                        placeholder="https://..."
-                        value={newLinkUrl}
-                        onChange={(e) => setNewLinkUrl(e.target.value)}
-                        dir="ltr"
-                      />
+
+                    {/* New-link row — stacked, each field under its own label */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--ink-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--ink-6)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="למשל: אתר רשמי, פוסט בפייסבוק"
+                          value={newLinkLabel}
+                          onChange={(e) => setNewLinkLabel(e.target.value)}
+                          style={{ fontSize: 13 }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
+                        <input
+                          type="url"
+                          className="form-control"
+                          placeholder="https://..."
+                          value={newLinkUrl}
+                          onChange={(e) => setNewLinkUrl(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLinkRow(); } }}
+                          dir="ltr"
+                          style={{ fontSize: 13, textAlign: 'left' }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddLinkRow}
+                        disabled={!newLinkUrl.trim()}
+                        className="btn-secondary"
+                        style={{ width: '100%', minHeight: 38, fontSize: 13, padding: '8px', opacity: newLinkUrl.trim() ? 1 : 0.5 }}
+                      >
+                        <Plus size={14} />
+                        <span>הוסף קישור</span>
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddLinkRow}
-                      className="btn-secondary"
-                      style={{ marginTop: 8, width: '100%', minHeight: 40, fontSize: 13, padding: '8px' }}
-                    >
-                      <Plus size={14} />
-                      <span>הוסף קישור</span>
-                    </button>
                   </div>
 
                   {/* Distance origin selector */}
@@ -2017,13 +2176,20 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Filter chips row + sort button — sticky */}
+          {/* Filter chips row + sort button — sticky. Frosted and bled out to
+              the content edges so cards scroll *under* it instead of showing
+              through, now that section headers stick beneath it too. */}
           <div style={{
             position: 'sticky',
             top: 0,
             zIndex: 5,
+            marginInline: -16,
+            paddingInline: 16,
             paddingTop: '8px',
             paddingBottom: '10px',
+            background: 'var(--header-bg)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
             display: 'flex',
             alignItems: 'center',
             gap: 4,
@@ -2175,7 +2341,7 @@ export default function PlanningTab({ tripId }) {
                 causes positioned wrapper divs to get implicit solid bg).
                 Dropdown uses position:fixed anchored via getBoundingClientRect. */}
             {(() => {
-              const optionsActive = sortBy !== 'default' || groupByProximity;
+              const optionsActive = sortBy !== 'default' || groupBy !== 'none' || hideVisited;
               const openMenu = () => {
                 setShowSortMenu(s => !s);
               };
@@ -2289,6 +2455,82 @@ export default function PlanningTab({ tripId }) {
                           </button>
                         ))}
 
+                        {/* — Grouping: how the long list is broken up — */}
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>חלוקה לקבוצות</div>
+                        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ink-4)' }}>
+                          {[
+                            { key: 'none', label: 'רשימה', Icon: LayoutList },
+                            { key: 'category', label: 'קטגוריה', Icon: Tag },
+                            { key: 'area', label: 'איזור', Icon: Layers, needsMaps: true },
+                          ].map(({ key, label, Icon, needsMaps }) => {
+                            const active = groupBy === key;
+                            const disabled = needsMaps && !hasGmapsKey();
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => setGroupBy(key)}
+                                title={disabled ? 'דורש מפתח מפות' : label}
+                                style={{
+                                  flex: 1, display: 'flex', flexDirection: 'column',
+                                  alignItems: 'center', gap: 4, padding: '8px 4px',
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-6)'}`,
+                                  background: active ? 'var(--p-8)' : 'var(--surface)',
+                                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                                  cursor: disabled ? 'default' : 'pointer',
+                                  opacity: disabled ? 0.45 : 1,
+                                  fontFamily: 'var(--font-hebrew)', fontSize: 11, fontWeight: 700,
+                                }}
+                              >
+                                <Icon size={16} />
+                                <span>{label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Hide places already visited — the quickest way to
+                            shorten a list that has grown over the trip. */}
+                        <button
+                          type="button"
+                          onClick={() => setHideVisited(v => !v)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center',
+                            justifyContent: 'space-between', gap: 8,
+                            padding: '10px 14px', border: 'none',
+                            background: 'var(--surface)', cursor: 'pointer',
+                            fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                            color: 'var(--primary)', textAlign: 'right',
+                            borderBottom: '1px solid var(--ink-4)',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {hideVisited
+                              ? <EyeOff size={14} style={{ color: 'var(--accent)' }} />
+                              : <Eye size={14} style={{ color: 'var(--accent)' }} />}
+                            הסתר מקומות שנצפו
+                          </span>
+                          <span style={{
+                            width: 36, height: 20, borderRadius: 999, flexShrink: 0,
+                            background: hideVisited ? 'var(--accent)' : 'var(--ink-15)',
+                            position: 'relative', transition: 'background 0.2s ease',
+                          }}>
+                            <span style={{
+                              position: 'absolute', top: 2,
+                              right: hideVisited ? 2 : 18,
+                              width: 16, height: 16, borderRadius: '50%',
+                              background: '#fff', transition: 'right 0.2s ease',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                            }} />
+                          </span>
+                        </button>
+
                         {/* — View / distance section (needs Maps key) — */}
                         {hasGmapsKey() && (
                           <>
@@ -2297,38 +2539,6 @@ export default function PlanningTab({ tripId }) {
                               color: 'var(--text-muted)', letterSpacing: '0.4px',
                               background: 'var(--ink-3)',
                             }}>תצוגה</div>
-
-                            <button
-                              type="button"
-                              onClick={() => setGroupByProximity(g => !g)}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center',
-                                justifyContent: 'space-between', gap: 8,
-                                padding: '10px 14px', border: 'none',
-                                background: 'var(--surface)', cursor: 'pointer',
-                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
-                                color: 'var(--primary)', textAlign: 'right',
-                                borderBottom: '1px solid var(--ink-4)',
-                              }}
-                            >
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Layers size={14} style={{ color: 'var(--accent)' }} />
-                                קבץ לפי איזורים
-                              </span>
-                              <span style={{
-                                width: 36, height: 20, borderRadius: 999, flexShrink: 0,
-                                background: groupByProximity ? 'var(--accent)' : 'var(--ink-15)',
-                                position: 'relative', transition: 'background 0.2s ease',
-                              }}>
-                                <span style={{
-                                  position: 'absolute', top: 2,
-                                  right: groupByProximity ? 2 : 18,
-                                  width: 16, height: 16, borderRadius: '50%',
-                                  background: '#fff', transition: 'right 0.2s ease',
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                                }} />
-                              </span>
-                            </button>
 
                             <button
                               type="button"
@@ -2398,8 +2608,46 @@ export default function PlanningTab({ tripId }) {
             })()}
           </div>
 
+          {/* Active-view summary — one quiet line telling you how much of the
+              list you are actually looking at, with a one-tap way back to
+              everything. Hidden when nothing is filtered out. */}
+          {(() => {
+            const total = plans.length;
+            const shown = filteredPlans.length;
+            const hiddenCount = total - shown;
+            if (hiddenCount <= 0) return null;
+            const bits = [];
+            if (searchQuery.trim()) bits.push(`חיפוש: "${searchQuery.trim()}"`);
+            if (selectedFilter !== 'הכל') bits.push(selectedFilter === '__must__' ? 'חובה בלבד' : selectedFilter);
+            if (hideVisited) bits.push('ללא מקומות שנצפו');
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                padding: '7px 12px', borderRadius: 12,
+                background: 'var(--ink-3)', border: '1px solid var(--ink-6)',
+                fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+              }}>
+                <span style={{ color: 'var(--primary)' }}>{shown} מתוך {total} מקומות</span>
+                {bits.length > 0 && <span style={{ opacity: 0.75 }}>· {bits.join(' · ')}</span>}
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setSelectedFilter('הכל'); setHideVisited(false); }}
+                  style={{
+                    marginInlineStart: 'auto', flexShrink: 0,
+                    background: 'var(--p-8)', color: 'var(--accent)',
+                    border: 'none', borderRadius: 999, cursor: 'pointer',
+                    padding: '3px 12px', fontFamily: 'var(--font-hebrew)',
+                    fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  הצג הכל
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Hint when grouping is on but some places aren't located yet */}
-          {groupByProximity && locatedCount < filteredPlans.length && (
+          {groupBy === 'area' && locatedCount < filteredPlans.length && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '10px 12px', borderRadius: 12,
@@ -2433,19 +2681,33 @@ export default function PlanningTab({ tripId }) {
               </div>
             ) : (
               renderItems.map((plan) => {
-                // Area-header sentinel rows in the proximity-grouping view
+                // Section header rows (area clusters / category sections)
                 if (plan.__header) {
                   const collapsed = !!collapsedAreas[plan.id];
+                  const headerColor = plan.category ? getCategoryColor(plan.category) : 'var(--accent)';
                   return (
                     <button
                       key={plan.id}
                       type="button"
                       onClick={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                        padding: '4px 2px', marginTop: plan.id === '__h0' ? 0 : 6,
+                        // A floating pill rather than a plain line: it stays
+                        // legible when it sticks under the toolbar, so you
+                        // always know which section you are scrolling through.
+                        // 64px ≈ the height of the sticky toolbar above it,
+                        // so a stuck header lands just below, not behind it.
+                        position: 'sticky', top: 64, zIndex: 4,
+                        display: 'flex', alignItems: 'center', gap: 7,
+                        width: 'fit-content', maxWidth: '100%',
+                        padding: '5px 12px',
+                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 8,
+                        marginBottom: 2,
                         fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
-                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--ink-6)',
+                        borderRadius: 999,
+                        boxShadow: 'var(--shadow-sm)',
+                        cursor: 'pointer',
                         textAlign: 'right', direction: 'rtl',
                         gridColumn: '1 / -1',
                       }}
@@ -2453,27 +2715,27 @@ export default function PlanningTab({ tripId }) {
                       <ChevronDown
                         size={15}
                         style={{
-                          color: 'var(--accent)', flexShrink: 0,
+                          color: headerColor, flexShrink: 0,
                           transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)',
                           transition: 'transform 0.2s ease',
                         }}
                       />
-                      <Layers size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                      <span>{plan.label}</span>
+                      <span style={{ color: headerColor, display: 'flex', flexShrink: 0 }}>
+                        {plan.category ? getCategoryIcon(plan.category, 14) : <Layers size={14} />}
+                      </span>
+                      <span style={{ color: 'var(--primary)' }}>{plan.label}</span>
                       <span style={{
-                        fontSize: 11, fontWeight: 700, color: 'var(--accent)',
-                        background: 'var(--p-8)', borderRadius: 8, padding: '1px 8px', flexShrink: 0,
-                      }}>{plan.count} מקומות</span>
-                      <div style={{ flex: 1, height: 1, background: 'var(--ink-6)' }} />
+                        fontSize: 11, fontWeight: 700, color: headerColor,
+                        background: `${headerColor === 'var(--accent)' ? 'var(--p-8)' : `${headerColor}18`}`,
+                        borderRadius: 8, padding: '1px 8px', flexShrink: 0,
+                      }}>{plan.count}</span>
                     </button>
                   );
                 }
-                const isOpen = !!expandedPlanIds[plan.id];
-                // Narrow grid tile: only while collapsed — an expanded card
-                // spans the full row and renders exactly like the other layouts.
-                const isTile = LO.columns > 1 && !isOpen;
 
-                // Event status badges (only for the events category)
+                const isTile = LO.columns > 1;
+
+                // Event status (only for the events category)
                 const ev = plan.event;
                 const isEvent = plan.category === EVENTS_CATEGORY && ev?.startDate;
                 const isExpiredEvent = isEvent && (() => {
@@ -2482,50 +2744,30 @@ export default function PlanningTab({ tripId }) {
                 })();
                 const isTodayEvent = isEvent && ev.startDate === todayISO;
 
-                const renderChip = (icon, text, isLink = false) => {
-                  if (!text) return null;
-                  const isUrl = /^https?:\/\//i.test(text);
-                  const targetUrl = isUrl ? text : `https://maps.google.com/?q=${encodeURIComponent(text)}`;
+                // One quiet meta line under the title: what it is, when it is,
+                // how far it is, how many links it carries. No buttons, no
+                // chips — every action moved into the details sheet.
+                const travel = travelSummary(plan);
+                const linkCount = (Array.isArray(plan.links) ? plan.links.length : 0);
+                const metaParts = [];
+                if (isEvent) metaParts.push(`🗓️ ${formatEventWhen(plan.event)}`);
+                else if (plan.category) metaParts.push(plan.category);
+                if (travel.walk) metaParts.push(`🚶 ${travel.walk}`);
+                else if (travel.transit) metaParts.push(`🚌 ${travel.transit}`);
+                if (linkCount > 0) metaParts.push(`🔗 ${linkCount}`);
+                const metaLine = metaParts.join(' · ');
 
-                  const content = (
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      background: 'var(--ink-4)',
-                      padding: '5px 10px',
-                      borderRadius: '10px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      color: 'var(--text-muted)',
-                      border: '1px solid var(--ink-2)',
-                      maxWidth: '100%',
-                      boxSizing: 'border-box'
-                    }}>
-                      {icon}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
-                        {text}
-                      </span>
-                      {isLink && <ExternalLink size={10} style={{ marginRight: '2px', opacity: 0.7 }} />}
-                    </div>
-                  );
-
-                  if (isLink) {
-                    return (
-                      <a
-                        href={targetUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        key={text}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
-                      >
-                        {content}
-                      </a>
-                    );
-                  }
-                  return <span key={text}>{content}</span>;
-                };
+                // At most one status pill per card, so the eye has a single
+                // thing to catch when scanning: today's event beats "must",
+                // and a finished event is worth flagging over both.
+                const pill =
+                  isTodayEvent && !plan.visited
+                    ? { text: '✨ היום', color: 'var(--c-orange)', bg: 'var(--c-orange-12)' }
+                  : isExpiredEvent && !plan.visited
+                    ? { text: 'נגמר', color: 'var(--text-muted)', bg: 'var(--ink-8)' }
+                  : plan.priority === 'must' && !plan.visited
+                    ? { text: 'חובה', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', star: true }
+                    : null;
 
                 return (
                   <div
@@ -2535,408 +2777,101 @@ export default function PlanningTab({ tripId }) {
                       else itemRefs.current.delete(plan.id);
                     }}
                     className={`glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`}
-                    onClick={() => togglePlanExpanded(plan.id)}
+                    onClick={() => openPlanDetail(plan.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlanDetail(plan.id); }
+                    }}
                     style={{
                       padding: LO.cardPad,
+                      // .glass-card is a column flexbox — the row direction has
+                      // to be set explicitly or the card stacks vertically.
                       display: 'flex',
-                      flexDirection: 'column',
-                      gap: isOpen ? '12px' : '0',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: LO.headerGap,
                       cursor: 'pointer',
                       willChange: 'transform',
-                      // An expanded card takes the whole row in grid mode so
-                      // its details aren't squeezed into a narrow column.
-                      ...(LO.columns > 1 && isOpen ? { gridColumn: '1 / -1' } : {}),
+                      ...(isTile ? { flexWrap: 'wrap', rowGap: 6 } : {}),
                     }}
                   >
-                    {/* Header — always visible. Visited toggle here so the
-                        user can mark/unmark without expanding the card. */}
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: LO.headerGap,
-                      // In grid mode the tile is too narrow for one row, so the
-                      // controls sit on top and the title wraps beneath them.
-                      ...(isTile ? { flexWrap: 'wrap', rowGap: 6 } : {}),
+                    {/* Visited toggle — the one action that stays on the card,
+                        so places can be ticked off without opening anything. */}
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleToggleVisited(plan); }}
+                        className={`plan-visit-toggle${plan.visited ? ' on' : ''}`}
+                        title={plan.visited ? 'בטל סימון' : 'סמן כנצפה'}
+                        aria-pressed={!!plan.visited}
+                      >
+                        {plan.visited && <Check size={18} strokeWidth={3} />}
+                      </button>
+                    ) : (
+                      plan.visited && (
+                        <div className="plan-visit-toggle on" aria-hidden="true">
+                          <Check size={18} strokeWidth={3} />
+                        </div>
+                      )
+                    )}
+
+                    <span style={{
+                      width: LO.iconBox, height: LO.iconBox, borderRadius: 10,
+                      background: `${getCategoryColor(plan.category)}18`,
+                      color: getCategoryColor(plan.category),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
                     }}>
-                      {/* Big checkbox-style toggle on the right (visual start in RTL) */}
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleToggleVisited(plan); }}
-                          className={`plan-visit-toggle${plan.visited ? ' on' : ''}`}
-                          title={plan.visited ? 'בטל סימון' : 'סמן כנצפה'}
-                          aria-pressed={!!plan.visited}
-                        >
-                          {plan.visited && <Check size={18} strokeWidth={3} />}
-                        </button>
-                      ) : (
-                        plan.visited && (
-                          <div className="plan-visit-toggle on" aria-hidden="true">
-                            <Check size={18} strokeWidth={3} />
-                          </div>
-                        )
-                      )}
+                      {getCategoryIcon(plan.category, LO.iconBox <= 26 ? 15 : undefined)}
+                    </span>
 
-                      <span style={{
-                        width: LO.iconBox, height: LO.iconBox, borderRadius: 10,
-                        background: `${getCategoryColor(plan.category)}18`,
-                        color: getCategoryColor(plan.category),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
+                    <div style={{ minWidth: 0, flex: 1, ...(isTile ? { flexBasis: '100%', order: 2 } : {}) }}>
+                      <h3 style={{
+                        fontSize: LO.titleSize,
+                        fontWeight: 800,
+                        color: plan.visited ? 'var(--text-success)' : 'var(--primary-color)',
+                        textDecoration: plan.visited ? 'line-through' : 'none',
+                        lineHeight: 1.3,
+                        margin: 0,
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        ...(isTile ? {} : { overflow: 'hidden' }),
                       }}>
-                        {getCategoryIcon(plan.category, LO.iconBox <= 26 ? 15 : undefined)}
-                      </span>
-
-                      <div style={{ minWidth: 0, flex: 1, ...(isTile ? { flexBasis: '100%', order: 2 } : {}) }}>
-                        <h3 style={{
-                          fontSize: LO.titleSize,
-                          fontWeight: 800,
-                          color: plan.visited ? 'var(--text-success)' :
-                                 plan.priority === 'must' ? '#f59e0b' :
-                                 plan.priority === 'optional' ? 'var(--text-muted)' :
-                                 'var(--primary-color)',
-                          textDecoration: plan.visited ? 'line-through' : 'none',
-                          lineHeight: 1.25,
-                          wordBreak: 'break-word',
-                        }}>
-                          {plan.title}
-                          {plan.priority === 'must' && !plan.visited && (
-                            <span style={{
-                              marginRight: 8,
-                              fontSize: 10, fontWeight: 900,
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              background: 'rgba(245,158,11,0.15)',
-                              color: '#f59e0b',
-                              verticalAlign: 'middle',
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 3,
-                            }}>
-                              <Star size={9} fill="#f59e0b" />
-                              חובה
-                            </span>
-                          )}
-                          {plan.priority === 'optional' && !plan.visited && (
-                            <span style={{
-                              marginRight: 8,
-                              fontSize: 10, fontWeight: 800,
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              background: 'var(--ink-6)',
-                              color: 'var(--text-muted)',
-                              verticalAlign: 'middle',
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 3,
-                            }}>
-                              <Clock size={9} />
-                              אם ישאר זמן
-                            </span>
-                          )}
-                          {plan.visited && (
-                            <span style={{
-                              marginRight: 8,
-                              fontSize: 10, fontWeight: 800,
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              background: 'rgba(5, 150, 105, 0.15)',
-                              color: 'var(--text-success)',
-                              verticalAlign: 'middle',
-                              textDecoration: 'none',
-                              display: 'inline-block',
-                            }}>נצפה</span>
-                          )}
-                          {isTodayEvent && !plan.visited && (
-                            <span style={{
-                              marginRight: 8,
-                              fontSize: 10, fontWeight: 900,
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              background: 'var(--c-orange-12)',
-                              color: 'var(--c-orange)',
-                              verticalAlign: 'middle',
-                              textDecoration: 'none',
-                              display: 'inline-block',
-                            }}>✨ היום</span>
-                          )}
-                          {isExpiredEvent && !plan.visited && (
-                            <span style={{
-                              marginRight: 8,
-                              fontSize: 10, fontWeight: 800,
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              background: 'var(--ink-8)',
-                              color: 'var(--text-muted)',
-                              verticalAlign: 'middle',
-                              textDecoration: 'none',
-                              display: 'inline-block',
-                            }}>נגמר</span>
-                          )}
-                        </h3>
-                        {(LO.showSubtitle || isOpen) && (
+                        <span style={isTile ? { wordBreak: 'break-word' } : {
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{plan.title}</span>
+                        {pill && (
                           <span style={{
-                            fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
+                            fontSize: 10, fontWeight: 900, flexShrink: 0,
+                            padding: '2px 7px', borderRadius: 999,
+                            background: pill.bg, color: pill.color,
+                            textDecoration: 'none',
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
                           }}>
-                            {plan.category === EVENTS_CATEGORY && plan.event?.startDate
-                              ? `🗓️ ${formatEventWhen(plan.event)}`
-                              : plan.description
-                                ? (plan.description.length > 55 ? plan.description.slice(0, 55) + '…' : plan.description)
-                                : plan.category}
+                            {pill.star && <Star size={9} fill={pill.color} />}
+                            {pill.text}
                           </span>
                         )}
-                      </div>
-
-                      {(() => {
-                        const locs = getPlanLocations(plan);
-                        if (!locs.length) return null;
-                        return (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (locs.length === 1) {
-                                window.open(locs[0].url, '_blank', 'noreferrer');
-                              } else {
-                                setLocationsModal(plan);
-                              }
-                            }}
-                            title="נווט למיקום"
-                            style={{
-                              width: 32, height: 32, borderRadius: '50%',
-                              background: `${getCategoryColor(plan.category)}18`,
-                              color: getCategoryColor(plan.category),
-                              border: 'none', cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              flexShrink: 0,
-                            }}
-                          >
-                            <Navigation size={15} />
-                          </button>
-                        );
-                      })()}
-
-                      {canEdit && !isTile && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); cyclePriority(plan); }}
-                          title={
-                            plan.priority === 'must' ? 'חובה — לחץ לשנות לאם ישאר זמן' :
-                            plan.priority === 'optional' ? 'אם ישאר זמן — לחץ לנקות' :
-                            'לחץ לסמן כחובה'
-                          }
-                          style={{
-                            border: 'none', background: 'transparent', cursor: 'pointer',
-                            padding: 4, flexShrink: 0, display: 'flex', alignItems: 'center',
-                            color: plan.priority === 'must' ? '#f59e0b' :
-                                   plan.priority === 'optional' ? 'var(--text-muted)' :
-                                   'var(--ink-15)',
-                          }}
-                        >
-                          {plan.priority === 'optional'
-                            ? <Clock size={16} />
-                            : <Star size={16} fill={plan.priority === 'must' ? 'currentColor' : 'none'} />}
-                        </button>
-                      )}
-
-                      {!isTile && (
-                        <ChevronDown
-                          size={18}
-                          style={{
-                            color: 'var(--text-muted)',
-                            transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
-                            transition: 'transform 0.2s ease',
-                            flexShrink: 0,
-                          }}
-                        />
+                      </h3>
+                      {(LO.showSubtitle && metaLine) && (
+                        <span style={{
+                          fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'block', marginTop: 2,
+                        }}>
+                          {metaLine}
+                        </span>
                       )}
                     </div>
 
-                    {/* Expanded body */}
-                    {isOpen && (
-                      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {canEdit && (
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => handleStartEdit(plan)}
-                            style={{
-                              width: '40px', height: '40px', borderRadius: '50%',
-                              background: 'var(--ink-4)', border: 'none',
-                              color: 'var(--text-muted)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              cursor: 'pointer'
-                            }}
-                            title="ערוך"
-                          >
-                            <Pencil size={15} />
-                          </button>
-
-                          <button
-                            onClick={() => handleDelete(plan.id)}
-                            style={{
-                              width: '40px', height: '40px', borderRadius: '50%',
-                              background: 'var(--c-red2-6)', border: 'none',
-                              color: 'var(--c-red2)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              cursor: 'pointer'
-                            }}
-                            title="מחק"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                        )}
-
-                        {plan.description && (
-                          <p style={{ fontSize: '14px', color: 'var(--c-slate)', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
-                            {plan.description}
-                          </p>
-                        )}
-
-                        {/* Distance from hotel / origin */}
-                        {hasGmapsKey() && (hotelDetails || distanceOrigins.length > 0 || tripDestination) && (() => {
-                          const originId = plan.distanceOriginId || 'hotel';
-                          const cacheKey = `${plan.id}_${originId}`;
-                          const cache = distanceCache[cacheKey];
-                          const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
-                          // Label from what the SHOWN numbers were actually
-                          // computed from (recorded on the cached value), so a
-                          // city-centre result is never labelled "from hotel".
-                          // Older cached entries have no originKind — fall back
-                          // to resolving the current origin.
-                          const kind = cache?.originKind || (
-                            (customOrigin && hasPreciseOrigin(null, customOrigin))
-                              ? 'custom'
-                              : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city')
-                          );
-                          const cityName = (tripDestination || '').split(',')[0].trim();
-                          const cityLabel = cityName ? `ממרכז ${cityName}` : 'מהמיקום';
-                          const originLabel =
-                            kind === 'custom' ? (customOrigin?.name || cityLabel)
-                            : kind === 'hotel' ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
-                            : cityLabel;
-
-                          if (!cache || cache.loading) return (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
-                              <Loader2 size={13} className="spinning" />
-                              <span>מחשב מרחק...</span>
-                            </div>
-                          );
-                          if (cache.offline) return (
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-                              📡 אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
-                            </div>
-                          );
-                          if (cache.noLocation) return (
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-                              📍 לא נמצא מיקום לחישוב זמן הגעה
-                            </div>
-                          );
-                          if (cache.error || (!cache.walk && !cache.transit)) return null;
-                          return (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-4)', borderRadius: 10, border: '1px solid var(--p-10)' }}>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
-                                {originLabel}:
-                              </span>
-                              {cache.walk && (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
-                                  🚶 {cache.walk.duration}
-                                </span>
-                              )}
-                              {cache.transit && (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
-                                  🚌 {cache.transit.duration}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })()}
-
-                        <div style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: '8px',
-                          alignItems: 'center',
-                          borderTop: '1px solid rgba(0,0,0,0.04)',
-                          paddingTop: '10px'
-                        }}>
-                          {renderChip(<MapPin size={12} />, plan.address, true)}
-                          {Array.isArray(plan.links) && plan.links.map((link, idx) => (
-                            <a
-                              key={`lnk-${idx}`}
-                              href={link.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
-                            >
-                              <div style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                background: 'rgba(79, 70, 229, 0.08)',
-                                padding: '5px 10px',
-                                borderRadius: 10,
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: 'var(--accent)',
-                                border: '1px solid rgba(79, 70, 229, 0.15)',
-                                maxWidth: '100%',
-                                boxSizing: 'border-box'
-                              }}>
-                                <Link2 size={12} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                                  {link.label || link.url}
-                                </span>
-                                <ExternalLink size={10} style={{ marginRight: 2, opacity: 0.7 }} />
-                              </div>
-                            </a>
-                          ))}
-
-                          {/* Who added this place — trailing end of the
-                              location/links row. Places added before this
-                              feature have no addedBy, so nothing is shown. */}
-                          {(() => {
-                            const who = profileFor(plan.addedBy);
-                            if (!who) return null;
-                            const name = who.displayName || who.email || 'משתמש';
-                            return (
-                              <div
-                                title={`נוסף על ידי ${name}`}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                                  marginInlineStart: 'auto', flexShrink: 0,
-                                  background: 'var(--ink-4)',
-                                  padding: '3px 4px 3px 10px',
-                                  borderRadius: 999,
-                                }}
-                              >
-                                <div style={{
-                                  width: 22, height: 22, borderRadius: '50%', overflow: 'hidden',
-                                  flexShrink: 0, background: 'var(--accent)',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                }}>
-                                  {who.photoURL
-                                    ? <img src={who.photoURL} alt="" referrerPolicy="no-referrer"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    : <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>
-                                        {name[0]}
-                                      </span>}
-                                </div>
-                                <span style={{
-                                  fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
-                                  maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                }}>
-                                  {name}
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
+                    {/* Quiet "opens a panel" affordance (RTL: points inward).
+                        Grid tiles are too narrow to spare the room. */}
+                    {!isTile && (
+                      <ChevronLeft
+                        size={16}
+                        style={{ color: 'var(--ink-15)', flexShrink: 0 }}
+                      />
                     )}
-
                   </div>
                 );
               })
@@ -3444,6 +3379,262 @@ export default function PlanningTab({ tripId }) {
       )}
 
       {/* Locations Modal — multiple navigation targets for a card */}
+      {/* ── Place details sheet ──────────────────────────────────────────
+          Tapping a card opens this instead of expanding the card in place:
+          the list stays a clean column of titles, and everything you can do
+          with a place (navigate, edit, prioritise, mark, delete) is laid out
+          here in one predictable place. */}
+      {detailPlan && createPortal(
+        <div
+          className="modal-overlay"
+          onClick={() => setDetailPlanId(null)}
+          style={{ alignItems: 'flex-end', padding: 0 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 560,
+              background: 'var(--modal-bg)',
+              borderRadius: '24px 24px 0 0',
+              boxShadow: 'var(--shadow-lg)',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: 'min(88vh, 100vh - 40px)',
+              overflow: 'hidden',
+              direction: 'rtl',
+              animation: 'slideUp 0.25s ease',
+            }}
+          >
+            {/* Grab handle */}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 2px', flexShrink: 0 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-12)' }} />
+            </div>
+
+            {/* Header: icon, title, status pills, close */}
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '8px 16px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
+            }}>
+              <span style={{
+                width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                background: `${getCategoryColor(detailPlan.category)}18`,
+                color: getCategoryColor(detailPlan.category),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {getCategoryIcon(detailPlan.category, 19)}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2 style={{
+                  fontSize: 16, fontWeight: 800, margin: 0, lineHeight: 1.3,
+                  color: detailPlan.visited ? 'var(--text-success)' : 'var(--primary)',
+                  wordBreak: 'break-word',
+                }}>
+                  {detailPlan.title}
+                </h2>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                    background: `${getCategoryColor(detailPlan.category)}14`,
+                    color: getCategoryColor(detailPlan.category),
+                  }}>{detailPlan.category}</span>
+                  {detailPlan.priority === 'must' && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                      background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Star size={10} fill="#f59e0b" />חובה</span>
+                  )}
+                  {detailPlan.priority === 'optional' && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--ink-6)', color: 'var(--text-muted)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Clock size={10} />אם ישאר זמן</span>
+                  )}
+                  {detailPlan.visited && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: 'rgba(5,150,105,0.15)', color: 'var(--text-success)',
+                    }}>נצפה</span>
+                  )}
+                  {detailPlan.category === EVENTS_CATEGORY && detailPlan.event?.startDate && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--c-orange-12)', color: 'var(--c-orange)',
+                    }}>🗓️ {formatEventWhen(detailPlan.event)}</span>
+                  )}
+                </div>
+              </div>
+              <button
+                className="btn-close"
+                onClick={() => setDetailPlanId(null)}
+                style={{ flexShrink: 0 }}
+              >✕</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {detailPlan.description && (
+                <p style={{ fontSize: 14, color: 'var(--c-slate)', lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
+                  {detailPlan.description}
+                </p>
+              )}
+
+              {renderDistanceBlock(detailPlan)}
+
+              {/* Locations & links */}
+              {(() => {
+                const locs = getPlanLocations(detailPlan);
+                if (locs.length === 0) return null;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={sheetSectionLabel}>מיקומים וקישורים</span>
+                    {locs.map((loc, i) => (
+                      <a
+                        key={i}
+                        href={loc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px',
+                          background: 'var(--p-6)',
+                          borderRadius: 12,
+                          border: '1px solid var(--p-12)',
+                        }}>
+                          <span style={{
+                            width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                            background: 'var(--accent)', color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {i === 0 && detailPlan.address ? <MapPin size={15} /> : <Link2 size={15} />}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {loc.label}
+                            </div>
+                            {/* Only when the link carries a name of its own —
+                                otherwise the title already IS the address. */}
+                            {loc.label !== prettyUrl(loc.url) && (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">
+                                {prettyUrl(loc.url)}
+                              </div>
+                            )}
+                          </div>
+                          <ExternalLink size={14} style={{ color: 'var(--accent)', flexShrink: 0, opacity: 0.7 }} />
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Who added this place */}
+              {(() => {
+                const who = profileFor(detailPlan.addedBy);
+                if (!who) return null;
+                const name = who.displayName || who.email || 'משתמש';
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: '50%', overflow: 'hidden',
+                      flexShrink: 0, background: 'var(--accent)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {who.photoURL
+                        ? <img src={who.photoURL} alt="" referrerPolicy="no-referrer"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{name[0]}</span>}
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                      נוסף על ידי {name}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Actions — fixed footer so they are always in the same spot */}
+            <div style={{
+              flexShrink: 0, borderTop: '1px solid var(--ink-7)',
+              padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
+              display: 'flex', flexDirection: 'column', gap: 10,
+              background: 'var(--modal-bg)',
+            }}>
+              {(() => {
+                const locs = getPlanLocations(detailPlan);
+                const actions = [];
+                if (locs.length > 0) actions.push({
+                  key: 'nav', label: 'ניווט', Icon: Navigation, accent: true,
+                  onClick: () => {
+                    if (locs.length === 1) window.open(locs[0].url, '_blank', 'noreferrer');
+                    else setLocationsModal(detailPlan);
+                  },
+                });
+                if (canEdit) {
+                  actions.push({
+                    key: 'edit', label: 'עריכה', Icon: Pencil,
+                    onClick: () => { setDetailPlanId(null); handleStartEdit(detailPlan); },
+                  });
+                  actions.push({
+                    key: 'prio',
+                    label: detailPlan.priority === 'must' ? 'אם ישאר זמן'
+                         : detailPlan.priority === 'optional' ? 'ללא עדיפות' : 'סמן כחובה',
+                    Icon: detailPlan.priority === 'must' ? Clock : Star,
+                    onClick: () => cyclePriority(detailPlan),
+                  });
+                  actions.push({
+                    key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
+                    onClick: async () => {
+                      const id = detailPlan.id;
+                      setDetailPlanId(null);
+                      await handleDelete(id);
+                    },
+                  });
+                }
+                if (actions.length === 0) return null;
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(actions.length, 4)}, 1fr)`, gap: 8 }}>
+                    {actions.map(({ key, label, Icon, onClick, accent, danger }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                          padding: '10px 4px', borderRadius: 14, cursor: 'pointer',
+                          border: `1px solid ${danger ? 'var(--c-red2-12, rgba(239,68,68,0.15))' : accent ? 'var(--p-18)' : 'var(--ink-7)'}`,
+                          background: danger ? 'var(--c-red2-6)' : accent ? 'var(--p-8)' : 'var(--ink-3)',
+                          color: danger ? 'var(--c-red2)' : accent ? 'var(--accent)' : 'var(--text-muted)',
+                          fontFamily: 'var(--font-hebrew)', fontSize: 11.5, fontWeight: 700,
+                        }}
+                      >
+                        <Icon size={17} />
+                        <span style={{ textAlign: 'center', lineHeight: 1.15 }}>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleVisited(detailPlan)}
+                  className={detailPlan.visited ? 'btn-secondary' : 'btn-primary'}
+                  style={{ width: '100%', minHeight: 44, gap: 8, fontSize: 14 }}
+                >
+                  <Check size={17} />
+                  <span>{detailPlan.visited ? 'בטל סימון כנצפה' : 'סמן כנצפה'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {locationsModal && (
         <div className="modal-overlay" onClick={() => setLocationsModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>

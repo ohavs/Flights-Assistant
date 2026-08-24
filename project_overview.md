@@ -69,12 +69,16 @@ Custom Hebrew RTL calendar and datetime picker. Exposes `CustomDatePicker`, `Cus
 Two sub-tabs:
 
 **אטרקציות ומקומות (pool):**
-- Collapsible plan cards with FLIP reorder animation; visited toggle; description preview in collapsed state.
-- **Priority flag** (`plan.priority: 'must' | 'optional' | null`): toggled via star button in card header (cycles not-set → must → optional) or via 3-button selector in edit/add form. "חובה" = amber title + ⭐ badge; "אם ישאר זמן" = muted title + 🕐 badge. "⭐ חובה" filter chip shown when at least one must-visit exists.
+- **Text-first place cards**: a card is one row — visited toggle, category icon, title, a single quiet meta line (category / event date · travel time · link count) and a chevron. No action buttons on the card itself; tapping it opens the details sheet. FLIP reorder animation kept for the visited-sinks-to-bottom move.
+- **Place details sheet** (`detailPlanId`): bottom sheet with the description, travel times, every location/link as a tappable row, who added the place, and a fixed action footer — ניווט / עריכה / עדיפות / מחיקה plus a full-width "סמן כנצפה". Reads the plan from the live `plans` array, so Firestore updates (and deletes) are reflected while it is open.
+- **Grouping** (`groupBy`: `'none' | 'category' | 'area'`, persisted per trip in `localStorage`): category sections or proximity clusters render as collapsible sticky pill headers (icon + name + count) at `top: 64`, just under the sticky toolbar.
+- **Hide visited** toggle + **active-view summary bar** ("N מתוך M מקומות" + the active filters + "הצג הכל") shown whenever anything is filtered out. The place open in the details sheet is never hidden mid-read.
+- **Priority flag** (`plan.priority: 'must' | 'optional' | null`): set from the details sheet action or the 3-button selector in the edit/add form. Cards show at most one status pill (today's event > expired event > "חובה"); "אם ישאר זמן" and "נצפה" are shown in the sheet. "⭐ חובה" filter chip shown when at least one must-visit exists.
 - **Event status badges**: "אירועים" category items show "✨ היום" (amber card border) when `startDate === todayISO`; "נגמר" (muted) when today is past the end date.
 - **Manual travel-time override**: edit form has numeric minute inputs for walk/transit. Saves to Firestore as `distances.{originId} = { …, manualOverride: true }`. Auto-fetch skips entries flagged with `manualOverride`.
 - **Proximity grouping**: haversine + greedy single-link clustering at 800 m; area headers collapsible via chevron.
-- **Filter row**: sticky, no background — chips + single `SlidersHorizontal` options button (avoids backdrop-filter stacking context artifact). Dropdown uses `position: fixed` anchored via `getBoundingClientRect`.
+- **Links**: `plan.links` entries keep `label` empty when the user does not name one — the URL is never copied into the name field. The add/edit rows are stacked and captioned ("שם הקישור (אופציונלי)" / "כתובת הקישור (URL)"); unnamed links display as "ללא שם" in the form and as `prettyUrl(url)` everywhere else.
+- **Filter row**: sticky and frosted (`var(--header-bg)` + `backdrop-filter`), bled to the content edges so cards scroll under it — chips + single `SlidersHorizontal` options button. Dropdown uses `position: fixed` anchored via `getBoundingClientRect`. The options menu holds card layout, sort, grouping, hide-visited, distance calculation and category settings.
 - **Sort options**: default / walk asc-desc / transit asc-desc. Persisted per trip in `localStorage`.
 
 **לוח זמנים יומי:**
@@ -88,7 +92,15 @@ Two sub-tabs:
 - Category customization persisted in `trips/{tripId}/settings/categories`.
 
 ### `ChecklistTab.jsx`
-Packing checklist. Auto-syncs from global template. Reminders carousel (shuffle, auto-advance, swipeable). "כל התזכורות" bottom sheet uses `var(--modal-bg)` (dark-mode-safe) with bulk-delete button when items are selected. All Firestore writes are fire-and-forget for instant offline UX.
+Packing checklist. Auto-syncs from global template. All Firestore writes are fire-and-forget for instant offline UX.
+
+**Reminders (`RemindersCard`)** — a compact strip plus two bottom sheets:
+- The strip cycles reminders (shuffled, auto-advance every 5 s, swipeable, dots). Auto-advance pauses while either sheet is open. Header carries the done/total count, "כל התזכורות" and "+"; the row itself is checkbox + text + owner avatar, and tapping the text opens the editor.
+- **Editor sheet** — add and edit both happen here (textarea + "של מי התזכורת" member picker + delete when editing), so the strip is never replaced by an inline form and the layout never jumps.
+- **All-reminders sheet** — one row per reminder (done checkbox, text, avatar, pencil), an explicit "בחירה" mode for multi-select delete (instead of two competing checkboxes per row), and a "תזכורת חדשה" footer button.
+- `Avatar` and `Sheet` are declared at module level: a component defined inside another component is a new type on every render and would remount the sheet — dropping focus out of the textarea — on every keystroke.
+
+**Top area**: reminders strip → progress ring + add-item card → member filter chips in a single scrollable row with per-member counts. Container gap is 14 px.
 
 ### `ExpensesTab.jsx`
 Expense tracker with per-category collapsible groups, ILS snapshot for foreign currencies, split form, and per-person summary row.
