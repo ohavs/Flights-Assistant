@@ -79,7 +79,7 @@ Two sub-tabs:
 - **Manual travel-time override**: edit form has numeric minute inputs for walk/transit. Saves to Firestore as `distances.{originId} = { …, manualOverride: true }`. Auto-fetch skips entries flagged with `manualOverride`.
 - **Proximity grouping**: haversine + greedy single-link clustering at 800 m; area headers collapsible via chevron.
 - **Links**: `plan.links` entries keep `label` empty when the user does not name one — the URL is never copied into the name field. The add/edit rows are stacked and captioned ("שם הקישור (אופציונלי)" / "כתובת הקישור (URL)"); unnamed links display as "ללא שם" in the form and as `prettyUrl(url)` everywhere else.
-- **Filter row**: sticky and frosted (`var(--header-bg)` + `backdrop-filter`), bled to the content edges so cards scroll under it — chips + single `SlidersHorizontal` options button. Dropdown uses `position: fixed` anchored via `getBoundingClientRect`. The options menu holds card layout, sort, grouping, hide-visited, distance calculation and category settings.
+- **Filter row**: sticky and frosted (`var(--header-bg)` + `backdrop-filter`), bled to the content edges so cards scroll under it — chips + single `SlidersHorizontal` options button. Both dropdowns are `position: fixed`, anchored via `getBoundingClientRect`, and **rendered through `createPortal` into `<body>`** — the frosted toolbar is a filtered ancestor, which would otherwise become their containing block and offset them down the page. The options menu holds card layout, sort, grouping, hide-visited, distance calculation and category settings.
 - **Sort options**: default / walk asc-desc / transit asc-desc. Persisted per trip in `localStorage`.
 
 **לוח זמנים יומי:**

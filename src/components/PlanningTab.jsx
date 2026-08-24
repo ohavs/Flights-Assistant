@@ -2288,7 +2288,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     />
                   </button>
 
-                  {showCategoryMenu && (
+                  {/* Rendered into <body>: the toolbar above is
+                      backdrop-filtered, and a filtered ancestor becomes the
+                      containing block for position:fixed children — which
+                      would offset this popup by the toolbar's own position. */}
+                  {showCategoryMenu && createPortal(
                     <>
                       <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowCategoryMenu(false)} />
                       <div style={{
@@ -2348,7 +2352,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           );
                         })}
                       </div>
-                    </>
+                    </>,
+                    document.body
                   )}
                 </>
               );
@@ -2387,7 +2392,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     )}
                   </button>
 
-                  {showSortMenu && (
+                  {/* Portalled for the same reason as the category popup. */}
+                  {showSortMenu && createPortal(
                     <>
                       <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowSortMenu(false)} />
                       <div style={{
@@ -2618,7 +2624,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           </>
                         )}
                       </div>
-                    </>
+                    </>,
+                    document.body
                   )}
                 </>
               );

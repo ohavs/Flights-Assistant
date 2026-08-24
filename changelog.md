@@ -1,5 +1,12 @@
 # Changelog — Flights-Assistant
 
+## [7.6.2] - 2026-08-24
+
+### Fixed
+- **התפריטים בסרגל התכנון נפתחו במקום הלא נכון** (`PlanningTab.jsx`):
+  - Frosting the sticky filter row (7.5.0) gave it a `backdrop-filter`, and a filtered ancestor becomes the containing block for `position: fixed` descendants. Both dropdowns anchored to the toolbar instead of the viewport, so they opened far below their buttons, on top of the cards.
+  - The category filter popup and the options menu are now rendered through `createPortal` into `<body>`, outside the filtered ancestor, so their `getBoundingClientRect` anchoring lands under the button that opened them.
+
 ## [7.6.1] - 2026-08-24
 
 ### Changed
