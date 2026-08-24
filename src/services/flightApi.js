@@ -140,10 +140,12 @@ export async function lookupFlightLive(flightNumber, dateStr) {
 
   const date = (dateStr || '').match(/^\d{4}-\d{2}-\d{2}/) ? dateStr.slice(0, 10) : '';
 
-  // One call to the flights-by-number endpoint. Returns { list } on success,
-  // or { fail } holding the wrapper to hand back to the caller.
-  const queryApi = async (forDate) => {
-    const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}` + (forDate ? `/${forDate}` : '');
+  // One call to the flights-by-number endpoint. `path` is appended after the
+  // number: '' for the nearest operation, '/YYYY-MM-DD' for one date, or
+  // '/YYYY-MM-DD/YYYY-MM-DD' for a range (max 7 days on the current plan).
+  // Returns { list } on success, or { fail } holding the wrapper to return.
+  const queryApi = async (path) => {
+    const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}${path || ''}`;
     const res = await fetch(url + '?dateLocalRole=Both&withAircraftImage=false&withLocation=true', {
       headers: { 'X-RapidAPI-Key': API_KEY, 'X-RapidAPI-Host': API_HOST },
     });
@@ -167,16 +169,39 @@ export async function lookupFlightLive(flightNumber, dateStr) {
   };
 
   try {
-    const first = await queryApi(date);
+    const first = await queryApi(date ? `/${date}` : '');
     if (first.fail) return first.fail;
     if (first.list.length > 0) return { flight: adaptFlight(first.list[0]), status: 'api' };
 
-    // Nothing on that date. Ask the same endpoint without a date, which
-    // returns the nearest known operation of this flight number. That
-    // separates the two cases the user otherwise can't tell apart:
-    // an unknown flight number, versus a valid one that simply doesn't
-    // operate on the requested date.
     if (date) {
+      // Nothing on the exact date. Widen to a week around it — the same
+      // endpoint accepts a date range (7 days on the current plan) and
+      // reports every operation of this number inside it. A flight that
+      // runs a few days a week shows up here, and the dates it returns are
+      // worth telling the user about.
+      const shift = (d, days) => {
+        const t = new Date(`${d}T00:00:00Z`);
+        t.setUTCDate(t.getUTCDate() + days);
+        return t.toISOString().slice(0, 10);
+      };
+      const range = await queryApi(`/${shift(date, -3)}/${shift(date, 3)}`);
+      if (!range.fail && range.list.length > 0) {
+        const found = range.list.map(adaptFlight).filter(f => f.date);
+        const dates = [...new Set(found.map(f => f.date))].sort();
+        if (dates.length > 0) {
+          const human = dates.map(d => d.split('-').reverse().join('/')).join(', ');
+          return {
+            flight: localFallback(),
+            status: 'no-results',
+            knownDate: dates[0],
+            message: `הטיסה ${num} לא מופיעה בתאריך שביקשת, אבל כן נמצאה בשבוע שסביבו — בתאריכים: ${human}. כנראה שהיא לא מופעלת בכל יום, אז כדאי לוודא את התאריך מול הכרטיס.`,
+          };
+        }
+      }
+
+      // Nothing that week either. Ask without a date at all, which returns
+      // the nearest known operation of this number — that separates an
+      // unknown flight number from a valid one with no schedule coverage.
       const probe = await queryApi('');
       if (!probe.fail && probe.list.length > 0) {
         const near = adaptFlight(probe.list[0]);
