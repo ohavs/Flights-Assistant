@@ -366,9 +366,6 @@ export default function PlanningTab({ tripId }) {
       return saved && PLAN_LAYOUTS[saved] ? saved : 'comfortable';
     } catch { return 'comfortable'; }
   });
-  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
-  const [layoutMenuRect, setLayoutMenuRect] = useState(null);
-  const layoutBtnRef = useRef(null);
   // Proximity grouping view + bulk distance calculation
   const [groupByProximity, setGroupByProximity] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
@@ -2083,98 +2080,6 @@ export default function PlanningTab({ tripId }) {
               );
             })()}
 
-            {/* Card layout picker — same row, same chip sizing as the other
-                icon buttons so the row stays balanced. */}
-            {(() => {
-              const CurrentIcon = PLAN_LAYOUTS[planLayout]?.icon || LayoutList;
-              const rect = showLayoutMenu ? layoutMenuRect : null;
-              return (
-                <>
-                  <button
-                    ref={layoutBtnRef}
-                    type="button"
-                    onClick={() => {
-                      const r = layoutBtnRef.current?.getBoundingClientRect();
-                      if (r) setLayoutMenuRect({ bottom: r.bottom, right: r.right });
-                      setShowLayoutMenu(v => !v);
-                    }}
-                    title={`תצוגת כרטיסים — ${PLAN_LAYOUTS[planLayout]?.label || ''}`}
-                    className="filter-chip"
-                    style={{
-                      flexShrink: 0, gap: 4,
-                      color: showLayoutMenu ? '#fff' : 'var(--text-muted)',
-                      background: showLayoutMenu ? 'var(--accent)' : 'var(--ink-5)',
-                      borderColor: showLayoutMenu ? 'var(--accent)' : undefined,
-                    }}
-                  >
-                    <CurrentIcon size={14} />
-                  </button>
-
-                  {showLayoutMenu && (
-                    <>
-                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowLayoutMenu(false)} />
-                      <div style={{
-                        position: 'fixed',
-                        top: rect ? rect.bottom + 6 : 120,
-                        right: rect ? Math.max(8, window.innerWidth - rect.right) : 8,
-                        zIndex: 50,
-                        background: 'var(--surface)',
-                        border: '1.5px solid var(--p-12)',
-                        borderRadius: 14,
-                        boxShadow: 'var(--shadow-lg)',
-                        overflow: 'hidden',
-                        width: 190,
-                        maxWidth: 'calc(100vw - 16px)',
-                        direction: 'rtl',
-                      }}>
-                        <div style={{
-                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
-                          color: 'var(--text-muted)', letterSpacing: '0.4px',
-                          background: 'var(--ink-3)',
-                        }}>תצוגת כרטיסים</div>
-                        {Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => {
-                          const Icon = cfg.icon;
-                          const active = key === planLayout;
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => { setPlanLayout(key); setShowLayoutMenu(false); }}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                                padding: '10px 14px', border: 'none',
-                                background: active ? 'var(--p-6)' : 'var(--surface)',
-                                color: active ? 'var(--accent)' : 'var(--primary)',
-                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
-                                fontSize: 13, fontWeight: 700,
-                                borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
-                              }}
-                            >
-                              <Icon size={15} style={{ flexShrink: 0 }} />
-                              <span style={{ flex: 1 }}>{cfg.label}</span>
-                              {active && <Check size={14} style={{ flexShrink: 0 }} />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* Category settings — unchanged */}
-            {canEdit && (
-              <button
-                onClick={() => setShowCategorySettings(true)}
-                title="הגדרות קטגוריות"
-                className="filter-chip"
-                style={{ flexShrink: 0, gap: 4, color: 'var(--text-muted)', background: 'var(--ink-5)' }}
-              >
-                <Settings size={13} />
-              </button>
-            )}
-
             {/* Single options button — no wrapper div (backdrop-filter parent
                 causes positioned wrapper divs to get implicit solid bg).
                 Dropdown uses position:fixed anchored via getBoundingClientRect. */}
@@ -2220,11 +2125,46 @@ export default function PlanningTab({ tripId }) {
                         border: '1.5px solid var(--p-12)',
                         borderRadius: 14,
                         boxShadow: 'var(--shadow-lg)',
-                        overflow: 'hidden',
+                        overflow: 'hidden auto',
                         width: 250,
                         maxWidth: 'calc(100vw - 16px)',
+                        maxHeight: 'min(70vh, calc(100vh - 140px))',
                         direction: 'rtl',
                       }}>
+                        {/* — Card layout section — */}
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>תצוגת כרטיסים</div>
+                        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ink-4)' }}>
+                          {Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => {
+                            const Icon = cfg.icon;
+                            const active = key === planLayout;
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setPlanLayout(key)}
+                                title={cfg.label}
+                                style={{
+                                  flex: 1, display: 'flex', flexDirection: 'column',
+                                  alignItems: 'center', gap: 4, padding: '8px 4px',
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-6)'}`,
+                                  background: active ? 'var(--p-8)' : 'var(--surface)',
+                                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                                  cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                                  fontSize: 11, fontWeight: 700,
+                                }}
+                              >
+                                <Icon size={16} />
+                                <span>{cfg.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
                         {/* — Sort section — */}
                         <div style={{
                           padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
@@ -2329,6 +2269,33 @@ export default function PlanningTab({ tripId }) {
                                   <span>חשב ושמור מרחקים</span>
                                 </>
                               )}
+                            </button>
+                          </>
+                        )}
+
+                        {/* — Category settings — lives here rather than as its
+                            own toolbar button, keeping the row to one control. */}
+                        {canEdit && (
+                          <>
+                            <div style={{
+                              padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                              color: 'var(--text-muted)', letterSpacing: '0.4px',
+                              background: 'var(--ink-3)',
+                            }}>קטגוריות</div>
+                            <button
+                              type="button"
+                              onClick={() => { setShowSortMenu(false); setShowCategorySettings(true); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                                padding: '10px 14px', border: 'none', background: 'var(--surface)',
+                                color: 'var(--primary)', cursor: 'pointer',
+                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                textAlign: 'right',
+                              }}
+                            >
+                              <Settings size={15} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1 }}>הגדרות קטגוריות</span>
+                              <ChevronDown size={14} style={{ flexShrink: 0, transform: 'rotate(-90deg)', opacity: 0.6 }} />
                             </button>
                           </>
                         )}
