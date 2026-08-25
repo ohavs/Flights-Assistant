@@ -1,5 +1,15 @@
 # Changelog — Flights-Assistant
 
+## [7.6.3] - 2026-08-24
+
+### Added
+- **חישוב אוטומטי אחרי עריכת מקום** (`PlanningTab.jsx`):
+  - Editing a place's address, its links, or its distance origin already dropped the saved travel times as stale — but nothing re-measured them until someone opened that place or ran "חשב ושמור מרחקים". The edited place is now queued and recomputed as soon as the updated document comes back. Manual time overrides are left untouched.
+  - The queue is drained from a `plans`-driven effect rather than straight after the write, so the recompute runs in a fresh render where the cleared caches are visible — otherwise it short-circuits on the previous cached result.
+
+### Note
+- "חשב ושמור מרחקים" (options menu → תצוגה), the automatic travel times and the "איזור" grouping only render when the build has `VITE_GOOGLE_MAPS_KEY` set. A build produced without `.env.local` hides all three, and `VITE_AERODATABOX_KEY` is needed the same way for live flight lookup.
+
 ## [7.6.2] - 2026-08-24
 
 ### Fixed

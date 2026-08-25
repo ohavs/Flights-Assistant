@@ -396,6 +396,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [hideVisited, setHideVisited] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
   const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
+  // Places whose address/links were just edited — their travel times are
+  // recomputed as soon as the updated document comes back.
+  const [recomputeIds, setRecomputeIds] = useState([]);
   const [coordsCache, setCoordsCache] = useState({}); // planId → {lat,lng} | null
 
   // Locations modal: when a card has multiple navigation targets
@@ -1047,6 +1050,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           delete next[editingId];
           return next;
         });
+        // Editing the address or a link is exactly when the old numbers
+        // stopped being true — queue a recompute instead of waiting for
+        // someone to open the place. Manual overrides are left alone.
+        if (!manualEntry) {
+          setRecomputeIds(prev => (prev.includes(editingId) ? prev : [...prev, editingId]));
+        }
       } else if (manualEntry) {
         setDistanceCache(prev => ({
           ...prev,
@@ -1417,6 +1426,23 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       window.removeEventListener('offline', onWentOffline);
     };
   }, []);
+
+  // Recompute the travel times of a place that was just edited. Runs off the
+  // `plans` snapshot so it fires in a fresh render — by then the cleared
+  // caches are visible and the fetch actually re-measures instead of
+  // short-circuiting on the previous result.
+  useEffect(() => {
+    if (recomputeIds.length === 0) return;
+    if (!hasGmapsKey()) { setRecomputeIds([]); return; }
+    const done = [];
+    recomputeIds.forEach(id => {
+      const plan = plans.find(p => p.id === id);
+      if (!plan) return;
+      fetchPlanDistances(plan);
+      done.push(id);
+    });
+    if (done.length) setRecomputeIds(prev => prev.filter(id => !done.includes(id)));
+  }, [plans, recomputeIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lazy-fetch travel times for all day-planner activities that link to a saved place
   useEffect(() => {
