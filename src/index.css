@@ -1061,20 +1061,12 @@ input[type="datetime-local"].form-control {
   width: 100%; height: 100%;
 }
 
-/* The tiles are OSM's full-colour standard style; the card wants a quiet
-   ground behind a flight path. Filtering the tile pane alone leaves the
-   markers, the route line and the plane at full strength — they live in
-   their own panes. */
-.leaflet-tile-pane {
-  filter: saturate(0.22) brightness(1.06) contrast(0.92);
-}
-[data-theme="dark"] .leaflet-tile-pane {
-  /* Invert to a dark ground, then rotate the hue back so the few colours
-     that survive (water, green space) are not their own opposites. */
-  filter: invert(1) hue-rotate(180deg) saturate(0.18) brightness(0.92) contrast(0.95);
-}
+/* No filter over the tiles: the basemap is Esri's Gray Canvas, already a
+   quiet ground with its own dark variant. The version before it filtered
+   OpenStreetMap's standard tiles, and crushing their contrast to calm the
+   colour took the place names with it. */
 
-/* OSM's licence asks for visible attribution. It gets it — at the size of
+/* The licence asks for visible attribution. It gets it — at the size of
    a footnote, out of the way of the route. */
 .leaflet-control-attribution {
   background: var(--w-7) !important;

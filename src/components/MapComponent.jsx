@@ -1,6 +1,38 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { getIntermediatePoint } from '../services/flightSimulator';
+import { useTheme } from '../ThemeContext';
+
+/* ── Basemap ────────────────────────────────────────────────────────────
+   Esri's Gray Canvas, in two layers: a pale ground with no lettering on
+   it, and a transparent reference layer carrying the place names and
+   borders. That split is why this style exists — the names sit on top of
+   whatever is drawn between the two, and they are designed to stay
+   legible on a near-white (or near-black) ground.
+
+   It replaces a CSS filter over OpenStreetMap's standard tiles. Those
+   tiles are drawn for reading at street zoom; pushed down to a whole
+   continent inside a 148px card and then desaturated, their lettering
+   thinned out to nothing. Filtering a finished map is guesswork —
+   picking a style built for a quiet ground is not.
+
+   A dark ground gets the real dark tileset rather than an inverted light
+   one: inverting turns dark labels into glowing white-on-black smears.
+
+   OSM stays as the fallback below, because a free tile host withdrawing
+   is exactly what just happened with CARTO. */
+const BASEMAPS = {
+  light: {
+    base:  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    label: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+  },
+  dark: {
+    base:  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    label: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+  },
+};
+const ESRI_ATTRIB = 'Esri, HERE, © OpenStreetMap';
+const OSM_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 // Helper to calculate bearing/heading in degrees
 function calculateHeading(lat1, lon1, lat2, lon2) {
@@ -20,6 +52,8 @@ export default function MapComponent({ depCoords, arrCoords, progressPercent }) 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef({ dep: null, arr: null, plane: null, line: null });
+  const tilesRef = useRef({ base: null, label: null });
+  const { isDark } = useTheme();
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -37,19 +71,13 @@ export default function MapComponent({ depCoords, arrCoords, progressPercent }) 
       // Leaflet 1.x, so the prefix is cleared on the control itself.
       mapRef.current.attributionControl.setPrefix(false);
 
-      // OpenStreetMap's own tiles. CARTO's Positron basemap used to serve
-      // these unauthenticated and now stamps "API KEY REQUIRED" across
-      // every tile; the Google key this app holds is for Routes and Places
-      // and does not cover map tiles (that is Google's separately-enabled
-      // Map Tiles API). OSM needs no key — it asks for attribution, which
-      // is why the attribution control is back on, styled down in CSS.
-      // Single host, not the {s} subdomains: those are deprecated and HTTP/2
-      // makes them pointless. The muted, theme-aware look that Positron
-      // gave us for free is now a CSS filter on the tile pane.
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap',
-      }).addTo(mapRef.current);
+      // Labels get their own pane between Leaflet's overlay pane (400,
+      // where the route line is) and its marker pane (600). So a place
+      // name is never buried under the flight path, and never draws over
+      // the plane or the two airport dots either.
+      mapRef.current.createPane('labels');
+      mapRef.current.getPane('labels').style.pointerEvents = 'none';
+      mapRef.current.getPane('labels').style.zIndex = 450;
     }
 
     const map = mapRef.current;
@@ -145,12 +173,45 @@ export default function MapComponent({ depCoords, arrCoords, progressPercent }) 
     // Fit map view bounds containing all elements with some padding
     const bounds = L.latLngBounds([depLatLng, arrLatLng]);
     map.fitBounds(bounds, {
-      padding: [40, 40],
+      // 40px of padding inside a 148px card left 68px of usable height and
+      // cost a whole zoom level, which is where the place names went.
+      padding: [22, 22],
       animate: true,
       duration: 0.8,
     });
 
   }, [depCoords, arrCoords, progressPercent]);
+
+  // Basemap, swapped whole when the theme changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const tiles = tilesRef.current;
+    const set = BASEMAPS[isDark ? 'dark' : 'light'];
+
+    if (tiles.base)  map.removeLayer(tiles.base);
+    if (tiles.label) map.removeLayer(tiles.label);
+
+    tiles.base = L.tileLayer(set.base, { maxZoom: 16, attribution: ESRI_ATTRIB }).addTo(map);
+    tiles.label = L.tileLayer(set.label, { maxZoom: 16, pane: 'labels' }).addTo(map);
+
+    // If the ground tiles stop arriving — a host withdrawing free access,
+    // the way CARTO just did — drop to OSM rather than showing an empty
+    // card. One swap only: the handler comes off with the layer.
+    let fellBack = false;
+    tiles.base.on('tileerror', () => {
+      if (fellBack) return;
+      fellBack = true;
+      if (tiles.label) { map.removeLayer(tiles.label); tiles.label = null; }
+      map.removeLayer(tiles.base);
+      tiles.base = L.tileLayer(OSM_URL, { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    });
+
+    return () => {
+      if (tiles.base)  { map.removeLayer(tiles.base);  tiles.base = null; }
+      if (tiles.label) { map.removeLayer(tiles.label); tiles.label = null; }
+    };
+  }, [isDark]);
 
   // Clean up Leaflet map instance on unmount
   useEffect(() => {
