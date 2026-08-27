@@ -778,39 +778,91 @@ button:not(:disabled):active,
 }
 
 .form-group label {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
 }
 
+/* ── Fields ──
+   Recessed slots rather than white boxes with a grey outline: a filled
+   ground, a hairline that only carries weight on focus, and no drop
+   shadow — a field is a place to type into, not a card sitting on the
+   page. On focus the field lifts to the surface colour and the accent
+   ring does the talking. */
 .form-control {
   width: 100%;
-  min-height: 48px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  border: 1.5px solid var(--ink-12);
-  background: var(--input-bg);
+  min-height: 50px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: var(--ink-4);
   font-family: var(--font-hebrew);
   font-size: 16px; /* >= 16px prevents iOS auto-zoom */
   color: var(--text);
   font-weight: 600;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
   outline: none;
-  box-shadow: var(--shadow-sm);
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.form-control:focus {
+.form-control::placeholder {
+  color: var(--text-muted);
+  opacity: 0.62;
+  font-weight: 500;
+}
+
+.form-control:focus,
+.form-control:focus-visible {
+  background: var(--input-bg);
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+  box-shadow: 0 0 0 4px var(--p-12);
+  outline: none;
+}
+
+.form-control:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* A field that reads as filled-in gets a touch more presence than an
+   empty one, so a long form shows at a glance what is already answered. */
+.form-control:not(:placeholder-shown):not(:focus) {
+  background: var(--ink-3);
+  border-color: var(--ink-8);
+}
+
+[data-theme="dark"] .form-control {
+  background: var(--ink-8);
+}
+[data-theme="dark"] .form-control:not(:placeholder-shown):not(:focus) {
+  background: var(--ink-6);
+  border-color: var(--ink-12);
+}
+
+/* Number fields: the spinners are desktop furniture and break the
+   field's height on mobile. */
+input[type="number"].form-control {
+  -moz-appearance: textfield;
+}
+input[type="number"].form-control::-webkit-outer-spin-button,
+input[type="number"].form-control::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 textarea.form-control {
-  min-height: 90px;
+  min-height: 96px;
+  line-height: 1.55;
   resize: vertical;
 }
 
 select.form-control {
   appearance: none;
+  background-color: var(--ink-4);
   background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230b0b30' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: left 12px center;
@@ -859,11 +911,11 @@ input[type="datetime-local"].form-control {
 
 /* ── Buttons ── */
 .btn-primary {
-  min-height: 48px;
+  min-height: 50px;
   background: var(--primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   padding: 12px 24px;
   font-family: var(--font-hebrew);
   font-size: 16px;
@@ -882,11 +934,11 @@ input[type="datetime-local"].form-control {
 }
 
 .btn-secondary {
-  min-height: 48px;
-  background: var(--ink-4);
+  min-height: 50px;
+  background: var(--ink-5);
   color: var(--primary);
-  border: 1.5px solid var(--ink-8);
-  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
   padding: 10px 20px;
   font-family: var(--font-hebrew);
   font-size: 15px;
@@ -1003,9 +1055,11 @@ input[type="datetime-local"].form-control {
 .sheet-grab {
   display: flex;
   justify-content: center;
-  padding: 8px 0 4px;
+  padding: 10px 0 6px;
   flex-shrink: 0;
   cursor: grab;
+  /* The handle is for dragging the sheet, never for panning the page. */
+  touch-action: none;
 }
 .sheet-grab::before {
   content: '';
@@ -1022,6 +1076,7 @@ input[type="datetime-local"].form-control {
   width: 100%;
   height: auto;
   max-height: 94%;
+  overscroll-behavior: contain;
   background: var(--modal-bg);
   color: var(--text);
   border-top-left-radius: var(--radius-xl);
@@ -1321,13 +1376,15 @@ input[type="datetime-local"].form-control {
 }
 
 /* ── Custom dropdown (replaces native <select>) ── */
+/* The dropdown trigger is a field, so it matches the fields exactly —
+   same ground, same radius, same focus ring. */
 .custom-dropdown-trigger {
   width: 100%;
-  min-height: 48px;
-  padding: 12px 18px;
-  border-radius: var(--radius-md);
-  border: 1.5px solid var(--p-20);
-  background: var(--w-95);
+  min-height: 50px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: var(--ink-4);
   font-family: var(--font-hebrew);
   font-size: 15px;
   font-weight: 700;
@@ -1338,12 +1395,15 @@ input[type="datetime-local"].form-control {
   gap: 10px;
   text-align: right;
   direction: rtl;
-  box-shadow: 0 2px 8px var(--p-6);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
   outline: none;
 }
+
+[data-theme="dark"] .custom-dropdown-trigger { background: var(--ink-8); }
 .custom-dropdown-trigger:hover,
-.custom-dropdown-trigger:focus,
+.custom-dropdown-trigger:focus-visible,
 .custom-dropdown-trigger[aria-expanded="true"] {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--p-12);
