@@ -13,6 +13,7 @@ import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
+import SwipeRow from './SwipeRow';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
@@ -560,7 +561,14 @@ export default function ExpensesTab({ tripId }) {
                       const linked = plans.find(p => p.id === expense.linkedPlanId);
                       const placeLabel = linked?.title || expense.customPlace || null;
                       return (
-                        <div key={expense.id} className="glass-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <SwipeRow
+                          key={expense.id}
+                          actions={[
+                            { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => openForm(expense) },
+                            { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(expense.id) },
+                          ]}
+                          className="glass-card"
+                          style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           {/* Icon badge */}
                           <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--p-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <Receipt size={15} style={{ color: 'var(--accent)' }} />
@@ -610,8 +618,9 @@ export default function ExpensesTab({ tripId }) {
                             })()}
                           </div>
 
-                          {/* Action buttons — LEFT side in RTL */}
-                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          {/* Action buttons — LEFT side in RTL. Hidden on
+                              touch, where the same two come from the swipe. */}
+                          <div className="row-inline-actions" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                             <button onClick={() => openForm(expense)} aria-label="ערוך הוצאה" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--ink-4)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Pencil size={12} />
                             </button>
@@ -619,7 +628,7 @@ export default function ExpensesTab({ tripId }) {
                               <Trash2 size={12} />
                             </button>
                           </div>
-                        </div>
+                        </SwipeRow>
                       );
                     })}
                   </div>

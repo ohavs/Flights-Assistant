@@ -14,6 +14,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
+import SwipeRow from './SwipeRow';
 import EmptyState from './EmptyState';
 
 // Default items seeded for every new trip. Israeli emergency numbers
@@ -450,7 +451,14 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
             const hasValue = !!item.value;
             const valueClickable = !!href;
             return (
-              <div key={item.id} className="glass-card"
+              <SwipeRow
+                key={item.id}
+                enabled={canEdit}
+                actions={[
+                  { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => startEdit(item) },
+                  { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(item) },
+                ]}
+                className="glass-card"
                 style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'center' }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0,
                   background: item.type === 'phone' && item.category === 'מספרי חירום' ? 'rgba(220,38,38,0.1)' : 'rgba(79,70,229,0.1)',
@@ -502,19 +510,21 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                     </div>
                   )}
                 </div>
-                {canEdit && (
-                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    <button type="button" onClick={() => startEdit(item)}
+                {/* On touch these hide and the same two actions come from
+                    the swipe; on a mouse they stay exactly where they were. */}
+                {canEdit ? (
+                  <div className="row-inline-actions" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <button type="button" onClick={() => startEdit(item)} aria-label="ערוך פריט"
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
                       <Pencil size={15} />
                     </button>
-                    <button type="button" onClick={() => handleDelete(item)}
+                    <button type="button" onClick={() => handleDelete(item)} aria-label="מחק פריט"
                       style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6 }}>
                       <Trash2 size={15} />
                     </button>
                   </div>
-                )}
-              </div>
+                ) : <div />}
+              </SwipeRow>
             );
           })}
         </div>

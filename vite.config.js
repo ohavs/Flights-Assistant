@@ -103,8 +103,10 @@ export default defineConfig({
             }
           },
           {
-            // OpenStreetMap raster tiles for the flight-path map
-            urlPattern: /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/.*/i,
+            // OpenStreetMap raster tiles for the flight-path map. Must track
+            // whatever host MapComponent asks for — a stale pattern here means
+            // tiles are never cached and the map is blank offline.
+            urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'map-tiles-cache',

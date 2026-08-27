@@ -28,14 +28,27 @@ export default function MapComponent({ depCoords, arrCoords, progressPercent }) 
     if (!mapRef.current) {
       mapRef.current = L.map(mapContainerRef.current, {
         zoomControl: false,
-        attributionControl: false,
         scrollWheelZoom: false,
         dragging: true,
       });
 
-      // Use a clean, modern, light tile template (CartoDB Positron is very beautiful and clean)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      // Keep the data credit, drop Leaflet's own flag — the licence asks
+      // for the former, not the latter. The map option is boolean-only in
+      // Leaflet 1.x, so the prefix is cleared on the control itself.
+      mapRef.current.attributionControl.setPrefix(false);
+
+      // OpenStreetMap's own tiles. CARTO's Positron basemap used to serve
+      // these unauthenticated and now stamps "API KEY REQUIRED" across
+      // every tile; the Google key this app holds is for Routes and Places
+      // and does not cover map tiles (that is Google's separately-enabled
+      // Map Tiles API). OSM needs no key — it asks for attribution, which
+      // is why the attribution control is back on, styled down in CSS.
+      // Single host, not the {s} subdomains: those are deprecated and HTTP/2
+      // makes them pointless. The muted, theme-aware look that Positron
+      // gave us for free is now a CSS filter on the tile pane.
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
+        attribution: '© OpenStreetMap',
       }).addTo(mapRef.current);
     }
 

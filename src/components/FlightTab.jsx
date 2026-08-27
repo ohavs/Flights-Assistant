@@ -1004,7 +1004,7 @@ export default function FlightTab({ tripId }) {
         />
         {/* Current weather + trip days forecast */}
         {weather && (
-          <div style={{ background: 'var(--card-bg)', padding: '12px 14px 10px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ background: 'var(--card-bg)', padding: '10px 14px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {/* Current weather strip */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 26, lineHeight: 1 }}>{getWeatherIcon(weather.current.code)}</span>
