@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
+import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
 
@@ -172,6 +173,9 @@ export default function ExpensesTab({ tripId }) {
     setShowPayerDropdown(false);
     setShowForm(true);
   };
+
+  // Drag-to-dismiss for the expense sheet.
+  const formSheet = useSheetDrag(() => setShowForm(false));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -630,8 +634,9 @@ export default function ExpensesTab({ tripId }) {
 
       {/* Add/Edit Expense Modal */}
       {showForm && createPortal(
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-overlay" data-closing={formSheet.closing || undefined} onClick={formSheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...formSheet.handlers} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...formSheet.style }}>
+            <div className="sheet-grab" />
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingId ? 'עריכת הוצאה' : 'הוצאה חדשה'}</h2>
               <button className="btn-close" onClick={() => setShowForm(false)}>✕</button>

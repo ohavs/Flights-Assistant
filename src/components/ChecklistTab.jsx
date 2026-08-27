@@ -13,6 +13,7 @@ import {
 import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List, User } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
+import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -47,17 +48,21 @@ function Avatar({ photoURL, name, size = 26 }) {
    type on every render, which would remount the sheet — and drop focus out
    of the textarea — on every keystroke. */
 function Sheet({ onClose, children, maxHeight = '80vh' }) {
+  const drag = useSheetDrag(onClose);
   return createPortal(
     <div
-      onClick={onClose}
+      onClick={drag.close}
       style={{
         position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+        opacity: drag.closing ? 0 : 1,
+        transition: 'opacity var(--dur-base) var(--ease-out)',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
+        {...drag.handlers}
         style={{
           width: '100%', maxWidth: 520,
           background: 'var(--modal-bg)',
@@ -65,12 +70,11 @@ function Sheet({ onClose, children, maxHeight = '80vh' }) {
           boxShadow: 'var(--shadow-lg)',
           display: 'flex', flexDirection: 'column',
           maxHeight, overflow: 'hidden', direction: 'rtl',
-          animation: 'slideUp 0.25s ease',
+          animation: drag.closing ? 'none' : 'slideUp 0.25s ease',
+          ...drag.style,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0', flexShrink: 0 }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-12)' }} />
-        </div>
+        <div className="sheet-grab" />
         {children}
       </div>
     </div>,
@@ -384,7 +388,7 @@ function RemindersCard({ tripId, canEdit }) {
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div data-sheet-scroll style={{ overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>תוכן התזכורת</label>
               <textarea
@@ -512,7 +516,7 @@ function RemindersCard({ tripId, canEdit }) {
             </div>
           </div>
 
-          <div style={{ overflowY: 'auto', padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div data-sheet-scroll style={{ overflowY: 'auto', padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {reminders.length === 0 ? (
               <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '28px 0' }}>אין תזכורות</p>
             ) : reminders.map((r, ri) => {
@@ -770,14 +774,16 @@ function SortableCategoryBlock({
       {/* Category items + quick-add */}
       {isOpen && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {categoryItems.map(item => {
+          {categoryItems.map((item, idx) => {
             const assigned = Array.isArray(item.assignedTo) ? item.assignedTo
               : item.assignedTo ? [item.assignedTo] : [];
             return (
               <div key={item.id}
-                className="glass-card checklist-item-row"
+                className="glass-card checklist-item-row list-in"
                 onClick={canEdit ? () => handleToggle(item) : undefined}
                 style={{
+                  // Cap the stagger so the tail of a long list isn't delayed.
+                  '--i': Math.min(idx, 8),
                   padding: '12px 14px',
                   cursor: canEdit ? 'pointer' : 'default',
                   background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',

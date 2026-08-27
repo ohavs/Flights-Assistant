@@ -33,6 +33,7 @@ import {
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Skeleton from './Skeleton';
+import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -852,6 +853,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
        links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim() ||
        (editingId && category !== 'אטרקציות ודברים לעשות'));
 
+  // Dragging the form away is only offered while there is nothing to lose;
+  // a filled-in form still asks before closing.
+  const planFormSheet = useSheetDrag(() => setShowAddForm(false), { enabled: !planFormDirty() });
+
   const attemptClosePlanForm = async () => {
     if (planFormDirty()) {
       const ok = await confirm({
@@ -1289,6 +1294,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // The place shown in the details sheet, read from the live list so the
   // sheet updates as Firestore pushes changes (visited, priority, edits).
   const detailPlan = detailPlanId ? plans.find(p => p.id === detailPlanId) || null : null;
+  // Drag-to-dismiss + slide-out for the details sheet.
+  const detailSheet = useSheetDrag(() => setDetailPlanId(null));
+  const locationsSheet = useSheetDrag(() => setLocationsModal(null));
+  const categorySheet = useSheetDrag(() => setShowCategorySettings(false));
 
   // Active card layout (density + column count).
   const LO = PLAN_LAYOUTS[planLayout] || PLAN_LAYOUTS.comfortable;
@@ -1771,8 +1780,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
           {/* Add/Edit Plan Slide-Up Modal */}
           {showAddForm && (
-            <div className="modal-overlay" onClick={attemptClosePlanForm}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-overlay" data-closing={planFormSheet.closing || undefined} onClick={attemptClosePlanForm}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} {...planFormSheet.handlers} style={planFormSheet.style}>
+                <div className="sheet-grab" />
                 
                 <div className="modal-header">
                   <h2>{editingId ? 'עריכת פריט תכנון' : 'הוספת יעד / אטרקציה חדשה'}</h2>
@@ -3500,11 +3510,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       {detailPlan && createPortal(
         <div
           className="modal-overlay"
-          onClick={() => setDetailPlanId(null)}
+          data-closing={detailSheet.closing || undefined}
+          onClick={detailSheet.close}
           style={{ alignItems: 'flex-end', padding: 0 }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            {...detailSheet.handlers}
             style={{
               width: '100%', maxWidth: 560,
               background: 'var(--modal-bg)',
@@ -3514,13 +3526,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               maxHeight: 'min(88vh, 100vh - 40px)',
               overflow: 'hidden',
               direction: 'rtl',
-              animation: 'slideUp 0.25s ease',
+              animation: detailSheet.closing ? 'none' : 'slideUp 0.25s ease',
+              ...detailSheet.style,
             }}
           >
-            {/* Grab handle */}
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 2px', flexShrink: 0 }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-12)' }} />
-            </div>
+            <div className="sheet-grab" />
 
             {/* Header: icon, title, status pills, close */}
             <div style={{
@@ -3579,13 +3589,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               </div>
               <button
                 className="btn-close"
-                onClick={() => setDetailPlanId(null)}
+                onClick={detailSheet.close}
                 style={{ flexShrink: 0 }}
               >✕</button>
             </div>
 
             {/* Body */}
-            <div style={{ overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div data-sheet-scroll style={{ overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               {detailPlan.description && (
                 <p style={{ fontSize: 14, color: 'var(--c-slate)', lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
                   {detailPlan.description}
@@ -3688,7 +3698,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 if (canEdit) {
                   actions.push({
                     key: 'edit', label: 'עריכה', Icon: Pencil,
-                    onClick: () => { setDetailPlanId(null); handleStartEdit(detailPlan); },
+                    onClick: () => { detailSheet.close(); handleStartEdit(detailPlan); },
                   });
                   actions.push({
                     key: 'prio',
@@ -3701,7 +3711,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
                     onClick: async () => {
                       const id = detailPlan.id;
-                      setDetailPlanId(null);
+                      detailSheet.close();
                       await handleDelete(id);
                     },
                   });
@@ -3749,11 +3759,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       )}
 
       {locationsModal && (
-        <div className="modal-overlay" onClick={() => setLocationsModal(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" data-closing={locationsSheet.closing || undefined} onClick={locationsSheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...locationsSheet.handlers} style={locationsSheet.style}>
+            <div className="sheet-grab" />
             <div className="modal-header">
               <h2 style={{ fontSize: 15 }}>{locationsModal.title}</h2>
-              <button className="btn-close" onClick={() => setLocationsModal(null)}>✕</button>
+              <button className="btn-close" onClick={locationsSheet.close}>✕</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 8 }}>
               {getPlanLocations(locationsModal).map((loc, i) => (
@@ -3799,8 +3810,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
       {/* Category Settings Modal */}
       {showCategorySettings && (
-        <div className="modal-overlay" onClick={() => setShowCategorySettings(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-overlay" data-closing={categorySheet.closing || undefined} onClick={categorySheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...categorySheet.handlers} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column', ...categorySheet.style }}>
+            <div className="sheet-grab" />
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>התאמת קטגוריות</h2>
               <button className="btn-close" onClick={() => setShowCategorySettings(false)}>✕</button>

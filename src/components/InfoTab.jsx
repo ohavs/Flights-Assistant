@@ -6,6 +6,7 @@ import {
   ChevronDown, ExternalLink, RotateCcw, Globe, X, GripVertical
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
+import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -148,6 +149,10 @@ export default function InfoTab({ tripId }) {
   };
 
   const formDirty = () => fTitle.trim() || fValue.trim() || fExtraFields.some(f => f.label.trim() || f.value.trim());
+  // Dragging the sheet away is offered only while the form is untouched;
+  // a filled-in form still asks before it closes.
+  const formSheet = useSheetDrag(() => setShowForm(false), { enabled: !formDirty() });
+
   const attemptCloseForm = async () => {
     if (formDirty()) {
       const ok = await confirm({
@@ -225,8 +230,9 @@ export default function InfoTab({ tripId }) {
 
       {/* Add/edit form (modal-style inline) */}
       {showForm && canEdit && (
-        <div className="modal-overlay" onClick={attemptCloseForm}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-overlay" data-closing={formSheet.closing || undefined} onClick={attemptCloseForm}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...formSheet.handlers} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...formSheet.style }}>
+            <div className="sheet-grab" />
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingId ? 'עריכת פריט' : 'הוספת פריט חדש'}</h2>
               <button className="btn-close" onClick={attemptCloseForm}>✕</button>

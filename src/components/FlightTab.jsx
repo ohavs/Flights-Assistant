@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
+import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import MapComponent from './MapComponent';
@@ -633,6 +634,12 @@ export default function FlightTab({ tripId }) {
     formHotelCheckIn, formHotelCheckOut, formHotelRoom, formHotelNotes,
   });
 
+  // The flight/hotel form guards unsaved changes on the ✕, so the drag is
+  // enabled only when nothing has been edited yet.
+  const editSheet = useSheetDrag(() => setShowEditModal(false), {
+    enabled: !initialFormSnapshot.current || currentFormSerialized() === initialFormSnapshot.current,
+  });
+
   const attemptCloseEdit = async () => {
     if (initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current) {
       const ok = await confirm({
@@ -1094,8 +1101,9 @@ export default function FlightTab({ tripId }) {
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div className="modal-overlay" onClick={attemptCloseEdit}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" data-closing={editSheet.closing || undefined} onClick={attemptCloseEdit}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} {...editSheet.handlers} style={editSheet.style}>
+            <div className="sheet-grab" />
 
             <div className="modal-header">
               <h2>{

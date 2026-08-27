@@ -991,6 +991,30 @@ input[type="datetime-local"].form-control {
   to   { opacity: 1; }
 }
 
+/* The sheet is sliding out — take the backdrop with it. */
+.modal-overlay[data-closing="true"] {
+  animation: none;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+/* Grab handle. Signals "this can be dragged" and gives the finger a
+   target that is never a button. */
+.sheet-grab {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+  flex-shrink: 0;
+  cursor: grab;
+}
+.sheet-grab::before {
+  content: '';
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-12);
+}
+
 /* A sheet is as tall as its content, up to 94% of the screen — a
    three-line dialog no longer takes over the whole display. Anything
    taller scrolls inside the sheet exactly as before. */
@@ -1047,6 +1071,21 @@ input[type="datetime-local"].form-control {
   color: var(--text-muted);
   font-weight: 700;
   font-size: 16px;
+}
+
+/* ── List entry ──
+   Rows arrive with a short rise, staggered by their index so a list reads
+   as one movement rather than a dozen. The stagger is capped in the JSX so
+   a long list never delays its own last row. Only newly mounted rows
+   animate — React reuses the rest. */
+.list-in {
+  animation: listIn var(--dur-base) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 24ms);
+}
+
+@keyframes listIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Skeletons ──
