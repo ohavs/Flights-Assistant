@@ -13,6 +13,7 @@ import {
 import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List, User } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
+import SwipeRow from './SwipeRow';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -778,7 +779,13 @@ function SortableCategoryBlock({
             const assigned = Array.isArray(item.assignedTo) ? item.assignedTo
               : item.assignedTo ? [item.assignedTo] : [];
             return (
-              <div key={item.id}
+              <SwipeRow
+                key={item.id}
+                enabled={canEdit}
+                actions={[
+                  { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => handleStartEdit(item) },
+                  { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDeleteItem(item.id) },
+                ]}
                 className="glass-card checklist-item-row list-in"
                 onClick={canEdit ? () => handleToggle(item) : undefined}
                 style={{
@@ -827,17 +834,21 @@ function SortableCategoryBlock({
                         )}
                       </button>
                     )}
-                    <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
-                      <Pencil size={15} />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
-                      style={{ background: 'transparent', border: 'none', borderRadius: 7, color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center' }}>
-                      <Trash2 size={14} />
-                    </button>
+                    <span className="row-inline-actions" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
+                        aria-label="ערוך פריט"
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+                        <Pencil size={15} />
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
+                        aria-label="מחק פריט"
+                        style={{ background: 'transparent', border: 'none', borderRadius: 7, color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </span>
                   </div>
                 ) : <div />}
-              </div>
+              </SwipeRow>
             );
           })}
 

@@ -1128,13 +1128,68 @@ input[type="datetime-local"].form-control {
   font-size: 16px;
 }
 
+/* ── Swipeable rows ──
+   The action layer lives under the row and is uncovered as the row slides
+   toward the start edge (right, in RTL). */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.swipe-row-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: 0;   /* the end edge — left in RTL, right in LTR */
+  display: flex;
+  align-items: stretch;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Solid blocks, not tints: these sit on the page's own gradient once the
+   row slides off them, so a faint background would read as a smudge. */
+.swipe-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-hebrew);
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--accent);
+  color: #fff;
+}
+
+.swipe-action.danger {
+  background: var(--c-red2);
+  color: #fff;
+}
+
+/* The press state is drawn by the row above it, not here. */
+.swipe-action:active { transform: none; filter: brightness(0.95); }
+
+/* Inline row buttons are for pointers; on touch the same actions live
+   behind the swipe. */
+@media (hover: none) {
+  .row-inline-actions { display: none !important; }
+}
+
 /* ── List entry ──
    Rows arrive with a short rise, staggered by their index so a list reads
    as one movement rather than a dozen. The stagger is capped in the JSX so
    a long list never delays its own last row. Only newly mounted rows
    animate — React reuses the rest. */
 .list-in {
-  animation: listIn var(--dur-base) var(--ease-out) both;
+  /* `backwards`, not `both`: `both` keeps the final keyframe applied for
+     good, and a running animation outranks inline styles — which silently
+     pinned every row's transform and made the swipe gesture do nothing
+     visible. `backwards` only covers the delay before the animation runs. */
+  animation: listIn var(--dur-base) var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * 24ms);
 }
 
