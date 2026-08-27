@@ -117,10 +117,10 @@ One shape for "there is nothing here yet": a quiet disc with an icon, a line nam
 
 The planner distinguishes two cases that used to share one message: an empty pool explains what the tab is for, while a filter that matched nothing reports how many places exist and offers **"נקה סינון"**, which resets search, category and hide-visited together — previously there was no way back from a filter combination that emptied the screen.
 
-### `MapComponent.jsx`
-Leaflet flight-path map. Basemap is Esri Gray Canvas in two layers (pale ground + transparent reference labels), with a real dark tileset for dark mode rather than a CSS inversion. `leaflet.css` is imported from the package, not a CDN link, so it is precached with everything else.
+### Weather card (in `FlightTab.jsx`)
+Heads the flight tab, where a Leaflet flight-path map used to be. The map drew a straight dashed line between two dots on a basemap that stopped rendering twice (CARTO started demanding a key, then Esri's label layer went quiet) and answered a question nobody had; it was removed along with the `leaflet` dependency and a 153 KB chunk that was precached on every device whether or not anyone opened the tab.
 
-Two levels of resilience, both earned: the ground layer falls back to OpenStreetMap on `tileerror` (CARTO withdrew free access mid-project), and the reference layer removes itself quietly if it stops answering. Because a basemap's own lettering has now vanished twice, **the two endpoints label themselves** — airport code and city, drawn from data the app already holds, so they render offline and no third party can take them away.
+Three tiers, largest first: conditions now (icon, city, worded description, temperature), the numbers you'd check before going out (wind, humidity, today's range), then the trip's days. Day columns grow to fill a short trip and never shrink below a readable width, so a long trip scrolls instead of squeezing. Rain chance shows from 20% up.
 
 ### `Fab.jsx`
 The app's single "add" control — an extended floating button in the same corner of every tab that can add something (planner pool, checklist, info, expenses). The flight tab has none; adding an activity in the planner's daily sub-tab stays on its day's card, because it belongs to one specific day rather than to the tab.

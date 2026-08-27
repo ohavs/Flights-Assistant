@@ -1,23 +1,16 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
+import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
-/* Leaflet plus the map component is the single heaviest thing the flight
-   tab pulls in, and it renders one card at the top. Loading it separately
-   lets the flight details — the times, the gate, the status — paint
-   without waiting on a mapping library. The card holds its own height
-   meanwhile, so nothing below it jumps when the map lands. */
-const MapComponent = lazy(() => import('./MapComponent'));
 import CurrencyConverter from './CurrencyConverter';
-import { useWeather, getWeatherIcon } from '../hooks/useWeather';
+import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
-  Calendar,
   Edit2,
   Building,
   Loader2,
@@ -745,6 +738,11 @@ export default function FlightTab({ tripId }) {
   const destCoords = outbound.arrAirport || returning.depAirport;
   const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
 
+  const todayRange = (() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return weather?.daily?.find(d => d.date === today) || null;
+  })();
+
   const tripDayForecasts = (() => {
     if (!weather?.daily || !outbound.date || !returning.date) return [];
     const start = outbound.date;
@@ -967,11 +965,6 @@ export default function FlightTab({ tripId }) {
     );
   };
 
-  // Choose a map flight to show (outbound by default if it has coords, else return)
-  const hasOutCoords = outbound.depAirport?.lat && outbound.arrAirport?.lat;
-  const mapFlight = hasOutCoords ? outbound : returning;
-  const mapProgress = getFlightProgressInfo(mapFlight);
-
   return (
     <div className="animate-fade dashboard-grid">
       {ownerProfile && (
@@ -1000,73 +993,53 @@ export default function FlightTab({ tripId }) {
         </div>
       )}
 
-      {/* Map + weather forecast card */}
-      <div className="map-weather-card" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', border: 'var(--card-border)' }}>
-        <Suspense fallback={<div className="map-wrapper skeleton" />}>
-          <MapComponent
-            depCoords={mapFlight.depAirport}
-            arrCoords={mapFlight.arrAirport}
-            progressPercent={mapProgress.progressPercent}
-          />
-        </Suspense>
-        {/* Current weather + trip days forecast */}
-        {weather && (
-          <div style={{ background: 'var(--card-bg)', padding: '10px 14px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* Current weather strip */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 26, lineHeight: 1 }}>{getWeatherIcon(weather.current.code)}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>
-                  {destCoords?.city || tripData?.destination || 'יעד'} עכשיו
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>
-                  רוח {weather.current.wind} קמ״ש · לחות {weather.current.humidity}%
-                </div>
-              </div>
-              <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary)', lineHeight: 1 }}>{weather.current.temp}°</div>
-              </div>
+      {/* Weather at the destination.
+          The flight-path map that used to head this tab is gone: it drew
+          a straight dashed line between two dots on a basemap that twice
+          stopped rendering, and it answered a question nobody had. What
+          is worth a card at the top of a trip is what it is like there
+          right now, and what to pack for the days ahead. */}
+      {weather && (
+        <div className="glass-card weather-card">
+          <div className="weather-now">
+            <span className="weather-now-icon" aria-hidden="true">{getWeatherIcon(weather.current.code)}</span>
+            <div className="weather-now-place">
+              <span className="weather-now-city">{destCoords?.city || tripData?.destination || 'היעד'}</span>
+              <span className="weather-now-cond">{getWeatherLabel(weather.current.code) || 'עכשיו'}</span>
             </div>
-
-            {/* Trip days forecast */}
-            {tripDayForecasts.length > 0 && (
-              <div style={{
-                display: 'flex', gap: 0, overflowX: 'auto',
-                margin: '0 -14px', padding: '0 14px',
-                scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-              }}>
-                {tripDayForecasts.map((d, i) => {
-                  const dayDate = new Date(d.date);
-                  const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dayDate.getDay()];
-                  const dd = String(dayDate.getDate()).padStart(2,'0');
-                  const mm = String(dayDate.getMonth()+1).padStart(2,'0');
-                  const isToday = d.date === new Date().toISOString().slice(0,10);
-                  return (
-                    <div key={d.date} style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                      padding: '8px 10px', minWidth: 54, flexShrink: 0,
-                      borderRadius: 12,
-                      background: isToday ? 'rgba(79,70,229,0.08)' : 'transparent',
-                      border: isToday ? '1px solid rgba(79,70,229,0.18)' : '1px solid transparent',
-                    }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: isToday ? 'var(--accent)' : 'var(--text-muted)' }}>{dow}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{dd}.{mm}</span>
-                      <span style={{ fontSize: 20, lineHeight: 1 }}>{getWeatherIcon(d.code)}</span>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)' }}>{d.max}°</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{d.min}°</span>
-                      {d.rain > 0 && (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: d.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
-                          💧{d.rain}%
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <span className="weather-now-temp">{weather.current.temp}°</span>
           </div>
-        )}
-      </div>
+
+          <div className="weather-facts">
+            <span><b>{weather.current.wind}</b> קמ״ש רוח</span>
+            <span><b>{weather.current.humidity}%</b> לחות</span>
+            {todayRange && <span><b>{todayRange.max}°</b> / {todayRange.min}° היום</span>}
+          </div>
+
+          {tripDayForecasts.length > 0 && (
+            <div className="weather-days">
+              {tripDayForecasts.map((d) => {
+                const dayDate = new Date(d.date);
+                const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dayDate.getDay()];
+                const dd = String(dayDate.getDate()).padStart(2, '0');
+                const mm = String(dayDate.getMonth() + 1).padStart(2, '0');
+                const isToday = d.date === new Date().toISOString().slice(0, 10);
+                return (
+                  <div key={d.date} className={`weather-day${isToday ? ' today' : ''}`}>
+                    <span className="weather-day-dow">{dow}</span>
+                    <span className="weather-day-date">{dd}.{mm}</span>
+                    <span className="weather-day-icon">{getWeatherIcon(d.code)}</span>
+                    <span className="weather-day-max">{d.max}°</span>
+                    <span className="weather-day-min">{d.min}°</span>
+                    {/* Only a rain chance worth planning around earns a line. */}
+                    {d.rain >= 20 && <span className="weather-day-rain">💧{d.rain}%</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Outbound flight card */}
       {renderFlightCard(outbound, 'outbound')}

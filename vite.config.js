@@ -95,19 +95,6 @@ export default defineConfig({
             }
           },
           {
-            // Basemap tiles for the flight-path map: Esri's Gray Canvas, plus
-            // OpenStreetMap because MapComponent falls back to it if Esri stops
-            // answering. Must track every host MapComponent can ask for — a
-            // stale pattern means tiles are never cached and the map is blank
-            // offline. maxEntries covers two layers (ground + labels) now.
-            urlPattern: /^https:\/\/(server\.arcgisonline\.com|tile\.openstreetmap\.org)\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'map-tiles-cache',
-              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 30 }
-            }
-          },
-          {
             // Currency exchange rates — keep last response for offline.
             urlPattern: /^https:\/\/api\.frankfurter\.app\/.*/i,
             handler: 'StaleWhileRevalidate',
