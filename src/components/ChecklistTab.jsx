@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List, User } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
+import Skeleton from './Skeleton';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -1215,12 +1216,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: 12, height: 12 }} />
-        <span style={{ marginRight: 10, color: 'var(--text-muted)', fontSize: 15 }}>טוען רשימת ציוד...</span>
-      </div>
-    );
+    return <Skeleton rows={5} label="טוען רשימת ציוד" />;
   }
 
   return (

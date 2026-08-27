@@ -32,6 +32,7 @@ import {
   fetchTravelTimes,
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
+import Skeleton from './Skeleton';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -1678,12 +1679,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   };
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, height: '100%', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: '12px', height: '12px' }}></div>
-        <span style={{ marginRight: '10px', color: 'var(--text-muted)', fontSize: '15px' }}>טוען תוכניות טיול...</span>
-      </div>
-    );
+    return <Skeleton rows={6} label="טוען תוכניות טיול" />;
   }
 
   return (

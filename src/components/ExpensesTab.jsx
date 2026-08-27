@@ -9,6 +9,7 @@ import {
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
 import { useTrip } from '../TripContext';
+import Skeleton from './Skeleton';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
@@ -296,7 +297,11 @@ export default function ExpensesTab({ tripId }) {
 
   const dailyAvg = useMemo(() => {
     if (ilsTotal == null || expenses.length === 0) return null;
-    const days = new Set(expenses.map(e => (e.createdAt || '').slice(0, 10)).filter(Boolean)).size || 1;
+    // createdAt is written as an ISO string, but a document from an older
+    // version (or a hand edit) can hold a number — coerce rather than crash.
+    const days = new Set(
+      expenses.map(e => String(e.createdAt ?? '').slice(0, 10)).filter(Boolean)
+    ).size || 1;
     return { avg: ilsTotal / days, days };
   }, [expenses, ilsTotal]);
 
@@ -321,11 +326,7 @@ export default function ExpensesTab({ tripId }) {
   const linkedLabel = linkedPlan?.title || customPlace || '';
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: 12, height: 12 }} />
-      </div>
-    );
+    return <Skeleton rows={4} label="טוען הוצאות" />;
   }
 
   return (

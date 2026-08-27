@@ -29,8 +29,27 @@
   --shadow-lg: 0 16px 40px rgba(11, 11, 48, 0.09);
   --font-hebrew: 'Assistant', 'Inter', sans-serif;
   --font-en: 'Inter', sans-serif;
-  --nav-height: 72px;
   --header-height: 60px;
+
+  /* ── Bottom nav geometry ──
+     The bar floats over the content, so every docked control and the
+     scroll padding derive their offset from --nav-total instead of
+     hard-coding the bar's height. */
+  --nav-height: 62px;
+  --nav-gap: 10px;                       /* breathing room under the bar */
+  --nav-side: 12px;                      /* inset from the screen edges */
+  --nav-count: 5;                        /* tabs — drives the indicator */
+  --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
+
+  /* ── Motion ──
+     One small set of durations and curves so every transition in the app
+     belongs to the same family. --ease-spring overshoots slightly: it is
+     for things that travel (the nav indicator, sheets), never for colour. */
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.5, 1);
 
   /* ── UI surfaces ── */
   --body-bg: #f1f5f9;
@@ -338,6 +357,83 @@ body {
   justify-content: center;
 }
 
+/* ══════════════════════════════════════════════════════════
+   INPUT LAYER — how the app answers a finger
+   The app runs on phones and on desktop. Everything here keeps
+   both honest: pointer feedback for touch, hover only where a
+   real pointer exists, and a visible focus ring for keyboards.
+   ══════════════════════════════════════════════════════════ */
+
+/* No grey flash on tap — we draw our own press state instead. */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Chrome (buttons, tabs, chips) is for pressing, not for selecting.
+   Content text keeps normal selection. */
+button,
+[role="button"],
+.nav-item,
+.filter-chip,
+.trip-card {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Press feedback. Every button and card answers the finger; the
+   release is eased so it never looks like a flicker. Cards that the
+   planner animates with FLIP (inline transforms) get a tint instead of
+   a scale, so the two never fight over `transform`. */
+button,
+[role="button"],
+.trip-card {
+  transition: transform var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              opacity var(--dur-fast) var(--ease-out);
+}
+
+button:not(:disabled):active,
+[role="button"]:not(.plan-card):active,
+.trip-card:active {
+  transform: scale(0.97);
+}
+
+.plan-card:active,
+.checklist-item-row:active {
+  background: var(--ink-4);
+}
+
+/* Hover belongs to devices that actually have a pointer. On touch it
+   sticks to whatever you tapped last. */
+@media (hover: none) {
+  .category-select:hover,
+  .custom-dropdown-trigger:hover,
+  .custom-dropdown-option:hover,
+  .filter-chip:hover,
+  .plan-visit-toggle:hover {
+    background: inherit;
+    border-color: inherit;
+  }
+}
+
+/* Keyboard users (desktop) get a ring; mouse and touch don't. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* Someone who asked their OS for less motion gets none of ours. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -369,113 +465,10 @@ body {
   gap: 16px;
 }
 
-/* Tablet — single column but wider canvas, comfortable padding */
-@media (min-width: 768px) {
-  .app-container {
-    max-width: 720px;
-    box-shadow: 0 0 60px rgba(11,11,48,0.12);
-  }
-}
-
-/* Desktop — fill the screen. Container spans the full viewport;
-   inside, the dashboard / homepage / modal sit on a centred max-width
-   so very wide monitors don't end up with absurd line lengths. */
-@media (min-width: 1024px) {
-  .app-container {
-    max-width: 100%;
-    box-shadow: none;
-  }
-
-  .app-header {
-    height: 72px;
-    min-height: 72px;
-    max-height: 72px;
-    padding: 0 40px;
-  }
-  .app-header h1 { font-size: 22px; }
-
-  .app-content {
-    padding: 32px 40px;
-    padding-bottom: 32px;
-  }
-
-  /* All the per-tab roots are wrapped in `.animate-fade`. Centre them. */
-  .app-content > .animate-fade {
-    max-width: 1400px;
-    margin: 0 auto;
-  }
-
-  /* Dashboard area (flight tab) — 2-col with bigger gap on desktop */
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
-  }
-  .dashboard-grid > .owner-banner,
-  .dashboard-grid > .map-wrapper,
-  .dashboard-grid > .map-weather-card,
-  .dashboard-grid > .full-width {
-    grid-column: 1 / -1;
-  }
-
-  .hotel-meta-grid {
-    grid-template-columns: 1fr 1fr 1fr 1fr !important;
-  }
-
-  /* Map is taller on desktop */
-  .map-wrapper { height: 380px; }
-  .map-weather-card > .map-wrapper { height: 340px; }
-
-  /* Glass cards and trip cards get larger padding */
-  .glass-card { padding: 22px; border-radius: 20px; }
-  .trip-card { padding: 24px; border-radius: 22px; }
-
-  /* Bottom nav: keep at bottom but centre the items on the centred
-     viewport area, and grow the touch targets. */
-  .bottom-nav {
-    height: 72px;
-    padding: 0 40px;
-    justify-content: center;
-    gap: 32px;
-  }
-  .nav-item { min-width: 88px; height: 60px; }
-  .nav-item svg { width: 26px; height: 26px; }
-  .nav-label { font-size: 12px; }
-
-  /* Modal — centred dialog instead of bottom-sheet on desktop */
-  .modal-overlay { align-items: center; }
-  .modal-content {
-    max-width: 760px;
-    height: auto;
-    max-height: 92vh;
-    border-radius: var(--radius-xl);
-    margin: 24px;
-    padding: 28px;
-  }
-
-  /* Homepage trip list: turn into responsive grid on desktop */
-  .trip-list-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-    gap: 20px;
-  }
-}
-
-/* Wide desktop — slightly more breathing room */
-@media (min-width: 1440px) {
-  .app-content {
-    padding: 40px 64px;
-    padding-bottom: 40px;
-  }
-  .app-content > .animate-fade { max-width: 1520px; }
-  .dashboard-grid { gap: 32px; }
-  .map-wrapper { height: 440px; }
-  .map-weather-card > .map-wrapper { height: 400px; }
-  .glass-card { padding: 26px; }
-}
-
 /* ── Header ── */
 .app-header {
+  transition: box-shadow var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out);
   height: var(--header-height);
   min-height: var(--header-height);
   max-height: var(--header-height);
@@ -489,6 +482,13 @@ body {
   border-bottom: 1px solid var(--ink-8);
   z-index: 100;
   flex-shrink: 0;
+}
+
+/* Set once the content below has scrolled — gives the bar an edge so it
+   reads as a layer above the page instead of part of it. */
+.app-header.scrolled {
+  box-shadow: 0 4px 16px var(--ink-8);
+  border-bottom-color: var(--ink-12);
 }
 
 .app-header h1 {
@@ -505,8 +505,11 @@ body {
   min-height: 0;      /* allow flex child to shrink below content size */
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior-y: contain;   /* no scroll chaining / browser pull-to-refresh */
   padding: 16px;
-  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  /* The nav bar floats above this area, so the last item needs room to
+     clear it — derived from --nav-total, never a magic number. */
+  padding-bottom: calc(var(--nav-total) + 16px);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -515,71 +518,113 @@ body {
   margin-top: 16px;
 }
 
-/* ── Bottom Navigation ── */
+/* ── Bottom Navigation ──
+   A floating pill rather than a docked bar: it sits above the content
+   with air around it, and the active tab is marked by a single pill
+   that travels between the icons instead of a colour swap. It never
+   covers anything — .app-content reserves --nav-total at its bottom. */
 .bottom-nav {
-  flex-shrink: 0;
+  position: absolute;
+  left: var(--nav-side);
+  right: var(--nav-side);
+  bottom: calc(var(--nav-gap) + env(safe-area-inset-bottom, 0px));
   height: var(--nav-height);
   background: var(--nav-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-top: 1px solid var(--ink-6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--w-60);
+  border-radius: 22px;
+  box-shadow: 0 6px 24px var(--ink-12), 0 1px 2px var(--ink-8);
   display: flex;
-  justify-content: space-around;
-  align-items: center;
-  padding: 0 8px;
-  padding-bottom: env(safe-area-inset-bottom);
+  align-items: stretch;
+  padding: 0;
   z-index: 1000;
-  /* Pin to its own GPU layer so it always paints. Without this, some
-     mobile browsers intermittently fail to composite the backdrop-filter
-     layer after the tab content's enter animation, leaving the bar blank
-     until a scroll/refresh forces a repaint. */
+  /* Own compositing layer: without it some mobile browsers drop the
+     backdrop-filter after a tab's enter animation and the bar goes blank. */
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  will-change: transform;
+}
+
+[data-theme="dark"] .bottom-nav {
+  border-color: var(--w-6);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+}
+
+/* The travelling pill. Items are equal width, so the active one sits at
+   index × (100% / count) from the right edge (RTL). Transforms are
+   physical, so moving right-to-left is a negative translate. */
+.nav-indicator {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: 0;
+  width: calc(100% / var(--nav-count));
+  transform: translateX(calc(var(--nav-i, 0) * -100%));
+  transition: transform var(--dur-slow) var(--ease-spring);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.nav-indicator i {
+  display: block;
+  width: calc(100% - 12px);
+  border-radius: 16px;
+  background: var(--p-12);
 }
 
 .nav-item {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-width: 64px;
-  height: 52px;
-  border-radius: var(--radius-md);
+  gap: 3px;
+  border-radius: 16px;
   color: var(--text-muted);
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color var(--dur-base) var(--ease-out);
   position: relative;
+  z-index: 1;
   font-family: var(--font-hebrew);
+  padding: 0 2px;
 }
+
+/* The pill already marks the active tab, so pressing a nav item must not
+   also scale it — that would fight the indicator's travel. */
+.nav-item:active { transform: none; }
 
 .nav-item.active {
   color: var(--accent);
 }
 
 .nav-item svg {
-  width: 22px; height: 22px;
-  transition: transform 0.2s ease;
+  width: 21px; height: 21px;
+  transition: transform var(--dur-slow) var(--ease-spring);
 }
 
 .nav-item.active svg {
-  transform: translateY(-2px) scale(1.08);
+  transform: translateY(-1px) scale(1.06);
 }
 
 .nav-label {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
-  opacity: 0.6;
-  transition: all 0.15s ease;
+  opacity: 0.65;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 
 .nav-item.active .nav-label {
   opacity: 1;
 }
-
 
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE
@@ -938,11 +983,21 @@ input[type="datetime-local"].form-control {
   justify-content: center;
   z-index: 2000;
   backdrop-filter: blur(3px);
+  animation: overlayIn var(--dur-base) var(--ease-out);
 }
 
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* A sheet is as tall as its content, up to 94% of the screen — a
+   three-line dialog no longer takes over the whole display. Anything
+   taller scrolls inside the sheet exactly as before. */
 .modal-content {
   width: 100%;
-  height: 94%;
+  height: auto;
+  max-height: 94%;
   background: var(--modal-bg);
   color: var(--text);
   border-top-left-radius: var(--radius-xl);
@@ -994,16 +1049,35 @@ input[type="datetime-local"].form-control {
   font-size: 16px;
 }
 
+/* ── Skeletons ──
+   A sheen that travels across the placeholder. Kept slow and low-contrast
+   so a screen full of them doesn't shimmer like a slot machine. */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--ink-6) 25%,
+    var(--ink-10) 37%,
+    var(--ink-6) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeletonSheen 1.5s ease-in-out infinite;
+}
+
+@keyframes skeletonSheen {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+
 /* ══════════════════════════════════════════════════════════
    UTILITIES & ANIMATIONS
    ══════════════════════════════════════════════════════════ */
 
 .animate-fade {
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn var(--dur-slow) var(--ease-out);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -1438,4 +1512,119 @@ input[type="datetime-local"].form-control {
     rgba(251,191,36,0.04)
   ) !important;
   box-shadow: 0 4px 16px rgba(251,191,36,0.15) !important;
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE — tablet & desktop
+   These live at the end on purpose. They override base rules of the
+   same specificity (.bottom-nav, .glass-card, .modal-content …), so
+   source order is what decides — sitting above those rules, as they
+   used to, meant most of them silently lost.
+   ══════════════════════════════════════════════════════════ */
+
+/* Tablet — single column but wider canvas, comfortable padding */
+@media (min-width: 768px) {
+  .app-container {
+    max-width: 720px;
+    box-shadow: 0 0 60px rgba(11,11,48,0.12);
+  }
+}
+
+/* Desktop — fill the screen. Container spans the full viewport;
+   inside, the dashboard / homepage / modal sit on a centred max-width
+   so very wide monitors don't end up with absurd line lengths. */
+@media (min-width: 1024px) {
+  .app-container {
+    max-width: 100%;
+    box-shadow: none;
+  }
+
+  .app-header {
+    height: 72px;
+    min-height: 72px;
+    max-height: 72px;
+    padding: 0 40px;
+  }
+  .app-header h1 { font-size: 22px; }
+
+  .app-content {
+    padding: 32px 40px;
+    padding-bottom: 32px;
+  }
+
+  /* All the per-tab roots are wrapped in `.animate-fade`. Centre them. */
+  .app-content > .animate-fade {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* Dashboard area (flight tab) — 2-col with bigger gap on desktop */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  .dashboard-grid > .owner-banner,
+  .dashboard-grid > .map-wrapper,
+  .dashboard-grid > .map-weather-card,
+  .dashboard-grid > .full-width {
+    grid-column: 1 / -1;
+  }
+
+  .hotel-meta-grid {
+    grid-template-columns: 1fr 1fr 1fr 1fr !important;
+  }
+
+  /* Map is taller on desktop */
+  .map-wrapper { height: 380px; }
+  .map-weather-card > .map-wrapper { height: 340px; }
+
+  /* Glass cards and trip cards get larger padding */
+  .glass-card { padding: 22px; border-radius: 20px; }
+  .trip-card { padding: 24px; border-radius: 22px; }
+
+  /* Bottom nav: the same floating pill, centred and a little larger.
+     Capping the width keeps the travelling indicator's geometry exact. */
+  .bottom-nav {
+    height: 68px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) translateZ(0);
+    width: min(560px, calc(100% - 80px));
+    border-radius: 24px;
+  }
+  .nav-item svg { width: 24px; height: 24px; }
+  .nav-label { font-size: 11px; }
+
+  /* Modal — centred dialog instead of bottom-sheet on desktop */
+  .modal-overlay { align-items: center; }
+  .modal-content {
+    max-width: 760px;
+    height: auto;
+    max-height: 92vh;
+    border-radius: var(--radius-xl);
+    margin: 24px;
+    padding: 28px;
+  }
+
+  /* Homepage trip list: turn into responsive grid on desktop */
+  .trip-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 20px;
+  }
+}
+
+/* Wide desktop — slightly more breathing room */
+@media (min-width: 1440px) {
+  .app-content {
+    padding: 40px 64px;
+    padding-bottom: 40px;
+  }
+  .app-content > .animate-fade { max-width: 1520px; }
+  .dashboard-grid { gap: 32px; }
+  .map-wrapper { height: 440px; }
+  .map-weather-card > .map-wrapper { height: 400px; }
+  .glass-card { padding: 26px; }
 }

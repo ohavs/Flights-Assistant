@@ -20,6 +20,7 @@ import InfoTab, { defaultInfoItems } from './components/InfoTab';
 import ExpensesTab from './components/ExpensesTab';
 import CurrencyConverter from './components/CurrencyConverter';
 import ShareTargetScreen from './components/ShareTargetScreen';
+import ErrorBoundary from './components/ErrorBoundary';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
@@ -1152,6 +1153,22 @@ function PalettePicker({ size = 34 }) {
   );
 }
 
+/* The five tabs, in nav order. Kept in one place so the travelling
+   indicator's index and the buttons can never drift apart. */
+const NAV_TABS = [
+  { key: 'flight',    label: 'טיסה ומלון', Icon: Plane },
+  { key: 'planning',  label: 'תכנון טיול', Icon: Compass },
+  { key: 'checklist', label: "צ'קליסט",    Icon: ClipboardList },
+  { key: 'info',      label: 'מידע חשוב',  Icon: AlertCircle },
+  { key: 'expenses',  label: 'הוצאות',     Icon: Wallet },
+];
+
+// A short tick on tab change, where the device offers one. Android and
+// desktop Chrome support it; iOS Safari ignores it, which is fine.
+function tick(ms = 8) {
+  try { navigator.vibrate?.(ms); } catch { /* not supported — no feedback */ }
+}
+
 function AppInner() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -1171,6 +1188,9 @@ function AppInner() {
   const [pendingTripPick, setPendingTripPick] = useState(null);
   // Handed to PlanningTab, which opens the add-place form pre-filled with it.
   const [pendingSharedPlace, setPendingSharedPlace] = useState(null);
+  // Header elevation + "scroll to top" both need the scrolling element.
+  const contentRef = useRef(null);
+  const [contentScrolled, setContentScrolled] = useState(false);
 
   useEffect(() => {
     const handleOnline  = () => setIsOnline(true);
@@ -1551,6 +1571,25 @@ function AppInner() {
     if (user && pendingTripPick && sharedPlace) openSharedPlaceInTrip(pendingTripPick);
   }, [user, pendingTripPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tapping the tab you are already on scrolls back to the top — the
+  // gesture every mobile app answers this way.
+  const selectTab = (key) => {
+    if (key === activeTab) {
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    tick();
+    setActiveTab(key);
+  };
+
+  // The header gains an edge once the content has scrolled beneath it.
+  const handleContentScroll = (e) => {
+    const scrolled = e.currentTarget.scrollTop > 4;
+    setContentScrolled(prev => (prev === scrolled ? prev : scrolled));
+  };
+
+  useEffect(() => { setContentScrolled(false); }, [activeTab, screen]);
+
   const getHeaderTitle = () => {
     switch (activeTab) {
       case 'flight':   return 'טיסה ומלון';
@@ -1791,7 +1830,7 @@ function AppInner() {
   return (
     <div className="app-container">
       {OfflineBanner}
-      <header className="app-header">
+      <header className={`app-header${contentScrolled ? ' scrolled' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
           <button
             onClick={() => { setScreen('home'); setSelectedTripId(null); }}
@@ -1849,7 +1888,12 @@ function AppInner() {
         </div>
       </header>
 
-      <main className="app-content" key={activeTab}>
+      <main
+        className="app-content"
+        key={activeTab}
+        ref={contentRef}
+        onScroll={handleContentScroll}
+      >
         <TripProvider value={{
           tripId: selectedTripId,
           role: selectedTrip?.members?.[user.uid] || null,
@@ -1864,36 +1908,47 @@ function AppInner() {
           memberProfiles: memberProfiles,
           tripMembers: selectedTrip?.members || {},
         }}>
-          {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
-          {activeTab === 'planning'  && (
-            <PlanningTab
-              tripId={selectedTripId}
-              sharedPlace={pendingSharedPlace}
-              onSharedPlaceHandled={() => setPendingSharedPlace(null)}
-            />
-          )}
-          {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
-          {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
-          {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
+          {/* One boundary per tab: a failure stays inside the tab it came
+              from, leaving the nav and every other tab usable. */}
+          <ErrorBoundary label={getHeaderTitle()} resetKey={activeTab}>
+            {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
+            {activeTab === 'planning'  && (
+              <PlanningTab
+                tripId={selectedTripId}
+                sharedPlace={pendingSharedPlace}
+                onSharedPlaceHandled={() => setPendingSharedPlace(null)}
+              />
+            )}
+            {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
+            {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
+            {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
+          </ErrorBoundary>
         </TripProvider>
       </main>
 
+      {/* Bottom nav — a floating pill. The active tab is marked by one
+          indicator that travels between the icons, so the eye follows the
+          move instead of noticing a colour change. */}
       <nav className="bottom-nav">
-        <button onClick={() => setActiveTab('flight')}   className={`nav-item ${activeTab === 'flight' ? 'active' : ''}`}>
-          <Plane /><span className="nav-label">טיסה ומלון</span>
-        </button>
-        <button onClick={() => setActiveTab('planning')}  className={`nav-item ${activeTab === 'planning' ? 'active' : ''}`}>
-          <Compass /><span className="nav-label">תכנון טיול</span>
-        </button>
-        <button onClick={() => setActiveTab('checklist')} className={`nav-item ${activeTab === 'checklist' ? 'active' : ''}`}>
-          <ClipboardList /><span className="nav-label">צ'קליסט</span>
-        </button>
-        <button onClick={() => setActiveTab('info')}      className={`nav-item ${activeTab === 'info' ? 'active' : ''}`}>
-          <AlertCircle /><span className="nav-label">מידע חשוב</span>
-        </button>
-        <button onClick={() => setActiveTab('expenses')}  className={`nav-item ${activeTab === 'expenses' ? 'active' : ''}`}>
-          <Wallet /><span className="nav-label">הוצאות</span>
-        </button>
+        <span
+          className="nav-indicator"
+          style={{ '--nav-i': Math.max(0, NAV_TABS.findIndex(t => t.key === activeTab)) }}
+          aria-hidden="true"
+        >
+          <i />
+        </span>
+        {NAV_TABS.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => selectTab(key)}
+            className={`nav-item ${activeTab === key ? 'active' : ''}`}
+            aria-label={label}
+            aria-current={activeTab === key ? 'page' : undefined}
+          >
+            <Icon />
+            <span className="nav-label">{label}</span>
+          </button>
+        ))}
       </nav>
     </div>
   );

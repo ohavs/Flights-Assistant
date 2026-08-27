@@ -11,6 +11,7 @@ import { useConfirm } from '../ConfirmContext';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import Skeleton from './Skeleton';
 
 // Default items seeded for every new trip. Israeli emergency numbers
 // + the European universal 112, plus a couple of placeholders the user
@@ -215,17 +216,12 @@ export default function InfoTab({ tripId }) {
   };
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: 12, height: 12 }} />
-        <span style={{ marginRight: 10, color: 'var(--text-muted)', fontSize: 15 }}>טוען מידע חשוב…</span>
-      </div>
-    );
+    return <Skeleton rows={4} header={false} label="טוען מידע חשוב" />;
   }
 
   return (
     <>
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: canEdit ? 80 : 0 }}>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: canEdit ? 64 : 0 }}>
 
       {/* Add/edit form (modal-style inline) */}
       {showForm && canEdit && (
@@ -394,7 +390,13 @@ export default function InfoTab({ tripId }) {
     </div>
     {/* Fixed add button rendered OUTSIDE animate-fade to avoid transform containment bug */}
     {canEdit && (
-      <div style={{ position: 'fixed', bottom: 72, left: 0, right: 0, padding: '0 16px', zIndex: 50, display: 'flex', gap: 10 }}>
+      <div style={{
+        position: 'fixed',
+        // Sits just above the floating nav — derived from the same token,
+        // so the two can never drift apart.
+        bottom: 'calc(var(--nav-total) + 8px)',
+        left: 0, right: 0, padding: '0 16px', zIndex: 50, display: 'flex', gap: 10,
+      }}>
         <button onClick={() => openAdd()} className="btn-primary" style={{ flex: 1, boxShadow: '0 4px 20px var(--ink-18)' }}>
           <Plus size={16} />
           <span>הוסף פריט חדש</span>
