@@ -2568,7 +2568,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             {hideVisited
                               ? <EyeOff size={14} style={{ color: 'var(--accent)' }} />
                               : <Eye size={14} style={{ color: 'var(--accent)' }} />}
-                            הסתר מקומות שנצפו
+                            הסתר מקומות שביקרנו בהם
                           </span>
                           <span style={{
                             width: 36, height: 20, borderRadius: 999, flexShrink: 0,
@@ -2674,7 +2674,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             const bits = [];
             if (searchQuery.trim()) bits.push(`חיפוש: "${searchQuery.trim()}"`);
             if (selectedFilter !== 'הכל') bits.push(selectedFilter === '__must__' ? 'חובה בלבד' : selectedFilter);
-            if (hideVisited) bits.push('ללא מקומות שנצפו');
+            if (hideVisited) bits.push('ללא מקומות שביקרנו בהם');
             return (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
@@ -2871,7 +2871,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     >
                       <span style={{
                         display: 'flex', flexShrink: 0,
-                        color: plan.visited ? 'var(--text-success)' : getCategoryColor(plan.category),
+                        color: plan.visited ? 'var(--text-muted)' : getCategoryColor(plan.category),
                       }}>
                         {plan.visited
                           ? <Check size={15} strokeWidth={3} />
@@ -2881,8 +2881,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <h3 style={{
                         flex: 1, minWidth: 0, margin: 0,
                         fontSize: 12.5, fontWeight: 800, lineHeight: 1.3,
-                        color: plan.visited ? 'var(--text-success)' : 'var(--primary-color)',
-                        textDecoration: plan.visited ? 'line-through' : 'none',
+                        // Visited: quieter text, no strike-through. The check
+                        // already says it, and a line through a place's name
+                        // reads as "cancelled", not "we went".
+                        color: plan.visited ? 'var(--text-muted)' : 'var(--primary-color)',
                         display: '-webkit-box', WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical', overflow: 'hidden',
                         wordBreak: 'break-word',
@@ -2931,7 +2933,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleToggleVisited(plan); }}
                         className={`plan-visit-toggle${plan.visited ? ' on' : ''}`}
-                        title={plan.visited ? 'בטל סימון' : 'סמן כנצפה'}
+                        title={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
                         aria-pressed={!!plan.visited}
                       >
                         {plan.visited && <Check size={18} strokeWidth={3} />}
@@ -2958,8 +2960,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <h3 style={{
                         fontSize: LO.titleSize,
                         fontWeight: 800,
-                        color: plan.visited ? 'var(--text-success)' : 'var(--primary-color)',
-                        textDecoration: plan.visited ? 'line-through' : 'none',
+                        color: plan.visited ? 'var(--text-muted)' : 'var(--primary-color)',
                         lineHeight: 1.3,
                         margin: 0,
                         display: 'flex', alignItems: 'center', gap: 6,
@@ -3252,7 +3253,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             flexDirection: 'column',
                             gap: 6,
                             opacity: isVisited ? 0.6 : 1,
-                            borderColor: isVisited ? 'rgba(5,150,105,0.3)' : undefined,
                           }}>
                             {(() => {
                               // Compute travel-time chips once — reused below the title.
@@ -3291,8 +3291,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                     <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                                       {isVisited && (
                                         <span style={{
-                                          fontSize: 10, fontWeight: 900, color: '#059669',
-                                          background: 'rgba(5,150,105,0.12)', padding: '2px 6px',
+                                          fontSize: 10, fontWeight: 900, color: 'var(--text-muted)',
+                                          background: 'var(--ink-8)', padding: '2px 6px',
                                           borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
                                         }}>
                                           ✓ בוצע
@@ -3321,7 +3321,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                           fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
                                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                           minWidth: 0, cursor: 'pointer',
-                                          textDecoration: isVisited ? 'line-through' : 'none',
+                                          textDecoration: 'none',
                                         }}
                                       >
                                         {act.title}
@@ -3547,7 +3547,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h2 style={{
                   fontSize: 16, fontWeight: 800, margin: 0, lineHeight: 1.3,
-                  color: detailPlan.visited ? 'var(--text-success)' : 'var(--primary)',
+                  color: detailPlan.visited ? 'var(--text-muted)' : 'var(--primary)',
                   wordBreak: 'break-word',
                 }}>
                   {detailPlan.title}
@@ -3575,8 +3575,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   {detailPlan.visited && (
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-                      background: 'rgba(5,150,105,0.15)', color: 'var(--text-success)',
-                    }}>נצפה</span>
+                      background: 'var(--ink-8)', color: 'var(--text-muted)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Check size={10} strokeWidth={3} />ביקרנו</span>
                   )}
                   {detailPlan.category === EVENTS_CATEGORY && detailPlan.event?.startDate && (
                     <span style={{
@@ -3748,7 +3749,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   style={{ width: '100%', minHeight: 44, gap: 8, fontSize: 14 }}
                 >
                   <Check size={17} />
-                  <span>{detailPlan.visited ? 'בטל סימון כנצפה' : 'סמן כנצפה'}</span>
+                  <span>{detailPlan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}</span>
                 </button>
               )}
             </div>

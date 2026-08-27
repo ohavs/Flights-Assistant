@@ -1564,24 +1564,32 @@ input[type="datetime-local"].form-control {
   height: 15px;
 }
 
-/* ── Planning card: visited state + big inline checkbox ── */
+/* ── Planning card: a place already visited ──
+   Done is not an alert. A visited card gives up its surface and its
+   shadow instead of gaining a colour: it sinks half a step into the
+   page, and the eye lands on what is still open. Spending an accent —
+   a green fill, a coloured rail — on the finished half of a list is
+   backwards, and in a list of forty places it is most of the screen. */
 .plan-card {
   border-right: 1px solid var(--w-60);
   transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
 }
 .plan-card.visited {
-  background: linear-gradient(135deg, rgba(5, 150, 105, 0.10), rgba(5, 150, 105, 0.04));
-  border-right: 6px solid var(--text-success);
-  box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.20), 0 2px 8px rgba(5, 150, 105, 0.10);
+  background: var(--ink-4);
+  border-color: transparent;
+  border-right-color: transparent;
+  box-shadow: none;
 }
 
+/* The one control that stays on the card. A circle, not a form
+   checkbox: it reports a state rather than collecting an answer. */
 .plan-visit-toggle {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  border: 2px solid var(--ink-18);
-  background: var(--surface);
-  color: var(--surface);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-18);
+  background: transparent;
+  color: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1591,12 +1599,15 @@ input[type="datetime-local"].form-control {
   padding: 0;
 }
 .plan-visit-toggle:hover {
-  border-color: var(--text-success);
+  border-color: var(--ink-35);
 }
 .plan-visit-toggle.on {
-  background: var(--text-success);
-  border-color: var(--text-success);
-  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
+  /* Lighter than the empty ring beside it, not darker: a solid dark
+     mark on a receding card would pull the eye back to the one place
+     that needs nothing. */
+  background: var(--ink-15);
+  border-color: transparent;
+  color: var(--text-muted);
 }
 
 /* Round add button (used next to search) — guaranteed circular */
