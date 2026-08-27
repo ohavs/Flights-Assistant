@@ -1,5 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
+/* Leaflet's own stylesheet, from the package rather than a CDN link in
+   index.html. It rides in this lazy chunk, so it costs nothing until the
+   map is opened — and it is precached with everything else, which the
+   unpkg link was not: a first launch with no network had the map's
+   markers and panes unstyled. */
+import 'leaflet/dist/leaflet.css';
 import { getIntermediatePoint } from '../services/flightSimulator';
 import { useTheme } from '../ThemeContext';
 
@@ -110,45 +116,36 @@ export default function MapComponent({ depCoords, arrCoords, progressPercent }) 
       arrCoords.lng
     );
 
-    // Create custom styled icons using SVGs for a modern look
-    const depIcon = L.divIcon({
-      html: `
-        <div style="
-          width: 14px;
-          height: 14px;
-          background: #ffffff;
-          border: 3px solid #0b0b30;
-          border-radius: 50%;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        "></div>
-      `,
-      className: 'custom-dep-icon',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
-    });
-
-    const arrIcon = L.divIcon({
-      html: `
-        <div style="
-          width: 14px;
-          height: 14px;
-          background: #ffffff;
-          border: 3px solid #0b0b30;
-          border-radius: 50%;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        "></div>
-      `,
-      className: 'custom-arr-icon',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
-    });
+    /* Each endpoint carries its own name.
+     *
+     * A basemap's own lettering is a bet on someone else's service: it
+     * has now vanished twice, once when CARTO started demanding a key and
+     * once when a labels layer stopped answering. These two labels are
+     * the ones that actually matter on a card this size — which airport,
+     * which city — and they are drawn from data the app already holds, so
+     * they render offline and cannot be taken away.
+     *
+     * Colours come from tokens rather than literals: on the dark basemap
+     * a navy dot on a near-black ground was invisible. */
+    const endpointIcon = (airport) => {
+      const label = [airport?.code, airport?.city].filter(Boolean).join(' · ');
+      return L.divIcon({
+        html: `<span class="map-pin-dot"></span>${label ? `<span class="map-pin-label">${label}</span>` : ''}`,
+        className: 'map-pin',
+        iconSize: [96, 36],
+        // The dot's centre, not the box's, sits on the coordinate.
+        iconAnchor: [48, 7],
+      });
+    };
+    const depIcon = endpointIcon(depCoords);
+    const arrIcon = endpointIcon(arrCoords);
 
     // Custom airplane icon rotated according to flight path heading
     const planeIcon = L.divIcon({
       html: `
         <div style="transform: rotate(${heading}deg); transition: transform 0.2s ease;">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M21 16V14L13 9V3.5C13 2.67 12.33 2 11.5 2C10.67 2 10 2.67 10 3.5V9L2 14V16L10 13.5V19L8 20.5V22L11.5 21L15 22V20.5L13 19V13.5L21 16Z" fill="#0b0b30" stroke="#ffffff" stroke-width="1.5"/>
+            <path d="M21 16V14L13 9V3.5C13 2.67 12.33 2 11.5 2C10.67 2 10 2.67 10 3.5V9L2 14V16L10 13.5V19L8 20.5V22L11.5 21L15 22V20.5L13 19V13.5L21 16Z" style="fill: var(--primary); stroke: var(--surface)" stroke-width="1.5"/>
           </svg>
         </div>
       `,
@@ -193,7 +190,17 @@ export default function MapComponent({ depCoords, arrCoords, progressPercent }) 
     if (tiles.label) map.removeLayer(tiles.label);
 
     tiles.base = L.tileLayer(set.base, { maxZoom: 16, attribution: ESRI_ATTRIB }).addTo(map);
+
+    // Place names from the basemap are a bonus, not the plan: the two
+    // endpoints label themselves. If the reference service stops
+    // answering, drop the layer quietly rather than leaving torn tiles
+    // and a console full of 404s.
     tiles.label = L.tileLayer(set.label, { maxZoom: 16, pane: 'labels' }).addTo(map);
+    tiles.label.on('tileerror', () => {
+      if (!tiles.label) return;
+      map.removeLayer(tiles.label);
+      tiles.label = null;
+    });
 
     // If the ground tiles stop arriving — a host withdrawing free access,
     // the way CARTO just did — drop to OSM rather than showing an empty

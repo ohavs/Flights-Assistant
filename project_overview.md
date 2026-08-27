@@ -105,10 +105,22 @@ Packing checklist. Auto-syncs from global template. All Firestore writes are fir
 
 **Top area**: reminders strip → progress card → member filter chips in a single scrollable row with per-member counts. Container gap is 14 px. The progress card is a read-out (ring + "X מתוך Y כבר נארזו") shown to viewers as well; adding and editing an item happen in a bottom sheet opened by the app-wide `Fab`.
 
+### Code splitting
+The five tabs are `React.lazy` chunks, and the map is a lazy chunk inside the flight tab. Entry chunk is 159 KB (43 KB gzip); it was 1,190 KB before splitting. `vendor-firebase`, `vendor-react` and `vendor-dnd` are separate so a deploy invalidates only the app chunk.
+
+Offline is unaffected: workbox's `globPatterns` precaches every built JS file, so a tab never opened online still opens offline — splitting changes *when the phone parses* the code, not whether it holds it. Verified by checking every file in `dist/assets` appears in the SW manifest.
+
+`data/seedData.js` exists because of this: `App.jsx` needs the checklist and info defaults to seed a trip, and a named import from a lazy module drags that whole module into the entry chunk.
+
 ### `EmptyState.jsx`
 One shape for "there is nothing here yet": a quiet disc with an icon, a line naming the absence, a line saying what to do, and an optional `action` node (some empty states offer a button, some two, some none). Used by the homepage, both planner sub-tabs, the checklist, info and expenses.
 
 The planner distinguishes two cases that used to share one message: an empty pool explains what the tab is for, while a filter that matched nothing reports how many places exist and offers **"נקה סינון"**, which resets search, category and hide-visited together — previously there was no way back from a filter combination that emptied the screen.
+
+### `MapComponent.jsx`
+Leaflet flight-path map. Basemap is Esri Gray Canvas in two layers (pale ground + transparent reference labels), with a real dark tileset for dark mode rather than a CSS inversion. `leaflet.css` is imported from the package, not a CDN link, so it is precached with everything else.
+
+Two levels of resilience, both earned: the ground layer falls back to OpenStreetMap on `tileerror` (CARTO withdrew free access mid-project), and the reference layer removes itself quietly if it stops answering. Because a basemap's own lettering has now vanished twice, **the two endpoints label themselves** — airport code and city, drawn from data the app already holds, so they render offline and no third party can take them away.
 
 ### `Fab.jsx`
 The app's single "add" control — an extended floating button in the same corner of every tab that can add something (planner pool, checklist, info, expenses). The flight tab has none; adding an activity in the planner's daily sub-tab stays on its day's card, because it belongs to one specific day rather than to the tab.

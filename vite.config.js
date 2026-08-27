@@ -95,14 +95,6 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/unpkg\.com\/leaflet.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'leaflet-cache',
-              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 30 }
-            }
-          },
-          {
             // Basemap tiles for the flight-path map: Esri's Gray Canvas, plus
             // OpenStreetMap because MapComponent falls back to it if Esri stops
             // answering. Must track every host MapComponent can ask for — a
@@ -145,6 +137,25 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        /* Vendor code changes on an upgrade; app code changes on every
+           deploy. Splitting them means a deploy invalidates the app chunk
+           and leaves Firebase, React and the drag library in the browser's
+           cache — which is what an auto-updating PWA actually re-downloads
+           each time. Everything is still precached, so offline is
+           unaffected either way. */
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@firebase') || id.includes('/firebase/')) return 'vendor-firebase';
+          if (id.includes('@dnd-kit')) return 'vendor-dnd';
+          if (id.includes('/react-dom/') || id.includes('/react/') || id.includes('/scheduler/')) return 'vendor-react';
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 5173

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import {
@@ -11,17 +11,29 @@ import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme, PALETTES } from './ThemeContext';
-import { defaultChecklist } from './components/ChecklistTab';
-import FlightTab from './components/FlightTab';
 import { CustomDropdown } from './components/CustomDatePicker';
-import PlanningTab from './components/PlanningTab';
-import ChecklistTab from './components/ChecklistTab';
-import InfoTab, { defaultInfoItems } from './components/InfoTab';
-import ExpensesTab from './components/ExpensesTab';
+import { defaultChecklist, defaultInfoItems } from './data/seedData';
+
+/* The five tabs are loaded on demand.
+ *
+ * Only one is ever on screen, but all five used to be parsed before the
+ * first paint — PlanningTab alone is over 4,000 lines. The service worker
+ * still precaches every chunk (`globPatterns` covers all built JS), so a
+ * tab that was never opened online still opens offline; what changes is
+ * how much JavaScript the phone has to compile before showing anything.
+ *
+ * Each lazy tab already sits inside a per-tab ErrorBoundary, so a chunk
+ * that fails to arrive degrades to that tab's error card. */
+const FlightTab    = lazy(() => import('./components/FlightTab'));
+const PlanningTab  = lazy(() => import('./components/PlanningTab'));
+const ChecklistTab = lazy(() => import('./components/ChecklistTab'));
+const InfoTab      = lazy(() => import('./components/InfoTab'));
+const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
 import CurrencyConverter from './components/CurrencyConverter';
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmptyState from './components/EmptyState';
+import Skeleton from './components/Skeleton';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
@@ -1950,6 +1962,10 @@ function AppInner() {
           {/* One boundary per tab: a failure stays inside the tab it came
               from, leaving the nav and every other tab usable. */}
           <ErrorBoundary label={getHeaderTitle()} resetKey={activeTab}>
+            {/* The skeleton stands in while the tab's chunk arrives. After
+                the first install that is a read from the service worker's
+                cache, so it is usually a single frame. */}
+            <Suspense fallback={<Skeleton rows={4} label="טוען" />}>
             {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
             {activeTab === 'planning'  && (
               <PlanningTab
@@ -1961,6 +1977,7 @@ function AppInner() {
             {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
             {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
             {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
+            </Suspense>
           </ErrorBoundary>
         </TripProvider>
       </main>

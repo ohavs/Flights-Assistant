@@ -14,23 +14,10 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
+import { defaultInfoItems } from '../data/seedData';
 import SwipeRow from './SwipeRow';
 import EmptyState from './EmptyState';
 
-// Default items seeded for every new trip. Israeli emergency numbers
-// + the European universal 112, plus a couple of placeholders the user
-// is likely to fill in.
-export const defaultInfoItems = [
-  { id: 'info-il-police',    title: 'משטרת ישראל',       value: '100', type: 'phone',   category: 'מספרי חירום' },
-  { id: 'info-il-mda',       title: 'מד"א — אמבולנס',    value: '101', type: 'phone',   category: 'מספרי חירום' },
-  { id: 'info-il-fire',      title: 'כיבוי אש',            value: '102', type: 'phone',   category: 'מספרי חירום' },
-  { id: 'info-il-civil',     title: 'מל"ל (חירום אזרחי)', value: '104', type: 'phone',   category: 'מספרי חירום' },
-  { id: 'info-eu-112',       title: 'חירום באירופה (כללי)', value: '112', type: 'phone', category: 'מספרי חירום' },
-  { id: 'info-il-mfa',       title: 'משרד החוץ — מוקד לאזרחים בחו"ל', value: '+972-3-9744444', type: 'phone', category: 'מספרי חירום' },
-  { id: 'info-embassy',      title: 'שגרירות ישראל ביעד',   value: '',    type: 'phone',   category: 'מספרי חירום' },
-  { id: 'info-insurance',    title: 'מוקד ביטוח נסיעות',   value: '',    type: 'phone',   category: 'מספרי חירום' },
-  { id: 'info-credit-block', title: 'חסימת אשראי (חברת האשראי)', value: '', type: 'phone', category: 'מספרי חירום' },
-];
 
 const DEFAULT_CATEGORIES = [
   'מספרי חירום',

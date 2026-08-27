@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFlightProgressInfo, formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
@@ -6,7 +6,12 @@ import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
-import MapComponent from './MapComponent';
+/* Leaflet plus the map component is the single heaviest thing the flight
+   tab pulls in, and it renders one card at the top. Loading it separately
+   lets the flight details — the times, the gate, the status — paint
+   without waiting on a mapping library. The card holds its own height
+   meanwhile, so nothing below it jumps when the map lands. */
+const MapComponent = lazy(() => import('./MapComponent'));
 import CurrencyConverter from './CurrencyConverter';
 import { useWeather, getWeatherIcon } from '../hooks/useWeather';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
@@ -997,11 +1002,13 @@ export default function FlightTab({ tripId }) {
 
       {/* Map + weather forecast card */}
       <div className="map-weather-card" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', border: 'var(--card-border)' }}>
-        <MapComponent
-          depCoords={mapFlight.depAirport}
-          arrCoords={mapFlight.arrAirport}
-          progressPercent={mapProgress.progressPercent}
-        />
+        <Suspense fallback={<div className="map-wrapper skeleton" />}>
+          <MapComponent
+            depCoords={mapFlight.depAirport}
+            arrCoords={mapFlight.arrAirport}
+            progressPercent={mapProgress.progressPercent}
+          />
+        </Suspense>
         {/* Current weather + trip days forecast */}
         {weather && (
           <div style={{ background: 'var(--card-bg)', padding: '10px 14px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>

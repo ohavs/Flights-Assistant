@@ -1066,6 +1066,51 @@ input[type="datetime-local"].form-control {
    OpenStreetMap's standard tiles, and crushing their contrast to calm the
    colour took the place names with it. */
 
+/* ── Map endpoint pins ──
+   The dot sits on the coordinate; the name hangs under it in a small
+   plate so it stays readable over land, sea or a border line. Both take
+   theme tokens, because the basemap has a dark variant and a navy dot on
+   a near-black ground is not a dot. */
+/* Qualified with Leaflet's own class on purpose: leaflet.css sets
+   `.leaflet-marker-icon { display: block }` at the same specificity as a
+   bare `.map-pin`, and now that its stylesheet is bundled it loads after
+   this file — so the bare rule loses and the pin flows as inline text
+   (width and height silently ignored, the dot rendering as an ellipse
+   beside the label instead of above it). */
+.leaflet-marker-icon.map-pin {
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.map-pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--primary);
+  box-shadow: 0 2px 6px var(--ink-35);
+  flex-shrink: 0;
+}
+.map-pin-label {
+  font-family: var(--font-hebrew);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--primary);
+  /* Solid, not a white tint: --w-85 is a *white* wash, which in dark mode
+     is 7% white — invisible as a plate, and it left the name floating on
+     whatever the map happened to draw underneath. --surface tracks the
+     theme, and --primary is defined to read against it in both. */
+  background: var(--surface);
+  padding: 0 5px;
+  border-radius: 5px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px var(--ink-35);
+}
+
 /* The licence asks for visible attribution. It gets it — at the size of
    a footnote, out of the way of the route. */
 .leaflet-control-attribution {
