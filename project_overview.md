@@ -48,6 +48,7 @@ Custom glassmorphic design system:
 - **`--accent-rgb`**: Single source for all `--p-*` tints (`rgba(var(--accent-rgb), alpha)`); swapping it recolors the entire app.
 - **Glassmorphism**: `.glass-card` — `rgba` fills, white border, `backdrop-filter: blur(16px)`.
 - **Micro-animations**: `.highlight-pulse` glow, FLIP card reorder animation (gated on order change only).
+- **Nav geometry**: `--nav-height` / `--nav-gap` / `--nav-total` drive both the floating bar and every offset that has to clear it (content padding, the FAB). A custom property resolves its `var()`s where it is *declared*, so the desktop block redeclares `--nav-total` alongside `--nav-height` on `.app-container` — overriding only the height would leave the `:root` copy on the mobile value.
 
 ---
 
@@ -101,7 +102,13 @@ Packing checklist. Auto-syncs from global template. All Firestore writes are fir
 - **All-reminders sheet** — one row per reminder (done checkbox, text, avatar, pencil), an explicit "בחירה" mode for multi-select delete (instead of two competing checkboxes per row), and a "תזכורת חדשה" footer button.
 - `Avatar` and `Sheet` are declared at module level: a component defined inside another component is a new type on every render and would remount the sheet — dropping focus out of the textarea — on every keystroke.
 
-**Top area**: reminders strip → progress ring + add-item card → member filter chips in a single scrollable row with per-member counts. Container gap is 14 px.
+**Top area**: reminders strip → progress card → member filter chips in a single scrollable row with per-member counts. Container gap is 14 px. The progress card is a read-out (ring + "X מתוך Y כבר נארזו") shown to viewers as well; adding and editing an item happen in a bottom sheet opened by the app-wide `Fab`.
+
+### `Fab.jsx`
+The app's single "add" control — an extended floating button in the same corner of every tab that can add something (planner pool, checklist, info, expenses). The flight tab has none; adding an activity in the planner's daily sub-tab stays on its day's card, because it belongs to one specific day rather than to the tab.
+
+- Portalled into `.app-container`, not `<body>`: `position: fixed` resolves against the nearest transformed ancestor and the tab wrappers animate with a transform, while `<body>` would put the button outside the container's `isolation: isolate` and therefore above every sheet inside it.
+- While one is mounted `<body>` carries `data-fab`, and `.app-content` reserves extra bottom padding so the last row of a list stays reachable past the button.
 
 ### `ShareTargetScreen.jsx` + `services/shareTarget.js`
 Entry point for places shared from Google Maps (Android, installed PWA only — iOS Safari has no Web Share Target).

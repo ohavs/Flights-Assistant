@@ -1622,6 +1622,52 @@ input[type="datetime-local"].form-control {
   transform: scale(0.95);
 }
 
+/* ── Floating add button ──
+   One shape, one corner, on every tab that can add something. Extended
+   rather than a bare circle: "+" alone tells you there is an action but
+   not which one, and the tabs add four different things.
+
+   Placed at the inline-end corner, which in RTL is the bottom-left —
+   the mirrored position every RTL platform puts it in. Rendered into
+   `.app-container` (see Fab.jsx), so its `fixed` is the viewport's and
+   not the animating tab's. */
+.fab {
+  position: fixed;
+  inset-inline-end: 16px;
+  bottom: calc(var(--nav-total) + 10px);
+  /* Above the page, below the nav (1000) and every sheet (2000+). */
+  z-index: 900;
+  height: 48px;
+  padding-inline: 15px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb, 79, 70, 229), 0.34),
+              0 2px 6px var(--ink-12);
+  animation: fab-in var(--dur-base) var(--ease-spring) backwards;
+}
+
+.fab svg { flex-shrink: 0; }
+
+@keyframes fab-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The button sits over the bottom corner of the list, so the list needs
+   room to scroll past it — otherwise its last row is unreachable. */
+body[data-fab] .app-content {
+  padding-bottom: calc(var(--nav-total) + 74px);
+}
+
 /* ── Dark-mode button overrides ──
    In dark mode --primary is a LIGHT colour (#c7d2fe) — fine for text, but
    too bright when used as a button background. Swap to --accent (#818cf8)
@@ -1692,6 +1738,13 @@ input[type="datetime-local"].form-control {
   .app-container {
     max-width: 100%;
     box-shadow: none;
+    /* The nav is taller here. Override the token rather than the rule,
+       so everything that reserves space for the nav follows along.
+       --nav-total has to be restated: a custom property resolves its
+       var()s where it is *declared*, so the :root copy still carries the
+       mobile height no matter what a descendant sets --nav-height to. */
+    --nav-height: 68px;
+    --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
   }
 
   .app-header {
@@ -1704,7 +1757,10 @@ input[type="datetime-local"].form-control {
 
   .app-content {
     padding: 32px 40px;
-    padding-bottom: 32px;
+    padding-bottom: calc(var(--nav-total) + 24px);
+  }
+  body[data-fab] .app-content {
+    padding-bottom: calc(var(--nav-total) + 80px);
   }
 
   /* All the per-tab roots are wrapped in `.animate-fade`. Centre them. */
@@ -1741,7 +1797,6 @@ input[type="datetime-local"].form-control {
   /* Bottom nav: the same floating pill, centred and a little larger.
      Capping the width keeps the travelling indicator's geometry exact. */
   .bottom-nav {
-    height: 68px;
     left: 50%;
     right: auto;
     transform: translateX(-50%) translateZ(0);
@@ -1774,7 +1829,10 @@ input[type="datetime-local"].form-control {
 @media (min-width: 1440px) {
   .app-content {
     padding: 40px 64px;
-    padding-bottom: 40px;
+    padding-bottom: calc(var(--nav-total) + 32px);
+  }
+  body[data-fab] .app-content {
+    padding-bottom: calc(var(--nav-total) + 88px);
   }
   .app-content > .animate-fade { max-width: 1520px; }
   .dashboard-grid { gap: 32px; }

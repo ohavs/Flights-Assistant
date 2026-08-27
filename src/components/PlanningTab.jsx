@@ -33,6 +33,7 @@ import {
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Skeleton from './Skeleton';
+import Fab from './Fab';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -1755,6 +1756,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         <>
           {/* Search and Toggle Form */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {/* Search fills the row — the add button moved to the floating
+                one, which every tab now shares. */}
             <div style={{ position: 'relative', flex: 1 }}>
               <input
                 type="text"
@@ -1767,16 +1770,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             </div>
 
-            {canEdit && (
-              <button
-                onClick={handleOpenAdd}
-                className="btn-add-circle"
-                aria-label="הוסף יעד חדש"
-              >
-                <Plus size={20} />
-              </button>
-            )}
           </div>
+
+          {/* Adding a place is a whole-tab action, so it gets the floating
+              button. Adding an activity in the daily sub-tab is not — it
+              belongs to one specific day, and stays on that day's card. */}
+          {canEdit && <Fab label="יעד חדש" onClick={handleOpenAdd} />}
 
           {/* Add/Edit Plan Slide-Up Modal */}
           {showAddForm && (

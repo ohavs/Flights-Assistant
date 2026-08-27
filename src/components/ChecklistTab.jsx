@@ -10,10 +10,11 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, ChevronUp, X, GripVertical, List, User } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, List, User } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import SwipeRow from './SwipeRow';
+import Fab from './Fab';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -1181,30 +1182,39 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setAssignPickerItemId(null);
   };
 
-  const doAdd = (overrideCategory) => {
-    const text = newItemText.trim();
-    if (!text || !tripId) return;
-    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
-    setNewItemText('');
-    if (editingItemId) {
-      setEditingItemId(null);
-      setShowAddForm(false);
-      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: newItemAssignedTo.length > 0 ? newItemAssignedTo : null });
-    } else {
-      setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
-        text, completed: false, category: cat, assignedTo: newItemAssignedTo.length > 0 ? newItemAssignedTo : null,
-      });
-    }
-  };
-
-  const handleAdd = (e) => { e.preventDefault(); doAdd(); };
-
-  const handleCancelEdit = () => {
+  // The add/edit form lives in a sheet, opened by the floating button.
+  // Both entry points go through these two so the fields can never carry
+  // over from a previous edit into a fresh add.
+  const resetItemForm = () => {
     setEditingItemId(null);
     setNewItemText('');
     setNewItemCategory('מסמכים וסידורים');
     setNewItemAssignedTo([]);
   };
+
+  const openAddSheet = () => { resetItemForm(); setShowAddForm(true); };
+  const closeAddSheet = () => { setShowAddForm(false); resetItemForm(); };
+
+  const doAdd = (overrideCategory) => {
+    const text = newItemText.trim();
+    if (!text || !tripId) return;
+    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
+    const assigned = newItemAssignedTo.length > 0 ? newItemAssignedTo : null;
+    if (editingItemId) {
+      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: assigned });
+    } else {
+      setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
+        text, completed: false, category: cat, assignedTo: assigned,
+      });
+    }
+    // Saving dismisses the sheet. Adding several items in a row is what the
+    // per-category "הוסף לרשימה" row is for, and it stays where it was.
+    closeAddSheet();
+  };
+
+  const handleAdd = (e) => { e.preventDefault(); doAdd(); };
+
+  const handleCancelEdit = () => closeAddSheet();
 
   const handleStartEdit = (item) => {
     setEditingItemId(item.id);
@@ -1213,7 +1223,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     const a = item.assignedTo;
     setNewItemAssignedTo(Array.isArray(a) ? a : a ? [a] : []);
     setShowAddForm(true);
-    document.querySelector('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleQuickAdd = (e, cat) => {
@@ -1242,51 +1251,53 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       {/* Reminders — compact strip; add/edit happen in a sheet */}
       <RemindersCard tripId={tripId} canEdit={canEdit} />
 
-      {/* Add New Item + Progress Ring */}
-      {canEdit && (
-        <div className="glass-card" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 0, direction: 'rtl' }}>
-
-          {/* Title row: ring on left, title on right */}
-          <div style={{ display: 'flex', flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 0 }}>
-
-            {/* Progress ring */}
-            <div style={{ width: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
-              <div style={{ position: 'relative', width: 46, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width={46} height={46} viewBox="0 0 52 52" style={{ position: 'absolute', top: 0, left: 0 }}>
-                  <circle cx={26} cy={26} r={20} fill="none" stroke="var(--ink-8)" strokeWidth={4} />
-                  <circle cx={26} cy={26} r={20} fill="none" stroke="var(--primary-color)" strokeWidth={4}
-                    strokeLinecap="round"
-                    strokeDasharray="125.66"
-                    strokeDashoffset={`${(125.66 * (1 - progressPercent / 100)).toFixed(2)}`}
-                    transform="rotate(-90 26 26)"
-                    style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
-                  />
-                </svg>
-                <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 900, color: 'var(--primary-color)' }}>{progressPercent}%</span>
-                  <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>{completedCount}/{totalCount}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Title button */}
-            <div style={{ flex: 1, direction: 'rtl' }}>
-              <button type="button" onClick={() => setShowAddForm(s => !s)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}>
-                {showAddForm
-                  ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                  : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
-                  {editingItemId ? 'עריכת פריט ברשימה' : 'הוספת פריט חדש לרשימה'}
-                </span>
-                {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
-              </button>
+      {/* Progress — a read-out now, not a control. Adding used to unfold
+          out of this card; it moved to the floating button and its sheet,
+          which is how every tab adds things. Shown to viewers too: the
+          count is information, not an edit. */}
+      {totalCount > 0 && (
+        <div className="glass-card" style={{ padding: '12px 14px', flexDirection: 'row', alignItems: 'center', gap: 12, direction: 'rtl' }}>
+          <div style={{ position: 'relative', width: 46, height: 46, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width={46} height={46} viewBox="0 0 52 52" style={{ position: 'absolute', top: 0, left: 0 }}>
+              <circle cx={26} cy={26} r={20} fill="none" stroke="var(--ink-8)" strokeWidth={4} />
+              <circle cx={26} cy={26} r={20} fill="none" stroke="var(--primary-color)" strokeWidth={4}
+                strokeLinecap="round"
+                strokeDasharray="125.66"
+                strokeDashoffset={`${(125.66 * (1 - progressPercent / 100)).toFixed(2)}`}
+                transform="rotate(-90 26 26)"
+                style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
+              />
+            </svg>
+            <span style={{ zIndex: 1, fontSize: 13, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1 }}>{progressPercent}%</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>רשימת הציוד</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
+              {completedCount} מתוך {totalCount} כבר נארזו
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Form — full width below the title row */}
-          {showAddForm && (
-            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+      {canEdit && <Fab label="פריט חדש" onClick={openAddSheet} />}
+
+      {/* Add / edit one item */}
+      {canEdit && showAddForm && (
+        <Sheet onClose={closeAddSheet} maxHeight="88vh">
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 18px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
+          }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--primary)' }}>
+              {editingItemId ? 'עריכת פריט' : 'פריט חדש לרשימה'}
+            </h3>
+            <button type="button" onClick={closeAddSheet} aria-label="סגור"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10 }}>
+              <X size={18} />
+            </button>
+          </div>
+
+            <form onSubmit={handleAdd} data-sheet-scroll style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 18px calc(16px + env(safe-area-inset-bottom))' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>מה להביא?</label>
@@ -1345,8 +1356,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                 </button>
               )}
             </form>
-          )}
-        </div>
+        </Sheet>
       )}
 
       {/* Who-it's-for filter — one scrollable row (never wraps to a second

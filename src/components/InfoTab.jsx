@@ -13,6 +13,7 @@ import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSe
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Skeleton from './Skeleton';
+import Fab from './Fab';
 
 // Default items seeded for every new trip. Israeli emergency numbers
 // + the European universal 112, plus a couple of placeholders the user
@@ -226,7 +227,7 @@ export default function InfoTab({ tripId }) {
 
   return (
     <>
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: canEdit ? 64 : 0 }}>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Add/edit form (modal-style inline) */}
       {showForm && canEdit && (
@@ -360,8 +361,15 @@ export default function InfoTab({ tripId }) {
             עוד אין מידע שמור.
           </p>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
-            לחץ "טען מספרי חירום" לקבלת בסיס התחלתי, או "הוסף פריט חדש" להוספה ידנית.
+            אפשר להתחיל מבסיס מוכן של מספרי חירום, או להוסיף פריט משלך בכפתור שלמטה.
           </p>
+          {canEdit && (
+            <button onClick={handleSeedDefaults} className="btn-secondary"
+              style={{ marginTop: 16, marginInline: 'auto' }}>
+              <RotateCcw size={14} />
+              <span>טען מספרי חירום</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -394,27 +402,10 @@ export default function InfoTab({ tripId }) {
       </DndContext>
 
     </div>
-    {/* Fixed add button rendered OUTSIDE animate-fade to avoid transform containment bug */}
-    {canEdit && (
-      <div style={{
-        position: 'fixed',
-        // Sits just above the floating nav — derived from the same token,
-        // so the two can never drift apart.
-        bottom: 'calc(var(--nav-total) + 8px)',
-        left: 0, right: 0, padding: '0 16px', zIndex: 50, display: 'flex', gap: 10,
-      }}>
-        <button onClick={() => openAdd()} className="btn-primary" style={{ flex: 1, boxShadow: '0 4px 20px var(--ink-18)' }}>
-          <Plus size={16} />
-          <span>הוסף פריט חדש</span>
-        </button>
-        {items.length === 0 && (
-          <button onClick={handleSeedDefaults} className="btn-secondary" style={{ minHeight: 48, boxShadow: '0 4px 20px var(--ink-12)' }}>
-            <RotateCcw size={14} />
-            <span>טען מספרי חירום</span>
-          </button>
-        )}
-      </div>
-    )}
+    {/* The full-width docked bar became the app-wide floating button; the
+        "load defaults" shortcut moved into the empty state, which is the
+        only time it was offered anyway. */}
+    {canEdit && <Fab label="פריט חדש" onClick={() => openAdd()} />}
     </>
   );
 }

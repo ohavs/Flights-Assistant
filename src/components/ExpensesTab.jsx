@@ -11,6 +11,7 @@ import { useConfirm } from '../ConfirmContext';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
+import Fab from './Fab';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
@@ -355,10 +356,6 @@ export default function ExpensesTab({ tripId }) {
               סיכום
             </button>
           )}
-          <button onClick={() => openForm()} className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}>
-            <Plus size={16} />
-            הוצאה חדשה
-          </button>
         </div>
       </div>
 
@@ -1003,6 +1000,9 @@ export default function ExpensesTab({ tripId }) {
         </div>,
         document.querySelector('.app-container') || document.body
       )}
+
+      {/* Adding lives in the app-wide floating button, same as every tab. */}
+      <Fab label="הוצאה חדשה" onClick={() => openForm()} />
 
     </div>
   );
