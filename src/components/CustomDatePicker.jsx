@@ -334,7 +334,9 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
         style={isCompact ? {
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          // Centred: the compact trigger is the whole content of a tile,
+          // and space-between pushed it against the tile's start edge.
+          justifyContent: 'center',
           cursor: 'pointer',
           background: 'transparent',
           border: 'none',

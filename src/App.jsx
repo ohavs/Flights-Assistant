@@ -26,7 +26,7 @@ import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette, Pin, PinOff
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -152,7 +152,7 @@ function ConverterScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, onExportTrip, onImportTrip, exportBusyId, importBusy, importError, userName, onOpenGlobalChecklist }) {
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, onExportTrip, onImportTrip, exportBusyId, importBusy, importError, userName, onOpenGlobalChecklist, pinnedTripId, onTogglePinned }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -344,9 +344,14 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
             </div>
           )}
 
-          {trip.dates && (
+          {(trip.dates || pinnedTripId === trip.id) && (
             <div className="trip-card-meta">
-              <span className="trip-card-badge"><Calendar size={13} />{trip.dates}</span>
+              {pinnedTripId === trip.id && (
+                <span className="trip-card-badge" style={{ background: 'var(--p-12)', color: 'var(--accent)' }}>
+                  <Pin size={13} />נפתח אוטומטית
+                </span>
+              )}
+              {trip.dates && <span className="trip-card-badge"><Calendar size={13} />{trip.dates}</span>}
             </div>
           )}
 
@@ -356,6 +361,19 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               <ChevronLeft size={16} />
             </div>
             <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => onTogglePinned(trip.id)}
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  background: pinnedTripId === trip.id ? 'var(--accent)' : 'var(--p-8)',
+                  color: pinnedTripId === trip.id ? '#fff' : 'var(--accent)',
+                }}
+                title={pinnedTripId === trip.id ? 'בטל טיול נוכחי' : 'קבע כטיול הנוכחי'}
+                aria-pressed={pinnedTripId === trip.id}
+              >
+                {pinnedTripId === trip.id ? <Pin size={15} /> : <PinOff size={15} />}
+              </button>
               <button
                 onClick={() => onExportTrip(trip.id)}
                 disabled={exportBusyId === trip.id}
@@ -1191,6 +1209,14 @@ function AppInner() {
   // Header elevation + "scroll to top" both need the scrolling element.
   const contentRef = useRef(null);
   const [contentScrolled, setContentScrolled] = useState(false);
+  // The trip the app opens into. Kept on the device rather than in
+  // Firestore: it is a "this phone opens here" preference, and reading it
+  // from localStorage means the app can jump straight in on a cold start,
+  // without waiting for the trips query.
+  const [pinnedTripId, setPinnedTripId] = useState(null);
+  // Auto-open happens once per session — otherwise going back to the trip
+  // list would immediately bounce you into the trip again.
+  const autoOpenedRef = useRef(false);
 
   useEffect(() => {
     const handleOnline  = () => setIsOnline(true);
@@ -1265,6 +1291,37 @@ function AppInner() {
 
     checkAndSeed().catch(err => console.error("Error in checkAndSeed:", err));
   }, [user]);
+
+  // Read the pinned trip for whoever is signed in.
+  useEffect(() => {
+    if (!user) { setPinnedTripId(null); autoOpenedRef.current = false; return; }
+    try { setPinnedTripId(localStorage.getItem(`currentTrip_${user.uid}`) || null); }
+    catch { setPinnedTripId(null); }
+  }, [user]);
+
+  // Open straight into the pinned trip. Guarded so it happens only on the
+  // first load, only from the trip list, and never over a share in progress.
+  useEffect(() => {
+    if (autoOpenedRef.current || !user || !pinnedTripId) return;
+    if (sharedPlace || screen !== 'home' || selectedTripId) return;
+    if (!trips.some(t => t.id === pinnedTripId)) return;   // deleted or not shared any more
+    autoOpenedRef.current = true;
+    setSelectedTripId(pinnedTripId);
+    setActiveTab('flight');
+    setScreen('trip');
+  }, [user, pinnedTripId, trips, sharedPlace, screen, selectedTripId]);
+
+  const handleTogglePinned = (tripId) => {
+    const next = pinnedTripId === tripId ? null : tripId;
+    setPinnedTripId(next);
+    // Pinning from the list is a deliberate act — don't also jump into it.
+    autoOpenedRef.current = true;
+    if (!user) return;
+    try {
+      if (next) localStorage.setItem(`currentTrip_${user.uid}`, next);
+      else localStorage.removeItem(`currentTrip_${user.uid}`);
+    } catch { /* private mode — the pin just won't persist */ }
+  };
 
   // A share hands us /share?title=…&text=…&url=… — take it out of the address
   // bar right away so a refresh or the back button can't replay it.
@@ -1722,6 +1779,8 @@ function AppInner() {
             importBusy={importBusy}
             importError={importError}
             userName={user.displayName}
+            pinnedTripId={pinnedTripId}
+            onTogglePinned={handleTogglePinned}
             onOpenGlobalChecklist={() => setShowGlobalChecklistModal(true)}
           />
         </main>
