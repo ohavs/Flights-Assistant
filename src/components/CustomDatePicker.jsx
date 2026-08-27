@@ -349,18 +349,28 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
           background: 'var(--surface)'
         }}
       >
-        <span style={{ 
-          fontSize: isCompact ? '13px' : '15px', 
-          fontWeight: '800', 
-          color: 'var(--primary-color)' 
+        <span style={{
+          fontSize: isCompact ? '13px' : '15px',
+          fontWeight: '800',
+          color: 'var(--primary-color)',
+          whiteSpace: 'nowrap',
         }}>
-          {value ? formatHebrewDate(value) : 'בחר תאריך...'}
+          {value
+            ? (isCompact
+                // The compact trigger sits inside a narrow tile — a full
+                // "27 באוגוסט 2026" wraps to two lines there.
+                ? parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                : formatHebrewDate(value))
+            : 'בחר תאריך...'}
         </span>
         {!isCompact && <CalendarIcon size={18} style={{ color: 'var(--text-muted)' }} />}
       </div>
 
-      {/* Modal overlay */}
-      {isOpen && (
+      {/* Modal overlay — portalled to <body>. Every one of these pickers
+          sits inside a .glass-card, and a backdrop-filtered ancestor becomes
+          the containing block for position:fixed children: left in place the
+          overlay is positioned against the card and clipped by it. */}
+      {isOpen && createPortal(
         <div 
           onClick={() => setIsOpen(false)}
           style={{
@@ -434,7 +444,8 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -517,7 +528,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
       </div>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           onClick={() => setIsOpen(false)}
           style={{ position: 'fixed', inset: 0, background: 'var(--ink-40)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
@@ -579,7 +590,8 @@ export function CustomTimePicker({ value, onChange, label, required }) {
               <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>ביטול</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -664,8 +676,8 @@ export function CustomDateTimePicker({ value, onChange, label }) {
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
       </div>
 
-      {/* Modal overlay */}
-      {isOpen && (
+      {/* Modal overlay — portalled, same reason as the date picker above. */}
+      {isOpen && createPortal(
         <div 
           onClick={() => setIsOpen(false)}
           style={{
@@ -785,7 +797,8 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

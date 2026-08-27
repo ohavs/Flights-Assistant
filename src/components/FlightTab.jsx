@@ -17,6 +17,7 @@ import {
   Building,
   Loader2,
   Search,
+  Plane,
   PlaneTakeoff,
   PlaneLanding,
   RefreshCw,
@@ -163,8 +164,7 @@ function formatDelta(mins) {
 // One slot for an event time: shows the most up-to-date time,
 // highlighted red on delay, green on "earlier than scheduled",
 // strike-through if cancelled.
-function TimeSlot({ scheduled, updated, label, icon, cancelled, flightDate }) {
-  const effective = updated || scheduled;
+function useTimeState({ scheduled, updated, cancelled, flightDate }) {
   // Suppress delay/early chip for flights more than 18h in the future.
   // Real airlines virtually never announce schedule changes that far
   // out; any divergence at that range is almost certainly stale data
@@ -176,57 +176,53 @@ function TimeSlot({ scheduled, updated, label, icon, cancelled, flightDate }) {
     const hours = (dep - Date.now()) / 3600000;
     if (hours > 18) suppressDelta = true;
   }
+  const effective = updated || scheduled;
   const delta = suppressDelta ? null : deltaMinutes(scheduled, updated);
   const delayed = delta != null && delta > 0;
   const early = delta != null && delta < 0;
 
   let color = 'var(--primary)';
-  let bgChip = null;
+  let chipBg = null;
   let chipColor = null;
   if (cancelled) color = 'var(--c-red)';
-  else if (delayed) { color = 'var(--c-red)'; bgChip = 'var(--c-red-10)'; chipColor = 'var(--c-red)'; }
-  else if (early)   { bgChip = 'var(--c-teal-10)'; chipColor = 'var(--text-success)'; }
+  else if (delayed) { color = 'var(--c-red)'; chipBg = 'var(--c-red-10)'; chipColor = 'var(--c-red)'; }
+  else if (early) { chipBg = 'var(--c-teal-10)'; chipColor = 'var(--text-success)'; }
 
   // When the chip is suppressed, also show the *scheduled* time rather
   // than a stale "updated" value (otherwise the row would silently
   // display fake numbers without explanation).
-  const displayValue = cancelled ? '—' : (suppressDelta ? (scheduled || effective || '—') : (effective || '—'));
+  const display = cancelled ? '—' : (suppressDelta ? (scheduled || effective || '—') : (effective || '—'));
 
+  return { display, delta, delayed, early, color, chipBg, chipColor, cancelled };
+}
+
+/* One end of the route: the time, big, with its delay chip underneath.
+   The airport sits above it in the card, so this block carries only what
+   changes — which is what you check when you glance at the card. */
+function RouteTime({ scheduled, updated, cancelled, flightDate, align = 'right' }) {
+  const t = useTimeState({ scheduled, updated, cancelled, flightDate });
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: 700 }}>
-        {icon}
-        {label}
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: align === 'right' ? 'flex-end' : 'flex-start', gap: 3 }}>
+      <span style={{
+        fontSize: 27, fontWeight: 900, lineHeight: 1,
+        color: t.color,
+        textDecoration: t.cancelled ? 'line-through' : 'none',
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '-0.5px',
+      }}>
+        {t.display}
       </span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {delta != null && delta !== 0 && !cancelled && (
-          <span style={{
-            background: bgChip, color: chipColor,
-            fontSize: 11, fontWeight: 800,
-            padding: '2px 8px', borderRadius: 999,
-          }}>
-            {formatDelta(delta)}
-          </span>
-        )}
+      {t.delta != null && t.delta !== 0 && !t.cancelled && (
         <span style={{
-          fontWeight: 800,
-          color,
-          textDecoration: cancelled ? 'line-through' : 'none',
-          fontVariantNumeric: 'tabular-nums',
+          background: t.chipBg, color: t.chipColor,
+          fontSize: 10.5, fontWeight: 800,
+          padding: '2px 7px', borderRadius: 999,
+          display: 'inline-flex', alignItems: 'center', gap: 4,
         }}>
-          {displayValue}
+          {formatDelta(t.delta)}
+          {t.delayed && <span style={{ opacity: 0.75 }}>מעודכן</span>}
         </span>
-        {delayed && !cancelled && (
-          <span style={{
-            fontSize: 10, fontWeight: 800,
-            color: 'var(--c-red)',
-            background: 'var(--c-red-6)',
-            padding: '1px 6px', borderRadius: 6,
-          }}>
-            מעודכן
-          </span>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -761,6 +757,16 @@ export default function FlightTab({ tripId }) {
   }
 
   // Render a flight card (extracted to share between outbound + return)
+  // Tiles inside a flight card: gate, date and status all read the same way.
+  const tileStyle = {
+    display: 'flex', flexDirection: 'column', gap: 3,
+    alignItems: 'center', justifyContent: 'center',
+    background: 'var(--ink-3)', borderRadius: 12,
+    padding: '9px 6px', minHeight: 56, textAlign: 'center',
+  };
+  const tileLabel = { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' };
+  const tileValue = { fontSize: 15, fontWeight: 900, color: 'var(--primary-color)', fontVariantNumeric: 'tabular-nums' };
+
   const renderFlightCard = (flight, kind) => {
     const label = kind === 'outbound' ? 'טיסת הלוך' : 'טיסת חזור';
     const badgeColor = kind === 'outbound' ? 'var(--p-10)' : 'var(--c-red2-10)';
@@ -774,10 +780,13 @@ export default function FlightTab({ tripId }) {
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
         {/* Card Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <span className="badge-success" style={{ background: badgeColor, color: badgeText, padding: '4px 10px', fontSize: '11px', marginLeft: '8px' }}>{label}</span>
-            <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary-color)' }}>{flight.flightNumber || '—'}</span>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '6px' }}>{flight.airline}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span className="badge-success" style={{ background: badgeColor, color: badgeText, padding: '4px 10px', fontSize: '11px', flexShrink: 0 }}>{label}</span>
+            <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary-color)', whiteSpace: 'nowrap' }}>{flight.flightNumber || '—'}</span>
+            <span style={{
+              fontSize: '12px', color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{flight.airline}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -820,11 +829,78 @@ export default function FlightTab({ tripId }) {
           </div>
         </div>
 
-        {/* Date Picker Section */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--ink-3)', padding: '10px 14px', borderRadius: 'var(--border-radius-md)' }}>
-          <Calendar size={16} style={{ color: 'var(--primary-color)' }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>תאריך טיסה</div>
+        {/* Route — the two ends of the flight, side by side, with the times
+            that actually change sitting under each airport. This is what
+            you glance at in the terminal; everything else is secondary. */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1.1 }}>
+              {flight.depAirport?.code || '—'}
+            </div>
+            <div style={{
+              fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {flight.depAirport?.city || ''}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <RouteTime
+                scheduled={toTime24(flight.scheduledDep)}
+                updated={toTime24(flight.actualDep)}
+                cancelled={flight.status === 'בוטלה'}
+                flightDate={flight.date}
+                align="right"
+              />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginTop: 4, display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+              <PlaneTakeoff size={11} style={{ color: 'var(--accent)' }} />
+              <span>המראה</span>
+            </div>
+          </div>
+
+          {/* The line between them — direction of travel, in RTL: departure
+              on the right, arrival on the left. */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 6, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--p-30)' }} />
+              <span style={{ width: 26, height: 2, background: 'var(--p-15)', borderRadius: 2 }} />
+              <Plane size={15} style={{ color: 'var(--accent)', transform: 'rotate(-90deg)' }} />
+              <span style={{ width: 26, height: 2, background: 'var(--p-15)', borderRadius: 2 }} />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--p-30)' }} />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1.1 }}>
+              {flight.arrAirport?.code || '—'}
+            </div>
+            <div style={{
+              fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {flight.arrAirport?.city || ''}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <RouteTime
+                scheduled={toTime24(flight.scheduledArr)}
+                updated={toTime24(flight.estimatedArr)}
+                cancelled={flight.status === 'בוטלה'}
+                flightDate={flight.date}
+                align="left"
+              />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginTop: 4, display: 'flex', gap: 5 }}>
+              <PlaneLanding size={11} style={{ color: 'var(--accent)' }} />
+              <span>נחיתה</span>
+            </div>
+          </div>
+        </div>
+
+        {/* The three things you are asked for at the airport, as tiles
+            rather than "label: value" rows. */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.85fr 0.95fr', gap: 8 }}>
+          <div style={{ ...tileStyle, fontSize: 13 }}>
+            <span style={tileLabel}>תאריך</span>
             {canEdit ? (
               <CustomDatePicker
                 value={flight.date || ''}
@@ -832,61 +908,55 @@ export default function FlightTab({ tripId }) {
                 variant="compact"
               />
             ) : (
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-color)' }}>
-                {flight.date ? new Date(flight.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
-              </div>
+              <span style={tileValue}>
+                {flight.date
+                  ? new Date(flight.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                  : '—'}
+              </span>
             )}
           </div>
-        </div>
 
-        {/* Airport Codes Row + live local clock under each */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, textAlign: 'right' }}>
-            <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--primary-color)' }}>{flight.depAirport?.code || '—'}</div>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{flight.depAirport?.city}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{flight.depAirport?.timezone}</div>
-            <LocalClock timezone={flight.depAirport?.timezone} />
+          <div style={tileStyle}>
+            <span style={tileLabel}>שער (Gate)</span>
+            <span style={{ ...tileValue, color: flight.gate ? 'var(--accent)' : 'var(--text-muted)' }}>
+              {flight.gate || '—'}
+            </span>
           </div>
 
-          <div style={{ flex: 1, textAlign: 'left' }}>
-            <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--primary-color)' }}>{flight.arrAirport?.code || '—'}</div>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{flight.arrAirport?.city}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{flight.arrAirport?.timezone}</div>
-            <LocalClock timezone={flight.arrAirport?.timezone} />
-          </div>
-        </div>
-
-        <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }} />
-
-        {/* Times / status / gate — single time with delta highlighting */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-          <TimeSlot
-            label="המראה"
-            icon={<PlaneTakeoff size={15} style={{ color: 'var(--accent)' }} />}
-            scheduled={toTime24(flight.scheduledDep)}
-            updated={toTime24(flight.actualDep)}
-            cancelled={flight.status === 'בוטלה'}
-            flightDate={flight.date}
-          />
-          <TimeSlot
-            label="נחיתה"
-            icon={<PlaneLanding size={15} style={{ color: 'var(--accent)' }} />}
-            scheduled={toTime24(flight.scheduledArr)}
-            updated={toTime24(flight.estimatedArr)}
-            cancelled={flight.status === 'בוטלה'}
-            flightDate={flight.date}
-          />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה (בזמן אמת):</span>
-            <span className="badge-success" style={flight.status === 'בוטלה' ? { background: 'var(--c-red-10)', color: 'var(--c-red)' } : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'var(--c-orange-12)', color: 'var(--c-orange)' } : undefined}>
-              <span className="pulsing-dot" style={flight.status === 'בוטלה' ? { background: 'var(--c-red)' } : flight.status?.includes('איחור') ? { background: 'var(--c-orange)' } : undefined}></span>
+          <div style={tileStyle}>
+            <span style={tileLabel}>סטטוס</span>
+            <span className="badge-success" style={{
+              ...(flight.status === 'בוטלה' ? { background: 'var(--c-red-10)', color: 'var(--c-red)' }
+                : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'var(--c-orange-12)', color: 'var(--c-orange)' }
+                : {}),
+              fontSize: 11.5, padding: '3px 8px', gap: 5,
+            }}>
+              <span className="pulsing-dot" style={
+                flight.status === 'בוטלה' ? { background: 'var(--c-red)' }
+                : flight.status?.includes('איחור') ? { background: 'var(--c-orange)' }
+                : undefined
+              } />
               <span>{flight.status || '—'}</span>
             </span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>שער עלייה למטוס (Gate):</span>
-            <strong style={{ color: 'var(--accent)', fontSize: '15px' }}>{flight.gate || '—'}</strong>
-          </div>
+        </div>
+
+        {/* Local time at both ends — useful, but never the headline. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+          borderTop: '1px solid var(--ink-6)', paddingTop: 10,
+        }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontWeight: 800 }}>{flight.depAirport?.code || '—'}</span>
+            <LocalClock timezone={flight.depAirport?.timezone} />
+            <span style={{ opacity: 0.7 }}>{flight.depAirport?.timezone}</span>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ opacity: 0.7 }}>{flight.arrAirport?.timezone}</span>
+            <LocalClock timezone={flight.arrAirport?.timezone} />
+            <span style={{ fontWeight: 800 }}>{flight.arrAirport?.code || '—'}</span>
+          </span>
         </div>
       </div>
     );
