@@ -6,6 +6,7 @@ const TripContext = createContext({
   tripId: null,
   role: null,      // 'owner' | 'editor' | 'member' | 'viewer'
   canEdit: false,
+  formerMembers: {},   // uid -> { displayName, email, photoURL, leftAt }
   isOwner: false,
   ownerProfile: null,
   currentUid: null,

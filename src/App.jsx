@@ -521,9 +521,20 @@ function ShareModal({ tripId, currentUid, onClose }) {
       // Build the new members map without that uid
       const newMembers = { ...(trip?.members || {}) };
       delete newMembers[uid];
+      const gone = members.find(m => m.uid === uid);
       await updateDoc(doc(db, 'trips', tripId), {
         members: newMembers,
         memberIds: arrayRemove(uid),
+        // Nothing they added is deleted — the content belongs to the trip,
+        // not to the person. But once the uid leaves `members` their
+        // profile is never fetched again, so every expense they paid and
+        // every item assigned to them would go nameless. Keep a snapshot.
+        [`formerMembers.${uid}`]: {
+          displayName: gone?.profile?.displayName || '',
+          email: gone?.profile?.email || '',
+          photoURL: gone?.profile?.photoURL || '',
+          leftAt: new Date().toISOString(),
+        },
       });
     } catch (err) {
       console.error('Remove member failed:', err);
@@ -1541,6 +1552,14 @@ function AppInner() {
     await updateDoc(doc(db, 'trips', tripId), {
       members: newMembers,
       memberIds: arrayRemove(user.uid),
+      // See removeMember: leaving takes the person out, never their work.
+      // The snapshot is what keeps their name on it afterwards.
+      [`formerMembers.${user.uid}`]: {
+        displayName: user.displayName || '',
+        email: user.email || '',
+        photoURL: user.photoURL || '',
+        leftAt: new Date().toISOString(),
+      },
     });
     // Best-effort legacy cleanup
     updateDoc(doc(db, 'users', user.uid), { tripIds: arrayRemove(tripId) }).catch(() => {});
@@ -1824,7 +1843,7 @@ function AppInner() {
                   </h3>
                   <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600, marginBottom: 0 }}>
                     {confirmDelete.mode === 'leave' ? (
-                      <>האם לצאת מ-<strong>{confirmDelete.name}</strong>?<br />הטיול לא יימחק — הוא פשוט יוסר מהרשימה שלך. רק הבעלים של הטיול יכול למחוק אותו לכולם.</>
+                      <>האם לצאת מ-<strong>{confirmDelete.name}</strong>?<br />מה שהוספת — הוצאות, מקומות, פריטים ברשימה — נשאר בטיול על שמך. הטיול עצמו לא יימחק, הוא רק יוסר מהרשימה שלך; רק הבעלים יכול למחוק אותו לכולם.</>
                     ) : (
                       <>האם למחוק את <strong>{confirmDelete.name}</strong> לצמיתות?<br />כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.</>
                     )}
@@ -1958,6 +1977,10 @@ function AppInner() {
           currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
           memberProfiles: memberProfiles,
           tripMembers: selectedTrip?.members || {},
+          // People who were on the trip and are not any more. Their work
+          // stays; the tabs render them greyed so it is clear why they
+          // can no longer be picked.
+          formerMembers: selectedTrip?.formerMembers || {},
         }}>
           {/* One boundary per tab: a failure stays inside the tab it came
               from, leaving the nav and every other tab usable. */}

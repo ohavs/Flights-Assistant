@@ -85,6 +85,57 @@ function Sheet({ onClose, children, maxHeight = '80vh' }) {
   );
 }
 
+/* The people a list can name.
+ *
+ * Current members, plus anyone who has left the trip but is still
+ * attached to something in it. Leaving removes the uid from the trip's
+ * `members`, and profiles are only fetched for members — so without this
+ * an expense a departed person paid, or an item assigned to them, would
+ * render with no name at all. Their work is never deleted; only the
+ * attribution needed rescuing, which is what `formerMembers` (a snapshot
+ * written when they leave) is for.
+ *
+ * `stillReferenced` is supplied by the caller because only the caller
+ * knows what "attached" means for its own list: someone who left and had
+ * nothing assigned is simply gone, and does not belong in a picker.
+ */
+export function buildMemberList({
+  currentUid, currentUserProfile, tripMembers, memberProfiles,
+  formerMembers = {}, stillReferenced = new Set(),
+}) {
+  const list = [];
+  if (currentUid && currentUserProfile) {
+    list.push({
+      uid: currentUid,
+      displayName: currentUserProfile.displayName || currentUserProfile.email || '',
+      photoURL: currentUserProfile.photoURL || '',
+    });
+  }
+  Object.keys(tripMembers || {}).forEach(uid => {
+    if (uid === currentUid) return;
+    const p = memberProfiles?.[uid] || {};
+    list.push({ uid, displayName: p.displayName || p.email || uid, photoURL: p.photoURL || '' });
+  });
+  Object.entries(formerMembers).forEach(([uid, p]) => {
+    if (uid === currentUid || tripMembers?.[uid]) return;
+    if (!stillReferenced.has(uid)) return;
+    list.push({
+      uid,
+      displayName: p.displayName || p.email || uid,
+      photoURL: p.photoURL || '',
+      former: true,
+    });
+  });
+  // Anyone referenced who is in neither map left before the snapshot
+  // existed. Their name is unrecoverable, but the row is still theirs and
+  // saying so beats a bare "?".
+  stillReferenced.forEach(uid => {
+    if (list.some(m => m.uid === uid)) return;
+    list.push({ uid, displayName: 'משתתף שעזב', photoURL: '', former: true });
+  });
+  return list;
+}
+
 /* ── RemindersCard ───────────────────────────────────────────────────────
    A compact strip at the top of the checklist tab that cycles through the
    trip's reminders, plus two sheets:
@@ -156,18 +207,8 @@ function RemindersCard({ tripId, canEdit }) {
   }, [editor]);
 
   // All trip members with their profiles for the owner picker
-  const allMembers = useMemo(() => {
-    const list = [];
-    if (currentUid && currentUserProfile) {
-      list.push({ uid: currentUid, displayName: currentUserProfile.displayName || currentUserProfile.email || '', photoURL: currentUserProfile.photoURL || '' });
-    }
-    Object.keys(tripMembers || {}).forEach(uid => {
-      if (uid === currentUid) return;
-      const p = memberProfiles?.[uid] || {};
-      list.push({ uid, displayName: p.displayName || p.email || uid, photoURL: p.photoURL || '' });
-    });
-    return list;
-  }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
+  const allMembers = useMemo(() => buildMemberList({ currentUid, currentUserProfile, tripMembers, memberProfiles }),
+    [currentUid, currentUserProfile, memberProfiles, tripMembers]);
 
   const goTo = (i) => {
     setIdx(i);
@@ -819,7 +860,10 @@ function SortableCategoryBlock({
                             {assigned.slice(0, 3).map((uid, idx) => {
                               const m = allMembers.find(x => x.uid === uid);
                               return (
-                                <div key={uid} style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, marginLeft: idx > 0 ? -6 : 0, position: 'relative', zIndex: assigned.length - idx }}>
+                                <div key={uid}
+                                  className={m?.former ? 'person-former' : undefined}
+                                  title={m?.former ? `${m.displayName} — כבר לא בטיול` : m?.displayName}
+                                  style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, marginLeft: idx > 0 ? -6 : 0, position: 'relative', zIndex: assigned.length - idx }}>
                                   {m?.photoURL
                                     ? <img src={m.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
                                     : <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{(m?.displayName || '?')[0]}</span>
@@ -898,7 +942,7 @@ function SortableCategoryBlock({
 
 
 export default function ChecklistTab({ tripId, globalChecklist = [] }) {
-  const { canEdit, tripMembers, currentUid, currentUserProfile, memberProfiles } = useTrip();
+  const { canEdit, tripMembers, currentUid, currentUserProfile, memberProfiles, formerMembers } = useTrip();
   const confirm = useConfirm();
 
   const [items, setItems] = useState([]);
@@ -966,18 +1010,22 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     return [...ordered, ...rest];
   }, [extraCategories, items, categoryOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const allMembers = useMemo(() => {
-    const list = [];
-    if (currentUid && currentUserProfile) {
-      list.push({ uid: currentUid, displayName: currentUserProfile.displayName || currentUserProfile.email || '', photoURL: currentUserProfile.photoURL || '' });
-    }
-    Object.keys(tripMembers || {}).forEach(uid => {
-      if (uid === currentUid) return;
-      const p = memberProfiles?.[uid] || {};
-      list.push({ uid, displayName: p.displayName || p.email || uid, photoURL: p.photoURL || '' });
+  // Anyone still carrying an assignment keeps their place in the list,
+  // member or not — otherwise their rows lose their name and there is no
+  // chip to find them by.
+  const assignedUids = useMemo(() => {
+    const set = new Set();
+    items.forEach(it => {
+      const a = Array.isArray(it.assignedTo) ? it.assignedTo : (it.assignedTo ? [it.assignedTo] : []);
+      a.forEach(uid => set.add(uid));
     });
-    return list;
-  }, [currentUid, currentUserProfile, memberProfiles, tripMembers]);
+    return set;
+  }, [items]);
+
+  const allMembers = useMemo(() => buildMemberList({
+    currentUid, currentUserProfile, tripMembers, memberProfiles,
+    formerMembers, stillReferenced: assignedUids,
+  }), [currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, assignedUids]);
 
   const duplicateSuggestions = useMemo(() => {
     if (!newItemText.trim() || newItemText.trim().length < 2) return [];
@@ -1303,7 +1351,9 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>שייך ל (ניתן לבחור כמה)</label>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {allMembers.map(m => {
+                      {/* Only current members: a new assignment to someone
+                          who has left would be a dead end. */}
+                      {allMembers.filter(m => !m.former).map(m => {
                         const isSelected = newItemAssignedTo.includes(m.uid);
                         return (
                           <button type="button" key={m.uid}
@@ -1369,6 +1419,8 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
               return (
                 <button type="button" key={m.uid}
                   onClick={() => setFilterAssignee(prev => prev === m.uid ? null : m.uid)}
+                  className={m.former ? 'person-former' : undefined}
+                  title={m.former ? `${m.displayName} — כבר לא בטיול` : undefined}
                   style={chipStyle(active)}>
                   {m.photoURL
                     ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0 }} referrerPolicy="no-referrer" />
@@ -1463,10 +1515,13 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
               <button onClick={() => setAssignPickerItemId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {allMembers.map(m => {
+              {/* Someone who left is offered only if this item is already
+                  theirs — so it can be handed on, never newly assigned. */}
+              {allMembers.filter(m => !m.former || pickerSelected.has(m.uid)).map(m => {
                 const isSelected = pickerSelected.has(m.uid);
                 return (
                   <button key={m.uid}
+                    className={m.former ? 'person-former' : undefined}
                     onClick={() => setPickerSelected(prev => {
                       const next = new Set(prev);
                       isSelected ? next.delete(m.uid) : next.add(m.uid);
@@ -1477,7 +1532,10 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                       ? <img src={m.photoURL} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} referrerPolicy="no-referrer" />
                       : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                     }
-                    <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-main)', flex: 1 }}>{m.displayName}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-main)', flex: 1 }}>
+                      {m.displayName}
+                      {m.former && <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>כבר לא בטיול</span>}
+                    </span>
                     {isSelected && <Check size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
                   </button>
                 );

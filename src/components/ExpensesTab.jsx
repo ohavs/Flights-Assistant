@@ -95,16 +95,26 @@ export default function ExpensesTab({ tripId }) {
   const [rates, setRates] = useState(null);
 
   const confirm = useConfirm();
-  const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers } = useTrip();
 
   // Payer state
   const [paidBy, setPaidBy] = useState('');
   const [showPayerDropdown, setShowPayerDropdown] = useState(false);
 
+  /* An expense keeps its payer even after that person leaves the trip.
+     Their uid drops out of `members`, so `memberProfiles` stops carrying
+     them — without the `formerMembers` snapshot the row would show an
+     avatar with no name against real money. */
   const getPayerProfile = useCallback((uid) => {
     if (!uid) return null;
-    return uid === currentUid ? currentUserProfile : (memberProfiles?.[uid] || null);
-  }, [currentUid, currentUserProfile, memberProfiles]);
+    if (uid === currentUid) return currentUserProfile;
+    if (memberProfiles?.[uid]) return memberProfiles[uid];
+    const gone = formerMembers?.[uid];
+    if (gone) return { ...gone, former: true };
+    // Left before the snapshot existed: the name is gone, the expense is
+    // not. Naming the gap beats an avatar with nothing beside it.
+    return { displayName: 'משתתף שעזב', former: true };
+  }, [currentUid, currentUserProfile, memberProfiles, formerMembers]);
 
   const memberUids = useMemo(() => Object.keys(tripMembers), [tripMembers]);
   // Effective payer list: trip members or, for new trips, just the current user
@@ -403,10 +413,14 @@ export default function ExpensesTab({ tripId }) {
                     <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
                       ₪{total.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <div
+                      className={profile?.former ? 'person-former' : undefined}
+                      style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
                         {profile?.displayName || profile?.email || uid}
                         {uid === currentUid && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
+                        {/* Their share still counts — the money was spent. */}
+                        {profile?.former && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>(כבר לא בטיול)</span>}
                       </span>
                       <MemberAvatar profile={profile} size={20} />
                     </div>
@@ -610,7 +624,10 @@ export default function ExpensesTab({ tripId }) {
                               const profile = getPayerProfile(expense.paidBy);
                               const name = profile?.displayName || profile?.email || '';
                               return (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                <div
+                                  className={profile?.former ? 'person-former' : undefined}
+                                  title={profile?.former ? `${name} — כבר לא בטיול` : undefined}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                                   <MemberAvatar profile={profile} size={14} />
                                   {name && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>}
                                 </div>

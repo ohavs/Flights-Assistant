@@ -1040,6 +1040,20 @@ input[type="datetime-local"].form-control {
   border-color: var(--primary);
 }
 
+/* ── Someone who has left the trip ──
+   Their work stays where it is; only the attribution changes. Greyed and
+   desaturated rather than removed, so an expense still says who paid it
+   and a packing item still says whose it was — with a visible signal that
+   they can no longer be picked. */
+.person-former {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+.person-former img,
+.person-former .avatar {
+  filter: grayscale(1);
+}
+
 /* ── Weather card ──
    The tab opens on where you are going, not on a line between two dots.
    Three tiers, largest first: what it is like now, the numbers you would

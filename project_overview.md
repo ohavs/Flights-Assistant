@@ -147,7 +147,11 @@ Trip information and contacts with extra fields (text, phone, address, URL, numb
 Exports to PDF (jsPDF), Word (docx), and Excel (ExcelJS).
 
 ### `TripContext.jsx`
-Exposes `tripId`, `canEdit`, `isOwner`, `role`, `ownerProfile`, `memberProfiles`.
+Exposes `tripId`, `canEdit`, `isOwner`, `role`, `ownerProfile`, `memberProfiles`, `tripMembers`, `formerMembers`.
+
+**Leaving a trip never deletes content.** `leaveTrip` and `removeMember` only touch `members` / `memberIds`; everything the person added belongs to the trip, not to them. Only the owner's full delete (`deleteTripFully`) removes subcollections.
+
+What leaving *did* break was attribution: profiles are fetched only for current members, so once a uid left `members`, every expense they paid and every item assigned to them rendered nameless. `trips/{id}.formerMembers` is a snapshot (name, email, photo, `leftAt`) written at the moment of departure — one write, no extra reads, works offline. The tabs render those people greyed (`.person-former`), keep them in lists only while something still references them, and never offer them for a new assignment.
 
 ### `ConfirmContext.jsx`
 App-wide styled confirm dialog via `useConfirm()` hook.
