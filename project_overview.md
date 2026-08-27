@@ -47,6 +47,7 @@ Custom glassmorphic design system:
 - **Theme switching**: `data-theme="dark"` on `<html>` activates dark-mode overrides; `data-accent="X"` activates a palette block. 7 palettes: indigo (default), violet, sky, teal, emerald, amber, rose — each defines `--accent`, `--accent-rgb`, `--primary`, `--accent-gradient`.
 - **`--accent-rgb`**: Single source for all `--p-*` tints (`rgba(var(--accent-rgb), alpha)`); swapping it recolors the entire app.
 - **Glassmorphism**: `.glass-card` — `rgba` fills, white border, `backdrop-filter: blur(16px)`.
+- **Type ladder**: 11 steps — 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 26 — documented at the top of `index.css`. Sizes are written literally at the ~475 call sites (almost all inline styles), so the ladder is the reference rather than a token set: a value that isn't on it is a mistake, not a nuance. Half-steps (9.5, 12.5, 14.5 …) are what an un-owned scale drifts into.
 - **Micro-animations**: `.highlight-pulse` glow, FLIP card reorder animation (gated on order change only).
 - **Nav geometry**: `--nav-height` / `--nav-gap` / `--nav-total` drive both the floating bar and every offset that has to clear it (content padding, the FAB). A custom property resolves its `var()`s where it is *declared*, so the desktop block redeclares `--nav-total` alongside `--nav-height` on `.app-container` — overriding only the height would leave the `:root` copy on the mobile value.
 
@@ -103,6 +104,11 @@ Packing checklist. Auto-syncs from global template. All Firestore writes are fir
 - `Avatar` and `Sheet` are declared at module level: a component defined inside another component is a new type on every render and would remount the sheet — dropping focus out of the textarea — on every keystroke.
 
 **Top area**: reminders strip → progress card → member filter chips in a single scrollable row with per-member counts. Container gap is 14 px. The progress card is a read-out (ring + "X מתוך Y כבר נארזו") shown to viewers as well; adding and editing an item happen in a bottom sheet opened by the app-wide `Fab`.
+
+### `EmptyState.jsx`
+One shape for "there is nothing here yet": a quiet disc with an icon, a line naming the absence, a line saying what to do, and an optional `action` node (some empty states offer a button, some two, some none). Used by the homepage, both planner sub-tabs, the checklist, info and expenses.
+
+The planner distinguishes two cases that used to share one message: an empty pool explains what the tab is for, while a filter that matched nothing reports how many places exist and offers **"נקה סינון"**, which resets search, category and hide-visited together — previously there was no way back from a filter combination that emptied the screen.
 
 ### `Fab.jsx`
 The app's single "add" control — an extended floating button in the same corner of every tab that can add something (planner pool, checklist, info, expenses). The flight tab has none; adding an activity in the planner's daily sub-tab stays on its day's card, because it belongs to one specific day rather than to the tab.

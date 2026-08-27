@@ -424,7 +424,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
             <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
 
             {/* Selected Value Preview */}
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '13.5px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
               {formatHebrewDate(tempDateStr)}
             </div>
 
@@ -585,7 +585,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
               </div>
             </div>
 
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: 12, padding: '10px 14px', fontSize: '13.5px', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: 12, padding: '10px 14px', fontSize: '14px', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
               {tempH}:{tempM}
             </div>
 
@@ -777,7 +777,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
 
             {/* Selected Value Preview */}
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '13.5px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
               {formatHebrewDate(tempDateStr)} בשעה {tempHour}:{tempMinute}
             </div>
 

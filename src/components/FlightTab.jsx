@@ -204,7 +204,7 @@ function RouteTime({ scheduled, updated, cancelled, flightDate, align = 'right' 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: align === 'right' ? 'flex-end' : 'flex-start', gap: 3 }}>
       <span style={{
-        fontSize: 27, fontWeight: 900, lineHeight: 1,
+        fontSize: 26, fontWeight: 900, lineHeight: 1,
         color: t.color,
         textDecoration: t.cancelled ? 'line-through' : 'none',
         fontVariantNumeric: 'tabular-nums',
@@ -215,7 +215,7 @@ function RouteTime({ scheduled, updated, cancelled, flightDate, align = 'right' 
       {t.delta != null && t.delta !== 0 && !t.cancelled && (
         <span style={{
           background: t.chipBg, color: t.chipColor,
-          fontSize: 10.5, fontWeight: 800,
+          fontSize: 11, fontWeight: 800,
           padding: '2px 7px', borderRadius: 999,
           display: 'inline-flex', alignItems: 'center', gap: 4,
         }}>
@@ -929,7 +929,7 @@ export default function FlightTab({ tripId }) {
               ...(flight.status === 'בוטלה' ? { background: 'var(--c-red-10)', color: 'var(--c-red)' }
                 : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'var(--c-orange-12)', color: 'var(--c-orange)' }
                 : {}),
-              fontSize: 11.5, padding: '3px 8px', gap: 5,
+              fontSize: 12, padding: '3px 8px', gap: 5,
             }}>
               <span className="pulsing-dot" style={
                 flight.status === 'בוטלה' ? { background: 'var(--c-red)' }
@@ -1007,7 +1007,7 @@ export default function FlightTab({ tripId }) {
           <div style={{ background: 'var(--card-bg)', padding: '12px 14px 10px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {/* Current weather strip */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 28, lineHeight: 1 }}>{getWeatherIcon(weather.current.code)}</span>
+              <span style={{ fontSize: 26, lineHeight: 1 }}>{getWeatherIcon(weather.current.code)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>
                   {destCoords?.city || tripData?.destination || 'יעד'} עכשיו
@@ -1092,7 +1092,7 @@ export default function FlightTab({ tripId }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: '17px', fontWeight: '800', color: 'var(--primary-color)' }}>{hotel.name}</div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary-color)' }}>{hotel.name}</div>
             {hotel.address && (
               <a
                 href={`https://maps.google.com/?q=${encodeURIComponent(hotel.address)}`}

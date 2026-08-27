@@ -14,6 +14,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
+import EmptyState from './EmptyState';
 
 // Default items seeded for every new trip. Israeli emergency numbers
 // + the European universal 112, plus a couple of placeholders the user
@@ -355,22 +356,19 @@ export default function InfoTab({ tripId }) {
       )}
 
       {items.length === 0 && (
-        <div className="glass-card" style={{ padding: 32, textAlign: 'center' }}>
-          <Globe size={32} style={{ margin: '0 auto 12px', color: 'var(--text-muted)', opacity: 0.5 }} />
-          <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', margin: 0 }}>
-            עוד אין מידע שמור.
-          </p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
-            אפשר להתחיל מבסיס מוכן של מספרי חירום, או להוסיף פריט משלך בכפתור שלמטה.
-          </p>
-          {canEdit && (
-            <button onClick={handleSeedDefaults} className="btn-secondary"
-              style={{ marginTop: 16, marginInline: 'auto' }}>
-              <RotateCcw size={14} />
-              <span>טען מספרי חירום</span>
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={Globe}
+          title="עוד אין מידע שמור"
+          hint="מספרי חירום, כתובת הלינה, קודים וקישורים — הדברים שצריך למצוא מהר ובלי אינטרנט."
+          action={
+            canEdit ? (
+              <button onClick={handleSeedDefaults} className="btn-secondary">
+                <RotateCcw size={14} />
+                <span>טען מספרי חירום</span>
+              </button>
+            ) : null
+          }
+        />
       )}
 
       {/* Items grouped by category — sortable */}

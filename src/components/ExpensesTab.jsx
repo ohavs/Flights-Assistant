@@ -12,6 +12,7 @@ import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
+import EmptyState from './EmptyState';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
@@ -508,11 +509,11 @@ export default function ExpensesTab({ tripId }) {
 
       {/* Expense list — grouped by category */}
       {expenses.length === 0 ? (
-        <div className="glass-card" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          <Wallet size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-          <p style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>אין עדיין הוצאות מתועדות</p>
-          <p style={{ fontSize: 13, marginTop: 4 }}>לחץ על "הוצאה חדשה" כדי להתחיל לעקוב</p>
-        </div>
+        <EmptyState
+          icon={Wallet}
+          title="עוד לא תועדו הוצאות"
+          hint="כל הוצאה נשמרת במטבע שבו שילמתם, עם המרה לשקלים ועם מי שילם — כדי שבסוף הטיול יהיה ברור מי חייב למי."
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {Object.entries(expensesByCategory).map(([cat, catExpenses]) => {

@@ -10,11 +10,12 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, List, User } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, List, User, ClipboardList } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import SwipeRow from './SwipeRow';
 import Fab from './Fab';
+import EmptyState from './EmptyState';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -821,13 +822,13 @@ function SortableCategoryBlock({
                                 <div key={uid} style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, marginLeft: idx > 0 ? -6 : 0, position: 'relative', zIndex: assigned.length - idx }}>
                                   {m?.photoURL
                                     ? <img src={m.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
-                                    : <span style={{ fontSize: 9, fontWeight: 800, color: '#fff' }}>{(m?.displayName || '?')[0]}</span>
+                                    : <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{(m?.displayName || '?')[0]}</span>
                                   }
                                 </div>
                               );
                             })}
                             {assigned.length > 3 && (
-                              <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--ink-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0, marginLeft: -6 }}>
+                              <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--surface)', background: 'var(--ink-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0, marginLeft: -6 }}>
                                 +{assigned.length - 3}
                               </div>
                             )}
@@ -1274,7 +1275,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>רשימת הציוד</div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
               {completedCount} מתוך {totalCount} כבר נארזו
             </div>
           </div>
@@ -1336,7 +1337,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: isSelected ? 'var(--p-10)' : 'var(--ink-5)', color: isSelected ? 'var(--accent)' : 'var(--text-muted)' }}>
                             {m.photoURL
                               ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--accent)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--accent)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                             }
                             {m.displayName}
                             {isSelected && <Check size={12} />}
@@ -1377,7 +1378,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
           transition: 'all 0.15s',
         });
         const countStyle = (active) => ({
-          fontSize: 10.5, fontWeight: 800, borderRadius: 20, padding: '0 6px',
+          fontSize: 11, fontWeight: 800, borderRadius: 20, padding: '0 6px',
           background: active ? 'rgba(255,255,255,0.25)' : 'var(--ink-8)',
           color: active ? '#fff' : 'var(--text-muted)',
         });
@@ -1395,7 +1396,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   style={chipStyle(active)}>
                   {m.photoURL
                     ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0 }} referrerPolicy="no-referrer" />
-                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: active ? 'rgba(255,255,255,0.25)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: active ? 'rgba(255,255,255,0.25)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                   }
                   <span style={{ whiteSpace: 'nowrap' }}>{m.displayName}</span>
                   <span style={countStyle(active)}>{countFor(m.uid)}</span>
@@ -1405,6 +1406,16 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
           </div>
         );
       })()}
+
+      {totalCount === 0 && (
+        <EmptyState
+          icon={ClipboardList}
+          title="הרשימה ריקה"
+          hint={canEdit
+            ? 'כל פריט נכנס לקטגוריה ואפשר לשייך אותו למי שאחראי עליו. הרשימה הקבועה שלכם נטענת לכאן אוטומטית בטיול חדש.'
+            : 'עוד לא נוספו פריטים לרשימת הציוד של הטיול.'}
+        />
+      )}
 
       {/* Checklist categories — sortable, all closed by default */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

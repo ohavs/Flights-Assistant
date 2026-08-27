@@ -21,6 +21,7 @@ import ExpensesTab from './components/ExpensesTab';
 import CurrencyConverter from './components/CurrencyConverter';
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
+import EmptyState from './components/EmptyState';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
@@ -55,7 +56,7 @@ function LoginScreen({ onSignIn }) {
         }}>
           <Plane size={36} color="#fff" style={{ transform: 'rotate(-45deg)' }} />
         </div>
-        <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
           עוזר טיסות
         </h1>
         <p style={{ fontSize: 15, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
@@ -256,12 +257,16 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
 
       {/* Trip cards */}
       {trips.length === 0 && !showCreate && (
-        <div className="glass-card" style={{ textAlign: 'center', padding: 32 }}>
-          <Plane size={36} color="var(--text-muted)" style={{ margin: '0 auto 12px', opacity: 0.4, transform: 'rotate(-45deg)' }} />
-          <p style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: 15 }}>
-            עדיין אין טיולים.<br />לחץ על + כדי להוסיף אחד!
-          </p>
-        </div>
+        <EmptyState
+          icon={Plane}
+          title="עוד אין טיולים"
+          hint="טיול מחזיק את הטיסות, המקומות, רשימת הציוד וההוצאות במקום אחד."
+          action={
+            <button onClick={() => setShowCreate(true)} className="btn-primary">
+              <Plus size={16} /><span>צור טיול ראשון</span>
+            </button>
+          }
+        />
       )}
 
       <div className="trip-list-grid">
@@ -1802,7 +1807,7 @@ function AppInner() {
                   <AlertTriangle size={22} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
                     {confirmDelete.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
                   </h3>
                   <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600, marginBottom: 0 }}>

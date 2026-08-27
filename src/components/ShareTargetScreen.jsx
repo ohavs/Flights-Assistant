@@ -52,7 +52,7 @@ export default function ShareTargetScreen({
       <main className="app-content">
         {/* What was shared */}
         <div className="glass-card" style={{ padding: '14px 16px', gap: 10 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.4px' }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.4px' }}>
             שותף מגוגל מפות
           </span>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -79,7 +79,7 @@ export default function ShareTargetScreen({
               {place?.url && (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 5, marginTop: 6,
-                  fontSize: 11.5, color: 'var(--accent)', fontWeight: 700,
+                  fontSize: 12, color: 'var(--accent)', fontWeight: 700,
                   overflow: 'hidden',
                 }}>
                   <Link2 size={12} style={{ flexShrink: 0 }} />
@@ -104,7 +104,7 @@ export default function ShareTargetScreen({
               {signedIn ? 'אין עדיין טיולים' : 'התחבר כדי לראות את הטיולים שלך'}
             </p>
             {signedIn && (
-              <p style={{ fontSize: 12.5, marginTop: 6 }}>צור טיול באפליקציה ואז שתף שוב מגוגל מפות</p>
+              <p style={{ fontSize: 13, marginTop: 6 }}>צור טיול באפליקציה ואז שתף שוב מגוגל מפות</p>
             )}
           </div>
         ) : (

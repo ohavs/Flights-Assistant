@@ -35,7 +35,7 @@ export default function ConfirmModal({
             <AlertTriangle size={22} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
               {title}
             </h3>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600 }}>

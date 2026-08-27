@@ -34,6 +34,7 @@ import {
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
+import EmptyState from './EmptyState';
 import useSheetDrag from '../hooks/useSheetDrag';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -1250,6 +1251,15 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return h * 60 + m || Infinity;
   };
 
+  // Everything that can hide a place from the pool, reset in one call —
+  // the empty state offers it, and there is no other way back from a
+  // combination of filters that leaves nothing on screen.
+  const clearPoolFilters = () => {
+    setSearchQuery('');
+    setSelectedFilter('הכל');
+    setHideVisited(false);
+  };
+
   // Filter plans + sort
   const filteredPlans = plans
     .filter(plan => {
@@ -2342,7 +2352,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         direction: 'rtl',
                       }}>
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
                           color: 'var(--text-muted)', letterSpacing: '0.4px',
                           background: 'var(--ink-3)',
                           position: 'sticky', top: 0,
@@ -2444,7 +2454,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       }}>
                         {/* — Card layout section — */}
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
                           color: 'var(--text-muted)', letterSpacing: '0.4px',
                           background: 'var(--ink-3)',
                         }}>תצוגת כרטיסים</div>
@@ -2478,7 +2488,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                         {/* — Sort section — */}
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
                           color: 'var(--text-muted)', letterSpacing: '0.4px',
                           background: 'var(--ink-3)',
                         }}>מיון</div>
@@ -2511,7 +2521,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                         {/* — Grouping: how the long list is broken up — */}
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
                           color: 'var(--text-muted)', letterSpacing: '0.4px',
                           background: 'var(--ink-3)',
                         }}>חלוקה לקבוצות</div>
@@ -2589,7 +2599,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {hasGmapsKey() && (
                           <>
                             <div style={{
-                              padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                              padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
                               color: 'var(--text-muted)', letterSpacing: '0.4px',
                               background: 'var(--ink-3)',
                             }}>תצוגה</div>
@@ -2633,7 +2643,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {canEdit && (
                           <>
                             <div style={{
-                              padding: '9px 14px 6px', fontSize: 10.5, fontWeight: 800,
+                              padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
                               color: 'var(--text-muted)', letterSpacing: '0.4px',
                               background: 'var(--ink-3)',
                             }}>קטגוריות</div>
@@ -2707,7 +2717,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '10px 12px', borderRadius: 12,
               background: 'var(--p-6)', border: '1px solid var(--p-12)',
-              fontSize: 12.5, fontWeight: 600, color: 'var(--accent)',
+              fontSize: 13, fontWeight: 600, color: 'var(--accent)',
             }}>
               <MapPin size={14} style={{ flexShrink: 0 }} />
               <span>
@@ -2733,8 +2743,29 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             display: 'flex', flexDirection: 'column', gap: LO.listGap,
           }}>
             {filteredPlans.length === 0 ? (
-              <div className="glass-card" style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
-                <p style={{ fontSize: '15px', fontWeight: '700' }}>לא נמצאו פריטי תכנון העונים לסינון.</p>
+              /* An empty pool and a filter that matched nothing are two
+                 different problems. The old copy said "nothing matches the
+                 filter" even to someone who had simply not added a place
+                 yet — telling them to loosen a filter they never set. */
+              <div style={{ gridColumn: '1 / -1' }}>
+                {plans.length === 0 ? (
+                  <EmptyState
+                    icon={Compass}
+                    title="עוד אין מקומות ברשימה"
+                    hint="כאן נאספים האטרקציות, המסעדות והדברים לעשות. אפשר להוסיף מקום מהכפתור למטה, או לשתף אותו ישר מגוגל מפות."
+                  />
+                ) : (
+                  <EmptyState
+                    icon={Search}
+                    title="אף מקום לא עונה לסינון"
+                    hint={`${plans.length} מקומות ברשימה, אבל אף אחד מהם לא עובר את הסינון הנוכחי.`}
+                    action={
+                      <button type="button" className="btn-secondary" onClick={clearPoolFilters}>
+                        <span>נקה סינון</span>
+                      </button>
+                    }
+                  />
+                )}
               </div>
             ) : (
               renderItems.map((plan) => {
@@ -2880,7 +2911,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                       <h3 style={{
                         flex: 1, minWidth: 0, margin: 0,
-                        fontSize: 12.5, fontWeight: 800, lineHeight: 1.3,
+                        fontSize: 13, fontWeight: 800, lineHeight: 1.3,
                         // Visited: quieter text, no strike-through. The check
                         // already says it, and a line through a place's name
                         // reads as "cancelled", not "we went".
@@ -3053,25 +3084,25 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           </div>
 
           {days.length === 0 ? (
-            <div className="glass-card" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <Calendar size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-              <p style={{ fontSize: '15px', fontWeight: '700', margin: 0 }}>אין עדיין ימי טיול מתוכננים.</p>
-              {canEdit && tripFlightDates.out && tripFlightDates.ret ? (
-                <>
-                  <p style={{ fontSize: '13px', marginTop: 4, marginBottom: 16 }}>ניתן לייצר ימים אוטומטית לפי תאריכי הטיסה שהוזנו</p>
-                  <button
-                    onClick={handleInitDaysFromFlight}
-                    className="btn-primary"
-                    style={{ padding: '10px 20px', fontSize: 14, gap: 8, margin: '0 auto' }}
-                  >
+            <EmptyState
+              icon={Calendar}
+              title="עוד אין ימי טיול"
+              hint={
+                canEdit && tripFlightDates.out && tripFlightDates.ret
+                  ? 'אפשר לייצר את כל ימי הטיול בבת אחת לפי תאריכי הטיסה שכבר הוזנו, ואז לשבץ לכל יום את המקומות מהרשימה.'
+                  : canEdit
+                    ? 'הוסיפו יום, ואז שבצו לתוכו מקומות מרשימת התכנון עם שעות.'
+                    : 'עוד לא נבנה לוח זמנים לטיול הזה.'
+              }
+              action={
+                canEdit && tripFlightDates.out && tripFlightDates.ret ? (
+                  <button onClick={handleInitDaysFromFlight} className="btn-primary">
                     <Calendar size={16} />
                     <span>ייצר ימים לפי תאריכי הטיסה</span>
                   </button>
-                </>
-              ) : canEdit ? (
-                <p style={{ fontSize: '13px', marginTop: 4 }}>לחץ על "הוסף יום" כדי להתחיל לתכנן!</p>
-              ) : null}
-            </div>
+                ) : null
+              }
+            />
           ) : (
             <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
               <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
@@ -3731,7 +3762,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           border: `1px solid ${danger ? 'var(--c-red2-12, rgba(239,68,68,0.15))' : accent ? 'var(--p-18)' : 'var(--ink-7)'}`,
                           background: danger ? 'var(--c-red2-6)' : accent ? 'var(--p-8)' : 'var(--ink-3)',
                           color: danger ? 'var(--c-red2)' : accent ? 'var(--accent)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-hebrew)', fontSize: 11.5, fontWeight: 700,
+                          fontFamily: 'var(--font-hebrew)', fontSize: 12, fontWeight: 700,
                         }}
                       >
                         <Icon size={17} />

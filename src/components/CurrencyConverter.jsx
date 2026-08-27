@@ -295,7 +295,7 @@ export default function CurrencyConverter() {
                 <Smartphone size={22} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
                   קיצור דרך למחשבון
                 </h3>
                 <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, fontWeight: 600, marginBottom: 10 }}>
@@ -352,7 +352,7 @@ export default function CurrencyConverter() {
                 <Smartphone size={22} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <h3 style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
                   הוספת קיצור דרך למסך הבית ב-iPhone
                 </h3>
                 <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, fontWeight: 600, marginBottom: 8 }}>

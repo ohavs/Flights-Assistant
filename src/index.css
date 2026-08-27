@@ -31,6 +31,26 @@
   --font-en: 'Inter', sans-serif;
   --header-height: 60px;
 
+  /* ── Type ladder ──
+     Eleven steps, and every size in the app is one of them. Sizes are
+     written literally at the call site (there are ~475 of them, almost
+     all inline), so this is the reference rather than a set of tokens
+     — a new value that isn't on the list is a mistake, not a nuance.
+     Half-steps (9.5, 12.5, 14.5 …) are what an un-owned scale drifts
+     into; they were nudges, never decisions.
+
+       10  micro — avatar initials, counters inside a chip
+       11  labels, badges, timestamps
+       12  captions and secondary meta
+       13  secondary body — the app's most common size
+       14  body
+       15  emphasised body, row titles, section headers
+       16  sheet and dialog titles
+       18  screen title (mobile)
+       20  screen title (desktop), big numbers in a card
+       22  desktop header
+       26  display — a temperature, a converted amount, the sign-in title */
+
   /* ── Bottom nav geometry ──
      The bar floats over the content, so every docked control and the
      scroll padding derive their offset from --nav-total instead of
@@ -657,7 +677,7 @@ button:not(:disabled):active,
 }
 
 .nav-label {
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 800;
   opacity: 0.65;
   max-width: 100%;
@@ -743,7 +763,7 @@ button:not(:disabled):active,
 }
 
 .trip-card-info h3 {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--primary);
   line-height: 1.3;
@@ -823,7 +843,7 @@ button:not(:disabled):active,
 }
 
 .form-group label {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-muted);
   letter-spacing: 0.01em;
@@ -1678,6 +1698,50 @@ input[type="datetime-local"].form-control {
   transform: scale(0.95);
 }
 
+/* ── Empty state ──
+   Reached at the moment someone most needs telling what a screen is for
+   and what to do next. One shape everywhere: a quiet disc, a line that
+   names the absence, a line that says what to do, and — only where
+   there is a shortcut worth offering — a button. */
+.empty-state {
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 34px 24px;
+}
+.empty-state-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--ink-5);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.empty-state-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary);
+  margin: 0;
+}
+.empty-state-hint {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+  /* Two short lines read faster than one long one on a phone. */
+  max-width: 32ch;
+  line-height: 1.55;
+}
+.empty-state .btn-primary,
+.empty-state .btn-secondary {
+  margin-top: 16px;
+  align-self: center;
+}
+
 /* ── Floating add button ──
    One shape, one corner, on every tab that can add something. Extended
    rather than a bare circle: "+" alone tells you there is an action but
@@ -1700,7 +1764,7 @@ input[type="datetime-local"].form-control {
   background: var(--accent);
   color: #fff;
   font-family: inherit;
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 800;
   cursor: pointer;
   display: flex;
