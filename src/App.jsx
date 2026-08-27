@@ -216,6 +216,8 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
           </button>
           <button
             onClick={() => setShowCreate(!showCreate)}
+            aria-label={showCreate ? 'סגור טופס טיול חדש' : 'טיול חדש'}
+            aria-expanded={showCreate}
             style={{
               width: 36, height: 36, borderRadius: '50%',
               background: 'var(--accent)', color: '#fff', border: 'none',
@@ -522,7 +524,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
       <div className="modal-content" style={{ height: 'auto', maxHeight: '90%' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>שיתוף וניהול חברי הטיול</h2>
-          <button className="btn-close" onClick={onClose}>✕</button>
+          <button aria-label="סגור" className="btn-close" onClick={onClose}>✕</button>
         </div>
 
         {isOwner && (
@@ -860,7 +862,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
       <div className="modal-content" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2>רשימת ציוד קבועה</h2>
-          <button className="btn-close" onClick={attemptClose}>✕</button>
+          <button aria-label="סגור" className="btn-close" onClick={attemptClose}>✕</button>
         </div>
 
         <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5, marginBottom: 12, flexShrink: 0 }}>
@@ -1116,14 +1118,10 @@ function PalettePicker({ size = 34 }) {
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <button
         onClick={() => setOpen(o => !o)}
-        style={{
-          width: size, height: size, borderRadius: '50%',
-          background: 'var(--ink-5)', border: 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: 'var(--accent)',
-          transition: 'color 0.2s ease, background 0.2s ease',
-        }}
+        className="icon-btn"
+        style={{ width: size, height: size, minWidth: size }}
         title="בחר ערכת צבעים"
+        aria-label="בחר ערכת צבעים"
         aria-expanded={open}
       >
         <Palette size={iconSize} />
@@ -1727,14 +1725,9 @@ function AppInner() {
             <PalettePicker size={34} />
             <button
               onClick={toggleTheme}
-              style={{
-                width: 34, height: 34, borderRadius: '50%',
-                background: 'var(--ink-5)', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0,
-                transition: 'color 0.2s ease, background 0.2s ease',
-              }}
+              className="icon-btn"
               title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+              aria-label={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
@@ -1743,13 +1736,9 @@ function AppInner() {
                 const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
                 if (ok) signOut();
               }}
-              style={{
-                width: 34, height: 34, borderRadius: '50%',
-                background: 'var(--ink-5)', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0
-              }}
+              className="icon-btn"
               title="התנתק"
+              aria-label="התנתק"
             >
               <LogOut size={16} />
             </button>
@@ -1893,13 +1882,8 @@ function AppInner() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
           <button
             onClick={() => { setScreen('home'); setSelectedTripId(null); }}
-            aria-label="חזרה"
-            style={{
-              background: 'var(--ink-5)', border: 'none',
-              width: 34, height: 34, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--primary)', flexShrink: 0
-            }}
+            aria-label="חזרה לרשימת הטיולים"
+            className="icon-btn filled"
           >
             <ChevronLeft size={18} style={{ transform: 'rotate(180deg)' }} />
           </button>
@@ -1920,29 +1904,20 @@ function AppInner() {
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
               title="ערוך פרטי טיסה ומלון"
-              style={{
-                width: 34, height: 34, borderRadius: '50%',
-                background: 'rgba(79,70,229,0.1)', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--accent)'
-              }}
+              aria-label="ערוך פרטי טיסה ומלון"
+              className="icon-btn accent"
             >
-              <Pencil size={15} />
+              <Pencil size={16} />
             </button>
           )}
           <PalettePicker size={34} />
           <button
             onClick={toggleTheme}
-            style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: 'var(--ink-5)', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--text-muted)',
-              transition: 'color 0.2s ease, background 0.2s ease',
-            }}
+            className="icon-btn"
             title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+            aria-label={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
           >
-            {isDark ? <Sun size={15} /> : <Moon size={15} />}
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
       </header>

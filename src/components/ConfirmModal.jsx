@@ -46,6 +46,7 @@ export default function ConfirmModal({
             type="button"
             onClick={onClose}
             disabled={busy}
+            aria-label="סגור"
             style={{
               background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
               width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',

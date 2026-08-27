@@ -99,14 +99,11 @@ export default function ExportMenu({ tripId, trip, activeTab }) {
         type="button"
         onClick={() => setOpen(o => !o)}
         title="ייצוא הטיול"
-        style={{
-          width: 34, height: 34, borderRadius: '50%',
-          background: 'rgba(79,70,229,0.1)', border: 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: 'var(--accent)'
-        }}
+        aria-label="ייצוא הטיול"
+        aria-expanded={open}
+        className="icon-btn"
       >
-        <Download size={15} />
+        <Download size={16} />
       </button>
 
       {open && popupRect && createPortal(

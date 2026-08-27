@@ -1183,7 +1183,7 @@ export default function FlightTab({ tripId }) {
                 editScope === 'trip' ? 'עריכת פרטי הטיול' :
                 'עריכת כל פרטי הנסיעה'
               }</h2>
-              <button className="btn-close" onClick={attemptCloseEdit}>✕</button>
+              <button aria-label="סגור" className="btn-close" onClick={attemptCloseEdit}>✕</button>
             </div>
 
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

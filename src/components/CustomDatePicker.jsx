@@ -92,6 +92,7 @@ function CalendarBody({ selectedDateStr, onSelect }) {
         <button
           type="button"
           onClick={handlePrevMonth}
+          aria-label="החודש הקודם"
           style={{
             background: 'var(--ink-4)', border: 'none',
             width: '32px', height: '32px', borderRadius: '50%',
@@ -109,6 +110,7 @@ function CalendarBody({ selectedDateStr, onSelect }) {
         <button
           type="button"
           onClick={handleNextMonth}
+          aria-label="החודש הבא"
           style={{
             background: 'var(--ink-4)', border: 'none',
             width: '32px', height: '32px', borderRadius: '50%',

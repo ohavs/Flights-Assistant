@@ -320,6 +320,8 @@ function RemindersCard({ tripId, canEdit }) {
               <button
                 type="button"
                 onClick={() => canEdit && handleToggleReminder(r.id, !!r.completed)}
+                aria-label={r.completed ? 'בטל סימון התזכורת כבוצעה' : 'סמן את התזכורת כבוצעה'}
+                aria-pressed={!!r.completed}
                 style={{
                   width: 24, height: 24, borderRadius: 7, flexShrink: 0,
                   border: r.completed ? 'none' : '2px solid rgba(79,70,229,0.3)',
@@ -697,7 +699,7 @@ function SortableCategoryBlock({
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {/* Drag handle */}
         {canEdit && (
-          <button type="button" {...attributes} {...listeners}
+          <button type="button" {...attributes} {...listeners} aria-label="גרור לשינוי סדר"
             style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
             <GripVertical size={15} />
           </button>
@@ -745,7 +747,7 @@ function SortableCategoryBlock({
 
             {/* Quick-add shortcut in header */}
             {canEdit && !isLongPressed && (
-              <button type="button"
+              <button type="button" aria-label={`הוסף פריט ל${category}`}
                 onClick={() => { setQuickAddCat(category); setQuickAddText(''); if (!isOpen) toggleCategory(category); }}
                 style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                 <Plus size={15} />
@@ -754,16 +756,16 @@ function SortableCategoryBlock({
 
             {isLongPressed && canEdit && (
               <>
-                <button type="button"
+                <button type="button" aria-label="שנה שם קטגוריה"
                   onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
                   style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                   <Pencil size={13} />
                 </button>
-                <button type="button" onClick={() => handleDeleteCategory(category)}
+                <button type="button" onClick={() => handleDeleteCategory(category)} aria-label="מחק קטגוריה"
                   style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                   <Trash2 size={13} />
                 </button>
-                <button type="button" onClick={() => setLongPressedCat(null)}
+                <button type="button" onClick={() => setLongPressedCat(null)} aria-label="בטל"
                   style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
                   <X size={14} />
                 </button>

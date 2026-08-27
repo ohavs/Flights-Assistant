@@ -499,6 +499,51 @@ button:not(:disabled):active,
   line-height: 1.2;
 }
 
+/* ── Header icon buttons ──
+   The bar carries the trip's name; its controls should not compete with
+   it. A filled circle behind every one of them turns a title bar into a
+   row of buttons with a caption beside them. These are plain glyphs on
+   the header's own surface — the tap target stays a full 34px, and
+   weight appears only under a finger or a focus ring. */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.icon-btn:active { background: var(--ink-8); }
+@media (hover: hover) {
+  .icon-btn:hover { background: var(--ink-6); color: var(--text); }
+}
+
+/* Navigation keeps its surface: going back is the one thing in the bar
+   you aim at rather than notice. */
+.icon-btn.filled {
+  background: var(--ink-5);
+  color: var(--primary);
+}
+
+/* Controls that carry the accent's meaning (the palette, a tab's own
+   edit action) keep the colour but not the disc. */
+.icon-btn.accent { color: var(--accent); }
+
+/* An open menu is a state worth showing. */
+.icon-btn[aria-expanded="true"] {
+  background: var(--p-10);
+  color: var(--accent);
+}
+
 /* ── Content — the ONLY scrollable area ── */
 .app-content {
   flex: 1 1 0%;       /* take all remaining space */

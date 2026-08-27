@@ -1785,7 +1785,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 
                 <div className="modal-header">
                   <h2>{editingId ? 'עריכת פריט תכנון' : 'הוספת יעד / אטרקציה חדשה'}</h2>
-                  <button className="btn-close" onClick={attemptClosePlanForm}>✕</button>
+                  <button aria-label="סגור" className="btn-close" onClick={attemptClosePlanForm}>✕</button>
                 </div>
 
                 <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -3589,6 +3589,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               </div>
               <button
                 className="btn-close"
+                aria-label="סגור"
                 onClick={detailSheet.close}
                 style={{ flexShrink: 0 }}
               >✕</button>
@@ -3764,7 +3765,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             <div className="sheet-grab" />
             <div className="modal-header">
               <h2 style={{ fontSize: 15 }}>{locationsModal.title}</h2>
-              <button className="btn-close" onClick={locationsSheet.close}>✕</button>
+              <button aria-label="סגור" className="btn-close" onClick={locationsSheet.close}>✕</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 8 }}>
               {getPlanLocations(locationsModal).map((loc, i) => (
@@ -3815,7 +3816,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             <div className="sheet-grab" />
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>התאמת קטגוריות</h2>
-              <button className="btn-close" onClick={() => setShowCategorySettings(false)}>✕</button>
+              <button aria-label="סגור" className="btn-close" onClick={() => setShowCategorySettings(false)}>✕</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 16 }}>
               {categories.map(cat => {
@@ -4004,7 +4005,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
               <div className="modal-header" style={{ flexShrink: 0 }}>
                 <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>
-                <button className="btn-close" onClick={attemptCloseActivityForm}>✕</button>
+                <button aria-label="סגור" className="btn-close" onClick={attemptCloseActivityForm}>✕</button>
               </div>
 
               <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>

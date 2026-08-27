@@ -611,10 +611,10 @@ export default function ExpensesTab({ tripId }) {
 
                           {/* Action buttons — LEFT side in RTL */}
                           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                            <button onClick={() => openForm(expense)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--ink-4)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <button onClick={() => openForm(expense)} aria-label="ערוך הוצאה" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--ink-4)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Pencil size={12} />
                             </button>
-                            <button onClick={() => handleDelete(expense.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--c-red2-6)', color: 'var(--c-red2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <button onClick={() => handleDelete(expense.id)} aria-label="מחק הוצאה" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--c-red2-6)', color: 'var(--c-red2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Trash2 size={12} />
                             </button>
                           </div>
@@ -636,7 +636,7 @@ export default function ExpensesTab({ tripId }) {
             <div className="sheet-grab" />
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingId ? 'עריכת הוצאה' : 'הוצאה חדשה'}</h2>
-              <button className="btn-close" onClick={() => setShowForm(false)}>✕</button>
+              <button aria-label="סגור" className="btn-close" onClick={() => setShowForm(false)}>✕</button>
             </div>
 
             <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>

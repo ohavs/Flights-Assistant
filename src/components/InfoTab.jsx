@@ -236,7 +236,7 @@ export default function InfoTab({ tripId }) {
             <div className="sheet-grab" />
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <h2>{editingId ? 'עריכת פריט' : 'הוספת פריט חדש'}</h2>
-              <button className="btn-close" onClick={attemptCloseForm}>✕</button>
+              <button aria-label="סגור" className="btn-close" onClick={attemptCloseForm}>✕</button>
             </div>
 
             <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4 }}>
@@ -420,7 +420,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
       {/* Category header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {canEdit && (
-          <button type="button" {...attributes} {...listeners}
+          <button type="button" {...attributes} {...listeners} aria-label="גרור לשינוי סדר"
             style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
             <GripVertical size={15} />
           </button>
@@ -436,7 +436,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
           <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{list.length}</span>
         </button>
         {canEdit && (
-          <button type="button" onClick={() => openAdd(category)}
+          <button type="button" onClick={() => openAdd(category)} aria-label={`הוסף פריט ל${category}`}
             style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <Plus size={15} />
           </button>
