@@ -494,7 +494,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return () => unsub();
   }, [tripId]);
 
-  // Listen to trip document for hotelDetails + custom distance origins
+  /* One listener on the trip document.
+   *
+   * There were two, with identical deps, reading different fields of the
+   * same doc — so every trip edit woke two subscriptions, two callbacks
+   * and two render passes, and Firestore held two streams open for one
+   * document. Everything read from the trip doc is set here together. */
   useEffect(() => {
     if (!tripId) return;
     const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
@@ -503,6 +508,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       setHotelDetails(d.hotelDetails || null);
       setTripDestination(d.destination || '');
       setDistanceOrigins(Array.isArray(d.distanceOrigins) ? d.distanceOrigins : []);
+      setTripFlightDates({
+        out: d.outboundFlightDetails?.date || null,
+        ret: d.returnFlightDetails?.date || null,
+        plannerSync: d.plannerDaysFromFlight || null,
+      });
+      const arr = d.outboundFlightDetails?.arrAirport || d.returnFlightDetails?.depAirport;
+      if (arr?.lat && arr?.lng) setDestCoords(arr);
     });
     return () => unsub();
   }, [tripId]);
@@ -580,23 +592,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return () => unsubscribe();
   }, [tripId]);
 
-  // Listen to trip doc for flight dates (used by smart-days init)
-  useEffect(() => {
-    if (!tripId) return;
-    const unsubscribe = onSnapshot(doc(db, 'trips', tripId), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        setTripFlightDates({
-          out: d.outboundFlightDetails?.date || null,
-          ret: d.returnFlightDetails?.date || null,
-          plannerSync: d.plannerDaysFromFlight || null,
-        });
-        const arr = d.outboundFlightDetails?.arrAirport || d.returnFlightDetails?.depAirport;
-        if (arr?.lat && arr?.lng) setDestCoords(arr);
-      }
-    });
-    return () => unsubscribe();
-  }, [tripId]);
 
   const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
   const weatherByDate = useMemo(() => {
