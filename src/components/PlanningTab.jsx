@@ -440,6 +440,28 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
+  /* A day is appended to the bottom of the list, which on a trip of any
+     length is off-screen — so adding one looked like nothing happened.
+     A toast would say "it worked" and still leave you to go find it;
+     taking you to the new card puts you where the next action is, which
+     is filling it in. The pulse says which of the cards is the new one. */
+  const dayNodes = useRef(new Map());
+  const [arrivedDayId, setArrivedDayId] = useState(null);
+
+  /* A second layout for the day list: one line per day instead of a full
+     timeline. On a week-long trip the full view is several screens of
+     scrolling to answer "what is on Thursday?". */
+  const [dayLayout, setDayLayout] = useState(() => {
+    try { return localStorage.getItem(`dayLayout_${tripId}`) === 'summary' ? 'summary' : 'full'; }
+    catch { return 'full'; }
+  });
+  useEffect(() => {
+    try { if (tripId) localStorage.setItem(`dayLayout_${tripId}`, dayLayout); } catch { /* private mode */ }
+  }, [dayLayout, tripId]);
+  // Which days are opened out of the summary. Kept apart from
+  // collapsedDays so switching layouts never disturbs the other one.
+  const [openSummaryDays, setOpenSummaryDays] = useState(() => new Set());
+
   const [collapsedDays, setCollapsedDays] = useState(() => {
     try {
       const raw = localStorage.getItem(`collapsed_days_${tripId}`);
@@ -1370,7 +1392,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       order: nextDayNum,
       activities: []
     }).catch(err => console.error('Add day error:', err));
+    // The write is fire-and-forget so this works offline too: the day
+    // arrives from the local cache and the effect below takes us to it.
+    setArrivedDayId(dayId);
   };
+
+  // Scroll to the day that was just added, once it has actually rendered.
+  useEffect(() => {
+    if (!arrivedDayId) return undefined;
+    const node = dayNodes.current.get(arrivedDayId);
+    if (!node) return undefined;   // not in the snapshot yet; runs again when it is
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const t = setTimeout(() => setArrivedDayId(null), 2000);   // matches .highlight-pulse
+    return () => clearTimeout(t);
+  }, [arrivedDayId, days]);
 
   const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
@@ -3063,6 +3098,24 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   <span>הוסף יום</span>
                 </button>
               )}
+              {days.length > 0 && (
+                /* Icon only: the header already carries a title and up to
+                   two labelled actions, and a third label pushed the title
+                   onto a second line. A view switch is the one control
+                   that reads fine as an icon — the pool's layout picker
+                   beside it is the same shape. */
+                <button
+                  type="button"
+                  onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
+                  className="btn-secondary"
+                  style={{ padding: 0, width: 38, minWidth: 38, height: 38, minHeight: 38, flexShrink: 0 }}
+                  title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+                  aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+                  aria-pressed={dayLayout === 'summary'}
+                >
+                  {dayLayout === 'summary' ? <LayoutList size={16} /> : <Rows3 size={16} />}
+                </button>
+              )}
               {canEdit && tripFlightDates.out && tripFlightDates.ret && (() => {
                 const synced = tripFlightDates.plannerSync?.out === tripFlightDates.out &&
                                tripFlightDates.plannerSync?.ret === tripFlightDates.ret;
@@ -3120,12 +3173,31 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
               <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {days.map((day) => (
-                <SortableDayCard key={day.id} id={day.id}>
+              {days.map((day) => {
+                const isSummary = dayLayout === 'summary' && !openSummaryDays.has(day.id);
+                return (
+                <SortableDayCard
+                  key={day.id}
+                  id={day.id}
+                  compact={isSummary}
+                  className={arrivedDayId === day.id ? 'highlight-pulse' : ''}
+                  innerRef={(node) => {
+                    if (node) dayNodes.current.set(day.id, node);
+                    else dayNodes.current.delete(day.id);
+                  }}
+                >
                   {/* Day Header — whole row toggles collapse (inner controls stop propagation) */}
                   <div
                     onClick={() => {
                       if (editingDayId === day.id) return;
+                      if (dayLayout === 'summary') {
+                        setOpenSummaryDays(prev => {
+                          const next = new Set(prev);
+                          next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                          return next;
+                        });
+                        return;
+                      }
                       setCollapsedDays(prev => {
                         const next = new Set(prev);
                         next.has(day.id) ? next.delete(day.id) : next.add(day.id);
@@ -3136,9 +3208,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      borderBottom: '1px solid rgba(11,11,48,0.06)',
-                      paddingBottom: 8,
-                      minHeight: 36,
+                      // A summary row is one line; a rule under it would
+                      // read as a divider between days, not part of one.
+                      borderBottom: isSummary ? 'none' : '1px solid rgba(11,11,48,0.06)',
+                      paddingBottom: isSummary ? 0 : 8,
+                      minHeight: isSummary ? 28 : 36,
                       cursor: editingDayId === day.id ? 'default' : 'pointer',
                     }}>
                     {editingDayId === day.id ? (
@@ -3200,7 +3274,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           })()}
                         </div>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          {canEdit && (<>
+                          {canEdit && !isSummary && (<>
                           <button
                             onClick={(e) => { e.stopPropagation(); setEditingDayId(day.id); setEditingDayTitle(day.title); }}
                             style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
@@ -3217,13 +3291,18 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           </button>
                           </>)}
                           <button
-                            onClick={(e) => { e.stopPropagation(); setCollapsedDays(prev => {
-                              const next = new Set(prev);
-                              next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                              return next;
-                            }); }}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: collapsedDays.has(day.id) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-                            title={collapsedDays.has(day.id) ? 'פתח יום' : 'סגור יום'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const setter = dayLayout === 'summary' ? setOpenSummaryDays : setCollapsedDays;
+                              setter(prev => {
+                                const next = new Set(prev);
+                                next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                                return next;
+                              });
+                            }}
+                            aria-label={isSummary ? 'פתח יום' : 'סגור יום'}
+                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: (isSummary || collapsedDays.has(day.id)) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                            title={isSummary ? 'פתח יום' : 'סגור יום'}
                           >
                             <ChevronDown size={18} />
                           </button>
@@ -3232,8 +3311,41 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     )}
                   </div>
 
+                  {/* Summary layout: the whole day on one muted line —
+                      how many activities, and the first couple by time.
+                      Enough to answer "what is on Thursday?" without
+                      opening anything. */}
+                  {isSummary && (() => {
+                    const acts = day.activities || [];
+                    if (acts.length === 0) {
+                      return (
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                          אין פעילויות
+                        </span>
+                      );
+                    }
+                    const shown = acts.slice(0, 2);
+                    const rest = acts.length - shown.length;
+                    return (
+                      <div style={{
+                        display: 'flex', alignItems: 'baseline', gap: 6,
+                        fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
+                        minWidth: 0,
+                      }}>
+                        <span style={{ fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
+                          {acts.length} פעילויות
+                        </span>
+                        <span style={{ color: 'var(--ink-22)', flexShrink: 0 }}>·</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {shown.map(a => [a.timeLabel, a.title].filter(Boolean).join(' ')).join(' · ')}
+                          {rest > 0 && ` +${rest}`}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                   {/* Day Activities + Add Button (collapsed when toggled) */}
-                  {!collapsedDays.has(day.id) && <>
+                  {!isSummary && !collapsedDays.has(day.id) && <>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
                     {(() => {
                     const dayActs = day.activities || [];
@@ -3536,7 +3648,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   )}
                   </>}
                 </SortableDayCard>
-              ))}
+                );
+              })}
             </div>
               </SortableContext>
             </DndContext>
@@ -4474,19 +4587,24 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
 const DragHandleContext = React.createContext(null);
 
-function SortableDayCard({ id, children }) {
+function SortableDayCard({ id, children, innerRef, className = '', compact = false }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // dnd-kit owns one ref and the scroll-to-new-day needs another.
+  const setRefs = (node) => {
+    setNodeRef(node);
+    innerRef?.(node);
+  };
   return (
     <DragHandleContext.Provider value={listeners}>
       <div
-        ref={setNodeRef}
+        ref={setRefs}
         {...attributes}
-        className="glass-card"
+        className={`glass-card${className ? ' ' + className : ''}`}
         style={{
-          padding: 16,
+          padding: compact ? '10px 12px' : 16,
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: compact ? 6 : 14,
           transform: CSS.Transform.toString(transform),
           transition,
           opacity: isDragging ? 0.45 : 1,
