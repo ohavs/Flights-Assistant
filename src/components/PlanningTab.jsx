@@ -1374,6 +1374,26 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
+  /* "ימים מסונכרנים עם הטיסה" is a confirmation, not a status.
+   *
+   * It used to render from the persisted comparison between the flight
+   * dates and `plannerDaysFromFlight`, which is true from the moment you
+   * sync until the dates change — so it sat there permanently, and a
+   * message that never leaves stops being read. It now appears only right
+   * after a sync actually runs, and clears itself. What it was standing
+   * in for is already on the button beside it, which reads "ייצר" before
+   * a sync and "עדכן" after one.
+   */
+  const [justSynced, setJustSynced] = useState(false);
+  const syncedTimer = useRef(null);
+  useEffect(() => () => clearTimeout(syncedTimer.current), []);
+
+  const flashSynced = () => {
+    clearTimeout(syncedTimer.current);
+    setJustSynced(true);
+    syncedTimer.current = setTimeout(() => setJustSynced(false), 4000);
+  };
+
   const handleInitDaysFromFlight = async () => {
     if (!tripId || !tripFlightDates.out || !tripFlightDates.ret) return;
     if (days.length > 0) {
@@ -1416,6 +1436,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       plannerDaysFromFlight: { out: tripFlightDates.out, ret: tripFlightDates.ret },
     });
     await batch.commit();
+    flashSynced();
   };
 
   // When the connection comes back, drop the "offline" markers and bump the
@@ -3063,13 +3084,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
-              {tripFlightDates.out && tripFlightDates.ret &&
-                tripFlightDates.plannerSync?.out === tripFlightDates.out &&
-                tripFlightDates.plannerSync?.ret === tripFlightDates.ret && (
-                <span style={{
+              {justSynced && (
+                <span className="sync-flash" style={{
                   fontSize: 12, color: 'var(--success, #16a34a)',
                   display: 'flex', alignItems: 'center', gap: 4,
-                  opacity: 0.8,
                 }}>
                   <CheckCircle2 size={13} />
                   ימים מסונכרנים עם הטיסה
