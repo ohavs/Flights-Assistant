@@ -1756,8 +1756,16 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* Sub-tab Selector */}
+      {/* Sub-tab selector, with the day-list view switch beside it.
+          Outside the pill, not inside: the pill is for choosing which
+          sub-tab you are on, and a third segment in it would read as a
+          third tab. Next to it, it reads as what it is — a control over
+          the list below. It also means the daily tab needs no toolbar row
+          of its own, so the days start right under here. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <div style={{ 
+        flex: 1,
+        minWidth: 0,
         display: 'flex', 
         background: 'var(--ink-5)',
         borderRadius: 'var(--radius-md)', 
@@ -1810,6 +1818,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           <Calendar size={16} />
           <span>לוח זמנים יומי</span>
         </button>
+      </div>
+      {subTab === 'daily' && days.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
+          className="btn-secondary"
+          style={{ padding: 0, width: 42, minWidth: 42, height: 42, minHeight: 42, flexShrink: 0 }}
+          title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+          aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+          aria-pressed={dayLayout === 'summary'}
+        >
+          {dayLayout === 'summary' ? <LayoutList size={17} /> : <Rows3 size={17} />}
+        </button>
+      )}
       </div>
 
       {/* Render sub-tab content */}
@@ -3086,68 +3108,47 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       ) : (
         /* DAILY PLANNER SUB-TAB */
         <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {canEdit && (
-                <button
-                  onClick={handleAddDay}
-                  className="btn-primary"
-                  style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
-                >
-                  <Plus size={15} />
-                  <span>הוסף יום</span>
-                </button>
-              )}
-              {days.length > 0 && (
-                /* Icon only: the header already carries a title and up to
-                   two labelled actions, and a third label pushed the title
-                   onto a second line. A view switch is the one control
-                   that reads fine as an icon — the pool's layout picker
-                   beside it is the same shape. */
-                <button
-                  type="button"
-                  onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
-                  className="btn-secondary"
-                  style={{ padding: 0, width: 38, minWidth: 38, height: 38, minHeight: 38, flexShrink: 0 }}
-                  title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
-                  aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
-                  aria-pressed={dayLayout === 'summary'}
-                >
-                  {dayLayout === 'summary' ? <LayoutList size={16} /> : <Rows3 size={16} />}
-                </button>
-              )}
-              {canEdit && tripFlightDates.out && tripFlightDates.ret && (() => {
-                const synced = tripFlightDates.plannerSync?.out === tripFlightDates.out &&
-                               tripFlightDates.plannerSync?.ret === tripFlightDates.ret;
-                if (!synced) {
-                  return (
-                    <button
-                      onClick={handleInitDaysFromFlight}
-                      className="btn-secondary"
-                      style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
-                      title="צור ימים אוטומטית לפי תאריכי הטיסה"
-                    >
-                      <Calendar size={15} />
-                      <span>{tripFlightDates.plannerSync ? 'עדכן ימים לפי טיסה' : 'ייצר ימים לפי טיסה'}</span>
-                    </button>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
-              {justSynced && (
-                <span className="sync-flash" style={{
-                  fontSize: 12, color: 'var(--success, #16a34a)',
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}>
-                  <CheckCircle2 size={13} />
-                  ימים מסונכרנים עם הטיסה
-                </span>
-              )}
-            </div>
-          </div>
+          {/* A toolbar only when it has something in it. The title said
+              what the sub-tab button above already says, adding a day
+              moved to the floating button every tab shares, and the view
+              switch moved up beside the sub-tabs — so most of the time
+              this row is not rendered at all and the days start higher. */}
+          {(() => {
+            const syncable = canEdit && tripFlightDates.out && tripFlightDates.ret &&
+              !(tripFlightDates.plannerSync?.out === tripFlightDates.out &&
+                tripFlightDates.plannerSync?.ret === tripFlightDates.ret);
+            if (!syncable && !justSynced) return null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {syncable && (
+                  <button
+                    onClick={handleInitDaysFromFlight}
+                    className="btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
+                    title="צור ימים אוטומטית לפי תאריכי הטיסה"
+                  >
+                    <Calendar size={15} />
+                    <span>{tripFlightDates.plannerSync ? 'עדכן ימים לפי טיסה' : 'ייצר ימים לפי טיסה'}</span>
+                  </button>
+                )}
+                {justSynced && (
+                  <span className="sync-flash" style={{
+                    fontSize: 12, color: 'var(--success, #16a34a)',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <CheckCircle2 size={13} />
+                    ימים מסונכרנים עם הטיסה
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Adding a day is a whole-sub-tab action, so it gets the
+              floating button — same as "יעד חדש" in the pool. Adding an
+              *activity* still belongs to one specific day and stays on
+              that day's card. */}
+          {canEdit && <Fab label="יום חדש" onClick={handleAddDay} />}
 
           {days.length === 0 ? (
             <EmptyState
