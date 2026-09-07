@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { createPortal } from 'react-dom';
@@ -1124,7 +1124,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setShowAddForm(false);
   };
 
-  const getCategoryColor = (cat) => categorySettings[cat]?.color || '#4f46e5';
+  /* useCallback and not the ref-wrapper below: DayCard calls these while
+     rendering, and a wrapper reading a ref that an effect fills would be
+     undefined on the very first paint. They depend only on the category
+     settings, which change rarely, so the memo still holds nearly always. */
+  const getCategoryColor = useCallback(
+    (cat) => categorySettings[cat]?.color || '#4f46e5', [categorySettings]);
 
   // Compact Hebrew "when" string for an event: "12.06" / "12.06–14.06 · 20:30-23:00"
   const formatEventWhen = (ev) => {
@@ -1147,7 +1152,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return `${h} שע' ${mins} דק'`;
   };
 
-  const getCategoryIcon = (cat, size = 18) => {
+  const getCategoryIcon = useCallback((cat, size = 18) => {
     const iconKey = categorySettings[cat]?.iconKey;
     const Icon = iconKey ? ICON_MAP[iconKey] : null;
     if (Icon) return <Icon size={size} />;
@@ -1159,7 +1164,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       case EVENTS_CATEGORY:         return <Calendar size={size} />;
       default:                      return <MapPin size={size} />;
     }
-  };
+  }, [categorySettings]);
 
   // Small caption above each link field, so "name" vs "address" is explicit.
   const linkFieldLabel = {
@@ -1383,6 +1388,43 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   /* ══════════════════════════════════════════════════════════
      DAILY PLANNER OPERATIONS
      ══════════════════════════════════════════════════════════ */
+  /* Stable handles for everything DayCard is given.
+   *
+   * React.memo compares props by reference, so a plain arrow re-created
+   * each render would make every day re-render anyway and the memo would
+   * be decoration. useCallback would work but needs a correct dependency
+   * list for each of eight functions, and a wrong one is a stale closure
+   * — a bug that shows up as an action quietly using yesterday's state.
+   * This keeps the latest implementations in a ref and hands out wrappers
+   * created once: permanently stable, never stale, no dependency lists.
+   */
+  const latestFns = useRef({});
+  const dayFns = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs -- the wrapper reads the ref
+    // when the handler fires, never while rendering; the two helpers that
+    // *are* called during render are useCallback'd above instead.
+    const call = (name) => (...args) => latestFns.current[name](...args);
+    return {
+      handleSaveDayTitle: call('handleSaveDayTitle'),
+      handleDeleteDay: call('handleDeleteDay'),
+      handleOpenAddActivity: call('handleOpenAddActivity'),
+      handleStartEditActivity: call('handleStartEditActivity'),
+      handleDeleteActivity: call('handleDeleteActivity'),
+      moveActivity: call('moveActivity'),
+    };
+  }, []);
+
+  /* Refreshed after every render, read only when a handler fires — so a
+     wrapper never calls a stale implementation. In an effect rather than
+     during render: writing a ref while rendering is what the rules-of-hooks
+     lint flags, and events can only run after the effect anyway. */
+  useEffect(() => {
+    latestFns.current = {
+      handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
+      handleStartEditActivity, handleDeleteActivity, moveActivity,
+    };
+  });
+
   const handleAddDay = () => {
     if (!tripId) return;
     const nextDayNum = days.length + 1;
@@ -3150,482 +3192,43 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {days.map((day) => {
                 const isSummary = dayLayout === 'summary' && !openSummaryDays.has(day.id);
-                // The chevron reports whether the body is on screen, which
-                // in summary mode is a different question from "collapsed".
-                const dayBodyShown = !isSummary && !collapsedDays.has(day.id);
+                const isEditing = editingDayId === day.id;
                 return (
-                <SortableDayCard
+                <DayCard
                   key={day.id}
-                  id={day.id}
-                  compact={isSummary}
-                  className={arrivedDayId === day.id ? 'highlight-pulse' : ''}
-                  innerRef={(node) => {
-                    if (node) dayNodes.current.set(day.id, node);
-                    else dayNodes.current.delete(day.id);
-                  }}
-                >
-                  {/* Day Header — whole row toggles collapse (inner controls stop propagation) */}
-                  <div
-                    onClick={() => {
-                      if (editingDayId === day.id) return;
-                      if (dayLayout === 'summary') {
-                        setOpenSummaryDays(prev => {
-                          const next = new Set(prev);
-                          next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                          return next;
-                        });
-                        return;
-                      }
-                      setCollapsedDays(prev => {
-                        const next = new Set(prev);
-                        next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                        return next;
-                      });
-                    }}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      // A summary row is one line; a rule under it would
-                      // read as a divider between days, not part of one.
-                      borderBottom: isSummary ? 'none' : '1px solid rgba(11,11,48,0.06)',
-                      paddingBottom: isSummary ? 0 : 8,
-                      minHeight: isSummary ? 28 : 36,
-                      cursor: editingDayId === day.id ? 'default' : 'pointer',
-                    }}>
-                    {editingDayId === day.id ? (
-                      <form 
-                        onSubmit={(e) => { e.preventDefault(); handleSaveDayTitle(day.id, editingDayTitle); }} 
-                        style={{ display: 'flex', gap: 6, width: '100%' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input 
-                          className="form-control" 
-                          style={{ padding: '4px 8px', fontSize: 14, minHeight: 32, flex: 1 }} 
-                          value={editingDayTitle} 
-                          onChange={e => setEditingDayTitle(e.target.value)} 
-                          required 
-                        />
-                        <button type="submit" className="btn-primary" style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>שמור</button>
-                        <button type="button" className="btn-secondary" onClick={() => setEditingDayId(null)} style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>ביטול</button>
-                      </form>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
-                          {canEdit && <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}><DayDragHandle /></span>}
-                          <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
-                          {day.date && (() => {
-                            const [, mm, dd] = day.date.split('-');
-                            const dowIdx = new Date(day.date).getDay();
-                            const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
-                            const dayW = weatherByDate[day.date];
-                            return (<>
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, flexShrink: 0,
-                                background: 'rgba(79,70,229,0.08)',
-                                color: 'var(--accent)',
-                                border: '1px solid rgba(79,70,229,0.15)',
-                                borderRadius: 8, padding: '2px 6px',
-                              }}>
-                                {`${dow} ${dd}.${mm}`}
-                              </span>
-                              {dayW && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); setHourlyWeatherDate(day.date); }}
-                                  style={{
-                                    fontSize: 11, fontWeight: 700, flexShrink: 0,
-                                    background: 'rgba(245,158,11,0.08)',
-                                    border: '1px solid rgba(245,158,11,0.15)',
-                                    borderRadius: 8, padding: '2px 7px',
-                                    display: 'flex', alignItems: 'center', gap: 3,
-                                    color: 'var(--primary)', cursor: 'pointer',
-                                    fontFamily: 'inherit',
-                                  }}
-                                >
-                                  <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
-                                  <span>{dayW.max}°/{dayW.min}°</span>
-                                  {dayW.rain > 0 && <span style={{ color: '#2563eb' }}>💧{dayW.rain}%</span>}
-                                </button>
-                              )}
-                            </>);
-                          })()}
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          {canEdit && !isSummary && (<>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingDayId(day.id); setEditingDayTitle(day.title); }}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                            title="ערוך כותרת יום"
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteDay(day.id); }}
-                            style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
-                            title="מחק יום"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                          </>)}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const setter = dayLayout === 'summary' ? setOpenSummaryDays : setCollapsedDays;
-                              setter(prev => {
-                                const next = new Set(prev);
-                                next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                                return next;
-                              });
-                            }}
-                            aria-label={dayBodyShown ? 'סגור יום' : 'פתח יום'}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: dayBodyShown ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                            title={dayBodyShown ? 'סגור יום' : 'פתח יום'}
-                          >
-                            <ChevronDown size={18} />
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Summary layout: the whole day on one muted line —
-                      how many activities, and the first couple by time.
-                      Enough to answer "what is on Thursday?" without
-                      opening anything. */}
-                  {isSummary && (() => {
-                    const acts = day.activities || [];
-                    if (acts.length === 0) {
-                      return (
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-                          אין פעילויות
-                        </span>
-                      );
-                    }
-                    const shown = acts.slice(0, 2);
-                    const rest = acts.length - shown.length;
-                    return (
-                      <div style={{
-                        display: 'flex', alignItems: 'baseline', gap: 6,
-                        fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
-                        minWidth: 0,
-                      }}>
-                        <span style={{ fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
-                          {acts.length} פעילויות
-                        </span>
-                        <span style={{ color: 'var(--ink-22)', flexShrink: 0 }}>·</span>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {shown.map(a => [a.timeLabel, a.title].filter(Boolean).join(' ')).join(' · ')}
-                          {rest > 0 && ` +${rest}`}
-                        </span>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Day Activities + Add Button (collapsed when toggled) */}
-                  {dayBodyShown && <>
-                  <div className="day-body" style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
-                    {(() => {
-                    const dayActs = day.activities || [];
-                    const timeGroups = groupActivitiesByTime(dayActs);
-                    const showTimeHeaders = dayActs.some(a => (a.timeLabel || '').trim());
-
-                    const renderActivityRow = (act, actIdx, groupList) => {
-                      const isFirst = actIdx === 0;
-                      const isLast = actIdx === groupList.length - 1;
-                      const prevActId = groupList[actIdx - 1]?.id ?? null;
-                      const nextActId = groupList[actIdx + 1]?.id ?? null;
-                      const linkedPlan = plans.find(p => act.placeId ? p.id === act.placeId : p.title === act.title);
-                      const isVisited = linkedPlan?.visited === true;
-
-                      return (
-                        <div key={act.id} style={{
-                          display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
-                          paddingTop: isFirst ? 0 : 14,
-                          paddingBottom: isLast ? 0 : 14,
-                          borderTop: isFirst ? 'none' : '2px solid rgba(79,70,229,0.4)',
-                        }}>
-                          {/* Timeline vertical node and line */}
-                          <div style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center', 
-                            flexShrink: 0, 
-                            position: 'relative', 
-                            height: '100%', 
-                            alignSelf: 'stretch'
-                          }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: '50%',
-                              background: `${getCategoryColor(act.category)}18`,
-                              color: getCategoryColor(act.category),
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              zIndex: 2,
-                              border: `1.5px solid ${getCategoryColor(act.category)}40`
-                            }}>
-                              {getCategoryIcon(act.category, 15)}
-                            </div>
-                            {!isLast && (
-                              <div style={{
-                                position: 'absolute',
-                                top: 28,
-                                bottom: -24,
-                                width: 2,
-                                background: 'var(--ink-6)',
-                                zIndex: 1
-                              }} />
-                            )}
-                          </div>
-
-                          {/* Activity Card */}
-                          <div className="glass-card" style={{
-                            flex: 1,
-                            minWidth: 0,
-                            overflow: 'hidden',
-                            padding: '12px 14px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 6,
-                            opacity: isVisited ? 0.6 : 1,
-                          }}>
-                            {(() => {
-                              // Compute travel-time chips once — reused below the title.
-                              let chips = null;
-                              if (act.placeId && hasGmapsKey()) {
-                                const linkedPlan = plans.find(p => p.id === act.placeId);
-                                const originKey = linkedPlan?.distanceOriginId || 'hotel';
-                                const cache = distanceCache[`${act.placeId}_${originKey}`];
-                                if (cache && !cache.loading && !cache.error && !cache.noLocation && (cache.walk || cache.transit)) {
-                                  chips = (
-                                    <>
-                                      {cache.walk && (
-                                        <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                          🚶 {cache.walk.duration}
-                                        </span>
-                                      )}
-                                      {cache.transit && (
-                                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                          🚌 {cache.transit.duration}
-                                        </span>
-                                      )}
-                                    </>
-                                  );
-                                }
-                              }
-                              const titleColor = (() => {
-                                const p = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
-                                return p?.priority === 'must' ? '#f59e0b' :
-                                       p?.priority === 'optional' ? 'var(--text-muted)' :
-                                       'var(--primary)';
-                              })();
-                              return (
-                                <>
-                                  {/* Row 1: time badge + title (single line, ellipsis) + controls */}
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                                    <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      {isVisited && (
-                                        <span style={{
-                                          fontSize: 10, fontWeight: 900, color: 'var(--text-muted)',
-                                          background: 'var(--ink-8)', padding: '2px 6px',
-                                          borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
-                                        }}>
-                                          ✓ בוצע
-                                        </span>
-                                      )}
-                                      {!isVisited && act.timeLabel && !showTimeHeaders && (
-                                        <span style={{
-                                          fontSize: 10, fontWeight: 900, color: '#fff',
-                                          background: 'var(--accent)', padding: '2px 6px',
-                                          borderRadius: 4, flexShrink: 0,
-                                        }}>
-                                          {act.timeLabel}
-                                        </span>
-                                      )}
-                                      {isVisited && act.timeLabel && !showTimeHeaders && (
-                                        <span style={{
-                                          fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
-                                          flexShrink: 0,
-                                        }}>
-                                          {act.timeLabel}
-                                        </span>
-                                      )}
-                                      <h4
-                                        onClick={() => setActivityDetail(act)}
-                                        style={{
-                                          fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
-                                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                          minWidth: 0, cursor: 'pointer',
-                                          textDecoration: 'none',
-                                        }}
-                                      >
-                                        {act.title}
-                                      </h4>
-                                    </div>
-
-                                    {canEdit && (
-                                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                                        <button
-                                          onClick={() => moveActivity(day.id, act.id, -1, prevActId)}
-                                          disabled={isFirst}
-                                          style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                        >
-                                          <ArrowUp size={14} />
-                                        </button>
-                                        <button
-                                          onClick={() => moveActivity(day.id, act.id, 1, nextActId)}
-                                          disabled={isLast}
-                                          style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                        >
-                                          <ArrowDown size={14} />
-                                        </button>
-                                        <button
-                                          onClick={() => handleStartEditActivity(day.id, act)}
-                                          style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                        >
-                                          <Pencil size={13} />
-                                        </button>
-                                        <button
-                                          onClick={() => handleDeleteActivity(day.id, act.id)}
-                                          style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
-                                        >
-                                          <Trash2 size={13} />
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {act.description && (
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 3 }}>
-                                      <MessageSquare size={11} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
-                                      <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.35, wordBreak: 'break-word' }}>
-                                        {act.description}
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {/* Row 2: address link + travel-time chips */}
-                                  {(act.address || chips) && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                                      {act.address && (
-                                        <a
-                                          href={/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          style={{
-                                            fontSize: 11, color: 'var(--accent)', fontWeight: 700,
-                                            display: 'flex', alignItems: 'center', gap: 3,
-                                            textDecoration: 'none', minWidth: 0,
-                                          }}
-                                        >
-                                          <MapPin size={11} />
-                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
-                                          <ExternalLink size={10} />
-                                        </a>
-                                      )}
-                                      {chips}
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      );
-                    };
-
-                    // No time labels at all — keep the flat timeline as before
-                    if (!showTimeHeaders) {
-                      return dayActs.map((act, i) => renderActivityRow(act, i, dayActs));
-                    }
-
-                    // Grouped by time of day, each group collapsible as one unit
-                    return timeGroups.map(g => {
-                      const gKey = `${day.id}|${g.label}`;
-                      const isGroupCollapsed = collapsedTimeGroups.has(gKey);
-                      return (
-                        <div key={gKey} style={{ marginBottom: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() => setCollapsedTimeGroups(prev => {
-                              const next = new Set(prev);
-                              next.has(gKey) ? next.delete(gKey) : next.add(gKey);
-                              return next;
-                            })}
-                            style={{
-                              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                              padding: '7px 10px', marginBottom: isGroupCollapsed ? 0 : 10,
-                              borderRadius: 10, border: 'none', cursor: 'pointer',
-                              background: 'var(--p-8)', fontFamily: 'inherit',
-                            }}
-                          >
-                            <span style={{ fontSize: 14, lineHeight: 1 }}>
-                              {TIME_GROUP_ICONS[g.label] || (g.label ? '🕐' : '📌')}
-                            </span>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>
-                              {g.label || 'ללא תיוג זמן'}
-                            </span>
-                            {/* Pushed to the row's end so counts align across groups */}
-                            <span style={{
-                              fontSize: 10, fontWeight: 800, color: 'var(--accent)',
-                              background: 'rgba(79,70,229,0.12)', padding: '2px 0',
-                              borderRadius: 999, lineHeight: 1.4,
-                              marginInlineStart: 'auto', flexShrink: 0,
-                              width: 26, textAlign: 'center',
-                            }}>
-                              {g.acts.length}
-                            </span>
-                            <ChevronDown
-                              size={16}
-                              style={{
-                                color: 'var(--text-muted)', flexShrink: 0,
-                                transition: 'transform 0.2s',
-                                transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                              }}
-                            />
-                          </button>
-                          {!isGroupCollapsed && (
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              {g.acts.map((act, i) => renderActivityRow(act, i, g.acts))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    });
-                    })()}
-
-                    {(day.activities || []).length === 0 && (
-                      <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0', margin: 0 }}>
-                        אין עדיין פעילויות ליום זה.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Add Activity Button */}
-                  {canEdit && (
-                  <button
-                    onClick={() => handleOpenAddActivity(day.id)}
-                    className="btn-secondary"
-                    style={{
-                      width: '100%',
-                      padding: 10,
-                      fontSize: 13,
-                      fontWeight: 700,
-                      border: '1.5px dashed rgba(79,70,229,0.18)',
-                      background: 'rgba(79,70,229,0.03)',
-                      color: 'var(--accent)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <Plus size={14} />
-                    <span>הוסף פעילות</span>
-                  </button>
-                  )}
-                  </>}
-                </SortableDayCard>
+                  day={day}
+                  plans={plans}
+                  canEdit={canEdit}
+                  isSummary={isSummary}
+                  // The chevron reports whether the body is on screen, which
+                  // in summary mode is a different question from "collapsed".
+                  dayBodyShown={!isSummary && !collapsedDays.has(day.id)}
+                  isEditing={isEditing}
+                  // '' for every other card, so typing a title re-renders
+                  // only the card being edited.
+                  editingDayTitle={isEditing ? editingDayTitle : ''}
+                  isArrived={arrivedDayId === day.id}
+                  dayLayout={dayLayout}
+                  collapsedTimeGroups={collapsedTimeGroups}
+                  weatherByDate={weatherByDate}
+                  distanceCache={distanceCache}
+                  dayNodes={dayNodes}
+                  getCategoryColor={getCategoryColor}
+                  getCategoryIcon={getCategoryIcon}
+                  setCollapsedDays={setCollapsedDays}
+                  setOpenSummaryDays={setOpenSummaryDays}
+                  setCollapsedTimeGroups={setCollapsedTimeGroups}
+                  setEditingDayId={setEditingDayId}
+                  setEditingDayTitle={setEditingDayTitle}
+                  setActivityDetail={setActivityDetail}
+                  setHourlyWeatherDate={setHourlyWeatherDate}
+                  handleSaveDayTitle={dayFns.handleSaveDayTitle}
+                  handleDeleteDay={dayFns.handleDeleteDay}
+                  handleOpenAddActivity={dayFns.handleOpenAddActivity}
+                  handleStartEditActivity={dayFns.handleStartEditActivity}
+                  handleDeleteActivity={dayFns.handleDeleteActivity}
+                  moveActivity={dayFns.moveActivity}
+                />
                 );
               })}
             </div>
@@ -4566,6 +4169,511 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 /* ── Drag-and-drop helpers for day reordering ─────────────────────────── */
 
 const DragHandleContext = React.createContext(null);
+
+/* One day, memoized.
+ *
+ * Collapsing a day used to re-render every other day with it: the state
+ * lives in PlanningTab, so React walked the whole list and re-applied the
+ * inline style of every element in it. The profiler put `setValueForStyle`
+ * at the top of a toggle — not the component's own logic, but React
+ * writing styles back onto DOM nodes that had not changed. With this
+ * memo the other days bail out and none of that work happens.
+ *
+ * Every prop below therefore has to be reference-stable across renders,
+ * or the memo never holds: the handlers are useCallback'd in the parent
+ * and the setters come from useState, which React keeps stable.
+ */
+const DayCard = React.memo(function DayCard({
+  day, plans, canEdit,
+  /* Booleans, not the Sets they come from. Passing `collapsedDays` itself
+     meant every card got a brand-new Set on every toggle and the memo
+     never held — which is exactly what the first attempt measured: no
+     change at all. Only the toggled day's booleans move now. */
+  isSummary, dayBodyShown, isEditing, editingDayTitle, isArrived,
+  dayLayout, collapsedTimeGroups,
+  weatherByDate, distanceCache, dayNodes,
+  getCategoryColor, getCategoryIcon,
+  setCollapsedDays, setOpenSummaryDays, setCollapsedTimeGroups,
+  setEditingDayId, setEditingDayTitle, setActivityDetail, setHourlyWeatherDate,
+  handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
+  handleStartEditActivity, handleDeleteActivity, moveActivity,
+}) {
+        return (
+        <SortableDayCard
+          key={day.id}
+          id={day.id}
+          compact={isSummary}
+          className={isArrived ? 'highlight-pulse' : ''}
+          innerRef={(node) => {
+            if (node) dayNodes.current.set(day.id, node);
+            else dayNodes.current.delete(day.id);
+          }}
+        >
+          {/* Day Header — whole row toggles collapse (inner controls stop propagation) */}
+          <div
+            onClick={() => {
+              if (isEditing) return;
+              if (dayLayout === 'summary') {
+                setOpenSummaryDays(prev => {
+                  const next = new Set(prev);
+                  next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                  return next;
+                });
+                return;
+              }
+              setCollapsedDays(prev => {
+                const next = new Set(prev);
+                next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                return next;
+              });
+            }}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              // A summary row is one line; a rule under it would
+              // read as a divider between days, not part of one.
+              borderBottom: isSummary ? 'none' : '1px solid rgba(11,11,48,0.06)',
+              paddingBottom: isSummary ? 0 : 8,
+              minHeight: isSummary ? 28 : 36,
+              cursor: isEditing ? 'default' : 'pointer',
+            }}>
+            {isEditing ? (
+              <form 
+                onSubmit={(e) => { e.preventDefault(); handleSaveDayTitle(day.id, editingDayTitle); }} 
+                style={{ display: 'flex', gap: 6, width: '100%' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input 
+                  className="form-control" 
+                  style={{ padding: '4px 8px', fontSize: 14, minHeight: 32, flex: 1 }} 
+                  value={editingDayTitle} 
+                  onChange={e => setEditingDayTitle(e.target.value)} 
+                  required 
+                />
+                <button type="submit" className="btn-primary" style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>שמור</button>
+                <button type="button" className="btn-secondary" onClick={() => setEditingDayId(null)} style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>ביטול</button>
+              </form>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
+                  {canEdit && <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}><DayDragHandle /></span>}
+                  <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
+                  {day.date && (() => {
+                    const [, mm, dd] = day.date.split('-');
+                    const dowIdx = new Date(day.date).getDay();
+                    const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
+                    const dayW = weatherByDate[day.date];
+                    return (<>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, flexShrink: 0,
+                        background: 'rgba(79,70,229,0.08)',
+                        color: 'var(--accent)',
+                        border: '1px solid rgba(79,70,229,0.15)',
+                        borderRadius: 8, padding: '2px 6px',
+                      }}>
+                        {`${dow} ${dd}.${mm}`}
+                      </span>
+                      {dayW && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setHourlyWeatherDate(day.date); }}
+                          style={{
+                            fontSize: 11, fontWeight: 700, flexShrink: 0,
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.15)',
+                            borderRadius: 8, padding: '2px 7px',
+                            display: 'flex', alignItems: 'center', gap: 3,
+                            color: 'var(--primary)', cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
+                          <span>{dayW.max}°/{dayW.min}°</span>
+                          {dayW.rain > 0 && <span style={{ color: '#2563eb' }}>💧{dayW.rain}%</span>}
+                        </button>
+                      )}
+                    </>);
+                  })()}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {canEdit && !isSummary && (<>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingDayId(day.id); setEditingDayTitle(day.title); }}
+                    style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                    title="ערוך כותרת יום"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteDay(day.id); }}
+                    style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
+                    title="מחק יום"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  </>)}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const setter = dayLayout === 'summary' ? setOpenSummaryDays : setCollapsedDays;
+                      setter(prev => {
+                        const next = new Set(prev);
+                        next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                        return next;
+                      });
+                    }}
+                    aria-label={dayBodyShown ? 'סגור יום' : 'פתח יום'}
+                    style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: dayBodyShown ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                    title={dayBodyShown ? 'סגור יום' : 'פתח יום'}
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Summary layout: the whole day on one muted line —
+              how many activities, and the first couple by time.
+              Enough to answer "what is on Thursday?" without
+              opening anything. */}
+          {isSummary && (() => {
+            const acts = day.activities || [];
+            if (acts.length === 0) {
+              return (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                  אין פעילויות
+                </span>
+              );
+            }
+            const shown = acts.slice(0, 2);
+            const rest = acts.length - shown.length;
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'baseline', gap: 6,
+                fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
+                minWidth: 0,
+              }}>
+                <span style={{ fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
+                  {acts.length} פעילויות
+                </span>
+                <span style={{ color: 'var(--ink-22)', flexShrink: 0 }}>·</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {shown.map(a => [a.timeLabel, a.title].filter(Boolean).join(' ')).join(' · ')}
+                  {rest > 0 && ` +${rest}`}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Day Activities + Add Button (collapsed when toggled) */}
+          {dayBodyShown && <>
+          <div className="day-body" style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
+            {(() => {
+            const dayActs = day.activities || [];
+            const timeGroups = groupActivitiesByTime(dayActs);
+            const showTimeHeaders = dayActs.some(a => (a.timeLabel || '').trim());
+
+            const renderActivityRow = (act, actIdx, groupList) => {
+              const isFirst = actIdx === 0;
+              const isLast = actIdx === groupList.length - 1;
+              const prevActId = groupList[actIdx - 1]?.id ?? null;
+              const nextActId = groupList[actIdx + 1]?.id ?? null;
+              const linkedPlan = plans.find(p => act.placeId ? p.id === act.placeId : p.title === act.title);
+              const isVisited = linkedPlan?.visited === true;
+
+              return (
+                <div key={act.id} style={{
+                  display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
+                  paddingTop: isFirst ? 0 : 14,
+                  paddingBottom: isLast ? 0 : 14,
+                  borderTop: isFirst ? 'none' : '2px solid rgba(79,70,229,0.4)',
+                }}>
+                  {/* Timeline vertical node and line */}
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    flexShrink: 0, 
+                    position: 'relative', 
+                    height: '100%', 
+                    alignSelf: 'stretch'
+                  }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%',
+                      background: `${getCategoryColor(act.category)}18`,
+                      color: getCategoryColor(act.category),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      zIndex: 2,
+                      border: `1.5px solid ${getCategoryColor(act.category)}40`
+                    }}>
+                      {getCategoryIcon(act.category, 15)}
+                    </div>
+                    {!isLast && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 28,
+                        bottom: -24,
+                        width: 2,
+                        background: 'var(--ink-6)',
+                        zIndex: 1
+                      }} />
+                    )}
+                  </div>
+
+                  {/* Activity Card */}
+                  <div className="glass-card" style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    opacity: isVisited ? 0.6 : 1,
+                  }}>
+                    {(() => {
+                      // Compute travel-time chips once — reused below the title.
+                      let chips = null;
+                      if (act.placeId && hasGmapsKey()) {
+                        const linkedPlan = plans.find(p => p.id === act.placeId);
+                        const originKey = linkedPlan?.distanceOriginId || 'hotel';
+                        const cache = distanceCache[`${act.placeId}_${originKey}`];
+                        if (cache && !cache.loading && !cache.error && !cache.noLocation && (cache.walk || cache.transit)) {
+                          chips = (
+                            <>
+                              {cache.walk && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                  🚶 {cache.walk.duration}
+                                </span>
+                              )}
+                              {cache.transit && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                  🚌 {cache.transit.duration}
+                                </span>
+                              )}
+                            </>
+                          );
+                        }
+                      }
+                      const titleColor = (() => {
+                        const p = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
+                        return p?.priority === 'must' ? '#f59e0b' :
+                               p?.priority === 'optional' ? 'var(--text-muted)' :
+                               'var(--primary)';
+                      })();
+                      return (
+                        <>
+                          {/* Row 1: time badge + title (single line, ellipsis) + controls */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                            <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {isVisited && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 900, color: 'var(--text-muted)',
+                                  background: 'var(--ink-8)', padding: '2px 6px',
+                                  borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
+                                }}>
+                                  ✓ בוצע
+                                </span>
+                              )}
+                              {!isVisited && act.timeLabel && !showTimeHeaders && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 900, color: '#fff',
+                                  background: 'var(--accent)', padding: '2px 6px',
+                                  borderRadius: 4, flexShrink: 0,
+                                }}>
+                                  {act.timeLabel}
+                                </span>
+                              )}
+                              {isVisited && act.timeLabel && !showTimeHeaders && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                  flexShrink: 0,
+                                }}>
+                                  {act.timeLabel}
+                                </span>
+                              )}
+                              <h4
+                                onClick={() => setActivityDetail(act)}
+                                style={{
+                                  fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  minWidth: 0, cursor: 'pointer',
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                {act.title}
+                              </h4>
+                            </div>
+
+                            {canEdit && (
+                              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                                <button
+                                  onClick={() => moveActivity(day.id, act.id, -1, prevActId)}
+                                  disabled={isFirst}
+                                  style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                                >
+                                  <ArrowUp size={14} />
+                                </button>
+                                <button
+                                  onClick={() => moveActivity(day.id, act.id, 1, nextActId)}
+                                  disabled={isLast}
+                                  style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                                >
+                                  <ArrowDown size={14} />
+                                </button>
+                                <button
+                                  onClick={() => handleStartEditActivity(day.id, act)}
+                                  style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteActivity(day.id, act.id)}
+                                  style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {act.description && (
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 3 }}>
+                              <MessageSquare size={11} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.35, wordBreak: 'break-word' }}>
+                                {act.description}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Row 2: address link + travel-time chips */}
+                          {(act.address || chips) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                              {act.address && (
+                                <a
+                                  href={/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    fontSize: 11, color: 'var(--accent)', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', gap: 3,
+                                    textDecoration: 'none', minWidth: 0,
+                                  }}
+                                >
+                                  <MapPin size={11} />
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
+                                  <ExternalLink size={10} />
+                                </a>
+                              )}
+                              {chips}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            };
+
+            // No time labels at all — keep the flat timeline as before
+            if (!showTimeHeaders) {
+              return dayActs.map((act, i) => renderActivityRow(act, i, dayActs));
+            }
+
+            // Grouped by time of day, each group collapsible as one unit
+            return timeGroups.map(g => {
+              const gKey = `${day.id}|${g.label}`;
+              const isGroupCollapsed = collapsedTimeGroups.has(gKey);
+              return (
+                <div key={gKey} style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCollapsedTimeGroups(prev => {
+                      const next = new Set(prev);
+                      next.has(gKey) ? next.delete(gKey) : next.add(gKey);
+                      return next;
+                    })}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '7px 10px', marginBottom: isGroupCollapsed ? 0 : 10,
+                      borderRadius: 10, border: 'none', cursor: 'pointer',
+                      background: 'var(--p-8)', fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{ fontSize: 14, lineHeight: 1 }}>
+                      {TIME_GROUP_ICONS[g.label] || (g.label ? '🕐' : '📌')}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>
+                      {g.label || 'ללא תיוג זמן'}
+                    </span>
+                    {/* Pushed to the row's end so counts align across groups */}
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, color: 'var(--accent)',
+                      background: 'rgba(79,70,229,0.12)', padding: '2px 0',
+                      borderRadius: 999, lineHeight: 1.4,
+                      marginInlineStart: 'auto', flexShrink: 0,
+                      width: 26, textAlign: 'center',
+                    }}>
+                      {g.acts.length}
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      style={{
+                        color: 'var(--text-muted)', flexShrink: 0,
+                        transition: 'transform 0.2s',
+                        transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      }}
+                    />
+                  </button>
+                  {!isGroupCollapsed && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {g.acts.map((act, i) => renderActivityRow(act, i, g.acts))}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+            })()}
+
+            {(day.activities || []).length === 0 && (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0', margin: 0 }}>
+                אין עדיין פעילויות ליום זה.
+              </p>
+            )}
+          </div>
+
+          {/* Add Activity Button */}
+          {canEdit && (
+          <button
+            onClick={() => handleOpenAddActivity(day.id)}
+            className="btn-secondary"
+            style={{
+              width: '100%',
+              padding: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              border: '1.5px dashed rgba(79,70,229,0.18)',
+              background: 'rgba(79,70,229,0.03)',
+              color: 'var(--accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              cursor: 'pointer'
+            }}
+          >
+            <Plus size={14} />
+            <span>הוסף פעילות</span>
+          </button>
+          )}
+          </>}
+        </SortableDayCard>
+
+  );
+});
 
 function SortableDayCard({ id, children, innerRef, className = '', compact = false }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
