@@ -11,7 +11,7 @@
   --accent-light: rgba(var(--accent-rgb), 0.08);
   --accent-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
   --bg-gradient: linear-gradient(135deg, #e0e7ff 0%, #f5f3ff 50%, #fae8ff 100%);
-  --card-bg: rgba(255, 255, 255, 0.78);
+  --card-bg: rgba(255, 255, 255, 0.86);   /* see .glass-card — no blur behind it */
   --card-bg-solid: #ffffff;
   --card-border: 1px solid rgba(255, 255, 255, 0.7);
   --text: #0b0b26;
@@ -168,7 +168,7 @@
   --accent-light: rgba(var(--accent-rgb),0.10);
   --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
   --bg-gradient: linear-gradient(135deg, #0d0d2b 0%, #160d2e 50%, #0e1825 100%);
-  --card-bg: rgba(255,255,255,0.05);
+  --card-bg: rgba(255,255,255,0.07);
   --card-bg-solid: #1c1a38;
   --card-border: 1px solid rgba(255,255,255,0.07);
   --text: #e2e8f0;
@@ -820,10 +820,19 @@ button:not(:disabled):active,
    ══════════════════════════════════════════════════════════ */
 
 /* Glass Card */
+/* No backdrop-filter here on purpose.
+   These are list cards on a static gradient — there is nothing moving
+   behind them for a blur to reveal, so it was invisible work. And it was
+   not cheap: a day list puts a dozen blurred surfaces on screen at once,
+   and expanding one day repositions all the ones below it, forcing the
+   compositor to re-sample and re-blur every one. That cost shows up as
+   dropped frames rather than as a long task, which is why the list felt
+   slow while the profiler stayed quiet. The blur is kept where it earns
+   its keep: the header, the nav and sheets, which really do float over
+   content that scrolls underneath them. The fill is a little more opaque
+   to compensate. */
 .glass-card {
   background: var(--card-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: var(--card-border);
   box-shadow: var(--shadow-sm);
   border-radius: var(--radius-lg);
@@ -1038,6 +1047,81 @@ input[type="datetime-local"].form-control {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+}
+
+/* ── A day opening ──
+   Only opacity and a small translate: animating height would put layout
+   on every frame, which is the expensive kind of animation and exactly
+   what this is trying to avoid. The point is that the content arrives
+   rather than appearing between two frames. */
+.day-body {
+  animation: day-open var(--dur-base) var(--ease-out);
+}
+@keyframes day-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Sub-tab switch ──
+   Same idea as the bottom nav: one panel that travels between the two
+   labels instead of a background that blinks from one to the other, so
+   the eye follows the move and lands on where it is now. `right: 4px`
+   with a negative translate is the nav's own trick — the app is RTL, so
+   the first segment is the right one and travel is leftwards. */
+.subtab-switch {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: var(--ink-5);
+  border-radius: var(--radius-md);
+  padding: 4px;
+}
+.subtab-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 4px;
+  width: calc((100% - 8px) / 2);
+  border-radius: calc(var(--radius-md) - 2px);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(calc(var(--sub-i, 0) * -100%));
+  transition: transform var(--dur-base) var(--ease-spring);
+  pointer-events: none;
+}
+.subtab-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 9px 4px;
+  font-family: var(--font-hebrew);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color var(--dur-base) var(--ease-out);
+}
+.subtab-btn[aria-selected="true"] { color: var(--primary); }
+.subtab-btn svg {
+  flex-shrink: 0;
+  transition: color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-spring);
+}
+.subtab-btn[aria-selected="true"] svg {
+  color: var(--accent);
+  transform: scale(1.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .subtab-indicator { transition: none; }
 }
 
 /* ── Transient confirmation ──

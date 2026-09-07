@@ -1595,6 +1595,16 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
        activityAddress.trim() || activityDescription.trim() ||
        savedPlaceSelections.some(s => s.placeId));
 
+  /* The "add activity" sheet is the tallest form in the tab and was the
+     only one you could not swipe away. Declared here and not with the
+     other sheet hooks above: `enabled` calls activityFormDirty, which is
+     a const defined just above — reading it any earlier is a temporal
+     dead zone and takes the whole tab down. */
+  const activitySheet = useSheetDrag(
+    () => { setShowActivityForm(false); setEditingActivityId(null); },
+    { enabled: !activityFormDirty() },
+  );
+
   const attemptCloseActivityForm = async () => {
     if (activityFormDirty()) {
       const ok = await confirm({
@@ -1756,82 +1766,46 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* Sub-tab selector, with the day-list view switch beside it.
-          Outside the pill, not inside: the pill is for choosing which
-          sub-tab you are on, and a third segment in it would read as a
-          third tab. Next to it, it reads as what it is — a control over
-          the list below. It also means the daily tab needs no toolbar row
-          of its own, so the days start right under here. */}
+      {/* Sub-tab switch, with the day-list view control beside it.
+          Labels are short so all three fit one line at 400px: with the
+          long ones the pill lost enough width that "אטרקציות ומקומות"
+          broke onto a second row and the whole control grew a line. The
+          icons carry the rest of the meaning. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ 
-        flex: 1,
-        minWidth: 0,
-        display: 'flex', 
-        background: 'var(--ink-5)',
-        borderRadius: 'var(--radius-md)', 
-        padding: 4, 
-        gap: 4 
-      }}>
-        <button
-          onClick={() => setSubTab('pool')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            border: 'none',
-            borderRadius: 'calc(var(--radius-md) - 2px)',
-            padding: '10px 0',
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: 'pointer',
-            background: subTab === 'pool' ? 'var(--surface)' : 'transparent',
-            color: subTab === 'pool' ? 'var(--primary)' : 'var(--text-muted)',
-            boxShadow: subTab === 'pool' ? 'var(--shadow-sm)' : 'none',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Compass size={16} />
-          <span>אטרקציות ומקומות</span>
-        </button>
-        <button
-          onClick={() => setSubTab('daily')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            border: 'none',
-            borderRadius: 'calc(var(--radius-md) - 2px)',
-            padding: '10px 0',
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: 'pointer',
-            background: subTab === 'daily' ? 'var(--surface)' : 'transparent',
-            color: subTab === 'daily' ? 'var(--primary)' : 'var(--text-muted)',
-            boxShadow: subTab === 'daily' ? 'var(--shadow-sm)' : 'none',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Calendar size={16} />
-          <span>לוח זמנים יומי</span>
-        </button>
-      </div>
-      {subTab === 'daily' && days.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
-          className="btn-secondary"
-          style={{ padding: 0, width: 42, minWidth: 42, height: 42, minHeight: 42, flexShrink: 0 }}
-          title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
-          aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
-          aria-pressed={dayLayout === 'summary'}
-        >
-          {dayLayout === 'summary' ? <LayoutList size={17} /> : <Rows3 size={17} />}
-        </button>
-      )}
+        <div className="subtab-switch" role="tablist">
+          <span className="subtab-indicator" style={{ '--sub-i': subTab === 'daily' ? 1 : 0 }} aria-hidden="true" />
+          <button
+            role="tab"
+            aria-selected={subTab === 'pool'}
+            className="subtab-btn"
+            onClick={() => setSubTab('pool')}
+          >
+            <Compass size={16} />
+            <span>מקומות</span>
+          </button>
+          <button
+            role="tab"
+            aria-selected={subTab === 'daily'}
+            className="subtab-btn"
+            onClick={() => setSubTab('daily')}
+          >
+            <Calendar size={16} />
+            <span>לוח זמנים</span>
+          </button>
+        </div>
+        {subTab === 'daily' && days.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
+            className="btn-secondary"
+            style={{ padding: 0, width: 42, minWidth: 42, height: 42, minHeight: 42, flexShrink: 0 }}
+            title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+            aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+            aria-pressed={dayLayout === 'summary'}
+          >
+            {dayLayout === 'summary' ? <LayoutList size={17} /> : <Rows3 size={17} />}
+          </button>
+        )}
       </div>
 
       {/* Render sub-tab content */}
@@ -3176,6 +3150,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {days.map((day) => {
                 const isSummary = dayLayout === 'summary' && !openSummaryDays.has(day.id);
+                // The chevron reports whether the body is on screen, which
+                // in summary mode is a different question from "collapsed".
+                const dayBodyShown = !isSummary && !collapsedDays.has(day.id);
                 return (
                 <SortableDayCard
                   key={day.id}
@@ -3301,9 +3278,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                 return next;
                               });
                             }}
-                            aria-label={isSummary ? 'פתח יום' : 'סגור יום'}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: (isSummary || collapsedDays.has(day.id)) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-                            title={isSummary ? 'פתח יום' : 'סגור יום'}
+                            aria-label={dayBodyShown ? 'סגור יום' : 'פתח יום'}
+                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: dayBodyShown ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                            title={dayBodyShown ? 'סגור יום' : 'פתח יום'}
                           >
                             <ChevronDown size={18} />
                           </button>
@@ -3346,8 +3323,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   })()}
 
                   {/* Day Activities + Add Button (collapsed when toggled) */}
-                  {!isSummary && !collapsedDays.has(day.id) && <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
+                  {dayBodyShown && <>
+                  <div className="day-body" style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
                     {(() => {
                     const dayActs = day.activities || [];
                     const timeGroups = groupActivitiesByTime(dayActs);
@@ -4158,8 +4135,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           )
         );
         return (
-          <div className="modal-overlay" onClick={attemptCloseActivityForm}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+          <div className="modal-overlay" data-closing={activitySheet.closing || undefined} onClick={attemptCloseActivityForm}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} {...activitySheet.handlers}
+              style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column', ...activitySheet.style }}>
+              <div className="sheet-grab" />
 
               <div className="modal-header" style={{ flexShrink: 0 }}>
                 <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>

@@ -33,6 +33,7 @@ import CurrencyConverter from './components/CurrencyConverter';
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmptyState from './components/EmptyState';
+import useSheetDrag from './hooks/useSheetDrag';
 import Skeleton from './components/Skeleton';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
@@ -543,13 +544,18 @@ function ShareModal({ tripId, currentUid, onClose }) {
     }
   };
 
+  const shareSheet = useSheetDrag(() => onClose());
+
   const currentRole = trip?.members?.[currentUid];
   const isOwner = currentRole === 'owner';
 
   // For non-owners: this modal only shows members + leave button (no controls)
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ height: 'auto', maxHeight: '90%' }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" data-closing={shareSheet.closing || undefined} onClick={onClose}>
+      <div className="modal-content" {...shareSheet.handlers}
+        style={{ height: 'auto', maxHeight: '90%', ...shareSheet.style }}
+        onClick={e => e.stopPropagation()}>
+        <div className="sheet-grab" />
         <div className="modal-header">
           <h2>שיתוף וניהול חברי הטיול</h2>
           <button aria-label="סגור" className="btn-close" onClick={onClose}>✕</button>
@@ -732,6 +738,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     return (globalChecklist || []).filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
   }, [globalChecklist, newItemText, editingItemId]);
 
+  /* Above the early return on purpose: hooks have to run in the same
+     order on every render, and `if (!isOpen) return null` sits below —
+     declaring it after would add a hook the moment the sheet opens. */
+  const sheet = useSheetDrag(() => onClose(), { enabled: !newItemText.trim() && !editingItemId });
+
   if (!isOpen) return null;
 
   const toggleCategory = (cat) =>
@@ -886,8 +897,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
   };
 
   return (
-    <div className="modal-overlay" onClick={attemptClose}>
-      <div className="modal-content" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" data-closing={sheet.closing || undefined} onClick={attemptClose}>
+      <div className="modal-content" {...sheet.handlers}
+        style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column', ...sheet.style }}
+        onClick={e => e.stopPropagation()}>
+        <div className="sheet-grab" />
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2>רשימת ציוד קבועה</h2>
           <button aria-label="סגור" className="btn-close" onClick={attemptClose}>✕</button>
