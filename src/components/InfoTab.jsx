@@ -497,8 +497,9 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                     </div>
                   )}
                 </div>
-                {/* On touch these hide and the same two actions come from
-                    the swipe; on a mouse they stay exactly where they were. */}
+                {/* Shown on every pointer, touch included — the row itself
+                    carries tel:/http links, so a tap on it cannot be spent on
+                    "edit" and the pencil has to be here. See index.css. */}
                 {canEdit ? (
                   <div className="row-inline-actions" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                     <button type="button" onClick={() => startEdit(item)} aria-label="ערוך פריט"
