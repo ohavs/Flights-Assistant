@@ -39,6 +39,10 @@ export default function SwipeRow({
   const [open, setOpen] = useState(false);
   const [sliding, setSliding] = useState(false);
   const gesture = useRef({ x: 0, y: 0, axis: null, base: 0 });
+  /* A sideways drag ends with the finger lifting off the row, which the
+     browser may still report as a tap. The row's own onClick must not fire
+     for it — a swipe that snapped back is not a tap on what it landed on. */
+  const swallowClick = useRef(false);
   const openRef = useRef(open);
   useEffect(() => { openRef.current = open; }, [open]);
 
@@ -61,6 +65,7 @@ export default function SwipeRow({
     const onStart = (e) => {
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
+      swallowClick.current = false;
       gesture.current = { x: t.clientX, y: t.clientY, axis: null, base: openRef.current ? maxOpen : 0 };
     };
 
@@ -91,6 +96,7 @@ export default function SwipeRow({
       const g = gesture.current;
       if (g.axis !== 'x') return;
       g.axis = null;
+      swallowClick.current = true;
       setSliding(false);
       setDx(prev => {
         const shouldOpen = prev > maxOpen * OPEN_RATIO;
@@ -117,6 +123,11 @@ export default function SwipeRow({
   useEffect(() => () => { if (closeOpenRow === close) closeOpenRow = null; }, [close]);
 
   const handleClick = (e) => {
+    if (swallowClick.current) {                           // tail of a swipe, not a tap
+      swallowClick.current = false;
+      e.stopPropagation();
+      return;
+    }
     if (open) { e.stopPropagation(); close(); return; }   // first tap just closes
     onClick?.(e);
   };

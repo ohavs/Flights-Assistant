@@ -582,7 +582,13 @@ export default function ExpensesTab({ tripId }) {
                             { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(expense.id) },
                           ]}
                           className="glass-card"
-                          style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          /* On touch the inline buttons below are hidden and the
+                             swipe is the only way in — a gesture with nothing on
+                             screen to announce it. Tapping the row opens the same
+                             edit form, so there is always a visible way to fix an
+                             expense. */
+                          onClick={() => openForm(expense)}
+                          style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                           {/* Icon badge */}
                           <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--p-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <Receipt size={15} style={{ color: 'var(--accent)' }} />
