@@ -582,9 +582,11 @@ export default function ExpensesTab({ tripId }) {
                             { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(expense.id) },
                           ]}
                           className="glass-card"
-                          /* A row is the expense — tapping it edits it. The
-                             pencil beside it and the swipe do the same thing;
-                             none of the three is the only way in. */
+                          /* On touch the inline buttons below are hidden and the
+                             swipe is the only way in — a gesture with nothing on
+                             screen to announce it. Tapping the row opens the same
+                             edit form, so there is always a visible way to fix an
+                             expense. */
                           onClick={() => openForm(expense)}
                           style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                           {/* Icon badge */}
@@ -639,8 +641,8 @@ export default function ExpensesTab({ tripId }) {
                             })()}
                           </div>
 
-                          {/* Action buttons — LEFT side in RTL. Shown on every
-                              pointer, touch included: see index.css. */}
+                          {/* Action buttons — LEFT side in RTL. Hidden on
+                              touch, where the same two come from the swipe. */}
                           <div className="row-inline-actions" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                             <button onClick={() => openForm(expense)} aria-label="ערוך הוצאה" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--ink-4)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Pencil size={12} />

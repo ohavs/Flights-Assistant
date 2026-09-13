@@ -1477,13 +1477,11 @@ input[type="datetime-local"].form-control {
 /* The press state is drawn by the row above it, not here. */
 .swipe-action:active { transform: none; filter: brightness(0.95); }
 
-/* These buttons stay visible on touch too — do not hide them again.
-   They were once hidden under `@media (hover: none)` on the theory that
-   the swipe covers the same two actions. It doesn't: a swipe is invisible.
-   Nothing on the row announced it, so on a phone the edit button had
-   simply vanished — in הוצאות, where tapping a row did nothing, that left
-   no way at all to fix an expense already saved. The swipe stays as a
-   shortcut for whoever finds it; it is not the only way in. */
+/* Inline row buttons are for pointers; on touch the same actions live
+   behind the swipe. */
+@media (hover: none) {
+  .row-inline-actions { display: none !important; }
+}
 
 /* ── List entry ──
    Rows arrive with a short rise, staggered by their index so a list reads
