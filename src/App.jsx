@@ -11,6 +11,7 @@ import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme, PALETTES } from './ThemeContext';
+import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { CustomDropdown } from './components/CustomDatePicker';
 import { defaultChecklist, defaultInfoItems } from './data/seedData';
 
@@ -1271,6 +1272,17 @@ function AppInner() {
   const [globalExtraCategories, setGlobalExtraCategories] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
 
+  /* The back gesture is the app's own: it unwinds sheets and screens
+     instead of dropping the traveller out mid-trip. */
+  useEffect(() => installBackGuard(), []);
+
+  // Leaving a trip is the step back the trip screen itself owns; any sheet
+  // open on top of it registers later and so closes first.
+  useBackHandler(screen === 'trip', () => {
+    setScreen('home');
+    setSelectedTripId(null);
+  });
+
   // Save user profile to Firestore on first login
   useEffect(() => {
     if (!user) return;
@@ -1580,6 +1592,11 @@ function AppInner() {
   };
 
   const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
+
+  // Home-screen layers, each one back press deep.
+  useBackHandler(!!sharingTripId, () => setSharingTripId(null));
+  useBackHandler(showGlobalChecklistModal, () => setShowGlobalChecklistModal(false));
+  useBackHandler(!!confirmDelete, () => setConfirmDelete(null));
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [deletePasswordInput, setDeletePasswordInput] = useState('');

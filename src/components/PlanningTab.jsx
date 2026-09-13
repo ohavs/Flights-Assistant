@@ -36,6 +36,7 @@ import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
 import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -1661,6 +1662,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setShowActivityForm(false);
     setEditingActivityId(null);
   };
+
+  /* The tab's layers, innermost last. The two forms go through their
+     unsaved-changes guard, so back asks exactly as the ✕ does. */
+  useBackHandler(!!detailPlanId, () => detailSheet.close());
+  useBackHandler(!!locationsModal, () => locationsSheet.close());
+  useBackHandler(showCategorySettings, () => categorySheet.close());
+  useBackHandler(showAddForm, attemptClosePlanForm);
+  useBackHandler(showActivityForm, attemptCloseActivityForm);
 
   const handleStartEditActivity = (dayId, act) => {
     setSelectedDayId(dayId);

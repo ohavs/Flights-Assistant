@@ -17,6 +17,7 @@ import SwipeRow from './SwipeRow';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
 import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -52,6 +53,9 @@ function Avatar({ photoURL, name, size = 26 }) {
    of the textarea — on every keystroke. */
 function Sheet({ onClose, children, maxHeight = '80vh' }) {
   const drag = useSheetDrag(onClose);
+  // This shell is mounted only while the sheet is open, so it is a back
+  // layer for its whole life.
+  useBackHandler(true, drag.close);
   return createPortal(
     <div
       onClick={drag.close}

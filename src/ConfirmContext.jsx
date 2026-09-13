@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useRef, useState, useCallback } from 'react';
 import ConfirmModal from './components/ConfirmModal';
+import useBackHandler from './hooks/useBackHandler';
 
 const ConfirmContext = createContext(() => Promise.resolve(false));
 
@@ -34,6 +35,10 @@ export function ConfirmProvider({ children }) {
     setState(null);
     r?.(false);
   };
+
+  /* A confirm sits on top of whatever opened it, so back cancels the
+     question before it touches the sheet underneath. */
+  useBackHandler(!!state?.open, handleClose);
 
   return (
     <ConfirmContext.Provider value={confirm}>

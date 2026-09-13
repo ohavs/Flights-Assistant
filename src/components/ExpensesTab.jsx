@@ -9,6 +9,7 @@ import {
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
 import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
@@ -189,6 +190,9 @@ export default function ExpensesTab({ tripId }) {
 
   // Drag-to-dismiss for the expense sheet.
   const formSheet = useSheetDrag(() => setShowForm(false));
+
+  // Back closes the sheet before it leaves the trip.
+  useBackHandler(showForm, () => formSheet.close());
 
   const handleSubmit = (e) => {
     e.preventDefault();

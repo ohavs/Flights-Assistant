@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -142,6 +143,9 @@ export default function InfoTab({ tripId }) {
   // Dragging the sheet away is offered only while the form is untouched;
   // a filled-in form still asks before it closes.
   const formSheet = useSheetDrag(() => setShowForm(false), { enabled: !formDirty() });
+
+  // Back closes the sheet before it leaves the trip.
+  useBackHandler(showForm, () => formSheet.close());
 
   const attemptCloseForm = async () => {
     if (formDirty()) {

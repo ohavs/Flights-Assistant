@@ -4,6 +4,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import CurrencyConverter from './CurrencyConverter';
@@ -647,6 +648,10 @@ export default function FlightTab({ tripId }) {
     }
     setShowEditModal(false);
   };
+
+  /* Back goes through the same guard as the ✕ — an unsaved form asks
+     before it disappears, however it was dismissed. */
+  useBackHandler(showEditModal, attemptCloseEdit);
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
