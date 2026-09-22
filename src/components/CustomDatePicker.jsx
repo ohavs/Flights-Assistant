@@ -179,6 +179,24 @@ function CalendarBody({ selectedDateStr, onSelect }) {
   );
 }
 
+/* Scroll a wheel so its selected row sits in the middle.
+
+   Measured from bounding rects on purpose. The obvious `el.offsetTop`
+   is relative to the nearest *positioned* ancestor, and these columns set
+   no position of their own — so offsetTop came back measured from the
+   modal's fixed overlay, hundreds of pixels too large, and the column
+   scrolled to a place that had nothing to do with the selected value.
+   That is what made an open picker show 19-23 while it held 15:00. */
+function centreOnActive(ref, cls) {
+  const wheel = ref.current;
+  if (!wheel) return;
+  const el = wheel.querySelector('.' + cls);
+  if (!el) return;
+  const wheelRect = wheel.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  wheel.scrollTop += (elRect.top - wheelRect.top) - (wheelRect.height - elRect.height) / 2;
+}
+
 /* ══════════════════════════════════════════════════════════
    TIME PICKER BODY
    ══════════════════════════════════════════════════════════ */
@@ -189,24 +207,17 @@ function TimeBody({ hour, minute, onChangeTime }) {
   const hourRef = useRef(null);
   const minRef = useRef(null);
 
-  // Auto-scroll selected elements into center view inside columns
+  // Open on the value already set, centred in both columns.
   useEffect(() => {
-    if (hourRef.current) {
-      const activeEl = hourRef.current.querySelector('.active-hour');
-      if (activeEl) {
-        hourRef.current.scrollTop = activeEl.offsetTop - hourRef.current.clientHeight / 2 + activeEl.clientHeight / 2;
-      }
-    }
-    if (minRef.current) {
-      const activeEl = minRef.current.querySelector('.active-min');
-      if (activeEl) {
-        minRef.current.scrollTop = activeEl.offsetTop - minRef.current.clientHeight / 2 + activeEl.clientHeight / 2;
-      }
-    }
+    requestAnimationFrame(() => {
+      centreOnActive(hourRef, 'active-hour');
+      centreOnActive(minRef, 'active-min');
+    });
   }, []);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', maxHeight: '240px', direction: 'rtl' }}>
+    // Hour left, minute right — the order HH:MM is read in.
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', maxHeight: '240px', direction: 'ltr' }}>
       {/* Hours Column */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>שעה</span>
@@ -494,18 +505,18 @@ export function CustomTimePicker({ value, onChange, label, required }) {
   const hRef = useRef(null);
   const mRef = useRef(null);
 
+  /* Centre both columns on the value the picker opened with — and only
+     then. Re-centring on every tap pulled the list out from under the
+     finger: you pressed 19, the column scrolled to put 19 in the middle,
+     and the number left under your finger was a different one. Picking an
+     hour dragged the minute column along with it too. */
   useEffect(() => {
     if (!isOpen) return;
     requestAnimationFrame(() => {
-      const scrollActive = (ref, cls) => {
-        if (!ref.current) return;
-        const el = ref.current.querySelector('.' + cls);
-        if (el) ref.current.scrollTop = el.offsetTop - ref.current.clientHeight / 2 + el.clientHeight / 2;
-      };
-      scrollActive(hRef, 'active-h');
-      scrollActive(mRef, 'active-m');
+      centreOnActive(hRef, 'active-h');
+      centreOnActive(mRef, 'active-m');
     });
-  }, [isOpen, tempH, tempM]);
+  }, [isOpen]);
 
   const hours24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
   const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
@@ -548,8 +559,10 @@ export function CustomTimePicker({ value, onChange, label, required }) {
               </button>
             </div>
 
-            {/* Hour + Minute columns (24-hour) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'rtl' }}>
+            {/* Hour + Minute columns (24-hour). Laid out left-to-right so
+                they sit in the order the readout below spells them, HH:MM —
+                a clock reads the same way in Hebrew as anywhere else. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'ltr' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
                 <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -560,7 +573,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
                         key={h} type="button"
                         className={isActive ? 'active-h' : ''}
                         onClick={() => setTempH(h)}
-                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? '0 2px 8px rgba(11,11,48,0.25)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
                       >{h}</button>
                     );
                   })}
@@ -577,7 +590,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
                         key={m} type="button"
                         className={isActive ? 'active-m' : ''}
                         onClick={() => setTempM(m)}
-                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? '0 2px 8px rgba(11,11,48,0.25)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
                       >{m}</button>
                     );
                   })}
@@ -585,7 +598,11 @@ export function CustomTimePicker({ value, onChange, label, required }) {
               </div>
             </div>
 
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: 12, padding: '10px 14px', fontSize: '14px', fontWeight: 800, color: 'var(--accent)', textAlign: 'center' }}>
+            {/* The readout is the anchor: the columns can be scrolled
+                anywhere, this always says what is actually selected, and it
+                changes the instant a number is tapped. Tabular figures so
+                the digits don't jitter as it counts. */}
+            <div style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.14)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', direction: 'ltr', fontSize: 24, fontWeight: 900, letterSpacing: 1, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
               {tempH}:{tempM}
             </div>
 
