@@ -1395,6 +1395,32 @@ input[type="datetime-local"].form-control {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ── Reminder tile cycling ──
+   The hairline under the tile counts out the dwell before the next reminder
+   takes its place. It exists so the change is announced rather than sprung:
+   you can see it coming and decide to wait for it. Subtle enough to ignore,
+   present enough to read as a countdown.
+
+   Both animations are motion for its own sake to anyone who asked the system
+   for less of it, so both stop under prefers-reduced-motion — and the timer
+   stops in JS as well, leaving the tile holding one reminder rather than
+   swapping silently with no countdown to explain it. */
+@keyframes reminder-tick {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes reminder-swap {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.reminder-swap { animation: reminder-swap 0.32s var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .reminder-swap { animation: none; }
+}
+
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }

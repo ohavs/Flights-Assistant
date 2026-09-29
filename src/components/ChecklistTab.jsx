@@ -187,6 +187,10 @@ function ProgressRing({ done, total, size = 44 }) {
   );
 }
 
+/* Long enough to read a line of Hebrew, short enough that a queue of them
+   gets through. The bar below the tile counts out exactly this. */
+const REMINDER_DWELL_MS = 3000;
+
 function RemindersCard({ tripId, canEdit }) {
   const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
   const confirm = useConfirm();
@@ -218,7 +222,32 @@ function RemindersCard({ tripId, canEdit }) {
 
   const doneCount = reminders.filter(r => r.completed).length;
   const openOnes = reminders.filter(r => !r.completed);
-  const nextUp = openOnes[0] || null;
+
+  /* The tile cycles through the open reminders so more than one gets seen.
+     What makes that bearable — and what the old strip never had — is the
+     hairline underneath: it fills over the dwell, so the change is
+     announced before it happens and you can decide to wait for it rather
+     than being surprised by it. In fixed order, never shuffled: a list
+     that reorders itself can't be followed.                            */
+  const [tileIdx, setTileIdx] = useState(0);
+  const cycleCount = openOnes.length;
+  // Nothing moves while the sheet is open, or for a single reminder, or for
+  // anyone who has asked the system for less motion.
+  const reducedMotion = useMemo(
+    () => typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
+  const cycling = cycleCount > 1 && !open && !reducedMotion;
+
+  useEffect(() => {
+    if (!cycling) return undefined;
+    const t = setInterval(() => setTileIdx(i => i + 1), REMINDER_DWELL_MS);
+    return () => clearInterval(t);
+  }, [cycling, cycleCount]);
+
+  // The list shrinks as things get ticked off, so never index past its end.
+  const nextUp = cycleCount > 0 ? openOnes[tileIdx % cycleCount] : null;
 
   const visible = filter === 'open' ? openOnes
     : filter === 'done' ? reminders.filter(r => r.completed)
@@ -317,14 +346,13 @@ function RemindersCard({ tripId, canEdit }) {
 
   return (
     <>
-      {/* ── Tile ──────────────────────────────────────────────────────────
-          Static on purpose. Nothing rotates, nothing advances; the one line
-          it shows is the next thing actually outstanding. */}
+      {/* ── Tile ────────────────────────────────────────────────────────── */}
       <button
         type="button"
         onClick={() => openSheet(reminders.length === 0)}
         className="glass-card"
         aria-label="תזכורות"
+        aria-live="polite"
         style={{
           direction: 'rtl', width: '100%', textAlign: 'right', cursor: 'pointer',
           border: 'var(--card-border)', fontFamily: 'var(--font-hebrew)',
@@ -332,6 +360,8 @@ function RemindersCard({ tripId, canEdit }) {
              direction has to be stated or the parts stack. */
           padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12,
           minHeight: 68,
+          // The tick bar is pinned to the bottom edge and must not escape it.
+          position: 'relative', overflow: 'hidden',
         }}
       >
         {reminders.length > 0
@@ -350,10 +380,14 @@ function RemindersCard({ tripId, canEdit }) {
           <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.4px' }}>
             תזכורות
           </span>
-          <span style={{
-            fontSize: 14.5, fontWeight: 700, color: nextUp ? 'var(--text-main)' : 'var(--text-muted)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.4,
-          }}>
+          <span
+            key={nextUp?.id || 'none'}
+            className={cycling ? 'reminder-swap' : undefined}
+            style={{
+              fontSize: 14.5, fontWeight: 700, color: nextUp ? 'var(--text-main)' : 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.4,
+            }}
+          >
             {nextUp ? nextUp.text
               : reminders.length > 0 ? 'הכל בוצע 🎉'
                 : canEdit ? 'הוסף תזכורת ראשונה' : 'אין תזכורות'}
@@ -369,6 +403,20 @@ function RemindersCard({ tripId, canEdit }) {
           </span>
         )}
         <ChevronLeft size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+
+        {/* The promise that something is about to move. A hairline, keyed to
+            the reminder on screen so the fill restarts with each one. */}
+        {cycling && (
+          <span
+            key={`tick-${tileIdx}`}
+            aria-hidden="true"
+            style={{
+              position: 'absolute', insetInline: 0, bottom: 0, height: 2.5,
+              background: 'var(--accent)', opacity: 0.45, transformOrigin: 'right',
+              animation: `reminder-tick ${REMINDER_DWELL_MS}ms linear`,
+            }}
+          />
+        )}
       </button>
 
       {/* ── The one sheet ────────────────────────────────────────────────
