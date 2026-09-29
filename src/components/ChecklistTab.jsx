@@ -10,7 +10,7 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, List, User, ClipboardList } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, User, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import SwipeRow from './SwipeRow';
@@ -140,105 +140,125 @@ export function buildMemberList({
   return list;
 }
 
-/* ── RemindersCard ───────────────────────────────────────────────────────
-   A compact strip at the top of the checklist tab that cycles through the
-   trip's reminders, plus two sheets:
-     • the editor sheet   — add / edit one reminder (text + whose it is)
-     • the "all" sheet    — the full list, with an optional selection mode
-   Adding or editing never replaces the strip itself any more, so the card
-   you were reading stays on screen and the layout never jumps.            */
+/* ── Reminders ───────────────────────────────────────────────────────────
+
+   A rebuild, not a restyle. What stood here was a strip that shuffled the
+   reminders and auto-advanced through them every five seconds: one visible
+   at a time, moving on its own, reachable again only by guessing at a
+   swipe. Acting on one meant opening the "all" sheet, tapping edit,
+   watching that sheet close and a second one open in its place — and a
+   hidden "selection mode" that quietly changed what a tap did.
+
+   What replaces it holds still. The tile says where the trip stands and
+   opens one sheet; that sheet is the whole feature — read, tick, add,
+   edit, delete — and it never swaps itself for another. Editing runs
+   through the composer already sitting at the bottom of it, the way a chat
+   edits a message, so the list you were reading stays put under your
+   thumb. Rows carry their actions behind a swipe, the same gesture the
+   checklist and the expenses already use.                                */
+
+/* The tile's whole message at a glance: how much of the trip's list is
+   done, without reading a word of it. */
+function ProgressRing({ done, total, size = 44 }) {
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const pct = total > 0 ? done / total : 0;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }} aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--p-15)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke="var(--accent)" strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - pct)}
+          style={{ transition: 'stroke-dashoffset 0.45s var(--ease-out)' }}
+        />
+      </svg>
+      <span style={{
+        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12, fontWeight: 900, color: 'var(--accent)', direction: 'ltr',
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {done}/{total}
+      </span>
+    </div>
+  );
+}
+
 function RemindersCard({ tripId, canEdit }) {
   const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
   const confirm = useConfirm();
+
   const [reminders, setReminders] = useState([]);
-  const [shuffledReminders, setShuffledReminders] = useState([]);
-  const [idx, setIdx] = useState(0);
-  // Editor sheet: null when closed, otherwise { id } for an edit or {} for a
-  // new reminder. Its draft text and owner live alongside it.
-  const [editor, setEditor] = useState(null);
-  const [draftText, setDraftText] = useState('');
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('open');      // 'open' | 'done' | 'all'
+
+  /* One composer at the bottom of the sheet, in one of two modes: writing a
+     new reminder, or editing an existing one (editingId holds which). */
+  const [draft, setDraft] = useState('');
+  const [editingId, setEditingId] = useState(null);
   const [draftUid, setDraftUid] = useState('');
-  const [showAll, setShowAll] = useState(false);
-  const [selectMode, setSelectMode] = useState(false);
-  const [checkedIds, setCheckedIds] = useState(new Set());
   const inputRef = useRef(null);
-  const autoTimer = useRef(null);
-  const prevLengthRef = useRef(0);
-  const touchStartX = useRef(0);
 
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId) return undefined;
     return onSnapshot(collection(db, 'trips', tripId, 'reminders'), snap => {
-      const docs = snap.docs
+      setReminders(snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      setReminders(docs);
-      setIdx(i => Math.min(i, Math.max(0, docs.length - 1)));
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
     });
   }, [tripId]);
 
-  // Shuffle reminders when the list changes; update in-place on edits
-  useEffect(() => {
-    const reshuffle = reminders.length !== prevLengthRef.current;
-    prevLengthRef.current = reminders.length;
-    if (reminders.length === 0) { setShuffledReminders([]); return; }
-    if (reshuffle) {
-      setShuffledReminders([...reminders].sort(() => Math.random() - 0.5));
-      setIdx(0);
-    } else {
-      setShuffledReminders(prev => prev.map(p => reminders.find(r => r.id === p.id) ?? p));
-    }
-  }, [reminders]);
+  const allMembers = useMemo(
+    () => buildMemberList({ currentUid, currentUserProfile, tripMembers, memberProfiles }),
+    [currentUid, currentUserProfile, memberProfiles, tripMembers],
+  );
 
-  // Auto-advance every 5s. Paused while a sheet is open so nothing moves
-  // under your finger while you read or edit.
-  const paused = !!editor || showAll;
-  const startAutoAdvance = useCallback(() => {
-    clearInterval(autoTimer.current);
-    if (paused || shuffledReminders.length <= 1) return;
-    autoTimer.current = setInterval(() => {
-      setIdx(i => (i + 1) % shuffledReminders.length);
-    }, 5000);
-  }, [shuffledReminders.length, paused]);
+  const doneCount = reminders.filter(r => r.completed).length;
+  const openOnes = reminders.filter(r => !r.completed);
+  const nextUp = openOnes[0] || null;
 
-  useEffect(() => {
-    startAutoAdvance();
-    return () => clearInterval(autoTimer.current);
-  }, [startAutoAdvance]);
+  const visible = filter === 'open' ? openOnes
+    : filter === 'done' ? reminders.filter(r => r.completed)
+      : reminders;
 
-  useEffect(() => {
-    if (editor) setTimeout(() => inputRef.current?.focus(), 80);
-  }, [editor]);
-
-  // All trip members with their profiles for the owner picker
-  const allMembers = useMemo(() => buildMemberList({ currentUid, currentUserProfile, tripMembers, memberProfiles }),
-    [currentUid, currentUserProfile, memberProfiles, tripMembers]);
-
-  const goTo = (i) => {
-    setIdx(i);
-    startAutoAdvance();
-  };
-
-  const openNew = () => {
-    setDraftText('');
+  const resetComposer = useCallback(() => {
+    setDraft('');
+    setEditingId(null);
     setDraftUid(currentUid || '');
-    setEditor({});
+  }, [currentUid]);
+
+  const openSheet = (focus = false) => {
+    resetComposer();
+    setFilter('open');
+    setOpen(true);
+    if (focus && canEdit) setTimeout(() => inputRef.current?.focus(), 260);
   };
 
-  const openEdit = (rem) => {
-    setDraftText(rem.text || '');
-    setDraftUid(rem.addedByUid || currentUid || '');
-    setEditor({ id: rem.id });
+  const closeSheet = () => { setOpen(false); resetComposer(); };
+
+  const toggleDone = (r) => {
+    if (!canEdit) return;
+    updateDoc(doc(db, 'trips', tripId, 'reminders', r.id), { completed: !r.completed });
   };
 
-  const closeEditor = () => { setEditor(null); setDraftText(''); };
+  const startEdit = (r) => {
+    setEditingId(r.id);
+    setDraft(r.text || '');
+    setDraftUid(r.addedByUid || currentUid || '');
+    setTimeout(() => inputRef.current?.focus(), 40);
+  };
 
-  const handleSave = () => {
-    const text = draftText.trim();
-    if (!text) { closeEditor(); return; }
-    // Fall back to the signed-in user when the picker is hidden (solo trip)
-    // or the chosen uid is no longer a member, so a reminder always has an
-    // owner attached — the avatar on the strip depends on it.
+  const submit = (e) => {
+    e?.preventDefault?.();
+    const text = draft.trim();
+    if (!text || !canEdit) return;
+
+    /* A reminder always carries an owner — the avatar on the row depends on
+       it — so fall back to the signed-in user when the picker is hidden on a
+       solo trip, or when the chosen uid has since left. */
     const owner = allMembers.find(m => m.uid === draftUid) || (currentUid ? {
       uid: currentUid,
       displayName: currentUserProfile?.displayName || currentUserProfile?.email || '',
@@ -250,474 +270,350 @@ function RemindersCard({ tripId, canEdit }) {
       addedByPhoto: owner.photoURL || '',
     } : {};
 
-    if (editor?.id) {
-      const id = editor.id;
-      closeEditor();
-      updateDoc(doc(db, 'trips', tripId, 'reminders', id), { text, ...ownerFields });
+    if (editingId) {
+      updateDoc(doc(db, 'trips', tripId, 'reminders', editingId), { text, ...ownerFields });
     } else {
-      const newRef = doc(collection(db, 'trips', tripId, 'reminders'));
-      const newIdx = reminders.length;
-      closeEditor();
-      setTimeout(() => goTo(newIdx), 50);
-      setDoc(newRef, { text, createdAt: Date.now(), completed: false, ...ownerFields });
+      setDoc(doc(collection(db, 'trips', tripId, 'reminders')), {
+        text, createdAt: Date.now(), completed: false, ...ownerFields,
+      });
+      if (filter === 'done') setFilter('open');
     }
+    resetComposer();
+    // Keep the keyboard up: several reminders usually arrive together.
+    if (!editingId) inputRef.current?.focus();
   };
 
-  const handleDeleteById = async (id) => {
-    const ok = await confirm({ message: 'למחוק את התזכורת?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
+  const remove = async (r) => {
+    const ok = await confirm({
+      title: 'מחיקת תזכורת',
+      message: <span>למחוק את <strong>{r.text}</strong>?</span>,
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
     if (!ok) return;
-    setIdx(i => Math.max(0, i - 1));
-    deleteDoc(doc(db, 'trips', tripId, 'reminders', id));
+    if (editingId === r.id) resetComposer();
+    deleteDoc(doc(db, 'trips', tripId, 'reminders', r.id));
   };
 
-  const handleBulkDelete = async () => {
-    if (checkedIds.size === 0) return;
-    const ok = await confirm({ message: `למחוק ${checkedIds.size} תזכורות?`, confirmText: 'מחק', cancelText: 'בטל', danger: true });
+  const clearDone = async () => {
+    const done = reminders.filter(r => r.completed);
+    if (done.length === 0) return;
+    const ok = await confirm({
+      title: 'ניקוי שבוצעו',
+      message: `למחוק ${done.length} תזכורות שכבר בוצעו?`,
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
     if (!ok) return;
-    const ids = [...checkedIds];
-    setCheckedIds(new Set());
-    setSelectMode(false);
-    ids.forEach(id => deleteDoc(doc(db, 'trips', tripId, 'reminders', id)));
+    const batch = writeBatch(db);
+    done.forEach(r => batch.delete(doc(db, 'trips', tripId, 'reminders', r.id)));
+    batch.commit();
+    setFilter('open');
   };
 
-  const handleToggleReminder = (id, currentCompleted) => {
-    updateDoc(doc(db, 'trips', tripId, 'reminders', id), { completed: !currentCompleted });
-  };
-
-  const iconBtn = (color = 'var(--text-muted)') => ({
-    background: 'none', border: 'none', cursor: 'pointer',
-    color, padding: '6px 7px', display: 'flex', alignItems: 'center', flexShrink: 0,
-  });
-
-  const doneCount = reminders.filter(r => r.completed).length;
+  const TABS = [
+    { key: 'open', label: 'פתוחות', n: openOnes.length },
+    { key: 'done', label: 'בוצעו', n: doneCount },
+    { key: 'all', label: 'הכל', n: reminders.length },
+  ];
 
   return (
-    <div>
-      <style>{`
-        @keyframes remFadeUp {
-          from { opacity: 0; transform: translateY(7px); }
-          to   { opacity: 1; transform: translateY(0);   }
-        }
-      `}</style>
-
-      {/* ── Compact reminders strip ──────────────────────────────────────── */}
-      {shuffledReminders.length === 0 ? (
-        <div className="glass-card" style={{
-          direction: 'rtl', padding: '12px 16px',
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>תזכורות</span>
-          <span style={{ fontSize: 13, color: 'var(--text-muted)', flex: 1, textAlign: 'center' }}>
-            {canEdit ? 'אין תזכורות — הוסף אחת' : 'אין תזכורות'}
-          </span>
-          {canEdit && (
-            <button onClick={openNew} style={iconBtn('var(--accent)')} title="תזכורת חדשה">
-              <Plus size={16} />
-            </button>
-          )}
-        </div>
-      ) : (() => {
-        const r = shuffledReminders[idx] || shuffledReminders[0];
-        if (!r) return null;
-        const n = shuffledReminders.length;
-        return (
-          <div
-            className="glass-card"
-            onTouchStart={e => { touchStartX.current = e.touches[0].clientX; }}
-            onTouchEnd={e => {
-              const dx = e.changedTouches[0].clientX - touchStartX.current;
-              if (Math.abs(dx) > 40) goTo(dx > 0 ? (idx - 1 + n) % n : (idx + 1) % n);
-            }}
-            style={{
-              direction: 'rtl', display: 'flex', flexDirection: 'column',
-              padding: '10px 14px 10px', gap: 8,
-              boxSizing: 'border-box',
-              borderTop: '3px solid var(--accent)',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Header: label + progress, then list / add */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.5px' }}>תזכורות</span>
-                <span style={{
-                  fontSize: 10, fontWeight: 700,
-                  background: 'var(--p-10)', color: 'var(--accent)',
-                  border: '1px solid var(--p-18)',
-                  borderRadius: 20, padding: '1px 7px',
-                }}>
-                  {doneCount}/{n}
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                <button onClick={() => setShowAll(true)} style={iconBtn('var(--accent)')} title="כל התזכורות">
-                  <List size={15} />
-                </button>
-                {canEdit && (
-                  <button onClick={openNew} style={iconBtn('var(--accent)')} title="תזכורת חדשה">
-                    <Plus size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Current reminder — tapping the text opens the editor */}
-            <div key={`${r.id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 10, animation: 'remFadeUp 0.35s ease', minHeight: 44 }}>
-              <button
-                type="button"
-                onClick={() => canEdit && handleToggleReminder(r.id, !!r.completed)}
-                aria-label={r.completed ? 'בטל סימון התזכורת כבוצעה' : 'סמן את התזכורת כבוצעה'}
-                aria-pressed={!!r.completed}
-                style={{
-                  width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-                  border: r.completed ? 'none' : '2px solid rgba(79,70,229,0.3)',
-                  background: r.completed ? 'var(--accent)' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: canEdit ? 'pointer' : 'default', padding: 0, transition: 'all 0.2s',
-                }}
-              >
-                {r.completed && <Check size={13} color="#fff" strokeWidth={3} />}
-              </button>
-              <button
-                type="button"
-                onClick={() => canEdit && openEdit(r)}
-                style={{
-                  flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-                  textAlign: 'right', cursor: canEdit ? 'pointer' : 'default',
-                  fontFamily: 'var(--font-hebrew)',
-                }}
-              >
-                <span style={{
-                  fontSize: 15, fontWeight: r.completed ? 400 : 600,
-                  color: r.completed ? 'var(--text-muted)' : 'var(--text-main)',
-                  lineHeight: 1.45,
-                  display: '-webkit-box', WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                  textDecoration: r.completed ? 'line-through' : 'none',
-                }}>{r.text}</span>
-              </button>
-              {(r.addedByPhoto || r.addedByName) && (
-                <div title={r.addedByName || ''} style={{ flexShrink: 0, opacity: r.completed ? 0.4 : 0.9 }}>
-                  <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={24} />
-                </div>
-              )}
-            </div>
-
-            {/* Dots */}
-            {n > 1 && (
-              <div style={{ display: 'flex', gap: 5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {shuffledReminders.map((_, j) => (
-                  <button key={j} onClick={() => goTo(j)} aria-label={`תזכורת ${j + 1}`} style={{
-                    width: j === idx ? 16 : 6, height: 6, borderRadius: 3,
-                    border: 'none', padding: 0, flexShrink: 0,
-                    background: j === idx ? 'var(--accent)' : 'var(--p-15)',
-                    cursor: 'pointer', transition: 'all 0.25s ease',
-                  }} />
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* ── Editor sheet (add / edit) ────────────────────────────────────── */}
-      {editor && (
-        <Sheet onClose={closeEditor} maxHeight="min(85vh, 100vh - 40px)">
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '12px 18px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
-              {editor.id ? 'עריכת תזכורת' : 'תזכורת חדשה'}
-            </span>
-            <button onClick={closeEditor} style={{
-              background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
-              color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
+    <>
+      {/* ── Tile ──────────────────────────────────────────────────────────
+          Static on purpose. Nothing rotates, nothing advances; the one line
+          it shows is the next thing actually outstanding. */}
+      <button
+        type="button"
+        onClick={() => openSheet(reminders.length === 0)}
+        className="glass-card"
+        aria-label="תזכורות"
+        style={{
+          direction: 'rtl', width: '100%', textAlign: 'right', cursor: 'pointer',
+          border: 'var(--card-border)', fontFamily: 'var(--font-hebrew)',
+          /* .glass-card is a flex *column*; these rows are horizontal, so the
+             direction has to be stated or the parts stack. */
+          padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12,
+          minHeight: 68,
+        }}
+      >
+        {reminders.length > 0
+          ? <ProgressRing done={doneCount} total={reminders.length} />
+          : (
+            <div style={{
+              width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+              background: 'var(--p-8)', color: 'var(--accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <X size={16} />
-            </button>
-          </div>
-
-          <div data-sheet-scroll style={{ overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>תוכן התזכורת</label>
-              <textarea
-                ref={inputRef}
-                className="form-control"
-                rows={3}
-                value={draftText}
-                onChange={e => setDraftText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(); }
-                  if (e.key === 'Escape') closeEditor();
-                }}
-                placeholder="למשל: לאסוף את הדרכונים מהכספת"
-                style={{ resize: 'vertical', minHeight: 74, fontSize: 14, lineHeight: 1.5 }}
-              />
+              <Bell size={20} />
             </div>
+          )}
 
-            {allMembers.length > 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>של מי התזכורת</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {allMembers.map(m => {
-                    const active = draftUid === m.uid;
-                    return (
-                      <button
-                        key={m.uid}
-                        type="button"
-                        onClick={() => setDraftUid(m.uid)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
-                          border: active ? '1.5px solid var(--accent)' : '1.5px solid transparent',
-                          background: active ? 'var(--p-10)' : 'var(--ink-5)',
-                          color: active ? 'var(--accent)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-hebrew)', fontSize: 12, fontWeight: 700,
-                        }}
-                      >
-                        <Avatar photoURL={m.photoURL} name={m.displayName} size={18} />
-                        {m.displayName}
-                        {active && <Check size={12} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div style={{
-            flexShrink: 0, borderTop: '1px solid var(--ink-7)',
-            padding: '12px 18px calc(12px + env(safe-area-inset-bottom))',
-            display: 'flex', gap: 8, alignItems: 'center',
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.4px' }}>
+            תזכורות
+          </span>
+          <span style={{
+            fontSize: 14.5, fontWeight: 700, color: nextUp ? 'var(--text-main)' : 'var(--text-muted)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.4,
           }}>
-            {editor.id && (
+            {nextUp ? nextUp.text
+              : reminders.length > 0 ? 'הכל בוצע 🎉'
+                : canEdit ? 'הוסף תזכורת ראשונה' : 'אין תזכורות'}
+          </span>
+        </div>
+
+        {openOnes.length > 1 && (
+          <span style={{
+            fontSize: 11, fontWeight: 800, color: 'var(--accent)', background: 'var(--p-10)',
+            border: '1px solid var(--p-18)', borderRadius: 20, padding: '2px 8px', flexShrink: 0,
+          }}>
+            עוד {openOnes.length - 1}
+          </span>
+        )}
+        <ChevronLeft size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      </button>
+
+      {/* ── The one sheet ────────────────────────────────────────────────
+          Everything happens here. Drag it down to close, as everywhere
+          else in the app. */}
+      {open && (
+        <Sheet onClose={closeSheet} maxHeight="min(88vh, 100vh - 32px)">
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '2px 16px 12px', flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', flex: 1 }}>תזכורות</span>
+            {doneCount > 0 && canEdit && (
               <button
-                type="button"
-                onClick={async () => { const id = editor.id; closeEditor(); await handleDeleteById(id); }}
-                title="מחק תזכורת"
+                type="button" onClick={clearDone}
                 style={{
-                  width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                  background: 'var(--c-red2-6)', color: 'var(--c-red2)',
-                  border: 'none', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px',
+                  fontFamily: 'var(--font-hebrew)', fontSize: 12.5, fontWeight: 700,
+                  color: 'var(--text-muted)',
                 }}
               >
-                <Trash2 size={17} />
+                נקה שבוצעו
               </button>
             )}
             <button
-              type="button"
-              onClick={handleSave}
-              disabled={!draftText.trim()}
-              className="btn-primary"
-              style={{ flex: 1, minHeight: 44, gap: 8, opacity: draftText.trim() ? 1 : 0.5 }}
+              type="button" onClick={closeSheet} aria-label="סגור"
+              style={{
+                background: 'var(--ink-6)', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+                width: 34, height: 34, borderRadius: 12, display: 'flex',
+                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
             >
-              <Check size={17} />
-              <span>{editor.id ? 'שמור שינויים' : 'הוסף תזכורת'}</span>
-            </button>
-            <button type="button" onClick={closeEditor} className="btn-secondary" style={{ minHeight: 44, flexShrink: 0 }}>
-              ביטול
+              <X size={17} />
             </button>
           </div>
-        </Sheet>
-      )}
 
-      {/* ── All-reminders sheet ──────────────────────────────────────────── */}
-      {showAll && (
-        <Sheet
-          onClose={() => { setShowAll(false); setSelectMode(false); setCheckedIds(new Set()); }}
-          maxHeight="min(80vh, 100vh - 40px)"
-        >
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '12px 16px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0, gap: 8,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>כל התזכורות</span>
-              <span style={{
-                fontSize: 11, fontWeight: 700, background: 'var(--p-10)',
-                color: 'var(--accent)', border: '1px solid var(--p-18)',
-                borderRadius: 20, padding: '1px 8px', flexShrink: 0,
-              }}>{doneCount}/{reminders.length}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {canEdit && reminders.length > 0 && (
-                <button
-                  onClick={() => { setSelectMode(m => !m); setCheckedIds(new Set()); }}
-                  style={{
-                    fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 20,
-                    padding: '4px 12px', fontFamily: 'var(--font-hebrew)',
-                    border: 'none',
-                    background: selectMode ? 'var(--accent)' : 'var(--ink-6)',
-                    color: selectMode ? '#fff' : 'var(--text-muted)',
-                  }}
-                >
-                  {selectMode ? 'סיום בחירה' : 'בחירה'}
-                </button>
-              )}
-              <button onClick={() => { setShowAll(false); setSelectMode(false); setCheckedIds(new Set()); }} style={{
-                background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
-                color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
-              }}>
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div data-sheet-scroll style={{ overflowY: 'auto', padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {reminders.length === 0 ? (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '28px 0' }}>אין תזכורות</p>
-            ) : reminders.map((r, ri) => {
-              const checked = checkedIds.has(r.id);
-              const done = !!r.completed;
-              return (
-                <div
-                  key={r.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px', borderRadius: 14,
-                    background: checked ? 'var(--p-8)' : done ? 'var(--ink-2)' : ri % 2 === 0 ? 'transparent' : 'var(--ink-2)',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {selectMode ? (
-                    <button
-                      onClick={() => setCheckedIds(prev => {
-                        const next = new Set(prev);
-                        if (checked) next.delete(r.id); else next.add(r.id);
-                        return next;
-                      })}
-                      aria-label="בחר תזכורת"
-                      style={{
-                        width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-                        border: checked ? 'none' : '2px solid rgba(11,11,48,0.18)',
-                        background: checked ? 'var(--accent)' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        cursor: 'pointer', padding: 0, transition: 'all 0.15s',
-                      }}
-                    >
-                      {checked && <Check size={13} color="#fff" strokeWidth={3} />}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => canEdit && handleToggleReminder(r.id, done)}
-                      aria-label={done ? 'בטל סימון' : 'סמן כבוצע'}
-                      style={{
-                        width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-                        border: done ? 'none' : '2px solid rgba(79,70,229,0.25)',
-                        background: done ? 'var(--accent)' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        cursor: canEdit ? 'pointer' : 'default',
-                        transition: 'all 0.18s', padding: 0,
-                      }}
-                    >
-                      {done && <Check size={13} color="#fff" strokeWidth={3} />}
-                    </button>
-                  )}
-
+          {/* Filter — a visible state, not a hidden mode */}
+          {reminders.length > 0 && (
+            <div style={{
+              display: 'flex', gap: 4, padding: 4, margin: '0 16px 10px',
+              background: 'var(--ink-3)', borderRadius: 14, flexShrink: 0,
+            }}>
+              {TABS.map(t => {
+                const active = filter === t.key;
+                return (
                   <button
-                    type="button"
-                    onClick={() => {
-                      if (!canEdit) return;
-                      if (selectMode) {
-                        setCheckedIds(prev => {
-                          const next = new Set(prev);
-                          if (checked) next.delete(r.id); else next.add(r.id);
-                          return next;
-                        });
-                      } else {
-                        setShowAll(false);
-                        openEdit(r);
-                      }
-                    }}
+                    key={t.key} type="button" onClick={() => setFilter(t.key)}
                     style={{
-                      flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-                      textAlign: 'right', cursor: canEdit ? 'pointer' : 'default',
-                      fontFamily: 'var(--font-hebrew)',
+                      flex: 1, border: 'none', cursor: 'pointer', borderRadius: 11,
+                      padding: '9px 4px', fontFamily: 'var(--font-hebrew)',
+                      fontSize: 13, fontWeight: 800,
+                      background: active ? 'var(--surface)' : 'transparent',
+                      color: active ? 'var(--accent)' : 'var(--text-muted)',
+                      boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                      transition: 'background 0.18s, color 0.18s',
                     }}
                   >
-                    <span style={{
-                      fontSize: 15, fontWeight: done ? 400 : 500,
-                      color: done ? 'var(--text-muted)' : 'var(--text-main)', lineHeight: 1.45,
-                      textDecoration: done ? 'line-through' : 'none',
-                      display: 'block',
-                    }}>
-                      {r.text}
-                    </span>
+                    {t.label} {t.n > 0 && <span style={{ opacity: 0.65 }}>{t.n}</span>}
                   </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div
+            data-sheet-scroll
+            style={{
+              overflowY: 'auto', padding: '0 12px 8px', flex: 1,
+              display: 'flex', flexDirection: 'column', gap: 6,
+            }}
+          >
+            {visible.length === 0 ? (
+              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '34px 12px', lineHeight: 1.6 }}>
+                {filter === 'done' ? 'עוד לא בוצעה אף תזכורת'
+                  : filter === 'open' && reminders.length > 0 ? 'אין תזכורות פתוחות — הכל בוצע 🎉'
+                    : canEdit ? 'כתוב תזכורת ראשונה בשדה שלמטה' : 'אין תזכורות'}
+              </p>
+            ) : visible.map(r => {
+              const done = !!r.completed;
+              const editing = editingId === r.id;
+              return (
+                <SwipeRow
+                  key={r.id}
+                  enabled={canEdit}
+                  actions={[
+                    { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => startEdit(r) },
+                    { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => remove(r) },
+                  ]}
+                  className="glass-card"
+                  onClick={() => toggleDone(r)}
+                  style={{
+                    display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12,
+                    padding: '12px 14px', textAlign: 'right',
+                    minHeight: 56, cursor: canEdit ? 'pointer' : 'default',
+                    background: editing ? 'var(--p-8)' : done ? 'var(--ink-2)' : 'var(--card-bg)',
+                    border: editing ? '1px solid var(--p-18)' : 'var(--card-border)',
+                    transition: 'background 0.18s',
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 26, height: 26, borderRadius: 9, flexShrink: 0,
+                      border: done ? 'none' : '2px solid var(--p-22)',
+                      background: done ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.18s',
+                    }}
+                  >
+                    {done && <Check size={15} color="#fff" strokeWidth={3} />}
+                  </span>
+
+                  <span style={{
+                    flex: 1, minWidth: 0, fontSize: 15, lineHeight: 1.45,
+                    fontWeight: done ? 500 : 700,
+                    color: done ? 'var(--text-muted)' : 'var(--text-main)',
+                    textDecoration: done ? 'line-through' : 'none',
+                    wordBreak: 'break-word',
+                  }}>
+                    {r.text}
+                  </span>
 
                   {(r.addedByPhoto || r.addedByName) && (
-                    <div title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.35 : 0.85 }}>
+                    <span title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.4 : 0.9 }}>
                       <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
-                    </div>
+                    </span>
                   )}
 
-                  {canEdit && !selectMode && (
-                    <button
-                      onClick={() => { setShowAll(false); openEdit(r); }}
-                      title="ערוך"
-                      style={iconBtn('var(--accent)')}
-                    >
-                      <Pencil size={14} />
-                    </button>
+                  {/* Pointer devices keep buttons; on touch the same two ride the swipe. */}
+                  {canEdit && (
+                    <span className="row-inline-actions" style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                      <button
+                        type="button" aria-label="ערוך תזכורת"
+                        onClick={e => { e.stopPropagation(); startEdit(r); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button" aria-label="מחק תזכורת"
+                        onClick={e => { e.stopPropagation(); remove(r); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-red2)', padding: 6, display: 'flex' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </span>
                   )}
-                </div>
+                </SwipeRow>
               );
             })}
           </div>
 
-          {/* Footer: add, or delete the current selection */}
+          {/* ── Composer ──────────────────────────────────────────────────
+              Add and edit live in the same field. Editing never opens a
+              second sheet, so the list stays visible behind the keyboard. */}
           {canEdit && (
-            <div style={{
-              flexShrink: 0, borderTop: '1px solid var(--ink-7)',
-              padding: '10px 16px calc(10px + env(safe-area-inset-bottom))',
-              display: 'flex', gap: 8, alignItems: 'center',
-            }}>
-              {selectMode ? (
-                <>
+            <form
+              onSubmit={submit}
+              style={{
+                flexShrink: 0, borderTop: '1px solid var(--ink-7)', background: 'var(--modal-bg)',
+                padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}
+            >
+              {editingId && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
+                  background: 'var(--p-10)', color: 'var(--accent)', borderRadius: 20,
+                  padding: '3px 6px 3px 12px', fontSize: 12, fontWeight: 800,
+                }}>
+                  <Pencil size={12} />
+                  <span>עריכת תזכורת</span>
                   <button
-                    type="button"
-                    onClick={handleBulkDelete}
-                    disabled={checkedIds.size === 0}
+                    type="button" onClick={resetComposer} aria-label="בטל עריכה"
                     style={{
-                      flex: 1, minHeight: 42, borderRadius: 12, border: 'none',
-                      cursor: checkedIds.size ? 'pointer' : 'default',
-                      background: 'var(--c-red2-6)', color: 'var(--c-red2)',
-                      opacity: checkedIds.size ? 1 : 0.5,
-                      fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 800,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      background: 'var(--p-15)', border: 'none', cursor: 'pointer', color: 'var(--accent)',
+                      width: 20, height: 20, borderRadius: '50%', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', padding: 0,
                     }}
                   >
-                    <Trash2 size={16} />
-                    <span>מחק{checkedIds.size ? ` (${checkedIds.size})` : ''}</span>
+                    <X size={12} />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSelectMode(false); setCheckedIds(new Set()); }}
-                    className="btn-secondary"
-                    style={{ minHeight: 42, flexShrink: 0 }}
-                  >
-                    ביטול
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setShowAll(false); openNew(); }}
-                  className="btn-primary"
-                  style={{ width: '100%', minHeight: 42, gap: 8 }}
-                >
-                  <Plus size={16} />
-                  <span>תזכורת חדשה</span>
-                </button>
+                </div>
               )}
-            </div>
+
+              {allMembers.length > 1 && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', overflowX: 'auto', paddingBottom: 2 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>של מי:</span>
+                  {allMembers.map(m => {
+                    const active = draftUid === m.uid;
+                    return (
+                      <button
+                        key={m.uid} type="button" onClick={() => setDraftUid(m.uid)}
+                        title={m.displayName}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0,
+                          borderRadius: '50%', display: 'flex',
+                          outline: active ? '2px solid var(--accent)' : '2px solid transparent',
+                          opacity: active ? 1 : 0.45, transition: 'opacity 0.15s, outline-color 0.15s',
+                        }}
+                      >
+                        <Avatar photoURL={m.photoURL} name={m.displayName} size={28} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') resetComposer(); }}
+                  enterKeyHint={editingId ? 'done' : 'send'}
+                  placeholder={editingId ? 'עדכן את התזכורת...' : 'כתוב תזכורת ושלח...'}
+                  style={{
+                    flex: 1, minWidth: 0, minHeight: 46, borderRadius: 23,
+                    border: '1px solid var(--ink-10)', background: 'var(--ink-2)',
+                    padding: '0 16px', fontFamily: 'var(--font-hebrew)', fontSize: 15,
+                    color: 'var(--text-main)', outline: 'none',
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!draft.trim()}
+                  aria-label={editingId ? 'שמור תזכורת' : 'הוסף תזכורת'}
+                  style={{
+                    width: 46, height: 46, borderRadius: '50%', flexShrink: 0, border: 'none',
+                    background: draft.trim() ? 'var(--accent)' : 'var(--ink-8)',
+                    color: draft.trim() ? '#fff' : 'var(--text-muted)',
+                    cursor: draft.trim() ? 'pointer' : 'default',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'background 0.18s',
+                  }}
+                >
+                  {editingId ? <Check size={20} strokeWidth={3} /> : <ArrowUp size={20} strokeWidth={3} />}
+                </button>
+              </div>
+            </form>
           )}
         </Sheet>
       )}
-    </div>
+    </>
   );
 }
 
