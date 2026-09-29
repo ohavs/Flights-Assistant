@@ -157,23 +157,49 @@ export function buildMemberList({
    thumb. Rows carry their actions behind a swipe, the same gesture the
    checklist and the expenses already use.                                */
 
-/* The tile's whole message at a glance: how much of the trip's list is
-   done, without reading a word of it. */
-function ProgressRing({ done, total, size = 44 }) {
+/* Long enough to read a line of Hebrew, short enough that a queue of them
+   gets through. The ring below sweeps exactly this. */
+const REMINDER_DWELL_MS = 3000;
+
+/* One arc doing two jobs, which is why there is no second indicator.
+
+   It is drawn at i/n when a reminder appears and grows to (i+1)/n by the
+   time the next one takes over. Read at any instant it says how far
+   through the open list you are; watched, the growth itself is the
+   countdown to the swap — so the change is announced without a separate
+   bar competing with the very line that already advances with the numbers.
+   A full ring means the last one is on screen and the lap restarts.
+
+   The sweep is a CSS animation with only a `from`: the implicit `to` is
+   the element's own stroke-dashoffset, already set to this step's end. If
+   the animation never runs — reduced motion, or an engine that declines —
+   the ring still sits at the right place and simply steps instead of
+   gliding. */
+function CycleRing({ index, count, animate, size = 44 }) {
   const stroke = 4;
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
-  const pct = total > 0 ? done / total : 0;
+  // dash offset that leaves k/count of the ring drawn
+  const offsetAt = (k) => circumference * (1 - (count > 0 ? k / count : 0));
+
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }} aria-hidden="true">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--p-15)" strokeWidth={stroke} />
         <circle
+          // Remounting per step restarts the sweep; without it the browser
+          // keeps running the old one and the arc drifts out of step.
+          key={index}
           cx={size / 2} cy={size / 2} r={r} fill="none"
           stroke="var(--accent)" strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - pct)}
-          style={{ transition: 'stroke-dashoffset 0.45s var(--ease-out)' }}
+          style={{
+            strokeDashoffset: offsetAt(index + 1),
+            ...(animate ? {
+              '--arc-from': String(offsetAt(index)),
+              animation: `reminder-arc ${REMINDER_DWELL_MS}ms linear`,
+            } : null),
+          }}
         />
       </svg>
       <span style={{
@@ -181,15 +207,11 @@ function ProgressRing({ done, total, size = 44 }) {
         fontSize: 12, fontWeight: 900, color: 'var(--accent)', direction: 'ltr',
         fontVariantNumeric: 'tabular-nums',
       }}>
-        {done}/{total}
+        {index + 1}/{count}
       </span>
     </div>
   );
 }
-
-/* Long enough to read a line of Hebrew, short enough that a queue of them
-   gets through. The bar below the tile counts out exactly this. */
-const REMINDER_DWELL_MS = 3000;
 
 function RemindersCard({ tripId, canEdit }) {
   const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
@@ -247,7 +269,8 @@ function RemindersCard({ tripId, canEdit }) {
   }, [cycling, cycleCount]);
 
   // The list shrinks as things get ticked off, so never index past its end.
-  const nextUp = cycleCount > 0 ? openOnes[tileIdx % cycleCount] : null;
+  const pos = cycleCount > 0 ? tileIdx % cycleCount : 0;
+  const nextUp = cycleCount > 0 ? openOnes[pos] : null;
 
   const visible = filter === 'open' ? openOnes
     : filter === 'done' ? reminders.filter(r => r.completed)
@@ -360,12 +383,10 @@ function RemindersCard({ tripId, canEdit }) {
              direction has to be stated or the parts stack. */
           padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12,
           minHeight: 68,
-          // The tick bar is pinned to the bottom edge and must not escape it.
-          position: 'relative', overflow: 'hidden',
         }}
       >
-        {reminders.length > 0
-          ? <ProgressRing done={doneCount} total={reminders.length} />
+        {cycleCount > 0
+          ? <CycleRing index={pos} count={cycleCount} animate={cycling} />
           : (
             <div style={{
               width: 44, height: 44, borderRadius: 14, flexShrink: 0,
@@ -394,29 +415,7 @@ function RemindersCard({ tripId, canEdit }) {
           </span>
         </div>
 
-        {openOnes.length > 1 && (
-          <span style={{
-            fontSize: 11, fontWeight: 800, color: 'var(--accent)', background: 'var(--p-10)',
-            border: '1px solid var(--p-18)', borderRadius: 20, padding: '2px 8px', flexShrink: 0,
-          }}>
-            עוד {openOnes.length - 1}
-          </span>
-        )}
         <ChevronLeft size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-
-        {/* The promise that something is about to move. A hairline, keyed to
-            the reminder on screen so the fill restarts with each one. */}
-        {cycling && (
-          <span
-            key={`tick-${tileIdx}`}
-            aria-hidden="true"
-            style={{
-              position: 'absolute', insetInline: 0, bottom: 0, height: 2.5,
-              background: 'var(--accent)', opacity: 0.45, transformOrigin: 'right',
-              animation: `reminder-tick ${REMINDER_DWELL_MS}ms linear`,
-            }}
-          />
-        )}
       </button>
 
       {/* ── The one sheet ────────────────────────────────────────────────

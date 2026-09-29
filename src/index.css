@@ -1396,18 +1396,22 @@ input[type="datetime-local"].form-control {
 }
 
 /* ── Reminder tile cycling ──
-   The hairline under the tile counts out the dwell before the next reminder
-   takes its place. It exists so the change is announced rather than sprung:
-   you can see it coming and decide to wait for it. Subtle enough to ignore,
-   present enough to read as a countdown.
+   The ring under the tile's number is the countdown: it grows from this
+   reminder's share of the lap to the next one's across the dwell, so the
+   swap is announced by the very arc that already tracks position. One
+   indicator, both meanings — there is deliberately no second bar.
 
-   Both animations are motion for its own sake to anyone who asked the system
-   for less of it, so both stop under prefers-reduced-motion — and the timer
-   stops in JS as well, leaving the tile holding one reminder rather than
-   swapping silently with no countdown to explain it. */
-@keyframes reminder-tick {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
+   Only a `from`: the implicit `to` is the element's own stroke-dashoffset,
+   which is already this step's end value. An engine that will not run the
+   animation still shows the arc in the right place, stepping rather than
+   gliding.
+
+   Both animations are motion for its own sake to anyone who asked the
+   system for less of it, so both stop under prefers-reduced-motion — and
+   the timer stops in JS as well, leaving the tile holding one reminder
+   rather than swapping silently with no countdown to explain it. */
+@keyframes reminder-arc {
+  from { stroke-dashoffset: var(--arc-from); }
 }
 
 @keyframes reminder-swap {
