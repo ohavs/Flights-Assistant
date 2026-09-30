@@ -1,5 +1,15 @@
 # Changelog — Flights-Assistant
 
+## [6.1.0] - 2026-09-30
+
+### Added
+- **"Needs Advance Booking" Toggle for Places**:
+  - Added an optional toggle in the add/edit place modal of `PlanningTab.jsx` to mark any place (tour, restaurant, attraction, etc.) as requiring an advance reservation. It is off by default.
+  - Stored as a `needsReservation` boolean on each `/trips/{tripId}/planning` document; existing places without the field are treated as not requiring a reservation.
+  - Marked places show an amber "צריך לסגור מראש" badge and an amber side accent on their card (the green visited accent takes precedence once visited).
+  - Daily schedule activities linked to a marked place show a compact version of the same badge.
+
+
 ## [6.0.1] - 2026-05-21
 
 ### Fixed
