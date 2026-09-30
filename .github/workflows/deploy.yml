@@ -47,7 +47,7 @@ jobs:
         run: |
           git worktree add ../live-base 80f12ed
           cd ../live-base
-          npm ci --no-audit --no-fund
+          npm ci --no-audit --no-fund --legacy-peer-deps
           npm run build
           if ! grep -q 'url:"index.html",revision:"272b96cdd92643170b812d46c1307a15"' dist/sw.js; then
             echo "::error::Building 80f12ed did not reproduce the live site — not deploying."
@@ -57,7 +57,7 @@ jobs:
           echo "Base build is identical to the live site."
 
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Build
         run: npm run build
