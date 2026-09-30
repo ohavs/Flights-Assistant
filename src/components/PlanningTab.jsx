@@ -28,7 +28,8 @@ import {
   Calendar,
   Clock,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  CalendarCheck
 } from 'lucide-react';
 
 export const defaultGironaPlans = [
@@ -137,6 +138,29 @@ export const defaultPraguePlans = [
   }
 ];
 
+// Clear amber badge marking a place that must be booked/reserved in advance
+function ReservationBadge({ compact = false }) {
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: compact ? 4 : 6,
+      alignSelf: 'flex-start',
+      background: '#fef3c7',
+      color: '#b45309',
+      border: '1px solid #fcd34d',
+      borderRadius: compact ? 6 : 10,
+      padding: compact ? '2px 7px' : '6px 12px',
+      fontSize: compact ? 11 : 13,
+      fontWeight: 800,
+      whiteSpace: 'nowrap'
+    }}>
+      <CalendarCheck size={compact ? 12 : 15} />
+      <span>צריך לסגור מראש</span>
+    </div>
+  );
+}
+
 export default function PlanningTab({ tripId }) {
   const [plans, setPlans] = useState([]);
   const [days, setDays] = useState([]);
@@ -155,6 +179,7 @@ export default function PlanningTab({ tripId }) {
   const [address, setAddress] = useState('');
   const [rating, setRating] = useState(5);
   const [price, setPrice] = useState('');
+  const [needsReservation, setNeedsReservation] = useState(false);
 
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -221,6 +246,7 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setRating(5);
     setPrice('');
+    setNeedsReservation(false);
     setShowAddForm(true);
   };
 
@@ -232,6 +258,7 @@ export default function PlanningTab({ tripId }) {
     setAddress(plan.address || '');
     setRating(plan.rating || 5);
     setPrice(plan.price || '');
+    setNeedsReservation(!!plan.needsReservation);
     setShowAddForm(true);
   };
 
@@ -263,7 +290,8 @@ export default function PlanningTab({ tripId }) {
         description: description.trim(),
         address: address.trim(),
         rating: Number(rating) || 5,
-        price: price.trim() || 'חינם'
+        price: price.trim() || 'חינם',
+        needsReservation
       });
     } else {
       const id = 'plan-' + Date.now();
@@ -275,6 +303,7 @@ export default function PlanningTab({ tripId }) {
         address: address.trim(),
         rating: Number(rating) || 5,
         price: price.trim() || 'חינם',
+        needsReservation,
         visited: false
       });
     }
@@ -285,6 +314,7 @@ export default function PlanningTab({ tripId }) {
     setAddress('');
     setRating(5);
     setPrice('');
+    setNeedsReservation(false);
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -565,6 +595,52 @@ export default function PlanningTab({ tripId }) {
                     </select>
                   </div>
 
+                  {/* Optional: needs advance reservation toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setNeedsReservation(!needsReservation)}
+                    aria-pressed={needsReservation}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      border: needsReservation ? '1.5px solid #f59e0b' : '1.5px dashed rgba(11, 11, 48, 0.15)',
+                      background: needsReservation ? '#fef3c7' : 'rgba(255,255,255,0.6)',
+                      color: needsReservation ? '#b45309' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      textAlign: 'right',
+                      fontFamily: 'inherit',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <CalendarCheck size={20} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '800' }}>צריך לסגור / להזמין מקום מראש</span>
+                      <span style={{ fontSize: '12px', fontWeight: '600', opacity: 0.8 }}>
+                        {needsReservation ? 'מסומן – יופיע על כרטיס המקום' : 'אופציונלי – לחץ לסימון'}
+                      </span>
+                    </span>
+                    <span style={{
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '6px',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: needsReservation ? 'none' : '1.5px solid rgba(11, 11, 48, 0.2)',
+                      background: needsReservation ? '#f59e0b' : '#fff',
+                      color: '#fff',
+                      fontSize: '14px',
+                      fontWeight: '900'
+                    }}>
+                      {needsReservation ? '✓' : ''}
+                    </span>
+                  </button>
+
                   <div className="row-2">
                     <div className="form-group">
                       <label>דירוג (1-5)</label>
@@ -719,7 +795,9 @@ export default function PlanningTab({ tripId }) {
                       display: 'flex', 
                       flexDirection: 'column', 
                       gap: '12px',
-                      borderRight: plan.visited ? '5px solid var(--text-success)' : '1px solid rgba(255,255,255,0.6)',
+                      borderRight: plan.visited
+                        ? '5px solid var(--text-success)'
+                        : plan.needsReservation ? '5px solid #f59e0b' : '1px solid rgba(255,255,255,0.6)',
                       opacity: plan.visited ? 0.8 : 1,
                       transition: 'all 0.3s ease'
                     }}
@@ -819,6 +897,8 @@ export default function PlanningTab({ tripId }) {
                         </button>
                       </div>
                     </div>
+
+                    {plan.needsReservation && <ReservationBadge />}
 
                     {/* Description */}
                     {plan.description && (
@@ -925,6 +1005,7 @@ export default function PlanningTab({ tripId }) {
                     {(day.activities || []).map((act, actIdx) => {
                       const isFirst = actIdx === 0;
                       const isLast = actIdx === (day.activities || []).length - 1;
+                      const linkedPlace = act.placeId ? plans.find(p => p.id === act.placeId) : null;
 
                       return (
                         <div key={act.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative' }}>
@@ -1029,6 +1110,8 @@ export default function PlanningTab({ tripId }) {
                                 </button>
                               </div>
                             </div>
+
+                            {linkedPlace?.needsReservation && <ReservationBadge compact />}
 
                             {act.description && (
                               <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3 }}>
