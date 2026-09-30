@@ -87,6 +87,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
   MessageSquare,
+  CalendarCheck,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -363,6 +364,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [editTransitMins, setEditTransitMins] = useState('');
   // Priority: null | 'must' | 'optional'
   const [formPriority, setFormPriority] = useState(null);
+  // Has to be booked / reserved ahead of time. Optional, off by default.
+  const [formNeedsReservation, setFormNeedsReservation] = useState(false);
 
   // Tapping a place card opens a details sheet instead of expanding the card
   // in place — the card itself stays plain text, every action lives here.
@@ -846,6 +849,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
     setFormPriority(null);
+    setFormNeedsReservation(false);
     setShowAddForm(true);
   };
 
@@ -911,6 +915,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
     setFormPriority(plan.priority || null);
+    setFormNeedsReservation(!!plan.needsReservation);
     // Pre-populate manual override fields from cache (only when already overridden)
     const originKey = plan.distanceOriginId || 'hotel';
     const cacheEntry = distanceCache[`${plan.id}_${originKey}`];
@@ -1057,6 +1062,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         distanceOriginId: originId,
         event: eventData,
         priority: formPriority || null,
+        needsReservation: formNeedsReservation,
         ...(locationChanged
           ? { distances: manualEntry ? { [cacheOriginKey]: manualEntry } : {}, coords: null }
           : hasManualTimes
@@ -1102,6 +1108,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         distanceOriginId: originId,
         event: eventData,
         priority: formPriority || null,
+        needsReservation: formNeedsReservation,
         addedBy: currentUid || null,
         addedAt: new Date().toISOString(),
       }).catch(err => console.error('Planning add error:', err));
@@ -1121,6 +1128,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setEditWalkMins('');
     setEditTransitMins('');
     setFormPriority(null);
+    setFormNeedsReservation(false);
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -1968,6 +1976,39 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       })}
                     </div>
                   </div>
+
+                  {/* Needs advance booking — optional; when on, the card says so */}
+                  <button
+                    type="button"
+                    onClick={() => setFormNeedsReservation(v => !v)}
+                    aria-pressed={formNeedsReservation}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      width: '100%', padding: '11px 12px', borderRadius: 12,
+                      border: formNeedsReservation ? '1.5px solid var(--c-red)' : '1.5px dashed var(--ink-10)',
+                      background: formNeedsReservation ? 'var(--c-red-10)' : 'transparent',
+                      color: formNeedsReservation ? 'var(--c-red)' : 'var(--text-muted)',
+                      fontFamily: 'var(--font-hebrew)', textAlign: 'right',
+                      cursor: 'pointer', transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <CalendarCheck size={18} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 800 }}>צריך לסגור / להזמין מראש</span>
+                      <span style={{ display: 'block', fontSize: 11, fontWeight: 600, opacity: 0.8, marginTop: 1 }}>
+                        {formNeedsReservation ? 'יסומן על כרטיס המקום' : 'לא חובה – לחצו לסימון'}
+                      </span>
+                    </span>
+                    <span style={{
+                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: formNeedsReservation ? 'none' : '1.5px solid var(--ink-20)',
+                      background: formNeedsReservation ? 'var(--c-red)' : 'transparent',
+                      color: '#fff',
+                    }}>
+                      {formNeedsReservation && <Check size={13} strokeWidth={3} />}
+                    </span>
+                  </button>
 
                   {/* Event date/time — only for the events category */}
                   {category === EVENTS_CATEGORY && (
@@ -3029,6 +3070,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           {flag.star ? <Star size={12} fill="#f59e0b" /> : flag.emoji}
                         </span>
                       )}
+                      {plan.needsReservation && !plan.visited && (
+                        <span title="צריך לסגור / להזמין מראש" style={{
+                          display: 'flex', flexShrink: 0, color: 'var(--c-red)',
+                        }}>
+                          <CalendarCheck size={13} />
+                        </span>
+                      )}
                     </div>
                   );
                 }
@@ -3108,6 +3156,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           }}>
                             {pill.star && <Star size={9} fill={pill.color} />}
                             {pill.text}
+                          </span>
+                        )}
+                        {/* Booking is a to-do, not a status, so it gets its own
+                            marker beside the pill instead of competing for it. */}
+                        {plan.needsReservation && !plan.visited && (
+                          <span title="צריך לסגור / להזמין מראש" style={{
+                            fontSize: 10, fontWeight: 900, flexShrink: 0,
+                            padding: '2px 7px', borderRadius: 999,
+                            background: 'var(--c-red-10)', color: 'var(--c-red)',
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                          }}>
+                            <CalendarCheck size={10} />
+                            להזמין מראש
                           </span>
                         )}
                       </h3>
@@ -3318,6 +3379,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       background: 'var(--ink-6)', color: 'var(--text-muted)',
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                     }}><Clock size={10} />אם ישאר זמן</span>
+                  )}
+                  {detailPlan.needsReservation && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--c-red-10)', color: 'var(--c-red)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><CalendarCheck size={10} />צריך לסגור מראש</span>
                   )}
                   {detailPlan.visited && (
                     <span style={{
@@ -4466,12 +4534,11 @@ const DayCard = React.memo(function DayCard({
                           );
                         }
                       }
-                      const titleColor = (() => {
-                        const p = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
-                        return p?.priority === 'must' ? '#f59e0b' :
-                               p?.priority === 'optional' ? 'var(--text-muted)' :
-                               'var(--primary)';
-                      })();
+                      const linkedPlace = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
+                      const titleColor =
+                        linkedPlace?.priority === 'must' ? '#f59e0b' :
+                        linkedPlace?.priority === 'optional' ? 'var(--text-muted)' :
+                        'var(--primary)';
                       return (
                         <>
                           {/* Row 1: time badge + title (single line, ellipsis) + controls */}
@@ -4514,6 +4581,13 @@ const DayCard = React.memo(function DayCard({
                               >
                                 {act.title}
                               </h4>
+                              {linkedPlace?.needsReservation && !isVisited && (
+                                <span title="צריך לסגור / להזמין מראש" style={{
+                                  display: 'flex', flexShrink: 0, color: 'var(--c-red)',
+                                }}>
+                                  <CalendarCheck size={13} />
+                                </span>
+                              )}
                             </div>
 
                             {canEdit && (
