@@ -28,7 +28,7 @@ import { defaultChecklist, defaultInfoItems } from './data/seedData';
 const FlightTab    = lazy(() => import('./components/FlightTab'));
 const PlanningTab  = lazy(() => import('./components/PlanningTab'));
 const ChecklistTab = lazy(() => import('./components/ChecklistTab'));
-const InfoTab      = lazy(() => import('./components/InfoTab'));
+const BookingsTab  = lazy(() => import('./components/BookingsTab'));
 const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
 import CurrencyConverter from './components/CurrencyConverter';
 import ShareTargetScreen from './components/ShareTargetScreen';
@@ -40,7 +40,7 @@ import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } 
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, ChevronDown, ChevronUp, AlertCircle, Coins, Wallet,
+  Check, ChevronDown, ChevronUp, CalendarCheck, Coins, Wallet,
   AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette, Pin, PinOff
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
@@ -1218,7 +1218,7 @@ const NAV_TABS = [
   { key: 'flight',    label: 'טיסה ומלון', Icon: Plane },
   { key: 'planning',  label: 'תכנון טיול', Icon: Compass },
   { key: 'checklist', label: "צ'קליסט",    Icon: ClipboardList },
-  { key: 'info',      label: 'מידע חשוב',  Icon: AlertCircle },
+  { key: 'bookings',  label: 'הזמנות',     Icon: CalendarCheck },
   { key: 'expenses',  label: 'הוצאות',     Icon: Wallet },
 ];
 
@@ -1546,7 +1546,7 @@ function AppInner() {
     const tripRef = doc(db, 'trips', tripId);
 
     // Delete all docs in the known subcollections, batched.
-    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'expenses', 'settings'];
+    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'settings'];
     for (const name of subcollections) {
       try {
         const snap = await getDocs(collection(db, 'trips', tripId, name));
@@ -1717,7 +1717,7 @@ function AppInner() {
       case 'flight':   return 'טיסה ומלון';
       case 'planning': return 'תכנון הטיול';
       case 'checklist': return 'רשימת ציוד';
-      case 'info':      return 'מידע חשוב';
+      case 'bookings':  return 'ההזמנות שלנו';
       case 'expenses':  return 'מעקב הוצאות';
       default:          return 'עוזר טיסות';
     }
@@ -2029,7 +2029,7 @@ function AppInner() {
               />
             )}
             {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
-            {activeTab === 'info'      && <InfoTab tripId={selectedTripId} />}
+            {activeTab === 'bookings'  && <BookingsTab tripId={selectedTripId} />}
             {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
             </Suspense>
           </ErrorBoundary>

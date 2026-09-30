@@ -512,6 +512,18 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   ]));
 
   // Load category customisation settings
+  // Places that already have a booking in the הזמנות tab — shown as
+  // booked instead of "to book".
+  const [bookedPlaceIds, setBookedPlaceIds] = useState(() => new Set());
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(collection(db, 'trips', tripId, 'bookings'), snap => {
+      setBookedPlaceIds(new Set(
+        snap.docs.map(d => d.data()).filter(b => b.placeId && b.status !== 'cancelled').map(b => b.placeId)
+      ));
+    });
+  }, [tripId]);
+
   useEffect(() => {
     if (!tripId) return;
     const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
@@ -3070,9 +3082,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           {flag.star ? <Star size={12} fill="#f59e0b" /> : flag.emoji}
                         </span>
                       )}
-                      {plan.needsReservation && !plan.visited && (
-                        <span title="צריך לסגור / להזמין מראש" style={{
-                          display: 'flex', flexShrink: 0, color: 'var(--c-red)',
+                      {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
+                        <span title={bookedPlaceIds.has(plan.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
+                          display: 'flex', flexShrink: 0,
+                          color: bookedPlaceIds.has(plan.id) ? 'var(--c-green)' : 'var(--c-red)',
                         }}>
                           <CalendarCheck size={13} />
                         </span>
@@ -3160,17 +3173,21 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         )}
                         {/* Booking is a to-do, not a status, so it gets its own
                             marker beside the pill instead of competing for it. */}
-                        {plan.needsReservation && !plan.visited && (
-                          <span title="צריך לסגור / להזמין מראש" style={{
-                            fontSize: 10, fontWeight: 900, flexShrink: 0,
-                            padding: '2px 7px', borderRadius: 999,
-                            background: 'var(--c-red-10)', color: 'var(--c-red)',
-                            display: 'inline-flex', alignItems: 'center', gap: 3,
-                          }}>
-                            <CalendarCheck size={10} />
-                            להזמין מראש
-                          </span>
-                        )}
+                        {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (() => {
+                          const booked = bookedPlaceIds.has(plan.id);
+                          return (
+                            <span title={booked ? 'יש הזמנה בטאב ההזמנות' : 'צריך לסגור / להזמין מראש'} style={{
+                              fontSize: 10, fontWeight: 900, flexShrink: 0,
+                              padding: '2px 7px', borderRadius: 999,
+                              background: booked ? 'var(--c-green-10)' : 'var(--c-red-10)',
+                              color: booked ? 'var(--c-green)' : 'var(--c-red)',
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                            }}>
+                              {booked ? <Check size={10} strokeWidth={3} /> : <CalendarCheck size={10} />}
+                              {booked ? 'הוזמן' : 'להזמין מראש'}
+                            </span>
+                          );
+                        })()}
                       </h3>
                       {(LO.showSubtitle && metaLine) && (
                         <span style={{
@@ -3268,6 +3285,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   key={day.id}
                   day={day}
                   plans={plans}
+                  bookedPlaceIds={bookedPlaceIds}
                   canEdit={canEdit}
                   isSummary={isSummary}
                   // The chevron reports whether the body is on screen, which
@@ -3380,7 +3398,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                     }}><Clock size={10} />אם ישאר זמן</span>
                   )}
-                  {detailPlan.needsReservation && (
+                  {bookedPlaceIds.has(detailPlan.id) ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--c-green-10)', color: 'var(--c-green)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Check size={10} strokeWidth={3} />הוזמן</span>
+                  ) : detailPlan.needsReservation && (
                     <span style={{
                       fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
                       background: 'var(--c-red-10)', color: 'var(--c-red)',
@@ -4261,7 +4285,7 @@ const DragHandleContext = React.createContext(null);
  * and the setters come from useState, which React keeps stable.
  */
 const DayCard = React.memo(function DayCard({
-  day, plans, canEdit,
+  day, plans, bookedPlaceIds, canEdit,
   /* Booleans, not the Sets they come from. Passing `collapsedDays` itself
      meant every card got a brand-new Set on every toggle and the memo
      never held — which is exactly what the first attempt measured: no
@@ -4581,9 +4605,10 @@ const DayCard = React.memo(function DayCard({
                               >
                                 {act.title}
                               </h4>
-                              {linkedPlace?.needsReservation && !isVisited && (
-                                <span title="צריך לסגור / להזמין מראש" style={{
-                                  display: 'flex', flexShrink: 0, color: 'var(--c-red)',
+                              {linkedPlace && !isVisited && (bookedPlaceIds.has(linkedPlace.id) || linkedPlace.needsReservation) && (
+                                <span title={bookedPlaceIds.has(linkedPlace.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
+                                  display: 'flex', flexShrink: 0,
+                                  color: bookedPlaceIds.has(linkedPlace.id) ? 'var(--c-green)' : 'var(--c-red)',
                                 }}>
                                   <CalendarCheck size={13} />
                                 </span>

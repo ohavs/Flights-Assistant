@@ -1723,6 +1723,105 @@ input[type="datetime-local"].form-control {
   font-weight: 800;
 }
 
+/* "מידע חשוב" — one slim row on the flight tab that opens the info sheet. */
+.info-launcher {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  width: 100%;
+  cursor: pointer;
+  font-family: var(--font-hebrew);
+  color: inherit;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.info-launcher:active { transform: scale(0.985); }
+.info-launcher-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--c-red-10);
+  color: var(--c-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── הזמנות (bookings tab) ── */
+.booking-section {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.booking-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-hebrew);
+  text-align: right;
+}
+.booking-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.booking-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-hebrew);
+  font-size: 12px;
+  color: var(--primary);
+  background: var(--p-6);
+  border: 1px dashed var(--p-30);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.booking-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--p-6);
+  border: 1px solid var(--p-12);
+  border-radius: 10px;
+  padding: 6px 12px;
+  text-decoration: none;
+}
+.booking-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  border: 1.5px solid var(--ink-10);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-hebrew);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.booking-chip.on {
+  border-color: var(--accent);
+  background: var(--p-8);
+  color: var(--accent);
+}
+
 .hotel-meta-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

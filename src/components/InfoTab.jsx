@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
@@ -54,7 +55,10 @@ function hrefFor(item) {
   }
 }
 
-export default function InfoTab({ tripId }) {
+/* `embedded`: rendered inside the "מידע חשוב" sheet of the flight tab
+   rather than as a tab of its own — the add button sits inline instead of
+   being the app-wide floating one, which would paint over the sheet. */
+export default function InfoTab({ tripId, embedded = false }) {
   const { canEdit } = useTrip();
   const confirm = useConfirm();
   const [items, setItems] = useState([]);
@@ -223,7 +227,7 @@ export default function InfoTab({ tripId }) {
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Add/edit form (modal-style inline) */}
-      {showForm && canEdit && (
+      {showForm && canEdit && createPortal(
         <div className="modal-overlay" data-closing={formSheet.closing || undefined} onClick={attemptCloseForm}>
           <div className="modal-content" onClick={e => e.stopPropagation()} {...formSheet.handlers} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...formSheet.style }}>
             <div className="sheet-grab" />
@@ -344,7 +348,16 @@ export default function InfoTab({ tripId }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.querySelector('.app-container') || document.body
+      )}
+
+      {embedded && canEdit && (
+        <button type="button" className="btn-secondary" onClick={() => openAdd()}
+          style={{ width: '100%', gap: 6, border: '1.5px dashed var(--p-30)', color: 'var(--accent)', background: 'var(--p-4)' }}>
+          <Plus size={15} />
+          <span>פריט חדש</span>
+        </button>
       )}
 
       {items.length === 0 && (
@@ -395,7 +408,7 @@ export default function InfoTab({ tripId }) {
     {/* The full-width docked bar became the app-wide floating button; the
         "load defaults" shortcut moved into the empty state, which is the
         only time it was offered anyway. */}
-    {canEdit && <Fab label="פריט חדש" onClick={() => openAdd()} />}
+    {canEdit && !embedded && <Fab label="פריט חדש" onClick={() => openAdd()} />}
     </>
   );
 }

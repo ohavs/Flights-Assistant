@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
@@ -8,6 +9,7 @@ import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import CurrencyConverter from './CurrencyConverter';
+import Skeleton from './Skeleton';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
@@ -21,8 +23,14 @@ import {
   PlaneLanding,
   RefreshCw,
   ExternalLink,
-  Link2
+  Link2,
+  LifeBuoy,
+  ChevronLeft
 } from 'lucide-react';
+
+// Emergency numbers, contacts and addresses — opened from a sheet on this
+// tab. Loaded on first open so the flight tab itself stays light.
+const InfoTab = lazy(() => import('./InfoTab'));
 
 const FLIGHT_STATUS_OPTIONS = [
   { value: 'בזמן', label: 'בזמן' },
@@ -653,6 +661,11 @@ export default function FlightTab({ tripId }) {
      before it disappears, however it was dismissed. */
   useBackHandler(showEditModal, attemptCloseEdit);
 
+  // "מידע חשוב" sheet
+  const [showInfo, setShowInfo] = useState(false);
+  const infoSheet = useSheetDrag(() => setShowInfo(false));
+  useBackHandler(showInfo, () => infoSheet.close());
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!tripId) return;
@@ -996,6 +1009,38 @@ export default function FlightTab({ tripId }) {
             {canEdit ? 'הרשאה: עריכה' : 'הרשאה: צפייה בלבד'}
           </span>
         </div>
+      )}
+
+      {/* Important info (emergency numbers, contacts, addresses) lives in
+          a sheet behind this one button instead of a tab of its own. */}
+      <button type="button" className="glass-card info-launcher" onClick={() => setShowInfo(true)}>
+        <span className="info-launcher-icon"><LifeBuoy size={18} /></span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+          <span style={{ display: 'block', fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>מידע חשוב</span>
+          <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>
+            מספרי חירום, אנשי קשר, כתובות וקישורים
+          </span>
+        </span>
+        <ChevronLeft size={16} style={{ color: 'var(--ink-20)', flexShrink: 0 }} />
+      </button>
+
+      {showInfo && createPortal(
+        <div className="modal-overlay" data-closing={infoSheet.closing || undefined} onClick={infoSheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...infoSheet.handlers}
+            style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...infoSheet.style }}>
+            <div className="sheet-grab" />
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LifeBuoy size={18} style={{ color: 'var(--c-red)' }} />מידע חשוב</h2>
+              <button aria-label="סגור" className="btn-close" onClick={infoSheet.close}>✕</button>
+            </div>
+            <div data-sheet-scroll style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 8 }}>
+              <Suspense fallback={<Skeleton rows={3} header={false} label="טוען מידע חשוב" />}>
+                <InfoTab tripId={tripId} embedded />
+              </Suspense>
+            </div>
+          </div>
+        </div>,
+        document.querySelector('.app-container') || document.body
       )}
 
       {/* Weather at the destination.

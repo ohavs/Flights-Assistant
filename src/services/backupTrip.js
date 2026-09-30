@@ -1,7 +1,7 @@
 import { db } from '../firebase';
 import { collection, doc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 
-const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'reminders', 'expenses', 'settings'];
+const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders', 'expenses', 'settings'];
 
 export async function exportTripBackup(tripId, tripDoc) {
   const subcollections = {};
