@@ -1,0 +1,71 @@
+name: Deploy to Firebase Hosting
+
+# Builds this branch with the API keys from the repository secrets and
+# deploys it to https://listify-84018.web.app.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VITE_GOOGLE_MAPS_KEY, VITE_AERODATABOX_KEY, FIREBASE_TOKEN
+on:
+  push:
+    branches: [claude/place-closure-button-qj61y5]
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-hosting-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VITE_GOOGLE_MAPS_KEY: ${{ secrets.VITE_GOOGLE_MAPS_KEY }}
+      VITE_AERODATABOX_KEY: ${{ secrets.VITE_AERODATABOX_KEY }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - name: Check that all secrets are set
+        run: |
+          missing=0
+          for v in VITE_GOOGLE_MAPS_KEY VITE_AERODATABOX_KEY FIREBASE_TOKEN; do
+            if [ -z "${!v}" ]; then echo "::error::Missing repository secret $v"; missing=1; fi
+          done
+          exit $missing
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Safety net: when this branch was started the site was running commit
+      # 80f12ed built with the keys, whose service worker lists index.html at
+      # the revision below. Rebuilding 80f12ed here must reproduce it exactly — that proves
+      # the secrets are the right keys and that this branch sits on exactly
+      # what is live. Anything else stops before touching the site.
+      - name: Verify the base commit reproduces the live site
+        run: |
+          git worktree add ../live-base 80f12ed
+          cd ../live-base
+          npm ci --no-audit --no-fund
+          npm run build
+          if ! grep -q 'url:"index.html",revision:"272b96cdd92643170b812d46c1307a15"' dist/sw.js; then
+            echo "::error::Building 80f12ed did not reproduce the live site — not deploying."
+            grep -o 'url:"index.html",revision:"[0-9a-f]*"' dist/sw.js || true
+            exit 1
+          fi
+          echo "Base build is identical to the live site."
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the keys made it into the build
+        run: |
+          grep -q "$VITE_GOOGLE_MAPS_KEY" dist/assets/*.js || { echo "::error::Maps key missing from the build"; exit 1; }
+          grep -q "$VITE_AERODATABOX_KEY" dist/assets/*.js || { echo "::error::AeroDataBox key missing from the build"; exit 1; }
+
+      - name: Deploy
+        run: npx -y firebase-tools@latest deploy --only hosting --project listify-84018 --non-interactive
