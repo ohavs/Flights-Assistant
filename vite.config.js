@@ -62,13 +62,6 @@ export default defineConfig({
             description: 'רשימת הטיולים',
             url: '/?screen=home',
             icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
-          },
-          {
-            name: 'המרת מטבעות',
-            short_name: 'מטבעות',
-            description: 'מחשבון המרת מטבעות עם נתונים אופליין',
-            url: '/?screen=converter',
-            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
           }
         ]
       },

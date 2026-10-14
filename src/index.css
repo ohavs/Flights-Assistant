@@ -1663,30 +1663,42 @@ input[type="datetime-local"].form-control {
   font-weight: 800;
 }
 
-/* "מידע חשוב" — one slim row on the flight tab that opens the info sheet. */
-.info-launcher {
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  width: 100%;
-  cursor: pointer;
-  font-family: var(--font-hebrew);
-  color: inherit;
-  transition: transform var(--dur-base) var(--ease-out);
+/* Flight tab: "מידע חשוב" and the weather as one compact row of two tiles
+   (secondary to flights and hotel); each opens its own sheet. */
+.quick-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
 }
-.info-launcher:active { transform: scale(0.985); }
-.info-launcher-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--c-red-10);
-  color: var(--c-red);
+.quick-row.single { grid-template-columns: minmax(0, 1fr); }
+.quick-tile {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  gap: 10px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 20px;
+  background: var(--card-bg-solid);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-family: var(--font-hebrew);
+  text-align: right;
+  cursor: pointer;
+  transition: transform 0.22s var(--ease-spring);
 }
+.quick-tile:active { transform: scale(0.97); }
+.quick-tile-emoji { font-size: 28px; line-height: 1; flex-shrink: 0; }
+.quick-tile-text { display: flex; flex-direction: column; min-width: 0; }
+.quick-tile-text b,
+.quick-tile-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-tile-text b { font-size: 14px; font-weight: 800; }
+.quick-tile-text small { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-top: 1px; }
 
 /* ── הזמנות (bookings tab) ── */
 .booking-section {

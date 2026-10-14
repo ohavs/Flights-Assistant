@@ -32,7 +32,6 @@ const PlanningTab  = lazy(() => import('./components/PlanningTab'));
 const ChecklistTab = lazy(() => import('./components/ChecklistTab'));
 const BookingsTab  = lazy(() => import('./components/BookingsTab'));
 const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
-import CurrencyConverter from './components/CurrencyConverter';
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmptyState from './components/EmptyState';
@@ -118,50 +117,6 @@ function LoadingScreen() {
     <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', gap: 16 }}>
       <div className="pulsing-dot" style={{ width: 14, height: 14 }} />
       <p style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: 15 }}>טוען...</p>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════
-   STANDALONE CONVERTER SCREEN — opened from the manifest shortcut
-   so the user can long-press the installed icon → "המרת מטבעות"
-   and get straight to the converter without the app navigation.
-   ══════════════════════════════════════════════════════════ */
-function ConverterScreen() {
-  return (
-    <div className="app-container">
-      <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 10,
-            background: 'rgba(5, 150, 105, 0.12)', color: 'var(--text-success)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-          }}>
-            <Coins size={18} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: 18 }}>המרת מטבעות</h1>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, marginTop: 1 }}>
-              עובד אופליין
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => { window.location.href = '/'; }}
-          style={{
-            background: 'rgba(11,11,48,0.05)', border: 'none',
-            width: 34, height: 34, borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', color: 'var(--primary)'
-          }}
-          title="פתח את האפליקציה המלאה"
-        >
-          <Plane size={14} style={{ transform: 'rotate(-45deg)' }} />
-        </button>
-      </header>
-      <main className="app-content" style={{ paddingBottom: 24 }}>
-        <CurrencyConverter />
-      </main>
     </div>
   );
 }
@@ -1679,12 +1634,6 @@ function AppInner() {
 
   // ── Loading ──
   if (loading) return <LoadingScreen />;
-
-  // ── Standalone converter — opened from the manifest shortcut on the
-  // installed app icon (long-press → "המרת מטבעות"). No auth required.
-  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('screen') === 'converter') {
-    return <ConverterScreen />;
-  }
 
   // ── Opened from the share sheet ── shown before the auth gate: the trips
   // (from the local cache) are on screen straight away, and signing in only
