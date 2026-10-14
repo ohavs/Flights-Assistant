@@ -1,7 +1,8 @@
-// Flight & hotel tab: the compact "מידע חשוב" + weather row, both sheets,
-// and no currency converter. The weather needs the destination airport's
-// coordinates (seeded into the emulator) and a forecast (served by a fake
-// Open-Meteo response).  bash scripts/run-e2e.sh tests/e2e/flight.e2e.mjs
+// The trip header's weather chip and "מידע חשוב" button, on every tab, and
+// both their sheets; no currency converter. The weather needs the
+// destination airport's coordinates (seeded into the emulator) and a
+// forecast (served by a fake Open-Meteo response).
+//   bash scripts/run-e2e.sh tests/e2e/flight.e2e.mjs
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -68,32 +69,47 @@ if (!r.ok) throw new Error(`seed failed ${r.status}`);
 await page.locator('.trip-card').getByText('פתח טיול').click();
 await page.getByText('טיסת הלוך').first().waitFor();
 
+const chip = page.locator('header button.weather-chip');
+const info = page.locator('header button[aria-label="מידע חשוב"]');
 for (const theme of ['light', 'dark']) {
   if (theme === 'dark') await page.locator('button[aria-label="עבור למצב כהה"]').click();
-  await step(`${theme}: info and weather as one compact row`, async () => {
-    await page.locator('.quick-row .quick-tile').nth(1).waitFor();
-    const tiles = await page.locator('.quick-row .quick-tile').count();
-    if (tiles !== 2) throw new Error(`expected 2 tiles, found ${tiles}`);
-    const h = await page.locator('.quick-row').evaluate(el => el.getBoundingClientRect().height);
-    if (h > 90) throw new Error(`row is ${h}px tall`);
+  await step(`${theme}: weather chip and info button in the header`, async () => {
+    await chip.waitFor();
+    await info.waitFor();
+    if (!/21°/.test(await chip.innerText())) throw new Error(`chip reads "${await chip.innerText()}"`);
+    const fits = await page.locator('header').evaluate(h => {
+      const t = h.querySelector('h1');
+      return h.scrollWidth <= h.clientWidth + 1 && t.scrollWidth <= t.clientWidth + 1;
+    });
+    if (!fits) throw new Error('header overflows or the title is cut');
+    if (await page.locator('.quick-row').count()) throw new Error('old quick row still on the tab');
     await shot(`${theme}-tab`);
   });
   await step(`${theme}: weather sheet`, async () => {
-    await page.getByRole('button', { name: 'מזג האוויר ביעד' }).click();
-    await page.getByText('מזג האוויר ביעד').last().waitFor();
+    await chip.click();
     await page.locator('.modal-overlay .weather-now-temp').waitFor();   // the trip has no dates, so no day strip
     await shot(`${theme}-weather`);
     await page.locator('.modal-overlay button[aria-label="סגור"]').click();
     await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   });
   await step(`${theme}: info sheet`, async () => {
-    await page.locator('.quick-tile', { hasText: 'מידע חשוב' }).click();
+    await info.click();
     await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
     await shot(`${theme}-info`);
     await page.locator('.modal-overlay button[aria-label="סגור"]').first().click();
     await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   });
 }
+
+await step('the chip and the button are on every tab', async () => {
+  for (const label of ['תכנון טיול', "צ'קליסט", 'הזמנות', 'הוצאות']) {
+    await page.locator(`nav button.nav-item[aria-label="${label}"]`).click();
+    await chip.waitFor({ timeout: 5000 });
+    await info.waitFor({ timeout: 5000 });
+  }
+  await page.locator('nav button.nav-item[aria-label="טיסה ומלון"]').click();
+  await page.getByText('טיסת הלוך').first().waitFor();
+});
 
 await step('no currency converter anywhere on the tab', async () => {
   const text = await page.locator('.app-content').innerText();

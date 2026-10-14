@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
@@ -8,9 +7,6 @@ import useSheetDrag from '../hooks/useSheetDrag';
 import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
-import { CategoryDisc } from '../ui/kit';
-import Skeleton from './Skeleton';
-import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
@@ -24,12 +20,7 @@ import {
   RefreshCw,
   ExternalLink,
   Link2,
-  LifeBuoy
 } from 'lucide-react';
-
-// Emergency numbers, contacts and addresses — opened from a sheet on this
-// tab. Loaded on first open so the flight tab itself stays light.
-const InfoTab = lazy(() => import('./InfoTab'));
 
 const FLIGHT_STATUS_OPTIONS = [
   { value: 'בזמן', label: 'בזמן' },
@@ -660,15 +651,6 @@ export default function FlightTab({ tripId }) {
      before it disappears, however it was dismissed. */
   useBackHandler(showEditModal, attemptCloseEdit);
 
-  // "מידע חשוב" sheet
-  const [showInfo, setShowInfo] = useState(false);
-  const infoSheet = useSheetDrag(() => setShowInfo(false));
-  useBackHandler(showInfo, () => infoSheet.close());
-  // Weather details (the forecast) — a sheet behind the compact tile.
-  const [showWeather, setShowWeather] = useState(false);
-  const weatherSheet = useSheetDrag(() => setShowWeather(false));
-  useBackHandler(showWeather, () => weatherSheet.close());
-
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!tripId) return;
@@ -755,21 +737,6 @@ export default function FlightTab({ tripId }) {
   const outbound = tripData?.outboundFlightDetails || emptyFlightDetails;
   const returning = tripData?.returnFlightDetails || emptyFlightDetails;
   const hotel = tripData?.hotelDetails || emptyHotelDetails;
-
-  const destCoords = outbound.arrAirport || returning.depAirport;
-  const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
-
-  const todayRange = (() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return weather?.daily?.find(d => d.date === today) || null;
-  })();
-
-  const tripDayForecasts = (() => {
-    if (!weather?.daily || !outbound.date || !returning.date) return [];
-    const start = outbound.date;
-    const end = returning.date;
-    return weather.daily.filter(d => d.date >= start && d.date <= end);
-  })();
 
   if (loading || !tripData) {
     return (
@@ -1012,99 +979,6 @@ export default function FlightTab({ tripId }) {
             {canEdit ? 'הרשאה: עריכה' : 'הרשאה: צפייה בלבד'}
           </span>
         </div>
-      )}
-
-      {/* Important info and the weather: secondary to flights and hotel, so
-          one compact row of two tiles. Each opens its own sheet. */}
-      <div className={`quick-row${weather ? '' : ' single'}`}>
-        <button type="button" className="quick-tile" onClick={() => setShowInfo(true)}>
-          <CategoryDisc color="#E5484D" size={40} radius={13}><LifeBuoy size={19} /></CategoryDisc>
-          <span className="quick-tile-text">
-            <b>מידע חשוב</b>
-            <small>חירום, אנשי קשר, כתובות</small>
-          </span>
-        </button>
-        {weather && (
-          <button type="button" className="quick-tile" onClick={() => setShowWeather(true)} aria-label="מזג האוויר ביעד">
-            <span className="quick-tile-emoji" aria-hidden="true">{getWeatherIcon(weather.current.code)}</span>
-            <span className="quick-tile-text">
-              <b>{weather.current.temp}° · {destCoords?.city || tripData?.destination || 'היעד'}</b>
-              <small>{todayRange ? `${todayRange.max}°/${todayRange.min}° · ` : ''}{getWeatherLabel(weather.current.code) || 'עכשיו'}</small>
-            </span>
-          </button>
-        )}
-      </div>
-
-      {showInfo && createPortal(
-        <div className="modal-overlay" data-closing={infoSheet.closing || undefined} onClick={infoSheet.close}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} {...infoSheet.handlers}
-            style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...infoSheet.style }}>
-            <div className="sheet-grab" />
-            <div className="modal-header" style={{ flexShrink: 0 }}>
-              <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LifeBuoy size={18} style={{ color: 'var(--c-red)' }} />מידע חשוב</h2>
-              <button aria-label="סגור" className="btn-close" onClick={infoSheet.close}>✕</button>
-            </div>
-            <div data-sheet-scroll style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 8 }}>
-              <Suspense fallback={<Skeleton rows={3} header={false} label="טוען מידע חשוב" />}>
-                <InfoTab tripId={tripId} embedded />
-              </Suspense>
-            </div>
-          </div>
-        </div>,
-        document.querySelector('.app-container') || document.body
-      )}
-
-      {/* Weather at the destination: now, and the trip's days. */}
-      {weather && showWeather && createPortal(
-        <div className="modal-overlay" data-closing={weatherSheet.closing || undefined} onClick={weatherSheet.close}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} {...weatherSheet.handlers} style={{ ...weatherSheet.style }}>
-            <div className="sheet-grab" />
-            <div className="modal-header" style={{ flexShrink: 0 }}>
-              <h2>מזג האוויר ביעד</h2>
-              <button aria-label="סגור" className="btn-close" onClick={weatherSheet.close}>✕</button>
-            </div>
-            <div className="weather-card">
-              <div className="weather-now">
-                <span className="weather-now-icon" aria-hidden="true">{getWeatherIcon(weather.current.code)}</span>
-                <div className="weather-now-place">
-                  <span className="weather-now-city">{destCoords?.city || tripData?.destination || 'היעד'}</span>
-                  <span className="weather-now-cond">{getWeatherLabel(weather.current.code) || 'עכשיו'}</span>
-                </div>
-                <span className="weather-now-temp">{weather.current.temp}°</span>
-              </div>
-
-              <div className="weather-facts">
-                <span><b>{weather.current.wind}</b> קמ״ש רוח</span>
-                <span><b>{weather.current.humidity}%</b> לחות</span>
-                {todayRange && <span><b>{todayRange.max}°</b> / {todayRange.min}° היום</span>}
-              </div>
-
-              {tripDayForecasts.length > 0 && (
-                <div className="weather-days">
-                  {tripDayForecasts.map((d) => {
-                    const dayDate = new Date(d.date);
-                    const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dayDate.getDay()];
-                    const dd = String(dayDate.getDate()).padStart(2, '0');
-                    const mm = String(dayDate.getMonth() + 1).padStart(2, '0');
-                    const isToday = d.date === new Date().toISOString().slice(0, 10);
-                    return (
-                      <div key={d.date} className={`weather-day${isToday ? ' today' : ''}`}>
-                        <span className="weather-day-dow">{dow}</span>
-                        <span className="weather-day-date">{dd}.{mm}</span>
-                        <span className="weather-day-icon">{getWeatherIcon(d.code)}</span>
-                        <span className="weather-day-max">{d.max}°</span>
-                        <span className="weather-day-min">{d.min}°</span>
-                        {/* Only a rain chance worth planning around earns a line. */}
-                        {d.rain >= 20 && <span className="weather-day-rain">💧{d.rain}%</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.querySelector('.app-container') || document.body
       )}
 
       {/* Outbound flight card */}
