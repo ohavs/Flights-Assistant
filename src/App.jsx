@@ -12,6 +12,8 @@ import { exportTripBackup, downloadBackupFile, importTripBackup } from './servic
 import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme, PALETTES } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
+import { isNative, haptic } from './lib/platform';
+import { NavIcon } from './ui/icons';
 import { CustomDropdown } from './components/CustomDatePicker';
 import { defaultChecklist, defaultInfoItems } from './data/seedData';
 
@@ -38,9 +40,9 @@ import useSheetDrag from './hooks/useSheetDrag';
 import Skeleton from './components/Skeleton';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
-  Plane, Compass, ClipboardList, MapPin, Calendar,
+  Plane, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, ChevronDown, ChevronUp, CalendarCheck, Coins, Wallet,
+  Check, ChevronDown, ChevronUp, Coins,
   AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette, Pin, PinOff
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
@@ -1214,17 +1216,19 @@ function PalettePicker({ size = 34 }) {
 
 /* The five tabs, in nav order. Kept in one place so the travelling
    indicator's index and the buttons can never drift apart. */
+// `key` is also the NavIcon name (src/ui/icons.jsx).
 const NAV_TABS = [
-  { key: 'flight',    label: 'טיסה ומלון', Icon: Plane },
-  { key: 'planning',  label: 'תכנון טיול', Icon: Compass },
-  { key: 'checklist', label: "צ'קליסט",    Icon: ClipboardList },
-  { key: 'bookings',  label: 'הזמנות',     Icon: CalendarCheck },
-  { key: 'expenses',  label: 'הוצאות',     Icon: Wallet },
+  { key: 'flight',    label: 'טיסה ומלון' },
+  { key: 'planning',  label: 'תכנון טיול' },
+  { key: 'checklist', label: "צ'קליסט" },
+  { key: 'bookings',  label: 'הזמנות' },
+  { key: 'expenses',  label: 'הוצאות' },
 ];
 
-// A short tick on tab change, where the device offers one. Android and
-// desktop Chrome support it; iOS Safari ignores it, which is fine.
+// A short tick on tab change: the haptics engine in the app, vibrate where
+// the browser offers it (Android, desktop Chrome; iOS Safari ignores it).
 function tick(ms = 8) {
+  if (isNative) { haptic('tap'); return; }
   try { navigator.vibrate?.(ms); } catch { /* not supported — no feedback */ }
 }
 
@@ -2040,25 +2044,25 @@ function AppInner() {
           indicator that travels between the icons, so the eye follows the
           move instead of noticing a colour change. */}
       <nav className="bottom-nav">
-        <span
-          className="nav-indicator"
-          style={{ '--nav-i': Math.max(0, NAV_TABS.findIndex(t => t.key === activeTab)) }}
-          aria-hidden="true"
-        >
-          <i />
-        </span>
-        {NAV_TABS.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            onClick={() => selectTab(key)}
-            className={`nav-item ${activeTab === key ? 'active' : ''}`}
-            aria-label={label}
-            aria-current={activeTab === key ? 'page' : undefined}
-          >
-            <Icon />
-            <span className="nav-label">{label}</span>
-          </button>
-        ))}
+        {NAV_TABS.map(({ key, label }) => {
+          const on = activeTab === key;
+          return (
+            <button
+              key={key}
+              onClick={() => selectTab(key)}
+              className={`nav-item ${on ? 'active' : ''}`}
+              aria-label={label}
+              aria-current={on ? 'page' : undefined}
+            >
+              {/* Re-keyed on change so the pop plays each time a tab activates. */}
+              <span key={on ? 'on' : 'off'} className="nav-icon">
+                <NavIcon name={key} active={on} />
+              </span>
+              <span className="nav-label">{label}</span>
+              <span className="nav-dot" aria-hidden="true" />
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
