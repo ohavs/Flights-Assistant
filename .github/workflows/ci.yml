@@ -1,0 +1,91 @@
+name: CI
+
+# Tests every PR and every push to master. After the tests pass on master, the
+# web app is deployed to Firebase Hosting (only if the FIREBASE_SERVICE_ACCOUNT
+# secret is set). Secrets are never exposed to pull requests from forks.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Data-safety tests (Firestore emulator)
+        run: npm run test:data
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke test (emulators)
+        run: npm run test:e2e
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-output
+          path: .e2e/*.png
+          if-no-files-found: ignore
+
+  deploy-web:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - name: Check for deploy credentials
+        id: creds
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT" ]; then
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT secret is not set — skipping deploy"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.skip != 'true'
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build
+        if: steps.creds.outputs.skip != 'true'
+        run: |
+          npm ci
+          npm run build
+      - name: Guard — production bundle must not contain emulator/test hooks
+        if: steps.creds.outputs.skip != 'true'
+        run: |
+          if grep -q -e "127.0.0.1:9099" -e "__e2eSignIn" -e "demo-flights" dist/assets/*.js; then
+            echo "::error::Production bundle contains emulator code — refusing to deploy"
+            exit 1
+          fi
+      - name: Deploy to Firebase Hosting
+        if: steps.creds.outputs.skip != 'true'
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@14.27.0 deploy --only hosting --project listify-84018 --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"

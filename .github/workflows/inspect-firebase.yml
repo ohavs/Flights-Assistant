@@ -1,0 +1,37 @@
+name: Inspect Firebase (read-only)
+
+# Manual, read-only check of what is actually deployed in the Firebase project:
+# the live Firestore rules (compared with firestore.rules in the repo) and the
+# registered apps. Changes nothing. Logs of this public repo are public, so this
+# workflow must never print user data or credentials.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deployed Firestore rules vs firestore.rules
+        run: |
+          TOKEN=$(gcloud auth print-access-token)
+          API=https://firebaserules.googleapis.com/v1/projects/listify-84018
+          RULESET=$(curl -sf -H "Authorization: Bearer $TOKEN" "$API/releases/cloud.firestore" | jq -r .rulesetName)
+          echo "Live ruleset: $RULESET"
+          curl -sf -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
+            | jq -r '.source.files[0].content' > deployed.rules
+          echo "----- deployed rules -----"
+          cat deployed.rules
+          echo "----- diff (repo vs deployed) -----"
+          diff -u firestore.rules deployed.rules && echo "IDENTICAL to firestore.rules in the repo"
+          exit 0
+      - name: Registered Firebase apps
+        run: npx -y firebase-tools@14.27.0 apps:list --project listify-84018 --non-interactive

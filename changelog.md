@@ -1,5 +1,22 @@
 # Changelog — Flights-Assistant
 
+## [6.1.1] - 2026-10-14 [web]
+
+### Fixed
+- **Saving the flight & hotel form deleted the trip's name, destination and members**:
+  - `handleFormSubmit` in `FlightTab.jsx` replaced the whole `/trips/{tripId}` document. Without `members`, the security rules block everyone, so the trip disappeared for all participants (permanently, until the data was repaired by hand).
+  - The form now updates only `outboundFlightDetails`, `returnFlightDetails` and `hotelDetails` (`src/data/trips.js`).
+- **Changing a flight date could undo other members' changes**: the inline date picker rewrote the whole trip from the local copy. It now writes only that date field.
+- **Deleted trips stayed on the home screen until a reload**, and every change to the user profile (e.g. editing the fixed checklist) added another set of trip listeners that were never removed. The home screen now keeps exactly one listener per trip.
+- **New users could see an empty home screen after their first login** until they reloaded: right after the profile was created, the listener sometimes reported it as missing. The app now ignores that, since profiles are never deleted.
+- Removed an unused query in the share dialog that tried to read every trip in the database.
+
+### Added
+- Emulator-based tests: `npm run test:data` (Firestore writes and rules) and `npm run test:e2e` (browser smoke test of a production build). Neither ever touches the real project.
+- GitHub Actions: tests on every PR and push; automatic deploy to Firebase Hosting after tests pass on `master` (requires the `FIREBASE_SERVICE_ACCOUNT` secret); manual read-only "Inspect Firebase" workflow.
+- `CLAUDE.md`: project rules, data-safety rules and the agreed Android plan.
+
+
 ## [6.1.0] - 2026-09-30
 
 ### Added
