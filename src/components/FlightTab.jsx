@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { saveFlightAndHotelDetails, updateFlightDate } from '../data/trips';
 import { lookupFlight, getFlightProgressInfo } from '../services/flightSimulator';
 import MapComponent from './MapComponent';
 import { CustomDatePicker, CustomDateTimePicker, formatHebrewDate } from './CustomDatePicker';
@@ -409,9 +410,8 @@ export default function FlightTab({ tripId }) {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!tripId) return;
-    const docRef = doc(db, 'trips', tripId);
 
-    await setDoc(docRef, {
+    await saveFlightAndHotelDetails(db, tripId, {
       outboundFlightDetails: {
         flightNumber: formOutFlightNum,
         airline: formOutAirline,
@@ -486,26 +486,8 @@ export default function FlightTab({ tripId }) {
 
   const handleUpdateFlightDate = async (type, dateValue) => {
     if (!tripId) return;
-    const docRef = doc(db, 'trips', tripId);
-    
-    // Quick inline date updates
-    if (type === 'outbound') {
-      await setDoc(docRef, {
-        ...tripData,
-        outboundFlightDetails: {
-          ...tripData.outboundFlightDetails,
-          date: dateValue
-        }
-      });
-    } else {
-      await setDoc(docRef, {
-        ...tripData,
-        returnFlightDetails: {
-          ...tripData.returnFlightDetails,
-          date: dateValue
-        }
-      });
-    }
+    // Quick inline date update — writes only the date field
+    await updateFlightDate(db, tripId, type, dateValue);
   };
 
   const handleMapTypeChange = (type) => {

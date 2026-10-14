@@ -255,9 +255,6 @@ function ShareModal({ tripId, onClose }) {
       const targetDoc = snap.docs[0];
       const targetUid = targetDoc.id;
 
-      // Check if already member
-      const tripDoc = await getDocs(query(collection(db, 'trips')));
-      // Simpler: just add them directly
       const tripRef = doc(db, 'trips', tripId);
 
       // Add user to trip members
@@ -639,22 +636,37 @@ export default function App() {
   useEffect(() => {
     if (!user) { setTrips([]); return; }
 
+    // One listener per trip, kept in sync with the user's tripIds
+    const tripUnsubs = new Map();
+
     // Listen to the user doc to get tripIds
     const userRef = doc(db, 'users', user.uid);
+    let userDocSeen = false;
     const unsubUser = onSnapshot(userRef, (snap) => {
+      // The app never deletes a profile. Right after first login creates it, the
+      // listener can briefly report it missing again — ignore that, or the new
+      // user's trip list stays empty until a reload.
+      if (snap.exists()) userDocSeen = true;
+      else if (userDocSeen) return;
+
       const data = snap.data();
       const tripIds = data?.tripIds || [];
       setGlobalChecklist(data?.globalChecklist || []);
 
-      if (tripIds.length === 0) {
-        setTrips([]);
-        return;
+      // Stop listening to trips that left the list (deleted / left)
+      for (const [tripId, unsub] of tripUnsubs) {
+        if (!tripIds.includes(tripId)) {
+          unsub();
+          tripUnsubs.delete(tripId);
+        }
       }
+      setTrips(prev => prev.filter(t => tripIds.includes(t.id)));
 
-      // Listen to each trip doc
-      const unsubs = tripIds.map(tripId => {
+      // Listen to each new trip doc
+      tripIds.forEach(tripId => {
+        if (tripUnsubs.has(tripId)) return;
         const tripRef = doc(db, 'trips', tripId);
-        return onSnapshot(tripRef, (tripSnap) => {
+        const unsub = onSnapshot(tripRef, (tripSnap) => {
           if (tripSnap.exists()) {
             setTrips(prev => {
               const filtered = prev.filter(t => t.id !== tripId);
@@ -664,13 +676,20 @@ export default function App() {
             // Trip deleted — remove from list
             setTrips(prev => prev.filter(t => t.id !== tripId));
           }
+        }, (err) => {
+          // No access anymore (e.g. removed from members) — drop it so a later change can retry
+          console.error(`Trip listener error (${tripId}):`, err);
+          tripUnsubs.delete(tripId);
+          setTrips(prev => prev.filter(t => t.id !== tripId));
         });
+        tripUnsubs.set(tripId, unsub);
       });
-
-      return () => unsubs.forEach(u => u());
     });
 
-    return () => unsubUser();
+    return () => {
+      unsubUser();
+      tripUnsubs.forEach(u => u());
+    };
   }, [user]);
 
   // Create a new trip
