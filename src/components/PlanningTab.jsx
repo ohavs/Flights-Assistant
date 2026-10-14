@@ -286,6 +286,15 @@ function groupActivitiesByTime(acts) {
   });
 }
 
+// The plan form's editable values as one comparable string.
+function planFormKey(v) {
+  return JSON.stringify([
+    v.title, v.category, v.description, v.address, v.price, v.links, v.newLinkLabel, v.newLinkUrl,
+    v.eventStartDate, v.eventEndDate, v.eventStartTime, v.eventEndTime,
+    v.originId, v.priority, v.needsReservation, v.walkMins, v.transitMins,
+  ]);
+}
+
 export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceHandled }) {
   const { canEdit, currentUid, currentUserProfile, memberProfiles } = useTrip();
   const confirm = useConfirm();
@@ -342,6 +351,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   // Form states for pool items
   const [editingId, setEditingId] = useState(null);
+  const [editBaseline, setEditBaseline] = useState(null); // planFormKey() of the place as loaded
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('אטרקציות ודברים לעשות');
   const [description, setDescription] = useState('');
@@ -882,12 +892,21 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     // handleOpenAdd is recreated every render; the place itself is the trigger.
   }, [sharedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Compute whether the add-plan form has content (used by the
-  // "unsaved changes" prompt when the user tries to close).
-  const planFormDirty = () =>
-    !!(title.trim() || description.trim() || address.trim() || price.trim() ||
-       links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim() ||
-       (editingId && category !== 'אטרקציות ודברים לעשות'));
+  // Whether closing the plan form would lose something (the "unsaved
+  // changes" prompt, and drag-to-dismiss only while nothing would be lost).
+  // A new place: anything typed in. An edit: anything different from what
+  // was loaded — its fields are always filled, so "has content" would ask
+  // every time, even when nothing changed.
+  const currentPlanForm = () => planFormKey({
+    title, category, description, address, price, links, newLinkLabel, newLinkUrl,
+    eventStartDate, eventEndDate, eventStartTime, eventEndTime,
+    originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
+    walkMins: editWalkMins, transitMins: editTransitMins,
+  });
+  const planFormDirty = () => editingId
+    ? currentPlanForm() !== editBaseline
+    : !!(title.trim() || description.trim() || address.trim() || price.trim() ||
+         links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim());
 
   // Dragging the form away is only offered while there is nothing to lose;
   // a filled-in form still asks before closing.
@@ -909,6 +928,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   };
 
   const handleStartEdit = (plan) => {
+    const originKey = plan.distanceOriginId || 'hotel';
+    const cacheEntry = distanceCache[`${plan.id}_${originKey}`];
+    const walkMins = cacheEntry?.manualOverride && cacheEntry.walk?.seconds ? String(Math.round(cacheEntry.walk.seconds / 60)) : '';
+    const transitMins = cacheEntry?.manualOverride && cacheEntry.transit?.seconds ? String(Math.round(cacheEntry.transit.seconds / 60)) : '';
+    // What the form holds right after loading: closing it unchanged is free.
+    setEditBaseline(planFormKey({
+      title: plan.title, category: plan.category, description: plan.description || '',
+      address: plan.address || '', price: plan.price || '',
+      links: Array.isArray(plan.links) ? plan.links : [], newLinkLabel: '', newLinkUrl: '',
+      eventStartDate: plan.event?.startDate || '', eventEndDate: plan.event?.endDate || '',
+      eventStartTime: plan.event?.startTime || '', eventEndTime: plan.event?.endTime || '',
+      originId: originKey, priority: plan.priority || null, needsReservation: !!plan.needsReservation,
+      walkMins, transitMins,
+    }));
     setEditingId(plan.id);
     setTitle(plan.title);
     setCategory(plan.category);
@@ -929,15 +962,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setFormPriority(plan.priority || null);
     setFormNeedsReservation(!!plan.needsReservation);
     // Pre-populate manual override fields from cache (only when already overridden)
-    const originKey = plan.distanceOriginId || 'hotel';
-    const cacheEntry = distanceCache[`${plan.id}_${originKey}`];
-    if (cacheEntry?.manualOverride) {
-      setEditWalkMins(cacheEntry.walk?.seconds ? String(Math.round(cacheEntry.walk.seconds / 60)) : '');
-      setEditTransitMins(cacheEntry.transit?.seconds ? String(Math.round(cacheEntry.transit.seconds / 60)) : '');
-    } else {
-      setEditWalkMins('');
-      setEditTransitMins('');
-    }
+    setEditWalkMins(walkMins);
+    setEditTransitMins(transitMins);
     setShowAddForm(true);
   };
 
