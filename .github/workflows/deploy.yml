@@ -97,3 +97,21 @@ jobs:
 
       - name: Deploy
         run: npx -y firebase-tools@latest deploy --only hosting --project listify-84018 --non-interactive
+
+      # The live site is the deliverable: confirm it serves exactly this build.
+      # The CDN can lag for a few seconds after a release, so retry for a minute.
+      - name: Check the live site serves this build
+        run: |
+          LIVE=https://listify-84018.web.app
+          for i in $(seq 1 12); do
+            if curl -fsS -H 'Cache-Control: no-cache' "$LIVE/sw.js" -o live-sw.js && cmp -s live-sw.js dist/sw.js; then
+              break
+            fi
+            [ "$i" = 12 ] && { echo "::error::$LIVE/sw.js is not this build"; exit 1; }
+            sleep 5
+          done
+          curl -fsS "$LIVE/" | grep -q 'id="root"' || { echo "::error::$LIVE/ does not serve the app shell"; exit 1; }
+          for f in $(grep -o 'assets/[^"]*\.js' dist/sw.js); do
+            curl -fsS -o /dev/null "$LIVE/$f" || { echo "::error::$LIVE/$f is missing"; exit 1; }
+          done
+          echo "Live site serves this build: $LIVE"
