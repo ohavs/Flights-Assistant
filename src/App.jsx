@@ -36,7 +36,7 @@ const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmptyState from './components/EmptyState';
-import useSheetDrag from './hooks/useSheetDrag';
+import Sheet from './ui/Sheet';
 import Skeleton from './components/Skeleton';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
@@ -501,22 +501,12 @@ function ShareModal({ tripId, currentUid, onClose }) {
     }
   };
 
-  const shareSheet = useSheetDrag(() => onClose());
-
   const currentRole = trip?.members?.[currentUid];
   const isOwner = currentRole === 'owner';
 
   // For non-owners: this modal only shows members + leave button (no controls)
   return (
-    <div className="modal-overlay" data-closing={shareSheet.closing || undefined} onClick={onClose}>
-      <div className="modal-content" {...shareSheet.handlers}
-        style={{ height: 'auto', maxHeight: '90%', ...shareSheet.style }}
-        onClick={e => e.stopPropagation()}>
-        <div className="sheet-grab" />
-        <div className="modal-header">
-          <h2>שיתוף וניהול חברי הטיול</h2>
-          <button aria-label="סגור" className="btn-close" onClick={onClose}>✕</button>
-        </div>
+    <Sheet title="שיתוף וניהול חברי הטיול" onClose={onClose} style={{ maxHeight: '90%' }}>
 
         {isOwner && (
           <>
@@ -652,8 +642,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
             );
           })}
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -694,11 +683,6 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     const q = newItemText.toLowerCase();
     return (globalChecklist || []).filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
   }, [globalChecklist, newItemText, editingItemId]);
-
-  /* Above the early return on purpose: hooks have to run in the same
-     order on every render, and `if (!isOpen) return null` sits below —
-     declaring it after would add a hook the moment the sheet opens. */
-  const sheet = useSheetDrag(() => onClose(), { enabled: !newItemText.trim() && !editingItemId });
 
   if (!isOpen) return null;
 
@@ -761,17 +745,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
 
   const isDirty = !!newItemText.trim();
 
-  const attemptClose = async () => {
-    if (isDirty || editingItemId) {
-      const ok = await confirm({
-        title: 'יש שינויים שלא נשמרו',
-        message: 'הזנת טקסט בטופס שלא נשמר. האם לצאת בלי לשמור?',
-        confirmText: 'צא בלי לשמור',
-        cancelText: 'המשך עריכה',
-        danger: true,
-      });
-      if (!ok) return;
-    }
+  // Closing drops a half-typed item; the sheet asks first while there is one.
+  const closeSheet = () => {
     setEditingItemId(null);
     setNewItemText('');
     setNewItemCategory('מסמכים וסידורים');
@@ -854,15 +829,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
   };
 
   return (
-    <div className="modal-overlay" data-closing={sheet.closing || undefined} onClick={attemptClose}>
-      <div className="modal-content" {...sheet.handlers}
-        style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column', ...sheet.style }}
-        onClick={e => e.stopPropagation()}>
-        <div className="sheet-grab" />
-        <div className="modal-header" style={{ flexShrink: 0 }}>
-          <h2>רשימת ציוד קבועה</h2>
-          <button aria-label="סגור" className="btn-close" onClick={attemptClose}>✕</button>
-        </div>
+    <Sheet title="רשימת ציוד קבועה" onClose={closeSheet} dirty={isDirty || !!editingItemId} style={{ maxHeight: '90vh' }}>
 
         <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5, marginBottom: 12, flexShrink: 0 }}>
           נהל כאן את רשימת הציוד הקבועה שלך. פריטים אלו יועתקו אוטומטית לכל טיול חדש שתפתח, ותוכל להתאים אותם אישית לכל טיול בנפרד.
@@ -922,7 +889,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
 
               {editingItemId ? (
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
                   <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
                 </div>
               ) : (
@@ -936,7 +903,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
         </div>
 
         {/* Scrollable checklist items — all categories closed by default */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {categories.map((category, catIdx) => {
             const categoryItems = globalChecklist.filter(item => item.category === category);
             if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
@@ -1093,8 +1060,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -1511,8 +1477,6 @@ function AppInner() {
   const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
 
   // Home-screen layers, each one back press deep.
-  useBackHandler(!!sharingTripId, () => setSharingTripId(null));
-  useBackHandler(showGlobalChecklistModal, () => setShowGlobalChecklistModal(false));
   useBackHandler(!!confirmDelete, () => setConfirmDelete(null));
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');

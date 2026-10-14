@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import {
   collection,
@@ -16,8 +15,7 @@ import Skeleton from './Skeleton';
 import SwipeRow from './SwipeRow';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
-import useSheetDrag from '../hooks/useSheetDrag';
-import useBackHandler from '../hooks/useBackHandler';
+import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -44,48 +42,6 @@ function Avatar({ photoURL, name, size = 26 }) {
         ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
         : <span style={{ fontSize: size * 0.38, fontWeight: 700, color: 'var(--text)' }}>{(name || '?')[0]}</span>}
     </div>
-  );
-}
-
-/* Bottom-sheet shell shared by the reminder sheets. Declared at module level
-   on purpose: a component defined inside another component is a brand-new
-   type on every render, which would remount the sheet — and drop focus out
-   of the textarea — on every keystroke. */
-function Sheet({ onClose, children, maxHeight = '80vh' }) {
-  const drag = useSheetDrag(onClose);
-  // This shell is mounted only while the sheet is open, so it is a back
-  // layer for its whole life.
-  useBackHandler(true, drag.close);
-  return createPortal(
-    <div
-      onClick={drag.close}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1200,
-        background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        opacity: drag.closing ? 0 : 1,
-        transition: 'opacity var(--dur-base) var(--ease-out)',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        {...drag.handlers}
-        style={{
-          width: '100%', maxWidth: 520,
-          background: 'var(--modal-bg)',
-          borderRadius: '24px 24px 0 0',
-          boxShadow: 'var(--shadow-lg)',
-          display: 'flex', flexDirection: 'column',
-          maxHeight, overflow: 'hidden', direction: 'rtl',
-          animation: drag.closing ? 'none' : 'slideUp 0.25s ease',
-          ...drag.style,
-        }}
-      >
-        <div className="sheet-grab" />
-        {children}
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -290,6 +246,10 @@ function RemindersCard({ tripId, canEdit }) {
   };
 
   const closeSheet = () => { setOpen(false); resetComposer(); };
+  // A reminder typed but not added, or an edit not saved.
+  const composerDirty = editingId
+    ? draft !== (reminders.find(r => r.id === editingId)?.text || '')
+    : !!draft.trim();
 
   const toggleDone = (r) => {
     if (!canEdit) return;
@@ -422,40 +382,34 @@ function RemindersCard({ tripId, canEdit }) {
           Everything happens here. Drag it down to close, as everywhere
           else in the app. */}
       {open && (
-        <Sheet onClose={closeSheet} maxHeight="min(88vh, 100vh - 32px)">
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '2px 16px 12px', flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--primary)', flex: 1 }}>תזכורות</span>
-            {doneCount > 0 && canEdit && (
-              <button
-                type="button" onClick={clearDone}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px',
-                  fontFamily: 'var(--font-hebrew)', fontSize: 12.5, fontWeight: 700,
-                  color: 'var(--text-muted)',
-                }}
-              >
-                נקה שבוצעו
-              </button>
-            )}
-            <button
-              type="button" onClick={closeSheet} aria-label="סגור"
-              style={{
-                background: 'var(--ink-6)', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
-                width: 34, height: 34, borderRadius: 12, display: 'flex',
-                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}
-            >
-              <X size={17} />
-            </button>
-          </div>
-
+        <Sheet
+          label="תזכורות"
+          onClose={closeSheet}
+          dirty={composerDirty}
+          style={{ maxHeight: 'min(88vh, 100vh - 32px)' }}
+          header={({ cancel }) => (
+            <div className="modal-header" style={{ gap: 10 }}>
+              <h2 style={{ flex: 1 }}>תזכורות</h2>
+              {doneCount > 0 && canEdit && (
+                <button
+                  type="button" onClick={clearDone}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px',
+                    fontFamily: 'var(--font-hebrew)', fontSize: 12.5, fontWeight: 700,
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  נקה שבוצעו
+                </button>
+              )}
+              <button type="button" className="btn-close" onClick={cancel} aria-label="סגור">✕</button>
+            </div>
+          )}
+        >
           {/* Filter — a visible state, not a hidden mode */}
           {reminders.length > 0 && (
             <div style={{
-              display: 'flex', gap: 4, padding: 4, margin: '0 16px 10px',
+              display: 'flex', gap: 4, padding: 4,
               background: 'var(--ink-3)', borderRadius: 14, flexShrink: 0,
             }}>
               {TABS.map(t => {
@@ -480,13 +434,7 @@ function RemindersCard({ tripId, canEdit }) {
             </div>
           )}
 
-          <div
-            data-sheet-scroll
-            style={{
-              overflowY: 'auto', padding: '0 12px 8px', flex: 1,
-              display: 'flex', flexDirection: 'column', gap: 6,
-            }}
-          >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {visible.length === 0 ? (
               <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '34px 12px', lineHeight: 1.6 }}>
                 {filter === 'done' ? 'עוד לא בוצעה אף תזכורת'
@@ -574,11 +522,8 @@ function RemindersCard({ tripId, canEdit }) {
           {canEdit && (
             <form
               onSubmit={submit}
-              style={{
-                flexShrink: 0, borderTop: '1px solid var(--ink-7)', background: 'var(--modal-bg)',
-                padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
-                display: 'flex', flexDirection: 'column', gap: 8,
-              }}
+              className="sheet-footer"
+              style={{ flexDirection: 'column', gap: 8, marginTop: 0 }}
             >
               {editingId && (
                 <div style={{
@@ -1153,7 +1098,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     if (!tripId) return;
     const arr = [...pickerSelected];
     updateDoc(doc(db, 'trips', tripId, 'checklist', itemId), { assignedTo: arr.length > 0 ? arr : null });
-    setAssignPickerItemId(null);
   };
 
   // The add/edit form lives in a sheet, opened by the floating button.
@@ -1166,7 +1110,16 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setNewItemAssignedTo([]);
   };
 
-  const openAddSheet = () => { resetItemForm(); setShowAddForm(true); };
+  // What the form held when it opened: closing it unchanged is free.
+  const [itemBaseline, setItemBaseline] = useState(null);
+  const itemKey = (text, category, assigned) => JSON.stringify([text, category, assigned]);
+  const itemFormDirty = () => itemKey(newItemText, newItemCategory, newItemAssignedTo) !== itemBaseline;
+
+  const openAddSheet = () => {
+    resetItemForm();
+    setItemBaseline(itemKey('', 'מסמכים וסידורים', []));
+    setShowAddForm(true);
+  };
   const closeAddSheet = () => { setShowAddForm(false); resetItemForm(); };
 
   const doAdd = (overrideCategory) => {
@@ -1188,14 +1141,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
   const handleAdd = (e) => { e.preventDefault(); doAdd(); };
 
-  const handleCancelEdit = () => closeAddSheet();
-
   const handleStartEdit = (item) => {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
     const a = item.assignedTo;
-    setNewItemAssignedTo(Array.isArray(a) ? a : a ? [a] : []);
+    const assigned = Array.isArray(a) ? a : a ? [a] : [];
+    setNewItemAssignedTo(assigned);
+    setItemBaseline(itemKey(item.text, item.category, assigned));
     setShowAddForm(true);
   };
 
@@ -1257,21 +1210,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
       {/* Add / edit one item */}
       {canEdit && showAddForm && (
-        <Sheet onClose={closeAddSheet} maxHeight="88vh">
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 18px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
-          }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--primary)' }}>
-              {editingItemId ? 'עריכת פריט' : 'פריט חדש לרשימה'}
-            </h3>
-            <button type="button" onClick={closeAddSheet} aria-label="סגור"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10 }}>
-              <X size={18} />
-            </button>
-          </div>
-
-            <form onSubmit={handleAdd} data-sheet-scroll style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 18px calc(16px + env(safe-area-inset-bottom))' }}>
+        <Sheet
+          title={editingItemId ? 'עריכת פריט' : 'פריט חדש לרשימה'}
+          onClose={closeAddSheet}
+          dirty={itemFormDirty()}
+          style={{ maxHeight: '88vh' }}
+        >
+          {({ cancel }) => (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>מה להביא?</label>
@@ -1321,17 +1267,12 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   </div>
                 )}
               </div>
-              {editingItemId ? (
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-                  <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
-                </div>
-              ) : (
-                <button type="submit" className="btn-primary" style={{ width: '100%' }}>
-                  <Plus size={18} /><span>הוסף פריט לרשימה</span>
-                </button>
-              )}
+              <div className="sheet-footer">
+                <button type="submit" className="btn-primary">שמור</button>
+                <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
+              </div>
             </form>
+          )}
         </Sheet>
       )}
 
@@ -1448,19 +1389,9 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       </DndContext>
 
       {/* Assign-to-member picker portal — multi-select with toggle + confirm */}
-      {assignPickerItemId && createPortal(
-        <div
-          onClick={() => setAssignPickerItemId(null)}
-          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(11,11,48,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--modal-bg)', borderRadius: 20, padding: '20px', width: '85%', maxWidth: 320, direction: 'rtl', boxShadow: 'var(--shadow-lg)' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>שייך לחברים</span>
-              <button onClick={() => setAssignPickerItemId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>
-            </div>
+      {assignPickerItemId && (
+        <Sheet title="שייך לחברים" onClose={() => setAssignPickerItemId(null)}>
+          {({ close }) => (<>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* Someone who left is offered only if this item is already
                   theirs — so it can be handed on, never newly assigned. */}
@@ -1488,21 +1419,17 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                 );
               })}
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button
-                onClick={() => setPickerSelected(new Set())}
-                style={{ flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'var(--ink-6)', color: 'var(--text-muted)', fontSize: 13, fontWeight: 700 }}>
+            <div className="sheet-footer">
+              <button type="button" className="btn-primary"
+                onClick={() => { handleSaveAssignment(assignPickerItemId); close(); }}>
+                שמור
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setPickerSelected(new Set())}>
                 נקה הכל
               </button>
-              <button
-                onClick={() => handleSaveAssignment(assignPickerItemId)}
-                style={{ flex: 2, padding: '9px 0', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700 }}>
-                אשר
-              </button>
             </div>
-          </div>
-        </div>,
-        document.body
+          </>)}
+        </Sheet>
       )}
 
     </div>
