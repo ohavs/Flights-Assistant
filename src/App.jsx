@@ -40,7 +40,7 @@ import useSheetDrag from './hooks/useSheetDrag';
 import Skeleton from './components/Skeleton';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
-  Plane, ClipboardList, MapPin, Calendar,
+  Plane, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, Coins,
   AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff
@@ -190,28 +190,33 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
         <p>הטיולים שלך מחכים לך</p>
       </div>
 
+      {/* A pastel feature card (Payments-2026), same place and action. */}
       <button
         onClick={onOpenGlobalChecklist}
-        className="btn-secondary"
+        className="press-card"
         style={{
           width: '100%',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          border: '1.5px dashed var(--accent)',
-          background: 'rgba(79,70,229,0.04)',
-          color: 'var(--accent)',
-          borderRadius: 'var(--radius-md)',
-          padding: '12px',
-          fontWeight: 700,
+          gap: 12,
+          border: 'none',
+          background: 'var(--mint)',
+          color: 'var(--text)',
+          borderRadius: 22,
+          padding: '14px 16px',
+          fontFamily: 'inherit',
+          fontSize: 15,
+          fontWeight: 800,
+          textAlign: 'right',
           cursor: 'pointer',
           marginTop: -4,
-          transition: 'all 0.2s ease'
         }}
       >
-        <ClipboardList size={16} />
-        <span>ניהול רשימת ציוד קבועה</span>
+        <span style={{ width: 40, height: 40, borderRadius: 14, background: 'var(--card-bg-solid)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <NavIcon name="checklist" active size={24} />
+        </span>
+        <span style={{ flex: 1 }}>ניהול רשימת ציוד קבועה</span>
+        <ChevronLeft size={18} style={{ color: 'var(--text-muted)' }} />
       </button>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
@@ -221,13 +226,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
             onClick={onImportTrip}
             disabled={importBusy}
             title="ייבוא טיול מגיבוי"
-            style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: importBusy ? 'rgba(5,150,105,0.2)' : 'rgba(5,150,105,0.1)',
-              color: 'var(--text-success)', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: importBusy ? 'default' : 'pointer'
-            }}
+            className="round-btn raised"
           >
             {importBusy ? <Loader2 size={16} className="spinning" /> : <Upload size={16} />}
           </button>
@@ -235,14 +234,10 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
             onClick={() => setShowCreate(!showCreate)}
             aria-label={showCreate ? 'סגור טופס טיול חדש' : 'טיול חדש'}
             aria-expanded={showCreate}
-            style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: 'var(--accent)', color: '#fff', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
-            }}
+            className="btn-primary"
+            style={{ width: 44, height: 44, minHeight: 0, padding: 0, borderRadius: '50%' }}
           >
-            <Plus size={18} />
+            <Plus size={20} strokeWidth={3} />
           </button>
         </div>
       </div>
@@ -308,7 +303,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
         <div className="trip-card" key={trip.id} onClick={() => onOpenTrip(trip.id)}>
           <div className="trip-card-header">
             <div className="trip-card-icon">
-              <Plane size={24} style={{ transform: 'rotate(-45deg)' }} />
+              <NavIcon name="flight" active size={32} />
             </div>
             <div className="trip-card-info" style={{ flex: 1, minWidth: 0 }}>
               <h3>{trip.name || 'טיול ללא שם'}</h3>
@@ -350,16 +345,15 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
           {!isOwner && ownerProfile && (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '6px 10px', background: 'rgba(79,70,229,0.08)',
-              border: '1px solid rgba(79,70,229,0.18)', borderRadius: 999,
-              alignSelf: 'flex-start'
+              padding: '7px 12px', background: 'var(--lavender)',
+              borderRadius: 999, alignSelf: 'flex-start'
             }}>
               {ownerProfile.photoURL ? (
                 <img src={ownerProfile.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
               ) : (
-                <Users size={14} style={{ color: 'var(--accent)' }} />
+                <Users size={14} />
               )}
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                 טיול של {ownerProfile.displayName || ownerProfile.email || ''}
                 {' · '}
                 {myRole === 'viewer' ? 'צפייה' : 'עריכה'}
@@ -370,7 +364,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
           {(trip.dates || pinnedTripId === trip.id) && (
             <div className="trip-card-meta">
               {pinnedTripId === trip.id && (
-                <span className="trip-card-badge" style={{ background: 'var(--p-12)', color: 'var(--accent)' }}>
+                <span className="trip-card-badge" style={{ background: 'var(--butter)' }}>
                   <Pin size={13} />נפתח אוטומטית
                 </span>
               )}
@@ -386,12 +380,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
             <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
               <button
                 onClick={() => onTogglePinned(trip.id)}
-                style={{
-                  width: 34, height: 34, borderRadius: '50%', border: 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                  background: pinnedTripId === trip.id ? 'var(--accent)' : 'var(--p-8)',
-                  color: pinnedTripId === trip.id ? '#fff' : 'var(--accent)',
-                }}
+                className={`round-btn ${pinnedTripId === trip.id ? 'on' : 'butter'}`}
                 title={pinnedTripId === trip.id ? 'בטל טיול נוכחי' : 'קבע כטיול הנוכחי'}
                 aria-pressed={pinnedTripId === trip.id}
               >
@@ -400,21 +389,21 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               <button
                 onClick={() => onExportTrip(trip.id)}
                 disabled={exportBusyId === trip.id}
-                style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(5,150,105,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: exportBusyId === trip.id ? 'default' : 'pointer', color: 'var(--text-success)' }}
+                className="round-btn mint"
                 title="ייצוא גיבוי JSON"
               >
                 {exportBusyId === trip.id ? <Loader2 size={15} className="spinning" /> : <Archive size={15} />}
               </button>
               <button
                 onClick={() => onShareTrip(trip.id)}
-                style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
+                className="round-btn lavender"
                 title={isOwner ? 'שתף וניהול חברים' : 'הצג חברי טיול'}
               >
                 <UserPlus size={15} />
               </button>
               <button
                 onClick={() => onDeleteTrip(trip.id, isOwner)}
-                style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(220,38,38,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' }}
+                className="round-btn danger"
                 title={isOwner ? 'מחק טיול' : 'צא מהטיול'}
               >
                 <Trash2 size={15} />
