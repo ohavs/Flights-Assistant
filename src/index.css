@@ -1352,6 +1352,9 @@ input[type="datetime-local"].form-control {
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
   padding: 20px 16px;
+  /* The padding again, for .sheet-footer to bleed out to the edges. */
+  --sheet-pad-x: 16px;
+  --sheet-pad-b: 20px;
   overflow-y: auto;
   box-shadow: 0 -8px 30px var(--ink-15);
   display: flex;
@@ -1436,6 +1439,20 @@ input[type="datetime-local"].form-control {
   font-size: 12.5px; font-weight: 800; color: var(--text-muted);
   padding-inline: 4px;
 }
+
+/* A form's save bar: the last thing in the form, pinned to the bottom of
+   the sheet however long the form is. "שמור" fills the row, "ביטול" next
+   to it. */
+.sheet-footer {
+  position: sticky; z-index: 2;
+  bottom: calc(-1 * var(--sheet-pad-b, 20px));
+  display: flex; gap: 12px;
+  margin: 8px calc(-1 * var(--sheet-pad-x, 16px)) calc(-1 * var(--sheet-pad-b, 20px));
+  padding: 12px var(--sheet-pad-x, 16px) calc(12px + env(safe-area-inset-bottom));
+  background: var(--modal-bg);
+  border-top: 1px solid var(--ink-7);
+}
+.sheet-footer > .btn-primary { flex: 1; }
 
 .segmented {
   display: flex; gap: 4px; padding: 4px;
@@ -2319,6 +2336,8 @@ body[data-fab] .app-content {
     border-radius: var(--radius-xl);
     margin: 24px;
     padding: 28px;
+    --sheet-pad-x: 28px;
+    --sheet-pad-b: 28px;
   }
 
   /* Homepage trip list: turn into responsive grid on desktop */

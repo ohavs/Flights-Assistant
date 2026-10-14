@@ -88,7 +88,7 @@ await step(owner, 'add a place', async () => {
   await tab(owner, 'תכנון טיול');
   await fab(owner, 'יעד חדש');
   await owner.getByPlaceholder('למשל: תצפית שקיעה בגבעה').fill('תצפית בדיקה');
-  await owner.getByText('שמור שינויים').click();
+  await owner.locator('.sheet-footer button[type="submit"]').click();
   await owner.getByText('תצפית בדיקה').first().waitFor();
 });
 
