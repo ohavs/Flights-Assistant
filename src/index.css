@@ -505,7 +505,7 @@ button:not(:disabled):active,
   color: var(--accent);
 }
 
-/* Under the trip's title: the destination, and its weather as a chip. */
+/* Under the trip's title: the destination. */
 .app-header-sub {
   display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 1px;
   font-size: 11px; font-weight: 700; color: var(--text-muted);
@@ -520,6 +520,14 @@ button:not(:disabled):active,
 }
 .weather-chip > span { font-size: 12px; line-height: 1; }
 .weather-chip:active { background: var(--surface-3); }
+
+/* Flight card: the city under an airport code; the destination's city
+   carries its weather chip. */
+.route-city {
+  display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px;
+  font-size: 12px; font-weight: 700; color: var(--text-muted);
+}
+.route-city > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Content — the ONLY scrollable area ── */
 .app-content {

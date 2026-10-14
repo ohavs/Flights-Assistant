@@ -6,6 +6,7 @@ import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import useSheetDrag from '../hooks/useSheetDrag';
 import useBackHandler from '../hooks/useBackHandler';
 import { useTrip } from '../TripContext';
+import { WeatherChip } from './TripHeaderInfo';
 import { useConfirm } from '../ConfirmContext';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
@@ -828,11 +829,11 @@ export default function FlightTab({ tripId }) {
             <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1.1 }}>
               {flight.depAirport?.code || '—'}
             </div>
-            <div style={{
-              fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {flight.depAirport?.city || ''}
+            <div className="route-city" style={{ justifyContent: 'flex-start' }}>
+              <span>{flight.depAirport?.city || ''}</span>
+              {/* The destination's weather sits with the destination: the
+                  return flight leaves from it. */}
+              {kind === 'return' && flight.depAirport?.city && <WeatherChip trip={tripData} />}
             </div>
             <div style={{ marginTop: 8 }}>
               <RouteTime
@@ -865,11 +866,9 @@ export default function FlightTab({ tripId }) {
             <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1.1 }}>
               {flight.arrAirport?.code || '—'}
             </div>
-            <div style={{
-              fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {flight.arrAirport?.city || ''}
+            <div className="route-city" style={{ justifyContent: 'flex-end' }}>
+              {kind === 'outbound' && flight.arrAirport?.city && <WeatherChip trip={tripData} />}
+              <span>{flight.arrAirport?.city || ''}</span>
             </div>
             <div style={{ marginTop: 8 }}>
               <RouteTime

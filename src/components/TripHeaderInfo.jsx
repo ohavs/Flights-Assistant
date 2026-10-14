@@ -1,14 +1,14 @@
 import { useState, lazy, Suspense } from 'react';
-import { LifeBuoy } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import Sheet from '../ui/Sheet';
 import Skeleton from './Skeleton';
 
 const InfoTab = lazy(() => import('./InfoTab'));
 
-/* The trip header's two quiet helpers, on every tab: the weather at the
-   destination (a chip beside its name) and the trip's important info
-   (a button among the header's actions). Each opens its own sheet.     */
+/* Two quiet helpers, each opening its own sheet: the weather at the
+   destination (a chip by the destination city on the flight cards) and
+   the trip's important info (a button in the trip header, every tab).  */
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -91,12 +91,12 @@ export function InfoButton({ tripId }) {
   return (
     <>
       <button type="button" className="icon-btn" onClick={() => setOpen(true)} aria-label="מידע חשוב" title="מידע חשוב">
-        <LifeBuoy size={18} />
+        <CircleAlert size={19} />
       </button>
       {open && (
         <Sheet
           label="מידע חשוב"
-          title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LifeBuoy size={18} style={{ color: 'var(--c-red)' }} />מידע חשוב</span>}
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleAlert size={19} style={{ color: 'var(--c-red)' }} />מידע חשוב</span>}
           onClose={() => setOpen(false)}
           style={{ maxHeight: '92vh' }}
         >

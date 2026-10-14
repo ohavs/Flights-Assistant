@@ -1,5 +1,6 @@
-// The trip header's weather chip and "מידע חשוב" button, on every tab, and
-// both their sheets; no currency converter. The weather needs the
+// The weather chip by the destination city on the outbound flight card,
+// the "מידע חשוב" button in the trip header on every tab, both their
+// sheets; no currency converter. The weather needs the
 // destination airport's coordinates (seeded into the emulator) and a
 // forecast (served by a fake Open-Meteo response).
 //   bash scripts/run-e2e.sh tests/e2e/flight.e2e.mjs
@@ -69,13 +70,16 @@ if (!r.ok) throw new Error(`seed failed ${r.status}`);
 await page.locator('.trip-card').getByText('פתח טיול').click();
 await page.getByText('טיסת הלוך').first().waitFor();
 
-const chip = page.locator('header button.weather-chip');
+const chip = page.locator('.app-content button.weather-chip');
 const info = page.locator('header button[aria-label="מידע חשוב"]');
 for (const theme of ['light', 'dark']) {
   if (theme === 'dark') await page.locator('button[aria-label="עבור למצב כהה"]').click();
-  await step(`${theme}: weather chip and info button in the header`, async () => {
+  await step(`${theme}: weather by the destination city, info button in the header`, async () => {
     await chip.waitFor();
     await info.waitFor();
+    if (await page.locator('header button.weather-chip').count()) throw new Error('weather still in the header');
+    const city = await chip.evaluate(el => el.closest('.route-city')?.innerText || '');
+    if (!city.includes('רומא')) throw new Error(`chip is not by the destination city ("${city}")`);
     if (!/21°/.test(await chip.innerText())) throw new Error(`chip reads "${await chip.innerText()}"`);
     const fits = await page.locator('header').evaluate(h => {
       const t = h.querySelector('h1');
@@ -103,10 +107,9 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-await step('the chip and the button are on every tab', async () => {
+await step('the info button is on every tab', async () => {
   for (const label of ['תכנון טיול', "צ'קליסט", 'הזמנות', 'הוצאות']) {
     await page.locator(`nav button.nav-item[aria-label="${label}"]`).click();
-    await chip.waitFor({ timeout: 5000 });
     await info.waitFor({ timeout: 5000 });
   }
   await page.locator('nav button.nav-item[aria-label="טיסה ומלון"]').click();
