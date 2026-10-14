@@ -98,7 +98,7 @@ await step(owner, 'add a checklist item', async () => {
   await owner.getByText('מתוך 22').waitFor();
   await fab(owner, 'פריט חדש');
   await owner.getByPlaceholder('למשל: סוודר, מטען').fill('פריט בדיקה');
-  await owner.getByText('הוסף פריט לרשימה').click();
+  await owner.locator('.sheet-footer button[type="submit"]').click();
   await owner.getByText('מתוך 23').waitFor();
 });
 

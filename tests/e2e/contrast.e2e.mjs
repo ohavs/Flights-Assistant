@@ -14,8 +14,10 @@ async function step(name, fn) {
 }
 
 // WCAG contrast between an element's text and the first opaque background
-// behind it.
-const contrast = (loc) => loc.evaluate((el) => {
+// behind it. Measured once its colour transitions have settled: read
+// mid-transition, a just-picked day is half way between two colours.
+const contrast = (loc) => loc.evaluate(async (el) => {
+  await Promise.all(el.getAnimations({ subtree: false }).map(a => a.finished.catch(() => {})));
   const parse = (c) => {
     const m = c.match(/rgba?\(([^)]+)\)/);
     if (!m) return null;

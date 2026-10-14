@@ -77,7 +77,7 @@ async function dragClose(name, open) {
 
 // A form with unsaved changes: the save bar sits at the bottom of the
 // screen, the drag is off, and ✕, back and "ביטול" each ask before closing.
-async function guardsUnsaved(name, open, fill) {
+async function guardsUnsaved(name, open, fill, { cancel = true } = {}) {
   const open_ = () => page.locator('.modal-overlay').count();
   const asks = async (how) => {
     await page.getByRole('button', { name: 'צא בלי לשמור' }).waitFor({ timeout: 3000 });
@@ -109,7 +109,8 @@ async function guardsUnsaved(name, open, fill) {
     await asks('stay');
     if ((await open_()) <= base) problems.push('back closed it');
 
-    await page.locator('.sheet-footer').getByRole('button', { name: 'ביטול' }).click();
+    if (cancel) await page.locator('.sheet-footer').getByRole('button', { name: 'ביטול' }).click();
+    else await page.locator('.modal-header button[aria-label="סגור"]').last().click();
     await asks('leave');
     await page.getByRole('button', { name: 'צא בלי לשמור' }).click();
     await page.waitForTimeout(500);
@@ -141,6 +142,14 @@ await page.getByText('צור טיול ראשון').click();
 await page.getByPlaceholder('למשל: סוף שבוע בפראג').fill('גלילה');
 await page.getByPlaceholder("למשל: פראג, צ'כיה").fill('רומא');
 await page.getByRole('button', { name: 'צור טיול', exact: true }).click();
+await dragClose('share sheet', async () => {
+  await page.locator('.trip-card button[title="שתף וניהול חברים"]').click();
+  await page.getByRole('heading', { name: 'שיתוף וניהול חברי הטיול' }).waitFor();
+});
+await dragClose('global checklist', async () => {
+  await page.locator('button.press-card').first().click();
+  await page.getByRole('heading', { name: 'רשימת ציוד קבועה' }).waitFor();
+});
 await page.locator('.trip-card').getByText('פתח טיול').click();
 await page.getByText('טיסת הלוך').first().waitFor();
 const tab = (label) => page.locator(`nav button.nav-item[aria-label="${label}"]`).click();
@@ -252,6 +261,22 @@ await check('booking form', openBooking, closeAll);
 await dragClose('booking form', openBooking);
 await guardsUnsaved('booking form', openBooking,
   () => page.locator('.modal-content input.form-control').first().fill('לא נשמר'));
+
+await tab("צ'קליסט");
+const openItemForm = async () => {
+  await page.locator('button.fab', { hasText: 'פריט חדש' }).click();
+  await page.getByRole('heading', { name: 'פריט חדש לרשימה' }).waitFor();
+};
+await dragClose('checklist item form', openItemForm);
+await guardsUnsaved('checklist item form', openItemForm,
+  () => page.getByPlaceholder('למשל: סוודר, מטען').fill('לא נשמר'));
+const openReminders = async () => {
+  await page.locator('button[aria-label="תזכורות"]').click();
+  await page.getByRole('dialog', { name: 'תזכורות' }).waitFor();
+};
+await dragClose('reminders', openReminders);
+await guardsUnsaved('reminders', openReminders,
+  () => page.getByPlaceholder('כתוב תזכורת ושלח...').fill('לא נשמר'), { cancel: false });
 
 await browser.close();
 process.exit(failed ? 1 : 0);
