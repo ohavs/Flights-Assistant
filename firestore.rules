@@ -35,8 +35,20 @@ service cloud.firestore {
         return role(uid) == 'owner';
       }
 
-      // List/get: any member
-      allow read: if request.auth != null
+      // Get: any member. A trip that does not exist on the server — not yet
+      // committed (opened right after creating it, slow network, offline) or
+      // just deleted — reads as "does not exist" instead of failing: reading
+      // resource.data on a missing document is an error, the listener gets
+      // permission-denied, and the Firestore SDK can then crash.
+      allow get: if request.auth != null
+        && (
+          resource == null
+          || (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)
+          || (resource.data.members != null && resource.data.members[request.auth.uid] != null)
+        );
+
+      // List: any member (the trip-list query filters on memberIds)
+      allow list: if request.auth != null
         && (
           (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)
           || (resource.data.members != null && resource.data.members[request.auth.uid] != null)

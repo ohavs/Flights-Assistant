@@ -67,10 +67,6 @@ await step(owner, 'create a trip', async () => {
   await owner.getByPlaceholder("למשל: פראג, צ'כיה").fill('רומא');
   await owner.getByRole('button', { name: 'צור טיול', exact: true }).click();
   await card(owner, 'טיול בדיקה').waitFor();
-  // KNOWN BUG (CLAUDE.md "Known risks"): opening a trip before the server has
-  // committed it gets its listeners rejected by the rules, and the Firestore
-  // SDK then crashes. Give the write time to land until the rules are fixed.
-  await owner.waitForTimeout(2000);
 });
 
 await step(owner, 'open the trip and visit every tab', async () => {
