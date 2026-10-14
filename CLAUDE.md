@@ -90,6 +90,20 @@ After building, confirm the keys actually made it in: `grep -c "$VITE_GOOGLE_MAP
 - Writes are fire-and-forget (`.catch(...)`, no `await` before closing a form) so
   the app works offline; the Firestore cache queues them. Keep it that way.
 
+## Tests
+
+All tests run against the Firebase emulators (project `demo-flights`), never the
+real project. CI (`.github/workflows/ci.yml`) runs them on every PR and push.
+- `npm run test:data` — security-rules tests (`tests/*.test.mjs`). Needs Java 11+.
+- `npm run test:e2e` — builds the app in emulator mode
+  (`VITE_USE_FIREBASE_EMULATORS=true`) and runs a browser smoke test
+  (`tests/e2e/smoke.e2e.mjs`): sign-in, create a trip, every tab, add a place,
+  checklist item and expense, edit the hotel, reload, share with a second user.
+  In the Claude cloud container, prefix it with
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium`. Screenshots go to `.e2e/`.
+- The test browser blocks service workers: on a first visit the PWA worker
+  installs and reloads the page, which would interrupt a test mid-step.
+
 ## Data-safety rules (do not break these)
 
 1. **Never test against the real Firebase project.** Use the Firebase emulators
@@ -110,6 +124,13 @@ After building, confirm the keys actually made it in: `grep -c "$VITE_GOOGLE_MAP
    never commit secrets, never use `pull_request_target`.
 
 ### Known risks (audit of the live code, 2026-10-14 — not fixed yet)
+- **Confirmed bug — reading a trip that does not exist on the server is
+  `permission-denied`** (the read rule evaluates `resource.data` on a missing
+  document). It happens when a trip is opened before the server has committed
+  its creation (slow network, offline), or while someone else deletes it. The
+  listener is rejected, and the Firestore SDK (10.14) can then crash with
+  `INTERNAL ASSERTION FAILED: Unexpected state`, which stops syncing until a
+  reload. Seen in the e2e test. Fix: a null-safe read rule (next PR).
 - `days.activities` is rewritten as a whole array from local state
   (`PlanningTab.jsx`, add/edit/move/delete activity). Concurrent edits, or an
   offline edit synced later, can overwrite each other.

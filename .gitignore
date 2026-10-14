@@ -26,3 +26,7 @@ firebase-debug.log
 *.njsproj
 *.sln
 *.sw?
+
+# Local test output
+.e2e
+firestore-debug.log

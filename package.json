@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "bash scripts/run-e2e.sh",
+    "test:data": "npx -y firebase-tools@14.27.0 emulators:exec --project demo-flights --only firestore,auth \"node --test tests/*.test.mjs\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -33,6 +35,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "playwright": "^1.64.0",
     "vite": "^8.0.12",
     "vite-plugin-pwa": "^1.3.0"
   }
