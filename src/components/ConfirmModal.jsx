@@ -1,4 +1,5 @@
-import { X, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, HelpCircle } from 'lucide-react';
+import useBackHandler from '../hooks/useBackHandler';
 
 export default function ConfirmModal({
   isOpen,
@@ -11,6 +12,7 @@ export default function ConfirmModal({
   danger = false,
   busy = false,
 }) {
+  useBackHandler(!!isOpen && !busy, () => onClose?.());
   if (!isOpen) return null;
 
   const handleConfirm = () => {
@@ -28,14 +30,14 @@ export default function ConfirmModal({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
           <div style={{
             width: 44, height: 44, borderRadius: '50%',
-            background: danger ? 'rgba(239, 68, 68, 0.12)' : 'rgba(79, 70, 229, 0.12)',
-            color: danger ? 'rgb(220, 38, 38)' : 'var(--accent)',
+            background: danger ? 'var(--c-red-10)' : 'var(--mint)',
+            color: danger ? 'var(--c-red)' : 'var(--c-green)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
           }}>
-            <AlertTriangle size={22} />
+            {danger ? <AlertTriangle size={22} /> : <HelpCircle size={22} />}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>
               {title}
             </h3>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600 }}>
@@ -47,14 +49,10 @@ export default function ConfirmModal({
             onClick={onClose}
             disabled={busy}
             aria-label="סגור"
-            style={{
-              background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
-              width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: busy ? 'default' : 'pointer', color: 'var(--text-muted)', flexShrink: 0,
-              opacity: busy ? 0.5 : 1
-            }}
+            className="btn-close"
+            style={{ flexShrink: 0, opacity: busy ? 0.5 : 1 }}
           >
-            <X size={16} />
+            ✕
           </button>
         </div>
 
@@ -72,13 +70,8 @@ export default function ConfirmModal({
             type="button"
             onClick={handleConfirm}
             disabled={busy}
-            className="btn-primary"
-            style={{
-              flex: 1,
-              background: danger ? 'rgb(220, 38, 38)' : 'var(--primary)',
-              boxShadow: danger ? '0 4px 14px rgba(220, 38, 38, 0.3)' : '0 4px 14px rgba(11,11,48,0.12)',
-              opacity: busy ? 0.7 : 1
-            }}
+            className={`btn-primary${danger ? ' danger' : ''}`}
+            style={{ flex: 1, opacity: busy ? 0.7 : 1 }}
           >
             {busy ? 'פועל...' : confirmText}
           </button>

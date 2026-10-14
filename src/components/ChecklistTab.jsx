@@ -39,10 +39,10 @@ import { CSS } from '@dnd-kit/utilities';
 /* Small round avatar used across the reminder UI. */
 function Avatar({ photoURL, name, size = 26 }) {
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'var(--lavender)', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {photoURL
         ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
-        : <span style={{ fontSize: size * 0.38, fontWeight: 700, color: '#fff' }}>{(name || '?')[0]}</span>}
+        : <span style={{ fontSize: size * 0.38, fontWeight: 700, color: 'var(--text)' }}>{(name || '?')[0]}</span>}
     </div>
   );
 }
@@ -785,13 +785,13 @@ function SortableCategoryBlock({
                   '--i': Math.min(idx, 8),
                   padding: '12px 14px',
                   cursor: canEdit ? 'pointer' : 'default',
-                  background: item.completed ? 'rgba(255,255,255,0.45)' : 'var(--card-bg)',
-                  border: item.completed ? '1px solid rgba(255,255,255,0.2)' : 'var(--card-border)',
+                  background: item.completed ? 'var(--surface-2)' : 'var(--card-bg)',
+                  border: item.completed ? '1px solid transparent' : 'var(--card-border)',
                   transition: 'background 0.2s, border 0.2s',
                 }}
               >
-                <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid rgba(11,11,48,0.18)', background: item.completed ? 'var(--primary-color)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
-                  {item.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
+                <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid var(--ink-20)', background: item.completed ? 'var(--brand)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
+                  {item.completed && <Check size={14} color="var(--brand-fg)" strokeWidth={3} />}
                 </div>
                 <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
                   {item.text}
@@ -1310,7 +1310,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: isSelected ? 'var(--p-10)' : 'var(--ink-5)', color: isSelected ? 'var(--accent)' : 'var(--text-muted)' }}>
                             {m.photoURL
                               ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--accent)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--accent)' : 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isSelected ? '#fff' : 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                             }
                             {m.displayName}
                             {isSelected && <Check size={12} />}
@@ -1371,7 +1371,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   style={chipStyle(active)}>
                   {m.photoURL
                     ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0 }} referrerPolicy="no-referrer" />
-                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: active ? 'rgba(255,255,255,0.25)' : 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: active ? 'rgba(255,255,255,0.25)' : 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: active ? '#fff' : 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                   }
                   <span style={{ whiteSpace: 'nowrap' }}>{m.displayName}</span>
                   <span style={countStyle(active)}>{countFor(m.uid)}</span>
@@ -1477,7 +1477,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: isSelected ? 'var(--p-10)' : 'var(--ink-4)', border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', borderRadius: 12, cursor: 'pointer', textAlign: 'right' }}>
                     {m.photoURL
                       ? <img src={m.photoURL} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                      : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                      : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                     }
                     <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-main)', flex: 1 }}>
                       {m.displayName}
