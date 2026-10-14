@@ -1263,8 +1263,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   // Small caption above a section inside the details sheet.
   const sheetSectionLabel = {
-    fontSize: 11, fontWeight: 800, color: 'var(--text-muted)',
-    letterSpacing: '0.3px',
+    fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
   };
 
   // Travel time from the hotel / chosen origin, rendered inside the details
@@ -3409,70 +3408,38 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
             {/* Header: icon, title, status pills, close */}
             <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10,
-              padding: '8px 16px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
+              display: 'flex', alignItems: 'flex-start', gap: 12,
+              padding: '6px 18px 14px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
             }}>
-              <span style={{
-                width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-                background: `${getCategoryColor(detailPlan.category)}18`,
-                color: getCategoryColor(detailPlan.category),
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {getCategoryIcon(detailPlan.category, 19)}
-              </span>
+              <CategoryDisc color={getCategoryColor(detailPlan.category)} size={48} radius={16} muted={detailPlan.visited}>
+                {getCategoryIcon(detailPlan.category, 22)}
+              </CategoryDisc>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h2 style={{
-                  fontSize: 16, fontWeight: 800, margin: 0, lineHeight: 1.3,
-                  color: detailPlan.visited ? 'var(--text-muted)' : 'var(--primary)',
+                  fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', margin: 0, lineHeight: 1.25,
+                  color: detailPlan.visited ? 'var(--text-muted)' : 'var(--text)',
                   wordBreak: 'break-word',
                 }}>
                   {detailPlan.title}
                 </h2>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-                    background: `${getCategoryColor(detailPlan.category)}14`,
-                    color: getCategoryColor(detailPlan.category),
-                  }}>{detailPlan.category}</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  <Pill size="sm" style={{ background: `${getCategoryColor(detailPlan.category)}1F` }}>{detailPlan.category}</Pill>
                   {detailPlan.priority === 'must' && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
-                      background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                    }}><Star size={10} fill="#f59e0b" />חובה</span>
+                    <Pill size="sm" tone="butter" icon={<Star size={11} fill="#F59E0B" color="#F59E0B" />}>חובה</Pill>
                   )}
                   {detailPlan.priority === 'optional' && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-                      background: 'var(--ink-6)', color: 'var(--text-muted)',
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                    }}><Clock size={10} />אם ישאר זמן</span>
+                    <Pill size="sm" tone="muted" icon={<Clock size={11} />}>אם ישאר זמן</Pill>
                   )}
                   {bookedPlaceIds.has(detailPlan.id) ? (
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
-                      background: 'var(--c-green-10)', color: 'var(--c-green)',
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                    }}><Check size={10} strokeWidth={3} />הוזמן</span>
+                    <Pill size="sm" tone="mint" icon={<Check size={11} strokeWidth={3} />}>הוזמן</Pill>
                   ) : detailPlan.needsReservation && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
-                      background: 'var(--c-red-10)', color: 'var(--c-red)',
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                    }}><CalendarCheck size={10} />צריך לסגור מראש</span>
+                    <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>צריך לסגור מראש</Pill>
                   )}
                   {detailPlan.visited && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-                      background: 'var(--ink-8)', color: 'var(--text-muted)',
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                    }}><Check size={10} strokeWidth={3} />ביקרנו</span>
+                    <Pill size="sm" tone="muted" icon={<Check size={11} strokeWidth={3} />}>ביקרנו</Pill>
                   )}
                   {detailPlan.category === EVENTS_CATEGORY && detailPlan.event?.startDate && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
-                      background: 'var(--c-orange-12)', color: 'var(--c-orange)',
-                    }}>🗓️ {formatEventWhen(detailPlan.event)}</span>
+                    <Pill size="sm" tone="sky">🗓️ {formatEventWhen(detailPlan.event)}</Pill>
                   )}
                 </div>
               </div>
@@ -3512,19 +3479,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 10,
                           padding: '10px 12px',
-                          background: 'var(--p-6)',
-                          borderRadius: 12,
-                          border: '1px solid var(--p-12)',
+                          background: 'var(--surface-2)',
+                          borderRadius: 16,
+                          border: 'none',
                         }}>
                           <span style={{
-                            width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-                            background: 'var(--accent)', color: '#fff',
+                            width: 34, height: 34, borderRadius: 11, flexShrink: 0,
+                            background: 'var(--mint)', color: 'var(--c-green)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                           }}>
                             {i === 0 && detailPlan.address ? <MapPin size={15} /> : <Link2 size={15} />}
                           </span>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {loc.label}
                             </div>
                             {/* Only when the link carries a name of its own —
@@ -3579,7 +3546,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 const locs = getPlanLocations(detailPlan);
                 const actions = [];
                 if (locs.length > 0) actions.push({
-                  key: 'nav', label: 'ניווט', Icon: Navigation, accent: true,
+                  key: 'nav', label: 'ניווט', Icon: Navigation, tone: 'mint',
                   onClick: () => {
                     if (locs.length === 1) window.open(locs[0].url, '_blank', 'noreferrer');
                     else setLocationsModal(detailPlan);
@@ -3587,7 +3554,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 });
                 if (canEdit) {
                   actions.push({
-                    key: 'edit', label: 'עריכה', Icon: Pencil,
+                    key: 'edit', label: 'עריכה', Icon: Pencil, tone: 'neutral',
                     onClick: () => { detailSheet.close(); handleStartEdit(detailPlan); },
                   });
                   actions.push({
@@ -3595,10 +3562,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     label: detailPlan.priority === 'must' ? 'אם ישאר זמן'
                          : detailPlan.priority === 'optional' ? 'ללא עדיפות' : 'סמן כחובה',
                     Icon: detailPlan.priority === 'must' ? Clock : Star,
+                    tone: 'butter',
                     onClick: () => cyclePriority(detailPlan),
                   });
                   actions.push({
-                    key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
+                    key: 'del', label: 'מחיקה', Icon: Trash2, tone: 'danger',
                     onClick: async () => {
                       const id = detailPlan.id;
                       detailSheet.close();
@@ -3609,21 +3577,23 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 if (actions.length === 0) return null;
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(actions.length, 4)}, 1fr)`, gap: 8 }}>
-                    {actions.map(({ key, label, Icon, onClick, accent, danger }) => (
+                    {/* Round pastel buttons with a label under each (Payments-2026). */}
+                    {actions.map(({ key, label, Icon, onClick, tone }) => (
                       <button
                         key={key}
                         type="button"
                         onClick={onClick}
+                        className="action-tile"
                         style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                          padding: '10px 4px', borderRadius: 14, cursor: 'pointer',
-                          border: `1px solid ${danger ? 'var(--c-red2-12, rgba(239,68,68,0.15))' : accent ? 'var(--p-18)' : 'var(--ink-7)'}`,
-                          background: danger ? 'var(--c-red2-6)' : accent ? 'var(--p-8)' : 'var(--ink-3)',
-                          color: danger ? 'var(--c-red2)' : accent ? 'var(--accent)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-hebrew)', fontSize: 12, fontWeight: 700,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                          padding: '2px 2px 0', border: 'none', background: 'transparent', cursor: 'pointer',
+                          color: tone === 'danger' ? 'var(--c-red)' : 'var(--text)',
+                          fontFamily: 'var(--font-hebrew)', fontSize: 12.5, fontWeight: 700,
                         }}
                       >
-                        <Icon size={17} />
+                        <span className={`round-btn ${tone === 'danger' ? 'danger' : tone === 'neutral' ? '' : tone}`} style={{ width: 50, height: 50, minWidth: 50 }}>
+                          <Icon size={20} />
+                        </span>
                         <span style={{ textAlign: 'center', lineHeight: 1.15 }}>{label}</span>
                       </button>
                     ))}
@@ -3636,7 +3606,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   type="button"
                   onClick={() => handleToggleVisited(detailPlan)}
                   className={detailPlan.visited ? 'btn-secondary' : 'btn-primary'}
-                  style={{ width: '100%', minHeight: 44, gap: 8, fontSize: 14 }}
+                  style={{ width: '100%', minHeight: 50, gap: 8, fontSize: 15 }}
                 >
                   <Check size={17} />
                   <span>{detailPlan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}</span>

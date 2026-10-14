@@ -2355,3 +2355,8 @@ body[data-fab] .app-content {
 /* A tappable card that squeezes on press (spring). */
 .press-card { transition: transform 0.22s var(--ease-spring); }
 .press-card:active { transform: scale(0.97); }
+
+/* A round button with its label under it (sheet action rows): the whole
+   tile is the target, the disc does the press. */
+.action-tile:active { transform: none; }
+.action-tile:active .round-btn { transform: scale(0.9); }
