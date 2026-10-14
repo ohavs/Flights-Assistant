@@ -131,7 +131,10 @@ for (let i = 0; i < 3 && await page.locator('.modal-overlay').count(); i++) {
 // ── Checklist: one "done" circle, no strike-through, ⋯ like everywhere ──
 await tab("צ'קליסט");
 await step('checklist: the circle ticks an item; done is quiet, not struck through', async () => {
-  await page.locator('.app-content button:has(h3)').first().click();   // categories start collapsed
+  // Categories start collapsed; their headers are the shared SectionHeader.
+  const header = page.locator('.app-content .section-header').first();
+  await header.locator('.section-header-toggle').click();
+  if ((await header.locator('.section-header-toggle').getAttribute('aria-expanded')) !== 'true') throw new Error('header did not open');
   const row = page.locator('.app-content .list-card').first();
   await row.waitFor();
   const title = (await row.locator('.list-card-title').innerText()).trim();
@@ -150,6 +153,30 @@ await step('checklist: the circle ticks an item; done is quiet, not struck throu
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.sheet-footer').waitFor({ state: 'detached' });
+});
+
+await step('checklist: a category has a visible ⋯ with rename and delete (no long press)', async () => {
+  const header = page.locator('.app-content .section-header').first();
+  const name = (await header.locator('.section-header-title').innerText()).trim();
+  await header.locator('button.actions-more').tap();
+  const menu = sheet(name);
+  await menu.getByRole('button', { name: 'שינוי שם' }).waitFor();
+  await menu.getByRole('button', { name: 'מחיקת הקטגוריה' }).waitFor();
+  await menu.getByRole('button', { name: 'סגור' }).click();
+  await menu.waitFor({ state: 'detached' });
+});
+
+await step('expenses and bookings group under the same header', async () => {
+  await tab('הוצאות');
+  await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
+  await page.getByPlaceholder('0.00').fill('7');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.app-content .section-header').first().waitFor({ timeout: 5000 });
+  await tab('הזמנות');
+  await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();
+  await page.getByPlaceholder('למשל: ארוחת ערב ב-Costes').fill('סיור');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.app-content .section-header').first().waitFor({ timeout: 5000 });
 });
 
 await browser.close();

@@ -13,6 +13,7 @@ import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, User, Clipbo
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import ListCard from '../ui/ListCard';
+import SectionHeader from '../ui/SectionHeader';
 import { CheckCircle } from '../ui/kit';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
@@ -419,11 +420,15 @@ function RemindersCard({ tripId, canEdit }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {visible.length === 0 ? (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '34px 12px', lineHeight: 1.6 }}>
-                {filter === 'done' ? 'עוד לא בוצעה אף תזכורת'
-                  : filter === 'open' && reminders.length > 0 ? 'אין תזכורות פתוחות — הכל בוצע 🎉'
-                    : canEdit ? 'כתוב תזכורת ראשונה בשדה שלמטה' : 'אין תזכורות'}
-              </p>
+              <EmptyState
+                icon={filter === 'open' && reminders.length > 0 ? Check : Bell}
+                title={filter === 'done' ? 'עוד לא בוצעה אף תזכורת'
+                  : filter === 'open' && reminders.length > 0 ? 'אין תזכורות פתוחות, הכל בוצע'
+                    : 'אין תזכורות'}
+                hint={filter === 'all' || reminders.length === 0
+                  ? (canEdit ? 'כתבו תזכורת בשדה שלמטה. כל מי שבטיול יראה אותה.' : null)
+                  : null}
+              />
             ) : visible.map(r => {
               const done = !!r.completed;
               const editing = editingId === r.id;
@@ -550,10 +555,9 @@ function RemindersCard({ tripId, canEdit }) {
 
 /* ── SortableCategoryBlock ──────────────────────────────────────────────── */
 function SortableCategoryBlock({
-  category, categoryItems, isOpen, isLongPressed, doneCount, canEdit,
+  category, categoryItems, isOpen, doneCount, canEdit,
   editingCat, editCatText, setEditCatText, setEditingCat, handleRenameCategory,
-  toggleCategory, longPressActive, startLongPress, cancelLongPress,
-  setLongPressedCat, handleDeleteCategory,
+  toggleCategory, handleDeleteCategory,
   handleToggle, handleStartEdit, handleDeleteItem,
   quickAddCat, setQuickAddCat, quickAddText, setQuickAddText,
   quickAddInputRef, handleQuickAdd,
@@ -568,85 +572,48 @@ function SortableCategoryBlock({
 
   return (
     <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {/* Category header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {/* Drag handle */}
-        {canEdit && (
-          <button type="button" {...attributes} {...listeners} aria-label="גרור לשינוי סדר"
-            style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
-            <GripVertical size={15} />
-          </button>
-        )}
-
-        {editingCat === category ? (
+      {/* Category header */}
+      {editingCat === category ? (
+        <div className="section-header">
           <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
             style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
             <input
               type="text" autoFocus className="form-control"
               value={editCatText} onChange={e => setEditCatText(e.target.value)}
-              style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+              style={{ flex: 1, minHeight: 40 }}
             />
-            <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
-              <Check size={13} />
+            <button type="submit" aria-label="שמור שם" className="round-btn on" style={{ width: 38, height: 38, minWidth: 38 }}>
+              <Check size={16} />
             </button>
-            <button type="button" onClick={() => setEditingCat(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
-              <X size={14} />
+            <button type="button" aria-label="בטל" onClick={() => setEditingCat(null)} className="round-btn" style={{ width: 38, height: 38, minWidth: 38, background: 'var(--surface-2)' }}>
+              <X size={16} />
             </button>
           </form>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                if (longPressActive.current) { longPressActive.current = false; return; }
-                toggleCategory(category);
-              }}
-              onMouseDown={() => canEdit && startLongPress(category)}
-              onMouseUp={cancelLongPress}
-              onTouchStart={e => { e.stopPropagation(); canEdit && startLongPress(category); }}
-              onTouchEnd={cancelLongPress}
-              onTouchMove={cancelLongPress}
-              style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
-            >
-              <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
-              <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
-                {category}
-              </h3>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
-                {doneCount}/{categoryItems.length}
-              </span>
+        </div>
+      ) : (
+        <SectionHeader
+          title={category}
+          count={`${doneCount}/${categoryItems.length}`}
+          collapsed={!isOpen}
+          onToggle={() => toggleCategory(category)}
+          lead={canEdit && (
+          <button type="button" {...attributes} {...listeners} aria-label="גרור לשינוי סדר" className="section-header-grip">
+            <GripVertical size={15} />
+          </button>
+          )}
+          actions={canEdit ? [
+            { key: 'rename', label: 'שינוי שם', Icon: Pencil, run: () => { setEditingCat(category); setEditCatText(category); } },
+            { key: 'del', label: 'מחיקת הקטגוריה', Icon: Trash2, run: () => handleDeleteCategory(category), danger: true },
+          ] : null}
+        >
+          {canEdit && (
+            <button type="button" aria-label={`הוסף פריט ל${category}`} className="section-header-btn"
+              onClick={() => { setQuickAddCat(category); setQuickAddText(''); if (!isOpen) toggleCategory(category); }}>
+              <Plus size={16} />
             </button>
-
-            {/* Quick-add shortcut in header */}
-            {canEdit && !isLongPressed && (
-              <button type="button" aria-label={`הוסף פריט ל${category}`}
-                onClick={() => { setQuickAddCat(category); setQuickAddText(''); if (!isOpen) toggleCategory(category); }}
-                style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <Plus size={15} />
-              </button>
-            )}
-
-            {isLongPressed && canEdit && (
-              <>
-                <button type="button" aria-label="שנה שם קטגוריה"
-                  onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
-                  style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                  <Pencil size={13} />
-                </button>
-                <button type="button" onClick={() => handleDeleteCategory(category)} aria-label="מחק קטגוריה"
-                  style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                  <Trash2 size={13} />
-                </button>
-                <button type="button" onClick={() => setLongPressedCat(null)} aria-label="בטל"
-                  style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
-                  <X size={14} />
-                </button>
-              </>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </SectionHeader>
+      )}
 
       {/* Category items + quick-add */}
       {isOpen && (
@@ -777,10 +744,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // Category open/close — default ALL closed (empty obj = all closed)
   const [openCategories, setOpenCategories] = useState({});
 
-  // Long-press to reveal category actions
-  const [longPressedCat, setLongPressedCat] = useState(null);
-  const longPressTimer = useRef(null);
-  const longPressActive = useRef(false);
   const [editingCat, setEditingCat] = useState(null);
   const [editCatText, setEditCatText] = useState('');
 
@@ -788,11 +751,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [quickAddCat, setQuickAddCat] = useState(null);
   const [quickAddText, setQuickAddText] = useState('');
   const quickAddInputRef = useRef(null);
-
-  // Cleanup timers on unmount
-  useEffect(() => () => {
-    clearTimeout(longPressTimer.current);
-  }, []);
 
   // Seed picker selection from item's current assignedTo when picker opens
   useEffect(() => {
@@ -922,16 +880,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const toggleCategory = (cat) =>
     setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
-  const startLongPress = (cat) => {
-    longPressActive.current = false;
-    longPressTimer.current = setTimeout(() => {
-      longPressActive.current = true;
-      setLongPressedCat(cat);
-    }, 550);
-  };
-  const cancelLongPress = () => {
-    clearTimeout(longPressTimer.current);
-  };
 
   const saveExtraCategory = async (cat) => {
     if (!cat || !tripId || extraCategories.includes(cat)) return;
@@ -948,7 +896,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         : `האם למחוק את הקטגוריה "${cat}"?`,
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
-    setLongPressedCat(null);
     if (!ok) return;
 
     // Optimistic state updates BEFORE batch so the re-sync effect doesn't
@@ -1254,7 +1201,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
               });
               if (categoryItems.length === 0 && (filterAssignee !== null || !extraCategories.includes(category))) return null;
               const isOpen = !!openCategories[category];
-              const isLongPressed = longPressedCat === category;
               const doneCount = categoryItems.filter(i => i.completed).length;
               return (
                 <SortableCategoryBlock
@@ -1262,7 +1208,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   category={category}
                   categoryItems={categoryItems}
                   isOpen={isOpen}
-                  isLongPressed={isLongPressed}
                   doneCount={doneCount}
                   canEdit={canEdit}
                   editingCat={editingCat}
@@ -1271,10 +1216,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   setEditingCat={setEditingCat}
                   handleRenameCategory={handleRenameCategory}
                   toggleCategory={toggleCategory}
-                  longPressActive={longPressActive}
-                  startLongPress={startLongPress}
-                  cancelLongPress={cancelLongPress}
-                  setLongPressedCat={setLongPressedCat}
                   handleDeleteCategory={handleDeleteCategory}
                   handleToggle={handleToggle}
                   handleStartEdit={handleStartEdit}

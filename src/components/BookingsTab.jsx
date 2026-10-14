@@ -4,7 +4,7 @@ import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'fireb
 import {
   UtensilsCrossed, Compass, Landmark, Ticket, Train, BedDouble, Tag,
   Pencil, Trash2, Phone, MapPin, ExternalLink, Copy, Check, Users, Clock,
-  CalendarCheck, ChevronDown,
+  CalendarCheck,
 } from 'lucide-react';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Sheet from '../ui/Sheet';
@@ -13,6 +13,7 @@ import { useConfirm } from '../ConfirmContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import ListCard from '../ui/ListCard';
+import SectionHeader from '../ui/SectionHeader';
 import { Segmented } from '../ui/Sheet';
 import { Pill, CategoryDisc } from '../ui/kit';
 import EmptyState from './EmptyState';
@@ -307,7 +308,7 @@ export default function BookingsTab({ tripId }) {
 
   const section = (title, list) => list.length > 0 && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <span className="booking-section">{title}</span>
+      <SectionHeader title={title} count={list.length} />
       {list.map(renderCard)}
     </div>
   );
@@ -327,11 +328,7 @@ export default function BookingsTab({ tripId }) {
             {section('בלי תאריך', undated)}
             {past.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <button type="button" className="booking-section booking-section-toggle" onClick={() => setShowPast(v => !v)}
-                  aria-expanded={showPast}>
-                  <ChevronDown size={14} style={{ transform: showPast ? 'none' : 'rotate(90deg)', transition: 'transform 0.2s ease' }} />
-                  <span>עברו ({past.length})</span>
-                </button>
+                <SectionHeader title="עברו" count={past.length} collapsed={!showPast} onToggle={() => setShowPast(v => !v)} />
                 {showPast && past.map(renderCard)}
               </div>
             )}
