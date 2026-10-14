@@ -1,0 +1,49 @@
+name: Firebase Android app setup
+
+# One-off and idempotent: registers the Android app in Firebase, adds the
+# release key's fingerprints (needed for Google sign-in) and prints
+# google-services.json, which is committed to android/app/. It only adds an
+# app and fingerprints to the project; it never changes or deletes anything.
+# Runs when this file changes (Claude cannot dispatch workflows) or manually.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/firebase-android-setup.yml
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT: listify-84018
+      PACKAGE: com.ohavs.flightsassistant
+      SHA1: BC:EF:52:E9:D8:9E:82:22:E7:62:40:0F:17:DA:EE:77:3F:E0:91:A7
+      SHA256: A6:F4:20:DE:C1:7D:56:65:6C:31:CB:93:DF:67:D7:37:BE:CA:1A:30:19:B5:05:A0:5D:BC:9A:31:3B:47:43:3B
+    steps:
+      - name: Register app, fingerprints, print config
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$FIREBASE_TOKEN" ] || { echo "::error::FIREBASE_TOKEN is not set"; exit 1; }
+          fb() { npx --yes firebase-tools@15.33.0 "$@" --project "$PROJECT" --non-interactive; }
+          APP_ID=$(fb apps:list ANDROID --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s).result||[];const a=r.find(x=>x.packageName===process.env.PACKAGE);console.log(a?a.appId:"")})')
+          if [ -z "$APP_ID" ]; then
+            APP_ID=$(fb apps:create ANDROID "Flights Assistant Android" --package-name "$PACKAGE" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).result.appId))')
+            echo "created $APP_ID"
+          fi
+          echo "APP_ID=$APP_ID"
+          EXISTING=$(fb apps:android:sha:list "$APP_ID" --json || echo '{}')
+          for SHA in "$SHA1" "$SHA256"; do
+            HEX=$(echo "$SHA" | tr -d ' :' | tr 'A-F' 'a-f')
+            if echo "$EXISTING" | tr 'A-F' 'a-f' | tr -d ':' | grep -q "$HEX"; then echo "sha present: $HEX"; else fb apps:android:sha:create "$APP_ID" "$HEX"; fi
+          done
+          fb apps:sdkconfig ANDROID "$APP_ID" --out "$RUNNER_TEMP/google-services.json"
+          # Google sign-in needs an Android OAuth client (type 1) and the web
+          # client (type 3) in the file; Firebase creates them shortly after
+          # the SHA-1 is added, so a first run may need one more run.
+          node -e 'const j=require(process.argv[1]);const c=j.client.find(x=>x.client_info.android_client_info.package_name===process.env.PACKAGE);console.log("oauth client types:",(c.oauth_client||[]).map(o=>o.client_type).join(",")||"none")' "$RUNNER_TEMP/google-services.json"
+          # Same public client config that ships inside every APK.
+          echo "----- google-services.json (base64) -----"
+          base64 -w0 "$RUNNER_TEMP/google-services.json"; echo
+          echo "----- end -----"

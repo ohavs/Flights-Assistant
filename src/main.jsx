@@ -5,10 +5,16 @@ import { ConfirmProvider } from './ConfirmContext.jsx'
 import './index.css'
 import App from './App.jsx'
 import { db, enableNetwork, disableNetwork } from './firebase.js'
+import { isNative } from './lib/platform.js'
 
 // ── Service Worker: reload page when a new version activates ──
+// Web only. In the Android app the files ship inside the APK, and a worker
+// would keep serving the old bundle after an update installs.
 let swRegistration = null;
-if ('serviceWorker' in navigator) {
+if (!isNative && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     window.location.reload();
   });

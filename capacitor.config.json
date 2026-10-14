@@ -1,0 +1,13 @@
+{
+  "appId": "com.ohavs.flightsassistant",
+  "appName": "עוזר טיסות",
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": [
+        "google.com"
+      ]
+    }
+  }
+}

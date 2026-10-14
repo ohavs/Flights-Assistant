@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "883919555591",
+    "project_id": "listify-84018",
+    "storage_bucket": "listify-84018.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883919555591:android:1ad4ccc419e3b985b32ea2",
+        "android_client_info": {
+          "package_name": "com.ohavs.flightsassistant"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "883919555591-kdvk29s627sqgk0mpj0q624bag9m96ci.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ohavs.flightsassistant",
+            "certificate_hash": "bcef52e9d89e8222e762400f17daee773fe091a7"
+          }
+        },
+        {
+          "client_id": "883919555591-pe1llkho5i9kqnfl9ssn2nrspr01hutm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0c0hghjF2wavi1VVWwSjfj4afHgK1d6Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "883919555591-pe1llkho5i9kqnfl9ssn2nrspr01hutm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

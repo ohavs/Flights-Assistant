@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.15.2 (`changelog.md`)
+- גרסת ווב: 8.15.3 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`
 
 ## כללים קריטיים — לקרוא לפני כל שינוי
@@ -58,6 +58,10 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
   - תוקן בחוקים (`get` מטפל במסמך חסר). נפרס ואומת שהחי זהה לקובץ.
 
 - [x] שלב 1 (#12, 8.15.2): Firebase SDK 10.14 → 12.19, בלי שינוי קוד. בדיקת הדפדפן: 29 מתוך 30 ריצות (25 אחרונות ברצף).
+- [x] `deploy.yml` (#13): אחרי כל פריסה בודק שהאתר החי מגיש בדיוק את ה־build. הקונטיינר של Claude לא מגיע לאתר (הפרוקסי חוסם), אז זה האימות.
+- [x] אפליקציית Android רשומה ב־Firebase: `1:883919555591:android:1ad4ccc419e3b985b32ea2`, עם SHA-1 ו־SHA-256 של מפתח השחרור (`firebase-android-setup.yml`). `google-services.json` ב־`android/app/`.
+- [x] שלב 2ב (#14): מעטפת Capacitor, כניסה נייטיב, כפתור חזור, status bar, אייקון ו־splash. ה־SW נרשם רק בווב.
+- [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
 
 ## הבא
 לפי `docs/PLAN.md`:
@@ -69,6 +73,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 ## החלטות
 - אנדרואיד עם Capacitor. הפצה ב־GitHub Releases עם עדכון מתוך האפליקציה ("בדוק עדכונים" בהגדרות). בלי Play.
 - **התשתית נלקחת מ־`ohavs/Payments-2026`** (אותו בעלים, אותה גישה, כבר עובד): Capacitor 8, כניסת Google נייטיב, updater, `android.yml`, תזכורות מקומיות, בדיקות e2e. לא כותבים אותה מחדש.
+- **קריאת Payments-2026:** `git clone --depth 1 https://github.com/ohavs/payments-2026 /home/user/ohavs/payments-2026` (ציבורי). הבעלים אישר להעתיק ממנו עיצוב, אנימציות ותשתית.
 - **עיצוב: שפת העיצוב של Payments-2026, לווב ולאפליקציה, מאותו קוד.**
   - המקור: `docs/PLAN.md` סעיף 5, `src/styles.css`, `src/ui/`, פונט Rubik.
   - נשארים אותה פונקציונליות ואותו מיקום של הדברים; משתנים העיצוב, הפונט והאנימציות.
@@ -90,7 +95,8 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 
 ## סודות (שמות בלבד)
 - `VITE_GOOGLE_MAPS_KEY`, `VITE_AERODATABOX_KEY`, `FIREBASE_TOKEN`: קיימים (build, Hosting ו־rules).
-- `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`: הבעלים מוסיף מהקבצים שנשלחו. ייבדק בבניית ה־APK הראשונה.
+- `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`: הבעלים מוסיף מהקבצים שנשלחו. `android.yml` נכשל בלעדיהם, עם "Missing repository secret".
+- מפתח Maps: אם יש לו הגבלת אתרים, צריך להוסיף `https://localhost/*`, המקור של האפליקציה. לא נבדק.
 
 ---
 

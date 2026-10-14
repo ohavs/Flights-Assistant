@@ -476,6 +476,8 @@ button:not(:disabled):active,
   position: relative;
   overflow: hidden;
   isolation: isolate;      /* clean stacking/compositing root for children */
+  /* Android app draws under the status bar (edge-to-edge); 0 on the web. */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* Homepage trip cards stack on mobile, grid on desktop. */
