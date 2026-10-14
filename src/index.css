@@ -55,10 +55,12 @@
      The bar floats over the content, so every docked control and the
      scroll padding derive their offset from --nav-total instead of
      hard-coding the bar's height. */
-  --nav-height: 62px;
-  --nav-gap: 10px;                       /* breathing room under the bar */
-  --nav-side: 12px;                      /* inset from the screen edges */
-  --nav-count: 5;                        /* tabs — drives the indicator */
+  --nav-height: 70px;
+  --nav-gap: 0px;                        /* docked on phones (floats on desktop) */
+  --nav-side: 0px;
+  --nav-count: 5;
+  --nav-off-fill: #E8E8EA;               /* inactive sticker icons */
+  --nav-off-stroke: #A1A1AA;
   --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
 
   /* ── Motion ──
@@ -264,6 +266,8 @@
   --c-teal-10:  rgba(52,211,153,0.10);
   --c-teal-12:  rgba(52,211,153,0.12);
   --c-slate:    #94a3b8;
+  --nav-off-fill: #34343A;
+  --nav-off-stroke: #74747E;
   --brand: #2DBE6C;
   --brand-fg: #0B0B0C;
   --stroke: #0B0B0C;
@@ -587,59 +591,27 @@ button:not(:disabled):active,
 }
 
 /* ── Bottom Navigation ──
-   A floating pill rather than a docked bar: it sits above the content
-   with air around it, and the active tab is marked by a single pill
-   that travels between the icons instead of a colour swap. It never
+   Docked to the bottom edge (Payments-2026): a white bar with rounded top
+   corners. Inactive icons are grey stickers; the active one pops into
+   colour, its label goes bold and a dot springs up under it. It never
    covers anything — .app-content reserves --nav-total at its bottom. */
 .bottom-nav {
   position: absolute;
   left: var(--nav-side);
   right: var(--nav-side);
-  bottom: calc(var(--nav-gap) + env(safe-area-inset-bottom, 0px));
-  height: var(--nav-height);
+  bottom: var(--nav-gap);
+  height: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
+  padding: 0 6px env(safe-area-inset-bottom, 0px);
   background: var(--nav-bg);
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border: 1px solid var(--w-60);
-  border-radius: 22px;
-  box-shadow: 0 6px 24px var(--ink-12), 0 1px 2px var(--ink-8);
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -8px 30px rgba(20, 20, 20, 0.08);
   display: flex;
   align-items: stretch;
-  padding: 0;
   z-index: 1000;
-  /* Own compositing layer: without it some mobile browsers drop the
-     backdrop-filter after a tab's enter animation and the bar goes blank. */
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
 }
 
 [data-theme="dark"] .bottom-nav {
-  border-color: var(--w-6);
-  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
-}
-
-/* The travelling pill. Items are equal width, so the active one sits at
-   index × (100% / count) from the right edge (RTL). Transforms are
-   physical, so moving right-to-left is a negative translate. */
-.nav-indicator {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  right: 0;
-  width: calc(100% / var(--nav-count));
-  transform: translateX(calc(var(--nav-i, 0) * -100%));
-  transition: transform var(--dur-slow) var(--ease-spring);
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.nav-indicator i {
-  display: block;
-  width: calc(100% - 12px);
-  border-radius: 16px;
-  background: var(--p-12);
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
 }
 
 .nav-item {
@@ -648,51 +620,52 @@ button:not(:disabled):active,
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
-  border-radius: 16px;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 9px 2px 0;
   color: var(--text-muted);
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: color var(--dur-base) var(--ease-out);
-  position: relative;
-  z-index: 1;
   font-family: var(--font-hebrew);
-  padding: 0 2px;
 }
 
-/* The pill already marks the active tab, so pressing a nav item must not
-   also scale it — that would fight the indicator's travel. */
+/* The pop and the dot are the feedback; no extra squeeze on press. */
 .nav-item:active { transform: none; }
 
-.nav-item.active {
-  color: var(--accent);
+.nav-icon { display: flex; }
+.nav-item.active .nav-icon {
+  animation: nav-pop 0.45s var(--ease-spring);
 }
-
-.nav-item svg {
-  width: 21px; height: 21px;
-  transition: transform var(--dur-slow) var(--ease-spring);
-}
-
-.nav-item.active svg {
-  transform: translateY(-1px) scale(1.06);
+@keyframes nav-pop {
+  0%   { transform: scale(0.7); }
+  55%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
 }
 
 .nav-label {
-  font-size: 10px;
-  font-weight: 800;
-  opacity: 0.65;
+  font-size: 11px;
+  font-weight: 600;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity var(--dur-base) var(--ease-out);
 }
 
 .nav-item.active .nav-label {
-  opacity: 1;
+  color: var(--text);
+  font-weight: 800;
 }
+
+.nav-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text);
+  transform: scale(0);
+  transition: transform 0.3s var(--ease-spring);
+}
+.nav-item.active .nav-dot { transform: scale(1); }
 
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE
@@ -2165,10 +2138,10 @@ input[type="datetime-local"].form-control {
   z-index: 900;
   height: 48px;
   padding-inline: 15px 18px;
-  border: none;
+  border: 2.5px solid var(--stroke);
   border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--brand);
+  color: var(--brand-fg);
   font-family: inherit;
   font-size: 15px;
   font-weight: 800;
@@ -2176,12 +2149,23 @@ input[type="datetime-local"].form-control {
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 8px 24px rgba(var(--accent-rgb, 79, 70, 229), 0.34),
-              0 2px 6px var(--ink-12);
+  /* Sticker style: a hard ink shadow that the press pushes into. */
+  box-shadow: 0 4px 0 var(--stroke);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
   animation: fab-in var(--dur-base) var(--ease-spring) backwards;
 }
 
-.fab svg { flex-shrink: 0; }
+.fab:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--stroke);
+}
+
+.fab svg {
+  flex-shrink: 0;
+  transition: transform 0.45s var(--ease-spring);
+}
+/* The + turns as it is pressed. */
+.fab:active svg { transform: rotate(90deg); }
 
 @keyframes fab-in {
   from { opacity: 0; transform: translateY(10px) scale(0.9); }
@@ -2266,6 +2250,7 @@ body[data-fab] .app-content {
        var()s where it is *declared*, so the :root copy still carries the
        mobile height no matter what a descendant sets --nav-height to. */
     --nav-height: 68px;
+    --nav-gap: 16px;   /* floats above the bottom edge on wide screens */
     --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
   }
 
@@ -2312,17 +2297,16 @@ body[data-fab] .app-content {
   .glass-card { padding: 22px; border-radius: 20px; }
   .trip-card { padding: 24px; border-radius: 22px; }
 
-  /* Bottom nav: the same floating pill, centred and a little larger.
-     Capping the width keeps the travelling indicator's geometry exact. */
+  /* Bottom nav: a floating bar, centred, all corners rounded. */
   .bottom-nav {
     left: 50%;
     right: auto;
-    transform: translateX(-50%) translateZ(0);
+    transform: translateX(-50%);
     width: min(560px, calc(100% - 80px));
     border-radius: 24px;
+    box-shadow: var(--shadow-md);
   }
-  .nav-item svg { width: 24px; height: 24px; }
-  .nav-label { font-size: 11px; }
+  .nav-label { font-size: 12px; }
 
   /* Modal — centred dialog instead of bottom-sheet on desktop */
   .modal-overlay { align-items: center; }
