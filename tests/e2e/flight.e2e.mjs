@@ -43,15 +43,18 @@ await page.goto('http://localhost:5173/');
 await page.getByText('התחבר עם Google').waitFor();
 await page.evaluate(() => window.__e2eSignIn('flight@example.com'));
 await page.getByText('צור טיול ראשון').click();
-await page.getByPlaceholder('למשל: סוף שבוע בפראג').fill('רומא');
+await page.getByPlaceholder('למשל: סוף שבוע בפראג').fill('מזג אוויר ברומא');
 await page.getByPlaceholder("למשל: פראג, צ'כיה").fill('רומא');
 await page.getByRole('button', { name: 'צור טיול', exact: true }).click();
 await page.locator('.trip-card').waitFor();
 await page.waitForTimeout(1500);
 
 // Destination airport with coordinates (emulator only, one field path).
-const trips = await (await fetch(`${DB}/trips`, { headers: admin })).json();
-const tripId = trips.documents[0].name.split('/').pop();
+// Other tests share the emulator: pick this test's trip by its name.
+const trips = await (await fetch(`${DB}/trips?pageSize=300`, { headers: admin })).json();
+const mine = trips.documents.find(d => d.fields?.name?.stringValue === 'מזג אוויר ברומא');
+if (!mine) throw new Error('trip not found in the emulator');
+const tripId = mine.name.split('/').pop();
 const airport = { mapValue: { fields: {
   code: { stringValue: 'FCO' }, city: { stringValue: 'רומא' }, name: { stringValue: 'Fiumicino' },
   lat: { doubleValue: 41.8003 }, lng: { doubleValue: 12.2389 }, timezone: { stringValue: 'UTC +02:00' },
