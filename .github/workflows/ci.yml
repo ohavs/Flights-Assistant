@@ -1,8 +1,9 @@
 name: CI
 
-# Tests every PR and every push to master. After the tests pass on master, the
-# web app is deployed to Firebase Hosting (only if the FIREBASE_SERVICE_ACCOUNT
-# secret is set). Secrets are never exposed to pull requests from forks.
+# Tests every PR and every push to master. After the tests pass on master (push
+# or manual run), the web app is deployed to Firebase Hosting — only if the
+# FIREBASE_SERVICE_ACCOUNT secret is set. Secrets are never exposed to pull
+# requests from forks.
 on:
   pull_request:
   push:
@@ -45,7 +46,7 @@ jobs:
 
   deploy-web:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
