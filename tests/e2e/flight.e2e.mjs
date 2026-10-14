@@ -95,6 +95,8 @@ for (const theme of ['light', 'dark']) {
   await step(`${theme}: info sheet`, async () => {
     await info.click();
     await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
+    // The owner can edit from here: the sheet sees the trip's role.
+    await page.locator('.modal-overlay').getByRole('button', { name: 'פריט חדש' }).waitFor({ timeout: 5000 });
     await shot(`${theme}-info`);
     await page.locator('.modal-overlay button[aria-label="סגור"]').first().click();
     await page.locator('.modal-overlay').waitFor({ state: 'detached' });
