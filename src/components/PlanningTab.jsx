@@ -2637,7 +2637,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
                         onClick={() => setShowSortMenu(false)}
                       />
-                      <div style={{
+                      <div role="dialog" aria-label="מיון ותצוגה" style={{
                         position: 'fixed',
                         left: 0, right: 0, bottom: 0,
                         marginInline: 'auto',

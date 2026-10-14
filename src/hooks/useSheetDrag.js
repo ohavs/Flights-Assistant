@@ -60,10 +60,20 @@ export default function useSheetDrag(onClose, { enabled = true } = {}) {
   const canStart = useCallback((target, el) => {
     if (!enabledRef.current || closingRef.current) return false;
     if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return false;
-    // Only from the top of the scroll. A sheet either scrolls itself or has
-    // an inner scroll area marked [data-sheet-scroll].
-    const scroller = target?.closest?.('[data-sheet-scroll]');
-    return scroller ? scroller.scrollTop <= 0 : el.scrollTop <= 0;
+    // Only from the top of the scroll. Every scrollable box between the
+    // finger and the sheet counts, not just the sheet itself or one marked
+    // [data-sheet-scroll]: with an unmarked inner scroller the sheet's own
+    // scrollTop is always 0, so swiping down to scroll back up dragged the
+    // sheet closed instead.
+    for (let n = target; n && n !== el.parentNode; n = n.parentNode) {
+      if (n.nodeType !== 1) continue;
+      if (n.scrollTop > 0) {
+        const oy = getComputedStyle(n).overflowY;
+        if (oy === 'auto' || oy === 'scroll') return false;
+      }
+      if (n === el) break;
+    }
+    return true;
   }, []);
 
   const settle = useCallback((endY, endT) => {
