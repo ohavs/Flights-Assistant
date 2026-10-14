@@ -518,6 +518,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   }, [collapsedTimeGroups, tripId]);
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
   const [activityDetail, setActivityDetail] = useState(null);
+  useBackHandler(!!activityDetail, () => setActivityDetail(null));
   const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
   const [destCoords, setDestCoords] = useState(null);
@@ -3867,9 +3868,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                 {/* === SECTION 1: Saved Places === */}
                 <div style={{
-                  background: 'rgba(79,70,229,0.03)',
-                  border: '1.5px solid rgba(79,70,229,0.12)',
-                  borderRadius: 12,
+                  background: 'var(--surface-2)',
+                  border: 'none',
+                  borderRadius: 18,
                   padding: '14px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -3972,16 +3973,15 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                   }
                                 }}
                                 style={{
-                                  border: `1.5px solid ${isActive ? 'var(--accent)' : 'rgba(11,11,48,0.1)'}`,
-                                  background: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
-                                  color: isActive ? '#fff' : 'var(--text-muted)',
-                                  borderRadius: 20,
-                                  padding: '3px 11px',
-                                  fontSize: 12,
+                                  border: 'none',
+                                  background: isActive ? 'var(--brand)' : 'var(--card-bg-solid)',
+                                  color: isActive ? 'var(--brand-fg)' : 'var(--text)',
+                                  borderRadius: 999,
+                                  padding: '6px 12px',
+                                  fontSize: 13,
                                   fontWeight: 700,
                                   cursor: 'pointer',
-                                  transition: 'all 0.15s ease',
-                                  boxShadow: isActive ? '0 2px 6px rgba(79,70,229,0.2)' : 'none'
+                                  transition: 'background-color 0.15s ease'
                                 }}
                               >
                                 {label}
@@ -3998,9 +3998,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       type="button"
                       onClick={addSavedPlaceSelection}
                       style={{
-                        border: '1.5px dashed rgba(79,70,229,0.25)', background: 'transparent',
-                        color: 'var(--accent)', borderRadius: 8, padding: '7px 14px',
-                        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        border: 'none', background: 'var(--card-bg-solid)',
+                        color: 'var(--text)', borderRadius: 999, padding: '8px 14px',
+                        fontSize: 13, fontWeight: 700, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start'
                       }}
                     >
@@ -4062,10 +4062,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         type="button"
                         onClick={() => setActivityTimeLabel(label)}
                         style={{
-                          border: '1px solid rgba(11,11,48,0.1)',
-                          background: activityTimeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.7)',
-                          color: activityTimeLabel === label ? '#fff' : 'var(--text-muted)',
-                          borderRadius: 12, padding: '4px 10px', fontSize: 12,
+                          border: 'none',
+                          background: activityTimeLabel === label ? 'var(--brand)' : 'var(--card-bg-solid)',
+                          color: activityTimeLabel === label ? 'var(--brand-fg)' : 'var(--text)',
+                          borderRadius: 999, padding: '6px 12px', fontSize: 13,
                           fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
                         }}
                       >
@@ -4099,8 +4099,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: 12, marginTop: 8, flexShrink: 0 }}>
-                  <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 44, fontSize: 15 }}>שמור פעילות</button>
+                <div style={{
+                  position: 'sticky', bottom: -16, zIndex: 2,
+                  display: 'flex', gap: 12, marginTop: 8, flexShrink: 0,
+                  padding: '12px 0 4px', background: 'var(--modal-bg)', borderTop: '1px solid var(--ink-7)',
+                }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 50, fontSize: 15 }}>שמור פעילות</button>
                   <button type="button" onClick={attemptCloseActivityForm} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
                 </div>
 
@@ -4192,88 +4196,100 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         document.body
       )}
 
-      {/* Activity detail popup */}
+      {/* Activity details — a bottom sheet like the place details: what it
+          is, when, where, the place it comes from, and what you can do. */}
       {activityDetail && createPortal(
-        <div
-          onClick={() => setActivityDetail(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 420,
-              background: 'var(--modal-bg)',
-              borderRadius: 'var(--radius-xl)',
-              boxShadow: 'var(--shadow-lg)',
-              padding: '22px 20px',
-              display: 'flex', flexDirection: 'column', gap: 12,
-              maxHeight: '80vh', overflow: 'auto',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                  background: `${getCategoryColor(activityDetail.category)}18`,
-                  color: getCategoryColor(activityDetail.category),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: `1.5px solid ${getCategoryColor(activityDetail.category)}40`,
-                }}>
-                  {getCategoryIcon(activityDetail.category, 16)}
-                </div>
-                <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0, wordBreak: 'break-word' }}>
-                  {activityDetail.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setActivityDetail(null)}
-                style={{
-                  background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
-                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0,
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {activityDetail.timeLabel && (
-              <span style={{
-                fontSize: 12, fontWeight: 800, color: '#fff', alignSelf: 'flex-start',
-                background: 'var(--accent)', padding: '3px 10px', borderRadius: 6,
+        (() => {
+          const { __dayId: actDayId, ...act } = activityDetail;
+          const linked = act.placeId ? plans.find(p => p.id === act.placeId) : null;
+          const booked = linked && bookedPlaceIds.has(linked.id);
+          const addressUrl = act.address
+            ? (/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`)
+            : null;
+          const navUrl = addressUrl || (linked ? getPlanLocations(linked)[0]?.url : null);
+          const close = () => setActivityDetail(null);
+          const actions = [];
+          if (navUrl) actions.push({ key: 'nav', label: 'ניווט', Icon: Navigation, tone: 'mint', run: () => window.open(navUrl, '_blank', 'noreferrer') });
+          if (linked) actions.push({ key: 'place', label: 'פרטי המקום', Icon: MapPin, tone: 'lavender', run: () => { close(); openPlanDetail(linked.id); } });
+          if (canEdit && actDayId) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); handleStartEditActivity(actDayId, act); } });
+          return (
+            <>
+              <div
+                onClick={close}
+                style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
+              />
+              <div role="dialog" aria-label={act.title} style={{
+                position: 'fixed', left: 0, right: 0, bottom: 0, marginInline: 'auto', zIndex: 2000,
+                width: '100%', maxWidth: 520, maxHeight: '80vh', overflow: 'auto', direction: 'rtl',
+                background: 'var(--modal-bg)', borderRadius: '24px 24px 0 0', boxShadow: 'var(--shadow-lg)',
+                padding: '0 18px calc(18px + env(safe-area-inset-bottom))',
+                display: 'flex', flexDirection: 'column', gap: 14,
+                animation: 'slideUp 0.25s ease',
               }}>
-                {activityDetail.timeLabel}
-              </span>
-            )}
+                <div className="sheet-grab" />
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <CategoryDisc color={getCategoryColor(act.category)} size={48} radius={16}>
+                    {getCategoryIcon(act.category, 22)}
+                  </CategoryDisc>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)', margin: 0, lineHeight: 1.25, wordBreak: 'break-word' }}>
+                      {act.title}
+                    </h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      {act.timeLabel && <Pill size="sm" tone="sky">{act.timeLabel}</Pill>}
+                      {act.category && <Pill size="sm" style={{ background: `${getCategoryColor(act.category)}1F` }}>{act.category}</Pill>}
+                      {linked?.priority === 'must' && <Pill size="sm" tone="butter" icon={<Star size={11} fill="#F59E0B" color="#F59E0B" />}>חובה</Pill>}
+                      {booked
+                        ? <Pill size="sm" tone="mint" icon={<Check size={11} strokeWidth={3} />}>הוזמן</Pill>
+                        : linked?.needsReservation && <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>צריך לסגור מראש</Pill>}
+                    </div>
+                  </div>
+                  <button type="button" aria-label="סגור" className="btn-close" onClick={close} style={{ flexShrink: 0 }}>✕</button>
+                </div>
 
-            {activityDetail.description && (
-              <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, margin: 0, wordBreak: 'break-word' }}>
-                {activityDetail.description}
-              </p>
-            )}
+                {act.description && (
+                  <p style={{ fontSize: 15, color: 'var(--text)', lineHeight: 1.55, margin: 0, wordBreak: 'break-word' }}>
+                    {act.description}
+                  </p>
+                )}
 
-            {activityDetail.address && (
-              <a
-                href={/^https?:\/\//i.test(activityDetail.address) ? activityDetail.address : `https://maps.google.com/?q=${encodeURIComponent(activityDetail.address)}`}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  fontSize: 13, color: 'var(--accent)', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  textDecoration: 'none',
-                }}
-              >
-                <MapPin size={14} />
-                <span style={{ wordBreak: 'break-all' }}>{/^https?:\/\//i.test(activityDetail.address) ? 'פתח בגוגל מפות' : activityDetail.address}</span>
-              </a>
-            )}
-          </div>
-        </div>,
+                {act.address && (
+                  <a href={addressUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 16 }}>
+                      <span style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: 'var(--mint)', color: 'var(--c-green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <MapPin size={17} />
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', wordBreak: 'break-word' }}>
+                        {/^https?:\/\//i.test(act.address) ? 'פתח בגוגל מפות' : act.address}
+                      </span>
+                    </div>
+                  </a>
+                )}
+
+                {!act.description && !act.address && !linked && (
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>
+                    אין עוד פרטים לפעילות הזו.{canEdit ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
+                  </p>
+                )}
+
+                {actions.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${actions.length}, 1fr)`, gap: 8, marginTop: 2 }}>
+                    {actions.map(({ key, label, Icon, tone, run }) => (
+                      <button key={key} type="button" onClick={run} className="action-tile" style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                        border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text)',
+                        fontFamily: 'var(--font-hebrew)', fontSize: 12.5, fontWeight: 700,
+                      }}>
+                        <span className={`round-btn ${tone}`} style={{ width: 50, height: 50, minWidth: 50 }}><Icon size={20} /></span>
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })(),
         document.body
       )}
 
@@ -4592,7 +4608,7 @@ const DayCard = React.memo(function DayCard({
                                 <Star size={13} fill="#F59E0B" color="#F59E0B" style={{ flexShrink: 0 }} aria-label="חובה" />
                               )}
                               <h4
-                                onClick={() => setActivityDetail(act)}
+                                onClick={() => setActivityDetail({ ...act, __dayId: day.id })}
                                 style={{
                                   fontSize: 15, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
                                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

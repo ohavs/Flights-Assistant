@@ -225,9 +225,10 @@ await step('daily plan: summary layout', async () => {
 await step('activity details', async () => {
   await page.getByText('סיור ברובע היהודי').first().click();
   await page.waitForTimeout(300);
+  await page.getByRole('dialog', { name: 'סיור ברובע היהודי' }).waitFor();
   await shot('activity-details');
-  await page.mouse.click(10, 120);   // the popup closes on its backdrop
-  await page.waitForTimeout(300);
+  await page.getByRole('dialog', { name: 'סיור ברובע היהודי' }).getByRole('button', { name: 'סגור' }).click();
+  await page.getByRole('dialog', { name: 'סיור ברובע היהודי' }).waitFor({ state: 'detached' });
 });
 
 // Dark mode: the main views again.
