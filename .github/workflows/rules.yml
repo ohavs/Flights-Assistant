@@ -64,7 +64,7 @@ jobs:
           echo "Live ruleset: $RULESET"
           curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
             | jq -r '.source.files[0].content' > live.rules
-          if diff -u live.rules firestore.rules; then
+          if diff -u -B live.rules firestore.rules; then
             echo "Live rules are IDENTICAL to firestore.rules"
           else
             echo "Live rules DIFFER from firestore.rules (diff above: - live, + repo)"
@@ -103,4 +103,4 @@ jobs:
           RULESET=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "$API/releases/cloud.firestore" | jq -r .rulesetName)
           curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
             | jq -r '.source.files[0].content' > live.rules
-          diff -u live.rules firestore.rules && echo "Deployed: live rules now match firestore.rules"
+          diff -u -B live.rules firestore.rules && echo "Deployed: live rules now match firestore.rules"
