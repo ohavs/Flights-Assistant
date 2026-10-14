@@ -144,6 +144,26 @@ await step('edit place form', async () => {
   await closeModal();
 });
 
+await step('closing an unchanged edit does not ask about unsaved changes', async () => {
+  await page.getByText('מבצר הדייגים').first().click();
+  await modal().getByText('עריכה', { exact: true }).click();
+  await modal().getByText('עריכת פריט תכנון').waitFor();
+  await modal().locator('button[aria-label="סגור"]').last().click();
+  await page.getByText('עריכת פריט תכנון').waitFor({ state: 'detached', timeout: 3000 });
+  if (await page.getByRole('button', { name: 'צא בלי לשמור' }).count()) throw new Error('asked about unsaved changes');
+  await closeModal();
+});
+
+await step('closing a changed edit asks first', async () => {
+  await page.getByText('מבצר הדייגים').first().click();
+  await modal().getByText('עריכה', { exact: true }).click();
+  await modal().getByPlaceholder('למשל: תצפית שקיעה בגבעה').fill('מבצר הדייגים!');
+  await modal().locator('button[aria-label="סגור"]').last().click();
+  await page.getByRole('button', { name: 'צא בלי לשמור' }).click();
+  await page.getByText('עריכת פריט תכנון').waitFor({ state: 'detached', timeout: 3000 });
+  await closeModal();
+});
+
 await step('category settings', async () => {
   await page.locator('[title="מיון ותצוגה"]').click();
   await page.getByText('הגדרות קטגוריות', { exact: false }).first().click();
