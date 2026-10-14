@@ -16,6 +16,7 @@ import Skeleton from './Skeleton';
 import Fab from './Fab';
 import { defaultInfoItems } from '../data/seedData';
 import ListCard from '../ui/ListCard';
+import SectionHeader from '../ui/SectionHeader';
 import { CategoryDisc } from '../ui/kit';
 import EmptyState from './EmptyState';
 
@@ -400,30 +401,23 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
   return (
     <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* Category header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {canEdit && (
-          <button type="button" {...attributes} {...listeners} aria-label="גרור לשינוי סדר"
-            style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(11,11,48,0.2)', padding: '4px 2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}>
+      <SectionHeader
+        title={category}
+        count={list.length}
+        collapsed={!isOpen}
+        onToggle={() => toggleCategory(category)}
+        lead={canEdit && (
+          <button type="button" {...attributes} {...listeners} aria-label="גרור לשינוי סדר" className="section-header-grip">
             <GripVertical size={15} />
           </button>
         )}
-        <button
-          type="button" onClick={() => toggleCategory(category)}
-          style={{ flex: 1, background: 'transparent', border: 'none', padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-hebrew)' }}
-        >
-          <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-color)', textAlign: 'right', flex: 1, margin: 0 }}>
-            {category}
-          </h3>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{list.length}</span>
-        </button>
+      >
         {canEdit && (
-          <button type="button" onClick={() => openAdd(category)} aria-label={`הוסף פריט ל${category}`}
-            style={{ padding: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-            <Plus size={15} />
+          <button type="button" onClick={() => openAdd(category)} aria-label={`הוסף פריט ל${category}`} className="section-header-btn">
+            <Plus size={16} />
           </button>
         )}
-      </div>
+      </SectionHeader>
 
       {/* Items */}
       {isOpen && (

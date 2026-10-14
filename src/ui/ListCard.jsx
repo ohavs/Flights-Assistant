@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { MoreHorizontal, ChevronLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import SwipeRow from '../components/SwipeRow';
-import Sheet from './Sheet';
+import ActionsMenu from './ActionsMenu';
 
 /* ── ListCard ────────────────────────────────────────────────────────────
    The one list row. A booking, an expense, an info item and a place all
@@ -42,7 +41,6 @@ export default function ListCard({
   style,
   children,
 }) {
-  const [menu, setMenu] = useState(false);
   const live = actions.filter(Boolean);
   const swipe = live.filter(a => a.swipe).map(a => ({
     key: a.key, label: a.label, Icon: a.Icon,
@@ -69,14 +67,7 @@ export default function ListCard({
         </div>
         {trailing}
         {live.length > 0 ? (
-          <button
-            type="button"
-            className="round-btn list-card-more"
-            aria-label={`פעולות: ${name}`}
-            onClick={(e) => { e.stopPropagation(); setMenu(true); }}
-          >
-            <MoreHorizontal size={18} />
-          </button>
+          <ActionsMenu title={name} actions={live} className="list-card-more" />
         ) : onOpen ? (
           <ChevronLeft size={18} className="list-card-chevron" aria-hidden="true" />
         ) : null}
@@ -93,40 +84,13 @@ export default function ListCard({
     onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen(); } },
   } : {};
 
-  return (
-    <>
-      {swipe.length > 0 ? (
-        <SwipeRow actions={swipe} onClick={onOpen} className={cls} style={style} {...open}>
-          {content}
-        </SwipeRow>
-      ) : (
-        <div className={cls} style={style} onClick={onOpen} {...open}>
-          {content}
-        </div>
-      )}
-
-      {/* Outside the card: a portal still bubbles React events to its
-          parents, and a tap in the menu must not also open the card. */}
-      {menu && (
-        <Sheet title={name} onClose={() => setMenu(false)}>
-          {({ close }) => (
-            <div className="list-group">
-              {live.map(({ key, label, Icon, run, danger, disabled }) => (
-                <button
-                  key={key}
-                  type="button"
-                  disabled={disabled}
-                  className={`list-row${danger ? ' danger' : ''}`}
-                  onClick={() => { close(); run(); }}
-                >
-                  <Icon size={18} className="list-row-icon" />
-                  <span className="list-row-label">{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </Sheet>
-      )}
-    </>
+  return swipe.length > 0 ? (
+    <SwipeRow actions={swipe} onClick={onOpen} className={cls} style={style} {...open}>
+      {content}
+    </SwipeRow>
+  ) : (
+    <div className={cls} style={style} onClick={onOpen} {...open}>
+      {content}
+    </div>
   );
 }

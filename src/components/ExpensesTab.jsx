@@ -14,6 +14,7 @@ import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
 import ListCard from '../ui/ListCard';
+import SectionHeader from '../ui/SectionHeader';
 import { Pill, CategoryDisc } from '../ui/kit';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
@@ -562,32 +563,20 @@ export default function ExpensesTab({ tripId }) {
             return (
               <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* Category header */}
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(cat)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    width: '100%', background: 'transparent', border: 'none',
-                    padding: '2px 4px', cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >
-                  <ChevronDown
-                    size={15}
-                    style={{
-                      color: 'var(--text-muted)', flexShrink: 0,
-                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)',
-                      transition: 'transform 0.2s ease',
-                    }}
-                  />
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
-                    {cat}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>
-                    {catIlsTotal !== null
-                      ? `₪${catIlsTotal.toLocaleString('he-IL', { maximumFractionDigits: 0 })} · ${catExpenses.length}`
-                      : catExpenses.length}
-                  </span>
-                </button>
+                {(() => {
+                  const st = expenseCategoryStyle(cat);
+                  return (
+                    <SectionHeader
+                      title={cat}
+                      icon={<st.Icon size={15} />}
+                      color={st.color}
+                      count={catExpenses.length}
+                      meta={catIlsTotal !== null ? `₪${catIlsTotal.toLocaleString('he-IL', { maximumFractionDigits: 0 })}` : null}
+                      collapsed={isCollapsed}
+                      onToggle={() => toggleCategory(cat)}
+                    />
+                  );
+                })()}
 
                 {/* Expense rows */}
                 {!isCollapsed && (

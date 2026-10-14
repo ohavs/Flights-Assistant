@@ -1545,6 +1545,36 @@ input[type="datetime-local"].form-control {
 .list-card-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .list-card-body.indent { padding-inline-start: 54px; }   /* 42px disc + 12px gap */
 
+/* ⋯ (src/ui/ActionsMenu.jsx): an item's actions, on a card or a header. */
+.actions-more { background: var(--surface-2); color: var(--text-muted); flex-shrink: 0; }
+
+/* ── SectionHeader (src/ui/SectionHeader.jsx): a group's title ── */
+.section-header {
+  display: flex; align-items: center; gap: 6px;
+  min-height: 40px; padding: 4px 2px;
+}
+.section-header-toggle {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 2px; border: none; background: transparent;
+  font-family: var(--font-hebrew); font-size: 16px; font-weight: 800; letter-spacing: -0.01em;
+  color: var(--text); text-align: start; cursor: pointer;
+}
+div.section-header-toggle { cursor: default; }
+.section-header-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform 0.2s ease; }
+.section-header-icon { display: flex; flex-shrink: 0; color: var(--text-muted); }
+.section-header-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.section-header-meta { flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.section-header-btn {
+  width: 30px; height: 30px; min-width: 30px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer;
+}
+.section-header-grip {
+  display: flex; align-items: center; flex-shrink: 0; padding: 4px 2px;
+  border: none; background: none; color: var(--ink-20); cursor: grab; touch-action: none;
+}
+
 /* ── Swipeable rows ──
    The action layer lives under the row and is uncovered as the row slides
    toward the start edge (right, in RTL). */
@@ -1807,22 +1837,6 @@ input[type="datetime-local"].form-control {
 }
 
 /* ── הזמנות (bookings tab) ── */
-.booking-section {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--text-muted);
-  padding: 0 4px;
-}
-.booking-section-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-family: var(--font-hebrew);
-  text-align: right;
-}
 .booking-code {
   display: inline-flex;
   align-items: center;

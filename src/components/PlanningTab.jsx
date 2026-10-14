@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallba
 import { db } from '../firebase';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
+import SectionHeader from '../ui/SectionHeader';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { createPortal } from 'react-dom';
 import {
@@ -2755,48 +2756,24 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   const collapsed = !!collapsedAreas[plan.id];
                   const headerColor = plan.category ? getCategoryColor(plan.category) : 'var(--accent)';
                   return (
-                    <button
+                    <SectionHeader
                       key={plan.id}
-                      type="button"
-                      onClick={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                      title={plan.label}
+                      icon={plan.category ? getCategoryIcon(plan.category, 14) : <Layers size={14} />}
+                      color={headerColor}
+                      count={plan.count}
+                      collapsed={collapsed}
+                      onToggle={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                      // On the page's own background so it stays legible when
+                      // it sticks; 64px ≈ the sticky toolbar's height, so a
+                      // stuck header lands just below it.
                       style={{
-                        // A floating pill rather than a plain line: it stays
-                        // legible when it sticks under the toolbar, so you
-                        // always know which section you are scrolling through.
-                        // 64px ≈ the height of the sticky toolbar above it,
-                        // so a stuck header lands just below, not behind it.
-                        // A section title (Payments-2026): full width, on the
-                        // page's own background so it stays legible when it
-                        // sticks under the toolbar. 64px ≈ the toolbar's
-                        // height, so a stuck header lands just below it.
                         position: 'sticky', top: 64, zIndex: 4,
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        width: '100%',
-                        padding: '8px 2px 6px',
-                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 10,
-                        fontFamily: 'inherit',
-                        fontSize: 16, fontWeight: 800, letterSpacing: '-0.01em', color: 'var(--text)',
                         background: 'var(--body-bg)',
-                        border: 'none',
-                        cursor: 'pointer',
-                        textAlign: 'right', direction: 'rtl',
                         gridColumn: '1 / -1',
+                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 10,
                       }}
-                    >
-                      <ChevronDown
-                        size={15}
-                        style={{
-                          color: headerColor, flexShrink: 0,
-                          transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)',
-                          transition: 'transform 0.2s ease',
-                        }}
-                      />
-                      <span style={{ color: headerColor, display: 'flex', flexShrink: 0 }}>
-                        {plan.category ? getCategoryIcon(plan.category, 14) : <Layers size={14} />}
-                      </span>
-                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.label}</span>
-                      <Pill size="sm" tone="neutral">{plan.count}</Pill>
-                    </button>
+                    />
                   );
                 }
 

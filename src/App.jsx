@@ -43,7 +43,7 @@ import {
   Plane, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, Coins,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff, ClipboardList
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -1055,9 +1055,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
           })}
 
           {globalChecklist.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-              <p>הרשימה ריקה. הוסף פריטים חדשים.</p>
-            </div>
+            <EmptyState
+              icon={ClipboardList}
+              title="הרשימה הקבועה ריקה"
+              hint="מה שתוסיפו כאן יופיע בצ'קליסט של כל טיול חדש."
+            />
           )}
         </div>
     </Sheet>
