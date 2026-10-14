@@ -2403,3 +2403,37 @@ body[data-fab] .app-content {
 /* Horizontal strips that scroll by swipe, without a scrollbar. */
 .hide-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .hide-scroll::-webkit-scrollbar { display: none; }
+
+/* Planning toolbar: search, category filter and options in one white bar. */
+.plan-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 6px 6px 6px 6px;
+  border-radius: 22px;
+  background: var(--card-bg-solid);
+  box-shadow: var(--shadow-sm);
+}
+.plan-toolbar-search {
+  flex: 1 1 0;      /* the search gives way first; the filter keeps its label */
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 10px 4px;
+}
+.plan-toolbar-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-hebrew);
+  font-size: 16px;   /* >= 16px: no iOS zoom on focus */
+  font-weight: 600;
+}
+.plan-toolbar-search input::placeholder { color: var(--text-muted); opacity: 0.7; font-weight: 500; }
+.plan-toolbar:focus-within { box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm); }

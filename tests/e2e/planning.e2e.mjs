@@ -91,9 +91,9 @@ await step('add places of several kinds', async () => {
 });
 
 await step('search', async () => {
-  await page.getByPlaceholder('חיפוש אטרקציות, מסעדות...').fill('גשר');
+  await page.getByPlaceholder('חיפוש מקומות').fill('גשר');
   await shot('pool-search');
-  await page.getByPlaceholder('חיפוש אטרקציות, מסעדות...').fill('');
+  await page.getByPlaceholder('חיפוש מקומות').fill('');
 });
 
 await step('category filter', async () => {
