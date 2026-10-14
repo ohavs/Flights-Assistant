@@ -53,7 +53,7 @@ import {
   Info,
   CheckCircle2,
   Pencil,
-  ArrowUp,
+  ArrowUp, MoreHorizontal,
   ArrowDown,
   Loader2,
   Hotel,
@@ -4313,6 +4313,9 @@ const DayCard = React.memo(function DayCard({
   handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
   handleStartEditActivity, handleDeleteActivity, moveActivity,
 }) {
+  // The activity whose ⋯ actions sheet is open (with its neighbours, for moving).
+  const [actMenu, setActMenu] = useState(null);
+  useBackHandler(!!actMenu, () => setActMenu(null));
         return (
         <SortableDayCard
           key={day.id}
@@ -4348,8 +4351,7 @@ const DayCard = React.memo(function DayCard({
               alignItems: 'center',
               // A summary row is one line; a rule under it would
               // read as a divider between days, not part of one.
-              borderBottom: isSummary ? 'none' : '1px solid rgba(11,11,48,0.06)',
-              paddingBottom: isSummary ? 0 : 8,
+              paddingBottom: isSummary ? 0 : 2,
               minHeight: isSummary ? 28 : 36,
               cursor: isEditing ? 'default' : 'pointer',
             }}>
@@ -4371,35 +4373,27 @@ const DayCard = React.memo(function DayCard({
               </form>
             ) : (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                   {canEdit && <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}><DayDragHandle /></span>}
-                  <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
+                  <h3 style={{ fontSize: isSummary ? 16 : 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
                   {day.date && (() => {
                     const [, mm, dd] = day.date.split('-');
                     const dowIdx = new Date(day.date).getDay();
                     const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
                     const dayW = weatherByDate[day.date];
                     return (<>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, flexShrink: 0,
-                        background: 'rgba(79,70,229,0.08)',
-                        color: 'var(--accent)',
-                        border: '1px solid rgba(79,70,229,0.15)',
-                        borderRadius: 8, padding: '2px 6px',
-                      }}>
-                        {`${dow} ${dd}.${mm}`}
-                      </span>
+                      <Pill size="sm" tone="sky">{`${dow} ${dd}.${mm}`}</Pill>
                       {dayW && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setHourlyWeatherDate(day.date); }}
                           style={{
-                            fontSize: 11, fontWeight: 700, flexShrink: 0,
-                            background: 'rgba(245,158,11,0.08)',
-                            border: '1px solid rgba(245,158,11,0.15)',
-                            borderRadius: 8, padding: '2px 7px',
+                            fontSize: 11.5, fontWeight: 700, flexShrink: 0,
+                            background: 'var(--butter)',
+                            border: 'none',
+                            borderRadius: 999, padding: '3px 8px',
                             display: 'flex', alignItems: 'center', gap: 3,
-                            color: 'var(--primary)', cursor: 'pointer',
+                            color: 'var(--text)', cursor: 'pointer',
                             fontFamily: 'inherit',
                           }}
                         >
@@ -4501,9 +4495,10 @@ const DayCard = React.memo(function DayCard({
               return (
                 <div key={act.id} style={{
                   display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
-                  paddingTop: isFirst ? 0 : 14,
-                  paddingBottom: isLast ? 0 : 14,
-                  borderTop: isFirst ? 'none' : '2px solid rgba(79,70,229,0.4)',
+                  // The timeline line already links the activities; a coloured
+                  // rule between them read as a divider, so it is gone.
+                  paddingTop: isFirst ? 0 : 6,
+                  paddingBottom: isLast ? 0 : 6,
                 }}>
                   {/* Timeline vertical node and line */}
                   <div style={{ 
@@ -4516,12 +4511,11 @@ const DayCard = React.memo(function DayCard({
                     alignSelf: 'stretch'
                   }}>
                     <div style={{
-                      width: 28, height: 28, borderRadius: '50%',
-                      background: `${getCategoryColor(act.category)}18`,
+                      width: 30, height: 30, borderRadius: '50%',
+                      background: `${getCategoryColor(act.category)}1F`,
                       color: getCategoryColor(act.category),
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       zIndex: 2,
-                      border: `1.5px solid ${getCategoryColor(act.category)}40`
                     }}>
                       {getCategoryIcon(act.category, 15)}
                     </div>
@@ -4537,15 +4531,17 @@ const DayCard = React.memo(function DayCard({
                     )}
                   </div>
 
-                  {/* Activity Card */}
-                  <div className="glass-card" style={{
+                  {/* Activity row — a quiet tile inside the day card */}
+                  <div style={{
                     flex: 1,
                     minWidth: 0,
                     overflow: 'hidden',
-                    padding: '12px 14px',
+                    padding: '11px 12px',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 6,
+                    borderRadius: 16,
+                    background: 'var(--surface-2)',
                     opacity: isVisited ? 0.6 : 1,
                   }}>
                     {(() => {
@@ -4574,31 +4570,15 @@ const DayCard = React.memo(function DayCard({
                       }
                       const linkedPlace = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
                       const titleColor =
-                        linkedPlace?.priority === 'must' ? '#f59e0b' :
-                        linkedPlace?.priority === 'optional' ? 'var(--text-muted)' :
-                        'var(--primary)';
+                        linkedPlace?.priority === 'optional' ? 'var(--text-muted)' : 'var(--text)';
                       return (
                         <>
                           {/* Row 1: time badge + title (single line, ellipsis) + controls */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                             <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              {isVisited && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 900, color: 'var(--text-muted)',
-                                  background: 'var(--ink-8)', padding: '2px 6px',
-                                  borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
-                                }}>
-                                  ✓ בוצע
-                                </span>
-                              )}
+                              {isVisited && <Pill size="sm" tone="muted">✓ בוצע</Pill>}
                               {!isVisited && act.timeLabel && !showTimeHeaders && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 900, color: '#fff',
-                                  background: 'var(--accent)', padding: '2px 6px',
-                                  borderRadius: 4, flexShrink: 0,
-                                }}>
-                                  {act.timeLabel}
-                                </span>
+                                <Pill size="sm" tone="sky" style={{ background: 'var(--card-bg-solid)' }}>{act.timeLabel}</Pill>
                               )}
                               {isVisited && act.timeLabel && !showTimeHeaders && (
                                 <span style={{
@@ -4608,10 +4588,13 @@ const DayCard = React.memo(function DayCard({
                                   {act.timeLabel}
                                 </span>
                               )}
+                              {linkedPlace?.priority === 'must' && !isVisited && (
+                                <Star size={13} fill="#F59E0B" color="#F59E0B" style={{ flexShrink: 0 }} aria-label="חובה" />
+                              )}
                               <h4
                                 onClick={() => setActivityDetail(act)}
                                 style={{
-                                  fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
+                                  fontSize: 15, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
                                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   minWidth: 0, cursor: 'pointer',
                                   textDecoration: 'none',
@@ -4629,35 +4612,18 @@ const DayCard = React.memo(function DayCard({
                               )}
                             </div>
 
+                            {/* One ⋯ instead of four small icons: the name gets the
+                                row, and the actions open in a sheet (below). */}
                             {canEdit && (
-                              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                                <button
-                                  onClick={() => moveActivity(day.id, act.id, -1, prevActId)}
-                                  disabled={isFirst}
-                                  style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <ArrowUp size={14} />
-                                </button>
-                                <button
-                                  onClick={() => moveActivity(day.id, act.id, 1, nextActId)}
-                                  disabled={isLast}
-                                  style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <ArrowDown size={14} />
-                                </button>
-                                <button
-                                  onClick={() => handleStartEditActivity(day.id, act)}
-                                  style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <Pencil size={13} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteActivity(day.id, act.id)}
-                                  style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                aria-label={`פעולות: ${act.title}`}
+                                onClick={() => setActMenu({ act, prevActId, nextActId, isFirst, isLast })}
+                                className="round-btn"
+                                style={{ width: 32, height: 32, minWidth: 32, background: 'var(--card-bg-solid)', color: 'var(--text-muted)' }}
+                              >
+                                <MoreHorizontal size={17} />
+                              </button>
                             )}
                           </div>
 
@@ -4720,21 +4686,21 @@ const DayCard = React.memo(function DayCard({
                     })}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '7px 10px', marginBottom: isGroupCollapsed ? 0 : 10,
+                      padding: '6px 4px', marginBottom: isGroupCollapsed ? 0 : 8,
                       borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: 'var(--p-8)', fontFamily: 'inherit',
+                      background: 'transparent', fontFamily: 'inherit',
                     }}
                   >
                     <span style={{ fontSize: 14, lineHeight: 1 }}>
                       {TIME_GROUP_ICONS[g.label] || (g.label ? '🕐' : '📌')}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
                       {g.label || 'ללא תיוג זמן'}
                     </span>
                     {/* Pushed to the row's end so counts align across groups */}
                     <span style={{
-                      fontSize: 10, fontWeight: 800, color: 'var(--accent)',
-                      background: 'rgba(79,70,229,0.12)', padding: '2px 0',
+                      fontSize: 11, fontWeight: 800, color: 'var(--text)',
+                      background: 'var(--surface-2)', padding: '2px 0',
                       borderRadius: 999, lineHeight: 1.4,
                       marginInlineStart: 'auto', flexShrink: 0,
                       width: 26, textAlign: 'center',
@@ -4774,12 +4740,14 @@ const DayCard = React.memo(function DayCard({
             className="btn-secondary"
             style={{
               width: '100%',
+              minHeight: 44,
               padding: 10,
-              fontSize: 13,
-              fontWeight: 700,
-              border: '1.5px dashed rgba(79,70,229,0.18)',
-              background: 'rgba(79,70,229,0.03)',
-              color: 'var(--accent)',
+              fontSize: 14,
+              fontWeight: 800,
+              border: 'none',
+              borderRadius: 16,
+              background: 'var(--surface-2)',
+              color: 'var(--text)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -4792,6 +4760,57 @@ const DayCard = React.memo(function DayCard({
           </button>
           )}
           </>}
+
+          {actMenu && createPortal(
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
+                onClick={() => setActMenu(null)}
+              />
+              <div role="dialog" aria-label={actMenu.act.title} style={{
+                position: 'fixed', left: 0, right: 0, bottom: 0, marginInline: 'auto', zIndex: 2000,
+                width: '100%', maxWidth: 520, direction: 'rtl',
+                background: 'var(--modal-bg)', borderRadius: '24px 24px 0 0', boxShadow: 'var(--shadow-lg)',
+                padding: '0 16px calc(16px + env(safe-area-inset-bottom))',
+                animation: 'slideUp 0.25s ease',
+              }}>
+                <div className="sheet-grab" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 2px 10px' }}>
+                  <h2 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 18, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{actMenu.act.title}</h2>
+                  <button type="button" aria-label="סגור" className="btn-close" onClick={() => setActMenu(null)}>✕</button>
+                </div>
+                {[
+                  { key: 'up', label: 'הזז למעלה', Icon: ArrowUp, disabled: actMenu.isFirst,
+                    run: () => moveActivity(day.id, actMenu.act.id, -1, actMenu.prevActId) },
+                  { key: 'down', label: 'הזז למטה', Icon: ArrowDown, disabled: actMenu.isLast,
+                    run: () => moveActivity(day.id, actMenu.act.id, 1, actMenu.nextActId) },
+                  { key: 'edit', label: 'עריכה', Icon: Pencil,
+                    run: () => handleStartEditActivity(day.id, actMenu.act) },
+                  { key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
+                    run: () => handleDeleteActivity(day.id, actMenu.act.id) },
+                ].map(({ key, label, Icon, disabled, danger, run }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => { setActMenu(null); run(); }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                      minHeight: 52, padding: '0 12px', marginTop: 6,
+                      border: 'none', borderRadius: 16, background: 'var(--surface-2)',
+                      color: danger ? 'var(--c-red)' : 'var(--text)', opacity: disabled ? 0.4 : 1,
+                      fontFamily: 'inherit', fontSize: 15, fontWeight: 700, textAlign: 'right',
+                      cursor: disabled ? 'default' : 'pointer',
+                    }}
+                  >
+                    <Icon size={19} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </>,
+            document.body
+          )}
         </SortableDayCard>
 
   );
@@ -4809,12 +4828,12 @@ function SortableDayCard({ id, children, innerRef, className = '', compact = fal
       <div
         ref={setRefs}
         {...attributes}
-        className={`glass-card${className ? ' ' + className : ''}`}
+        className={`glass-card day-card${className ? ' ' + className : ''}`}
         style={{
-          padding: compact ? '10px 12px' : 16,
+          padding: compact ? '12px 14px' : 16,
           display: 'flex',
           flexDirection: 'column',
-          gap: compact ? 6 : 14,
+          gap: compact ? 6 : 12,
           transform: CSS.Transform.toString(transform),
           transition,
           opacity: isDragging ? 0.45 : 1,
