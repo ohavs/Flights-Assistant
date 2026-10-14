@@ -781,9 +781,9 @@ button:not(:disabled):active,
   width: 100%;
   min-height: 50px;
   padding: 13px 15px;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1.5px solid transparent;
-  background: var(--ink-4);
+  background: var(--surface-2);   /* Payments-2026 field */
   font-family: var(--font-hebrew);
   font-size: 16px; /* >= 16px prevents iOS auto-zoom */
   color: var(--text);
@@ -804,7 +804,7 @@ button:not(:disabled):active,
 
 .form-control:focus,
 .form-control:focus-visible {
-  background: var(--input-bg);
+  background: var(--card-bg-solid);
   border-color: var(--accent);
   box-shadow: 0 0 0 4px var(--p-12);
   outline: none;
@@ -996,8 +996,8 @@ input[type="datetime-local"].form-control {
   flex: 1;
   min-width: 0;
   display: flex;
-  background: var(--ink-5);
-  border-radius: var(--radius-md);
+  background: var(--surface-2);   /* Payments-2026 Segmented */
+  border-radius: 16px;
   padding: 4px;
 }
 .subtab-indicator {
@@ -1006,9 +1006,9 @@ input[type="datetime-local"].form-control {
   bottom: 4px;
   right: 4px;
   width: calc((100% - 8px) / 2);
-  border-radius: calc(var(--radius-md) - 2px);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  border-radius: 12px;
+  background: var(--card-bg-solid);
+  box-shadow: 0 2px 8px rgba(20, 20, 20, 0.08);
   transform: translateX(calc(var(--sub-i, 0) * -100%));
   transition: transform var(--dur-base) var(--ease-spring);
   pointer-events: none;
@@ -1024,17 +1024,18 @@ input[type="datetime-local"].form-control {
   gap: 7px;
   border: none;
   background: transparent;
-  border-radius: calc(var(--radius-md) - 2px);
-  padding: 9px 4px;
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 8px 4px;
   font-family: var(--font-hebrew);
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 800;
   white-space: nowrap;
   cursor: pointer;
   color: var(--text-muted);
   transition: color var(--dur-base) var(--ease-out);
 }
-.subtab-btn[aria-selected="true"] { color: var(--primary); }
+.subtab-btn[aria-selected="true"] { color: var(--text); }
 .subtab-btn svg {
   flex-shrink: 0;
   transition: color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-spring);
@@ -2038,15 +2039,17 @@ input[type="datetime-local"].form-control {
 .empty-state {
   align-items: center;
   text-align: center;
-  gap: 4px;
-  padding: 34px 24px;
+  gap: 6px;
+  padding: 32px 24px 30px;
+  border-radius: 26px;
+  border: none;
 }
 .empty-state-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--ink-5);
-  color: var(--text-muted);
+  width: 64px;
+  height: 64px;
+  border-radius: 22px;
+  background: var(--sky);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2054,14 +2057,15 @@ input[type="datetime-local"].form-control {
   flex-shrink: 0;
 }
 .empty-state-title {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 800;
-  color: var(--primary);
+  letter-spacing: -0.02em;
+  color: var(--text);
   margin: 0;
 }
 .empty-state-hint {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-muted);
   margin: 0;
   /* Two short lines read faster than one long one on a phone. */
