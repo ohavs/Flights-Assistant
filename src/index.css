@@ -278,79 +278,6 @@
   --butter: rgba(242, 183, 5, 0.14);
 }
 
-/* ══════════════════════════════════════════════════════════
-   ACCENT PALETTES
-   Each palette only re-defines the few "source" colours; every
-   --p-* tint, accent-light, chip, badge, etc. derives from
-   --accent-rgb automatically, so a swap recolours the whole app
-   identically in light AND dark mode.
-   Default (green, the Payments-2026 brand) lives in :root / [data-theme="dark"] above.
-   ══════════════════════════════════════════════════════════ */
-
-/* ── Violet ── */
-[data-accent="indigo"] {
-  --accent: #4f46e5; --accent-rgb: 79, 70, 229;
-  --brand: #6366F1; --brand-fg: #FFFFFF;
-}
-[data-theme="dark"][data-accent="indigo"] {
-  --accent: #818cf8; --accent-rgb: 129, 140, 248;
-  --brand: #818CF8; --brand-fg: #FFFFFF;
-}
-
-[data-accent="violet"] {
-  --accent: #7c3aed; --accent-rgb: 124, 58, 237;
-  --brand: #8B5CF6; --brand-fg: #FFFFFF;
-}
-[data-theme="dark"][data-accent="violet"] {
-  --accent: #a78bfa; --accent-rgb: 167, 139, 250;
-  --brand: #A78BFA; --brand-fg: #FFFFFF;
-}
-
-[data-accent="sky"] {
-  --accent: #2563eb; --accent-rgb: 37, 99, 235;
-  --brand: #3B82F6; --brand-fg: #FFFFFF;
-}
-[data-theme="dark"][data-accent="sky"] {
-  --accent: #60a5fa; --accent-rgb: 96, 165, 250;
-  --brand: #60A5FA; --brand-fg: #FFFFFF;
-}
-
-[data-accent="teal"] {
-  --accent: #0f766e; --accent-rgb: 15, 118, 110;
-  --brand: #14B8A6; --brand-fg: #141414;
-}
-[data-theme="dark"][data-accent="teal"] {
-  --accent: #2dd4bf; --accent-rgb: 45, 212, 191;
-  --brand: #2DD4BF; --brand-fg: #0B0B0C;
-}
-
-[data-accent="emerald"] {
-  --accent: #047857; --accent-rgb: 4, 120, 87;
-  --brand: #10B981; --brand-fg: #141414;
-}
-[data-theme="dark"][data-accent="emerald"] {
-  --accent: #34d399; --accent-rgb: 52, 211, 153;
-  --brand: #34D399; --brand-fg: #0B0B0C;
-}
-
-[data-accent="amber"] {
-  --accent: #c2410c; --accent-rgb: 194, 65, 12;
-  --brand: #F59E0B; --brand-fg: #141414;
-}
-[data-theme="dark"][data-accent="amber"] {
-  --accent: #fb923c; --accent-rgb: 251, 146, 60;
-  --brand: #FB923C; --brand-fg: #0B0B0C;
-}
-
-[data-accent="rose"] {
-  --accent: #e11d48; --accent-rgb: 225, 29, 72;
-  --brand: #F43F5E; --brand-fg: #FFFFFF;
-}
-[data-theme="dark"][data-accent="rose"] {
-  --accent: #fb7185; --accent-rgb: 251, 113, 133;
-  --brand: #FB7185; --brand-fg: #FFFFFF;
-}
-
 /* ── Reset ── */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -2356,3 +2283,38 @@ body[data-fab] .app-content {
   .dashboard-grid { gap: 32px; }
   .glass-card { padding: 26px; }
 }
+
+/* ── Light/dark switch (header) ──
+   A pill with a knob that travels to the other side; sun on light, moon on
+   dark. The choice is remembered (ThemeContext). */
+.theme-toggle {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-2, var(--ink-6));
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+}
+.theme-toggle[aria-checked="true"] { background: var(--surface-3, var(--ink-12)); }
+.theme-toggle-knob {
+  position: absolute;
+  top: 3px;
+  inset-inline-start: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--card-bg-solid);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.35s var(--ease-spring);
+}
+/* RTL: the start edge is the right, so "on" travels left. */
+.theme-toggle[aria-checked="true"] .theme-toggle-knob { transform: translateX(-22px); }
+[dir="ltr"] .theme-toggle[aria-checked="true"] .theme-toggle-knob { transform: translateX(22px); }

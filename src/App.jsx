@@ -10,7 +10,7 @@ import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
-import { ThemeProvider, useTheme, PALETTES } from './ThemeContext';
+import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
 import { NavIcon } from './ui/icons';
@@ -43,7 +43,7 @@ import {
   Plane, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, Coins,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette, Pin, PinOff
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -1152,65 +1152,25 @@ export default function App() {
   return <ThemeProvider><AppInner /></ThemeProvider>;
 }
 
-/* Accent-palette picker — small round button + swatch popover.
-   Sits next to the dark/light toggle in both headers. */
-function PalettePicker({ size = 34 }) {
-  const { accent, setAccent } = useTheme();
-  const [open, setOpen] = useState(false);
-  const iconSize = size >= 34 ? 16 : 15;
-
+/* Light/dark switch — replaces the palette picker in both headers. The
+   choice is remembered on the device (ThemeContext). */
+function ThemeToggle() {
+  const { isDark, toggleTheme } = useTheme();
+  const label = isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה';
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="icon-btn"
-        style={{ width: size, height: size, minWidth: size }}
-        title="בחר ערכת צבעים"
-        aria-label="בחר ערכת צבעים"
-        aria-expanded={open}
-      >
-        <Palette size={iconSize} />
-      </button>
-
-      {open && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 1999 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 2000,
-            background: 'var(--dropdown-bg)', border: '1px solid var(--ink-8)',
-            borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: 12,
-            direction: 'rtl', minWidth: 168,
-            animation: 'fadeIn 0.15s ease-out',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', marginBottom: 10, paddingRight: 2 }}>
-              ערכת צבעים
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              {PALETTES.map(p => {
-                const active = p.key === accent;
-                return (
-                  <button
-                    key={p.key}
-                    onClick={() => { setAccent(p.key); setOpen(false); }}
-                    title={p.label}
-                    style={{
-                      width: 32, height: 32, borderRadius: '50%',
-                      background: p.swatch, cursor: 'pointer', padding: 0,
-                      border: active ? '2.5px solid var(--text)' : '2.5px solid transparent',
-                      boxShadow: active ? `0 0 0 2px var(--surface), 0 2px 8px ${p.swatch}66` : `0 2px 6px ${p.swatch}55`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'transform 0.12s ease',
-                    }}
-                  >
-                    {active && <Check size={15} color="#fff" strokeWidth={3} />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isDark}
+      aria-label={label}
+      title={label}
+      onClick={toggleTheme}
+      className="theme-toggle"
+    >
+      <span className="theme-toggle-knob" aria-hidden="true">
+        {isDark ? <Moon size={14} /> : <Sun size={14} />}
+      </span>
+    </button>
   );
 }
 
@@ -1234,7 +1194,6 @@ function tick(ms = 8) {
 
 function AppInner() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const confirm = useConfirm();
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
@@ -1793,15 +1752,7 @@ function AppInner() {
             <h1 style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>עוזר טיסות</h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <PalettePicker size={34} />
-            <button
-              onClick={toggleTheme}
-              className="icon-btn"
-              title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
-              aria-label={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
-            >
-              {isDark ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            <ThemeToggle />
             <button
               onClick={async () => {
                 const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
@@ -1981,15 +1932,7 @@ function AppInner() {
               <Pencil size={16} />
             </button>
           )}
-          <PalettePicker size={34} />
-          <button
-            onClick={toggleTheme}
-            className="icon-btn"
-            title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
-            aria-label={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
-          >
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          <ThemeToggle />
         </div>
       </header>
 
