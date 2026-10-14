@@ -457,7 +457,7 @@ export default function ExpensesTab({ tripId }) {
               onClick={() => setShowStats(s => !s)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '9px 0', borderRadius: 10, border: '1.5px dashed rgba(79,70,229,0.3)',
+                padding: '9px 0', borderRadius: 10, border: '1.5px dashed var(--p-30)',
                 background: showStats ? 'var(--p-6)' : 'transparent', color: 'var(--accent)',
                 fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 2,
               }}
@@ -534,7 +534,7 @@ export default function ExpensesTab({ tripId }) {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(11,11,48,0.07)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--ink-7)' }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>סה"כ רשומות</span>
                   <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{expenses.length}</span>
                 </div>
@@ -682,32 +682,22 @@ export default function ExpensesTab({ tripId }) {
                     const c = getCurrencyInfo(code);
                     return (
                       <button key={code} type="button" onClick={() => setCurrency(code)}
-                        style={{
-                          padding: '6px 14px', borderRadius: 20, border: 'none',
-                          background: currency === code ? 'var(--accent)' : 'var(--ink-6)',
-                          color: currency === code ? '#fff' : 'var(--primary)',
-                          fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                        }}>
+                        className="chip" aria-pressed={currency === code}>
                         {c.symbol} {code}
                       </button>
                     );
                   })}
                   <button type="button"
                     onClick={() => { setShowCurrencyList(s => !s); setCurrencySearch(''); }}
-                    style={{
-                      padding: '6px 14px', borderRadius: 20, fontFamily: 'inherit',
-                      border: '1.5px dashed rgba(79,70,229,0.3)', background: 'transparent',
-                      color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 4
-                    }}>
+                    className="chip add">
                     <Plus size={13} /> מטבע
                   </button>
                 </div>
 
                 {/* Inline currency list — no nested modal */}
                 {showCurrencyList && (
-                  <div style={{ marginTop: 8, border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
-                    <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', position: 'sticky', top: 0, background: 'var(--surface)' }}>
+                  <div style={{ marginTop: 8, border: '1px solid var(--ink-8)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--ink-6)', position: 'sticky', top: 0, background: 'var(--surface)' }}>
                       <div style={{ position: 'relative' }}>
                         <input
                           type="text"
@@ -734,7 +724,7 @@ export default function ExpensesTab({ tripId }) {
                             setShowCurrencyList(false);
                             setCurrencySearch('');
                           }}
-                          style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                          style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-4)' }}
                         >
                           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--primary)' }}>{c.name}</span>
                           <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>{c.symbol} {c.code}</span>
@@ -751,11 +741,13 @@ export default function ExpensesTab({ tripId }) {
                   <label>מי שילם</label>
                   <button type="button"
                     onClick={() => payerUids.length > 1 && setShowPayerDropdown(s => !s)}
-                    className="form-control"
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: payerUids.length > 1 ? 'pointer' : 'default', fontFamily: 'inherit', paddingTop: 8, paddingBottom: 8 }}
+                    className="custom-dropdown-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded={showPayerDropdown}
+                    style={{ cursor: payerUids.length > 1 ? 'pointer' : 'default', paddingTop: 8, paddingBottom: 8 }}
                   >
                     <MemberAvatar profile={getPayerProfile(paidBy || currentUid)} size={24} />
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--primary)', textAlign: 'right' }}>
+                    <span style={{ flex: 1, textAlign: 'right' }}>
                       {getPayerProfile(paidBy || currentUid)?.displayName || getPayerProfile(paidBy || currentUid)?.email || 'אני'}
                       {(paidBy || currentUid) === currentUid && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
                     </span>
@@ -764,17 +756,19 @@ export default function ExpensesTab({ tripId }) {
                     )}
                   </button>
                   {showPayerDropdown && payerUids.length > 1 && (
-                    <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid rgba(11,11,48,0.1)', borderRadius: 12, boxShadow: '0 8px 24px rgba(11,11,48,0.12)', overflow: 'hidden', marginTop: 4 }}>
+                    <div className="custom-dropdown-popup" role="listbox">
                       {payerUids.map(uid => {
                         const profile = getPayerProfile(uid);
                         return (
                           <button key={uid} type="button"
                             onClick={() => { setPaidBy(uid); setShowPayerDropdown(false); }}
-                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: uid === (paidBy || currentUid) ? 'var(--p-6)' : 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                            role="option"
+                            aria-selected={uid === (paidBy || currentUid)}
+                            className={`custom-dropdown-option${uid === (paidBy || currentUid) ? ' active' : ''}`}
                           >
                             <MemberAvatar profile={profile} size={30} />
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {profile?.displayName || profile?.email || uid}
                               </div>
                               {uid === currentUid && (
@@ -838,8 +832,8 @@ export default function ExpensesTab({ tripId }) {
                     </button>
 
                     {showPlanDropdown && (
-                      <div style={{ border: '1px solid rgba(11,11,48,0.08)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: '0 4px 20px rgba(11,11,48,0.1)' }}>
-                        <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(11,11,48,0.06)', background: 'var(--surface)' }}>
+                      <div style={{ border: '1px solid var(--ink-8)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
+                        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--ink-6)', background: 'var(--surface)' }}>
                           <div style={{ position: 'relative' }}>
                             <input type="text" className="form-control"
                               placeholder="חפש אטרקציה, מסעדה..."
@@ -870,7 +864,7 @@ export default function ExpensesTab({ tripId }) {
                                 setShowPlanDropdown(false);
                                 setPlanFilter('');
                               }}
-                              style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(11,11,48,0.04)' }}
+                              style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-4)' }}
                             >
                               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'var(--ink-5)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
@@ -917,16 +911,11 @@ export default function ExpensesTab({ tripId }) {
 
                 {/* Category — inline chips (same pattern as currency above) */}
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12 }}>קטגוריה</label>
+                  <label>קטגוריה</label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {expenseCategories.map(cat => (
                       <button key={cat} type="button" onClick={() => setCategory(cat)}
-                        style={{
-                          padding: '6px 14px', borderRadius: 20, border: 'none',
-                          background: category === cat ? 'var(--accent)' : 'var(--ink-6)',
-                          color: category === cat ? '#fff' : 'var(--primary)',
-                          fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                        }}>
+                        className="chip" aria-pressed={category === cat}>
                         {cat}
                       </button>
                     ))}
@@ -971,12 +960,7 @@ export default function ExpensesTab({ tripId }) {
                     ) : (
                       <button type="button"
                         onClick={() => { setShowNewCatInput(true); setNewCatDraft(''); }}
-                        style={{
-                          padding: '6px 14px', borderRadius: 20, fontFamily: 'inherit',
-                          border: '1.5px dashed rgba(79,70,229,0.3)', background: 'transparent',
-                          color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 4,
-                        }}>
+                        className="chip add">
                         <Plus size={13} /> קטגוריה
                       </button>
                     )}

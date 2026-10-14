@@ -344,7 +344,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
 
   return (
     <div className="date-picker" style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
-      {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}</label>}
+      {label && <label className="field-label">{label}</label>}
       
       {/* Trigger Button Input-styled */}
       <div 
@@ -369,13 +369,12 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
           gap: 8,
           minWidth: 0,
           cursor: 'pointer',
-          background: 'var(--surface)'
         }}
       >
         <span className={isCompact ? undefined : 'date-trigger-text'} style={{
-          fontSize: isCompact ? '13px' : '15px',
-          fontWeight: '800',
-          color: 'var(--primary-color)',
+          fontSize: isCompact ? '13px' : '16px',
+          fontWeight: isCompact ? '800' : '600',
+          color: isCompact ? 'var(--primary-color)' : (value ? 'var(--text)' : 'var(--text-muted)'),
           whiteSpace: 'nowrap',
           minWidth: 0,
           overflow: 'hidden',
@@ -549,14 +548,14 @@ export function CustomTimePicker({ value, onChange, label, required }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-      {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+      {label && <label className="field-label">{label}{required && ' *'}</label>}
 
       <div
         onClick={() => setIsOpen(true)}
         className="form-control"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: 'var(--surface)' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
       >
-        <span style={{ fontSize: '15px', fontWeight: '700', color: displayValue ? 'var(--primary)' : 'var(--text-muted)' }}>
+        <span style={{ fontSize: '16px', fontWeight: '600', color: displayValue ? 'var(--text)' : 'var(--text-muted)' }}>
           {displayValue || 'בחר שעה...'}
         </span>
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
@@ -695,7 +694,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-      {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}</label>}
+      {label && <label className="field-label">{label}</label>}
       
       {/* Trigger Button Input-styled */}
       <div 
@@ -709,10 +708,9 @@ export function CustomDateTimePicker({ value, onChange, label }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
-          background: 'var(--surface)'
         }}
       >
-        <span style={{ fontSize: '15px', fontWeight: '600', color: value ? 'var(--primary)' : 'var(--text-muted)' }}>
+        <span style={{ fontSize: '16px', fontWeight: '600', color: value ? 'var(--text)' : 'var(--text-muted)' }}>
           {value ? formatHebrewDateTime(value) : 'בחר תאריך ושעה...'}
         </span>
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
@@ -940,7 +938,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
 
   return (
     <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
-      {label && <label style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+      {label && <label className="field-label">{label}{required && ' *'}</label>}
 
       <button
         ref={triggerRef}
@@ -956,8 +954,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          color: current ? 'var(--primary)' : 'var(--text-muted)',
-          fontWeight: current ? 700 : 600
+          color: current ? 'var(--text)' : 'var(--text-muted)',
         }}>
           {current ? current.label : placeholder}
         </span>

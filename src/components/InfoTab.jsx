@@ -288,12 +288,8 @@ export default function InfoTab({ tripId, embedded = false }) {
                       {TYPES.map(t => (
                         <button key={t.value} type="button"
                           onClick={() => setFExtraFields(prev => prev.map((f, i) => i === idx ? { ...f, type: t.value } : f))}
-                          style={{
-                            padding: '4px 10px', borderRadius: 16, border: 'none',
-                            background: field.type === t.value ? 'var(--accent)' : 'rgba(11,11,48,0.06)',
-                            color: field.type === t.value ? '#fff' : 'var(--primary)',
-                            fontFamily: 'inherit', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                          }}>
+                          className="chip" aria-pressed={field.type === t.value}
+                          style={{ minHeight: 32, padding: '0 12px', fontSize: 13 }}>
                           {t.label}
                         </button>
                       ))}

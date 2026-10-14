@@ -13,6 +13,7 @@ import { useConfirm } from '../ConfirmContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import ListCard from '../ui/ListCard';
+import { Segmented } from '../ui/Sheet';
 import { Pill, CategoryDisc } from '../ui/kit';
 import EmptyState from './EmptyState';
 
@@ -357,8 +358,9 @@ export default function BookingsTab({ tripId }) {
                     const active = form.type === t.value;
                     return (
                       <button key={t.value} type="button" onClick={() => set('type')(t.value)} aria-pressed={active}
-                        className="booking-chip"
-                        style={active ? { background: `${t.color}1f`, borderColor: t.color, color: t.color } : undefined}>
+                        className="chip"
+                        // A type is chosen in its own colour, as a category is.
+                        style={active ? { background: `${t.color}1f`, borderColor: 'transparent', color: t.color } : undefined}>
                         <t.Icon size={14} />
                         {t.label}
                       </button>
@@ -408,14 +410,12 @@ export default function BookingsTab({ tripId }) {
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>סטטוס</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {STATUSES.map(s => (
-                    <button key={s.value} type="button" onClick={() => set('status')(s.value)} aria-pressed={form.status === s.value}
-                      className={`booking-chip${form.status === s.value ? ' on' : ''}`} style={{ flex: 1, justifyContent: 'center' }}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  label="סטטוס"
+                  value={form.status}
+                  onChange={set('status')}
+                  options={STATUSES.map(st => ({ key: st.value, label: st.label }))}
+                />
               </div>
 
               <div className="row-2" style={{ gap: 10 }}>

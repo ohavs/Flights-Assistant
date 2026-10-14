@@ -789,7 +789,8 @@ button:not(:disabled):active,
   width: 100%;
 }
 
-.form-group label {
+.form-group label,
+.field-label {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-muted);
@@ -819,6 +820,16 @@ button:not(:disabled):active,
   outline: none;
   -webkit-appearance: none;
   appearance: none;
+}
+
+/* iOS zooms into any field under 16px and stays zoomed. On touch screens
+   every field is at least 16px, whatever its own style says. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 .form-control::placeholder {
@@ -1838,25 +1849,34 @@ input[type="datetime-local"].form-control {
   padding: 6px 12px;
   text-decoration: none;
 }
-.booking-chip {
+/* ── Chip: one choice among several shown at once (a currency, a
+   category, a type). Chosen = brand fill. `.add` is the dashed "+ new". */
+.chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 7px 11px;
-  border-radius: 10px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
   border: 1.5px solid var(--ink-10);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text);
   font-family: var(--font-hebrew);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 0.15s ease;
 }
-.booking-chip.on {
-  border-color: var(--accent);
-  background: var(--p-8);
-  color: var(--accent);
+.chip:active { transform: scale(0.96); }
+.chip[aria-pressed="true"] {
+  background: var(--brand);
+  border-color: transparent;
+  color: var(--brand-fg);
+}
+.chip.add {
+  border-style: dashed;
+  color: var(--text-muted);
 }
 
 .hotel-meta-grid {
@@ -1929,29 +1949,29 @@ input[type="datetime-local"].form-control {
 /* The dropdown trigger is a field, so it matches the fields exactly —
    same ground, same radius, same focus ring. */
 .custom-dropdown-trigger {
+  /* The same field as .form-control (a dropdown always holds a value, so
+     it wears the filled look), so a select next to an input matches it. */
   width: 100%;
   min-height: 50px;
-  padding: 13px 16px;
-  border-radius: 14px;
-  border: 1.5px solid transparent;
-  background: var(--ink-4);
+  padding: 13px 15px;
+  border-radius: 16px;
+  border: 1.5px solid var(--ink-8);
+  background: var(--ink-3);
   font-family: var(--font-hebrew);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--primary);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 10px;
   text-align: right;
   direction: rtl;
-  transition: background var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out),
+  transition: border-color var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-fast) var(--ease-out);
   outline: none;
 }
-
-[data-theme="dark"] .custom-dropdown-trigger { background: var(--ink-8); }
+[data-theme="dark"] .custom-dropdown-trigger { background: var(--ink-6); border-color: var(--ink-12); }
 .custom-dropdown-trigger:hover,
 .custom-dropdown-trigger:focus-visible,
 .custom-dropdown-trigger[aria-expanded="true"] {
