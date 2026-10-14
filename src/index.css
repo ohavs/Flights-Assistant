@@ -1475,6 +1475,39 @@ input[type="datetime-local"].form-control {
   font-size: 16px;
 }
 
+/* One fact in a card's meta line (they used to start with an emoji):
+   a small icon, then the words. */
+.meta-part svg { vertical-align: -2px; margin-inline-end: 3px; }
+
+/* Two ✕ and no others: `.btn-close` closes a sheet or a dialog (a disc,
+   "✕"); `.btn-x` is the quiet one inside a form or a row — clear a field,
+   drop a line, cancel an inline edit. `.btn-x.danger` when it deletes. */
+.btn-x {
+  width: 32px; height: 32px; min-width: 32px; padding: 0; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%; background: transparent;
+  color: var(--text-muted); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.btn-x:active { background: var(--ink-6); }
+.btn-x.danger { color: var(--c-red); }
+
+/* A short status in words with one icon for its tone (src/ui/Notice.jsx).
+   The text stays --text; the icon and the pastel carry the tone. */
+.notice {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--sky); color: var(--text);
+  font-size: 12.5px; font-weight: 700; line-height: 1.5;
+}
+.notice > svg { flex-shrink: 0; margin-top: 2px; color: var(--text-muted); }
+.notice-success { background: var(--mint); }
+.notice-success > svg { color: var(--c-green); }
+.notice-warn, .notice-offline { background: var(--butter); }
+.notice-warn > svg, .notice-offline > svg { color: var(--c-orange); }
+.notice-error { background: var(--c-red-8); }
+.notice-error > svg { color: var(--c-red); }
+
 /* ── Inside a sheet: sections, segmented controls, list rows ──
    The parts every sheet is made of (src/ui/Sheet.jsx), so a settings
    sheet in one tab reads exactly like one in another. */

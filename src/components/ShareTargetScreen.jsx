@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { MapPin, Plane, ChevronLeft, Link2, X, LogIn } from 'lucide-react';
+import { MapPin, Plane, ChevronLeft, Link2, LogIn } from 'lucide-react';
 import { readCachedTrips } from '../services/shareTarget';
 
 /* ── ShareTargetScreen ───────────────────────────────────────────────────
@@ -26,7 +26,7 @@ export default function ShareTargetScreen({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
           <div style={{
             width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-            background: 'var(--accent)', color: '#fff',
+            background: 'var(--brand)', color: 'var(--brand-fg)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <MapPin size={17} />
@@ -35,18 +35,7 @@ export default function ShareTargetScreen({
             הוספה לטיול
           </h1>
         </div>
-        <button
-          onClick={onCancel}
-          title="ביטול"
-          style={{
-            width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-            background: 'var(--ink-5)', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <X size={16} />
-        </button>
+        <button type="button" aria-label="ביטול" title="ביטול" className="btn-close" onClick={onCancel}>✕</button>
       </header>
 
       <main className="app-content">

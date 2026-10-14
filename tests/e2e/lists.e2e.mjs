@@ -179,5 +179,59 @@ await step('expenses and bookings group under the same header', async () => {
   await page.locator('.app-content .section-header').first().waitFor({ timeout: 5000 });
 });
 
+// Buttons, labels and notices carry icons, never emoji, and there are two
+// ✕: the sheet's .btn-close and the quiet in-form .btn-x.
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{2712}\u{2714}\u{2716}-\u{27BF}\u{2B50}\u{24D8}]/u;   // not ✓ ✕
+const chromeProblems = (scope) => page.evaluate(([src, scope]) => {
+  const re = new RegExp(src, 'u');
+  const root = document.querySelector(scope);
+  if (!root) return [`${scope} not found`];
+  const hits = [...root.querySelectorAll('button, label, .list-card-meta, .notice, .section-header, [role="status"], [role="alert"]')]
+    .filter(el => !el.closest('.weather-chip') && re.test(el.textContent))
+    .map(el => el.textContent.trim().slice(0, 40));
+  const xs = [...root.querySelectorAll('button:has(svg.lucide-x)')]
+    .filter(el => !el.matches('.btn-x, .round-btn'))
+    .map(el => `X: ${el.outerHTML.slice(0, 80)}`);
+  return [...hits, ...xs];
+}, [EMOJI.source, scope]);
+const expectClean = async (scope) => {
+  const bad = await chromeProblems(scope);
+  if (bad.length) throw new Error(bad.join(' | '));
+};
+const leaveForm = async () => {
+  await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
+  const discard = page.getByRole('button', { name: 'צא בלי לשמור' });
+  if (await discard.isVisible({ timeout: 800 }).catch(() => false)) await discard.click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+};
+
+await step('flight: the lookup message is words and an icon', async () => {
+  await tab('טיסה ומלון');
+  await page.locator('button[title^="ערוך טיסת"]').first().click();
+  await page.getByRole('button', { name: 'חיפוש טיסה' }).first().click();
+  try {
+    await page.locator('.modal-overlay').getByText('הזן מספר טיסה לפני החיפוש').waitFor();
+    const text = await page.locator('.modal-overlay').innerText();
+    if (EMOJI.test(text)) throw new Error(`emoji in the flight form: ${text.match(EMOJI)[0]}`);
+    await page.locator('.modal-overlay .notice').first().waitFor({ timeout: 3000 });
+  } finally { await leaveForm(); }
+});
+await step('expenses: the new-category field cancels with the one in-form ✕', async () => {
+  await tab('הוצאות');
+  await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
+  try {
+    await page.locator('.modal-overlay .chip.add', { hasText: 'קטגוריה' }).click();
+    await page.locator('.modal-overlay input[placeholder="שם קטגוריה חדשה"]').waitFor();
+    await expectClean('.modal-overlay');
+  } finally { await leaveForm(); }
+});
+for (const name of ['טיסה ומלון', 'תכנון טיול', "צ'קליסט", 'הוצאות', 'הזמנות']) {
+  await step(`${name}: no emoji in buttons and labels; one kind of ✕`, async () => {
+    await tab(name);
+    await page.waitForTimeout(600);
+    await expectClean('.app-container');
+  });
+}
+
 await browser.close();
 process.exit(failed ? 1 : 0);

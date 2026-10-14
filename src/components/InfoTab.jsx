@@ -279,10 +279,8 @@ export default function InfoTab({ tripId, embedded = false }) {
                         onChange={e => setFExtraFields(prev => prev.map((f, i) => i === idx ? { ...f, label: e.target.value } : f))}
                         style={{ flex: 1, minHeight: 36, fontSize: 13 }}
                       />
-                      <button type="button"
-                        onClick={() => setFExtraFields(prev => prev.filter((_, i) => i !== idx))}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 6, display: 'flex', flexShrink: 0 }}>
-                        <X size={15} />
+                      <button type="button" className="btn-x danger" aria-label="הסר שדה" title="הסר שדה" onClick={() => setFExtraFields(prev => prev.filter((_, i) => i !== idx))}>
+                        <X size={16} />
                       </button>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

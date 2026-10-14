@@ -91,6 +91,14 @@ import {
   CalendarCheck,
   Footprints,
   Bus,
+  Sparkles,
+  Sunrise,
+  Sun,
+  Sunset,
+  Moon,
+  Pin,
+  WifiOff,
+  MapPinOff,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -285,7 +293,23 @@ const PLAN_LAYOUTS = {
 // Known labels come first in canonical order, custom labels (e.g. "10:30")
 // follow by first appearance, and unlabeled activities are grouped last.
 const TIME_GROUP_ORDER = ['בוקר', 'צהריים', 'ערב', 'לילה'];
-const TIME_GROUP_ICONS = { 'בוקר': '🌅', 'צהריים': '☀️', 'ערב': '🌆', 'לילה': '🌙' };
+const TIME_GROUP_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
+
+// A place in the day planner's picker: how far it is, and how much it matters.
+const travelMeta = (cache) => {
+  const walk = cache?.walk?.duration, transit = cache?.transit?.duration;
+  if (!walk && !transit) return undefined;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      {walk && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Footprints size={12} aria-hidden="true" />{walk}</span>}
+      {transit && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Bus size={12} aria-hidden="true" />{transit}</span>}
+    </span>
+  );
+};
+const priorityIcon = (priority) =>
+  priority === 'must' ? <Star size={13} fill="#F59E0B" color="#F59E0B" aria-label="חובה" />
+  : priority === 'optional' ? <Clock size={13} aria-label="אופציונלי" style={{ color: 'var(--text-muted)' }} />
+  : undefined;
 
 function groupActivitiesByTime(acts) {
   const map = new Map();
@@ -1291,12 +1315,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     );
     if (cache.offline) return (
       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-        📡 אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
+        <WifiOff size={12} aria-hidden="true" style={{ verticalAlign: -2, marginInlineEnd: 4 }} />אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
       </div>
     );
     if (cache.noLocation) return (
       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-        📍 לא נמצא מיקום לחישוב זמן הגעה
+        <MapPinOff size={12} aria-hidden="true" style={{ verticalAlign: -2, marginInlineEnd: 4 }} />לא נמצא מיקום לחישוב זמן הגעה
       </div>
     );
     if (cache.error || (!cache.walk && !cache.transit)) return null;
@@ -1307,12 +1331,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         </span>
         {cache.walk && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
-            🚶 {cache.walk.duration}
+            <Footprints size={13} aria-hidden="true" /> {cache.walk.duration}
           </span>
         )}
         {cache.transit && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
-            🚌 {cache.transit.duration}
+            <Bus size={13} aria-hidden="true" /> {cache.transit.duration}
           </span>
         )}
       </div>
@@ -2097,8 +2121,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               <button type="button" onClick={() => handleStartEditLink(idx)} title="ערוך קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 4, display: 'flex', flexShrink: 0 }}>
                                 <Pencil size={14} />
                               </button>
-                              <button type="button" onClick={() => handleRemoveLinkRow(idx)} title="מחק קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex', flexShrink: 0 }}>
-                                <X size={14} />
+                              <button type="button" className="btn-x danger" aria-label="מחק קישור" title="מחק קישור" onClick={() => handleRemoveLinkRow(idx)}>
+                                <X size={16} />
                               </button>
                             </div>
                           )
@@ -2214,13 +2238,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                   <span style={{ flex: 1, textAlign: 'right' }}>{origin.name}</span>
                                   {formOriginId === origin.id && <Check size={14} />}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveDistanceOrigin(origin.id)}
-                                  style={{ padding: '0 12px 0 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.6)' }}
-                                  title="הסר מיקום"
-                                >
-                                  <X size={13} />
+                                <button type="button" className="btn-x danger" aria-label="הסר מיקום" title="הסר מיקום" onClick={() => handleRemoveDistanceOrigin(origin.id)}>
+                                  <X size={16} />
                                 </button>
                               </div>
                             ))}
@@ -2260,8 +2279,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                   style={{ fontSize: 13 }}
                                 />
                                 <div style={{ display: 'flex', gap: 8 }}>
-                                  <button type="button" onClick={handleSaveDistanceOrigin} className="btn-primary" style={{ flex: 1, minHeight: 36, fontSize: 13 }}>שמור</button>
-                                  <button type="button" onClick={() => { setShowAddOriginForm(false); setNewOriginName(''); setNewOriginUrl(''); }} className="btn-secondary" style={{ minHeight: 36, padding: '0 12px', fontSize: 13 }}>ביטול</button>
+                                  <button type="button" onClick={handleSaveDistanceOrigin} className="btn-primary" style={{ flex: 1 }}>שמור</button>
+                                  <button type="button" onClick={() => { setShowAddOriginForm(false); setNewOriginName(''); setNewOriginUrl(''); }} className="btn-secondary">ביטול</button>
                                 </div>
                               </div>
                             )}
@@ -2297,7 +2316,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         </div>
                         <div className="row-2" style={{ gap: 10 }}>
                           <div className="form-group" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 12 }}>🚶 הליכה</label>
+                            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Footprints size={13} aria-hidden="true" />הליכה</label>
                             <input
                               type="number"
                               className="form-control"
@@ -2310,7 +2329,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             />
                           </div>
                           <div className="form-group" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 12 }}>🚌 תחבורה ציבורית</label>
+                            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Bus size={13} aria-hidden="true" />תחבורה ציבורית</label>
                             <input
                               type="number"
                               className="form-control"
@@ -2325,7 +2344,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
                           {computed && (cache.walk || cache.transit)
-                            ? `ערכים מחושבים: ${cache.walk ? `🚶 ${cache.walk.duration}` : ''}${cache.walk && cache.transit ? ' · ' : ''}${cache.transit ? `🚌 ${cache.transit.duration}` : ''} — השאר ריק לשמור אוטומטי`
+                            ? `ערכים מחושבים: ${cache.walk ? `הליכה ${cache.walk.duration}` : ''}${cache.walk && cache.transit ? ' · ' : ''}${cache.transit ? `תחבורה ציבורית ${cache.transit.duration}` : ''} — השאר ריק לשמור אוטומטי`
                             : 'הזן דקות לעקיפה ידנית — השאר ריק להשאיר ללא שינוי'}
                         </div>
                       </div>
@@ -2794,19 +2813,25 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 const travel = travelSummary(plan);
                 const linkCount = (Array.isArray(plan.links) ? plan.links.length : 0);
                 const metaParts = [];
-                if (isEvent) metaParts.push(`🗓️ ${formatEventWhen(plan.event)}`);
-                else if (plan.category) metaParts.push(plan.category);
-                if (travel.walk) metaParts.push(`🚶 ${travel.walk}`);
-                else if (travel.transit) metaParts.push(`🚌 ${travel.transit}`);
-                if (linkCount > 0) metaParts.push(`🔗 ${linkCount}`);
-                const metaLine = metaParts.join(' · ');
+                if (isEvent) metaParts.push({ key: 'when', Icon: Calendar, text: formatEventWhen(plan.event) });
+                else if (plan.category) metaParts.push({ key: 'category', text: plan.category });
+                if (travel.walk) metaParts.push({ key: 'walk', Icon: Footprints, text: travel.walk });
+                else if (travel.transit) metaParts.push({ key: 'transit', Icon: Bus, text: travel.transit });
+                if (linkCount > 0) metaParts.push({ key: 'links', Icon: Link2, text: String(linkCount) });
+                const metaLine = metaParts.length > 0 && metaParts.map(({ key, Icon, text }, i) => (
+                  <span key={key} className="meta-part">
+                    {i > 0 && ' · '}
+                    {Icon && <Icon size={12} aria-hidden="true" />}
+                    {text}
+                  </span>
+                ));
 
                 // At most one status pill per card, so the eye has a single
                 // thing to catch when scanning: today's event beats "must",
                 // and a finished event is worth flagging over both.
                 const pill =
                   isTodayEvent && !plan.visited
-                    ? { text: '✨ היום', tone: 'sky' }
+                    ? { text: 'היום', tone: 'sky', Icon: Sparkles }
                   : isExpiredEvent && !plan.visited
                     ? { text: 'נגמר', tone: 'muted' }
                   : plan.priority === 'must' && !plan.visited
@@ -2830,7 +2855,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                    is one tap away in the details sheet.                     */
                 if (isTile) {
                   const flag =
-                    isTodayEvent && !plan.visited ? { emoji: '✨', title: 'היום' }
+                    isTodayEvent && !plan.visited ? { title: 'היום' }
                     : plan.priority === 'must' && !plan.visited ? { star: true, title: 'חובה' }
                     : null;
                   return (
@@ -2883,7 +2908,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         <span style={{ position: 'absolute', top: 12, insetInlineEnd: 12, display: 'flex', gap: 5 }}>
                           {flag && (
                             <span title={flag.title} style={{ display: 'flex', alignItems: 'center', color: '#F59E0B', fontSize: 12, lineHeight: 1 }}>
-                              {flag.star ? <Star size={14} fill="#F59E0B" /> : flag.emoji}
+                              {flag.star ? <Star size={14} fill="#F59E0B" /> : <Sparkles size={14} aria-label="היום" />}
                             </span>
                           )}
                           {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
@@ -2970,7 +2995,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         return (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
                             {pill && (
-                              <Pill size="sm" tone={pill.tone} icon={pill.star ? <Star size={11} fill="#F59E0B" color="#F59E0B" /> : null}>
+                              <Pill size="sm" tone={pill.tone} icon={pill.star ? <Star size={11} fill="#F59E0B" color="#F59E0B" /> : pill.Icon ? <pill.Icon size={11} aria-hidden="true" /> : null}>
                                 {pill.text}
                               </Pill>
                             )}
@@ -3156,7 +3181,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <Pill size="sm" tone="muted" icon={<Check size={11} strokeWidth={3} />}>ביקרנו</Pill>
                   )}
                   {detailPlan.category === EVENTS_CATEGORY && detailPlan.event?.startDate && (
-                    <Pill size="sm" tone="sky">🗓️ {formatEventWhen(detailPlan.event)}</Pill>
+                    <Pill size="sm" tone="sky" icon={<Calendar size={11} aria-hidden="true" />}>{formatEventWhen(detailPlan.event)}</Pill>
                   )}
                 </div>
               </div>
@@ -3353,7 +3378,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   }}>
                     <div style={{
                       width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                      background: 'var(--accent)', color: '#fff',
+                      background: 'var(--brand)', color: 'var(--brand-fg)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       <Navigation size={16} />
@@ -3602,17 +3627,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             />
                           </div>
                           {savedPlaceSelections.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeSavedPlaceSelection(idx)}
-                              style={{
-                                border: 'none', background: 'rgba(220,38,38,0.08)',
-                                color: 'rgb(220,38,38)', borderRadius: 8,
-                                width: 40, height: 40, cursor: 'pointer', flexShrink: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                            >
-                              <X size={14} />
+                            <button type="button" className="btn-x danger" aria-label="הסר מקום" title="הסר מקום" onClick={() => removeSavedPlaceSelection(idx)}>
+                              <X size={16} />
                             </button>
                           )}
                         </div>
@@ -3628,12 +3644,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             }).map(p => {
                               const originKey = p.distanceOriginId || 'hotel';
                               const cache = distanceCache[`${p.id}_${originKey}`];
-                              const parts = [];
-                              if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
-                              if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
-                              const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                              const meta = travelMeta(cache);
+                              const icon = priorityIcon(p.priority);
                               const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
-                              return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor, visited: p.visited };
+                              return { value: p.id, label: p.title, icon, meta, labelColor, visited: p.visited };
                             }),
                             ...(usedPlaces.length > 0 ? [
                               ...[...usedPlaces].sort((a, b) => {
@@ -3642,12 +3656,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               }).map(p => {
                                 const originKey = p.distanceOriginId || 'hotel';
                                 const cache = distanceCache[`${p.id}_${originKey}`];
-                                const parts = [];
-                                if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
-                                if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
-                                const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                                const meta = travelMeta(cache);
+                                const icon = priorityIcon(p.priority);
                                 const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
-                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor, visited: p.visited, inUse: true };
+                                return { value: p.id, label: `✓ ${p.title}`, icon, meta, labelColor, visited: p.visited, inUse: true };
                               })
                             ] : [])
                           ]}
@@ -4029,8 +4041,8 @@ const DayCard = React.memo(function DayCard({
                   onChange={e => setEditingDayTitle(e.target.value)} 
                   required 
                 />
-                <button type="submit" className="btn-primary" style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>שמור</button>
-                <button type="button" className="btn-secondary" onClick={() => setEditingDayId(null)} style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>ביטול</button>
+                <button type="submit" className="round-btn on" aria-label="שמור" title="שמור"><Check size={16} /></button>
+                <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => setEditingDayId(null)}><X size={16} /></button>
               </form>
             ) : (
               <>
@@ -4217,12 +4229,12 @@ const DayCard = React.memo(function DayCard({
                             <>
                               {cache.walk && (
                                 <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                  🚶 {cache.walk.duration}
+                                  <Footprints size={12} aria-hidden="true" /> {cache.walk.duration}
                                 </span>
                               )}
                               {cache.transit && (
                                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                  🚌 {cache.transit.duration}
+                                  <Bus size={12} aria-hidden="true" /> {cache.transit.duration}
                                 </span>
                               )}
                             </>
@@ -4352,9 +4364,10 @@ const DayCard = React.memo(function DayCard({
                       background: 'transparent', fontFamily: 'inherit',
                     }}
                   >
-                    <span style={{ fontSize: 14, lineHeight: 1 }}>
-                      {TIME_GROUP_ICONS[g.label] || (g.label ? '🕐' : '📌')}
-                    </span>
+                    {(() => {
+                      const GroupIcon = TIME_GROUP_ICONS[g.label] || (g.label ? Clock : Pin);
+                      return <GroupIcon size={15} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />;
+                    })()}
                     <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
                       {g.label || 'ללא תיוג זמן'}
                     </span>

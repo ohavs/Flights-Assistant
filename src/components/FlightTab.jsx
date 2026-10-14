@@ -6,10 +6,12 @@ import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { WeatherChip } from './TripHeaderInfo';
+import Skeleton from './Skeleton';
+import Notice from '../ui/Notice';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
-  Edit2,
+  Pencil,
   Building,
   Loader2,
   Search,
@@ -330,33 +332,29 @@ export default function FlightTab({ tripId }) {
     setFormHotelCheckOut(`${newDate}T${time}`);
   };
 
-  const Banner = ({ color, bg, border, children }) => (
-    <div style={{ marginTop: 8, padding: '10px 12px', background: bg, border: `1px solid ${border}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color, lineHeight: 1.5 }}>
-      {children}
-    </div>
-  );
+  const Banner = ({ tone, children }) => <Notice tone={tone} style={{ marginTop: 8 }}>{children}</Notice>;
 
   const renderLookupFeedback = (result) => {
     if (!result) return null;
     switch (result.kind) {
       case 'empty':
-        return <Banner color="rgb(190, 18, 60)" bg="rgba(239, 68, 68, 0.08)" border="rgba(239, 68, 68, 0.2)">⚠️ הזן מספר טיסה לפני החיפוש.</Banner>;
+        return <Banner tone="warn">הזן מספר טיסה לפני החיפוש.</Banner>;
       case 'live':
-        return <Banner color="var(--text-success)" bg="rgba(5, 150, 105, 0.1)" border="rgba(5, 150, 105, 0.3)">✅ נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}</Banner>;
+        return <Banner tone="success">נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}</Banner>;
       case 'no-key':
-        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">⚠️ חיפוש חי אינו זמין (חסר מפתח API מובנה). נטענו נתונים מקומיים.</Banner>;
+        return <Banner tone="warn">חיפוש חי אינו זמין (חסר מפתח API מובנה). נטענו נתונים מקומיים.</Banner>;
       case 'no-results':
-        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">
+        return <Banner tone={result.message ? 'info' : 'warn'}>
           {result.message
-            ? <>ⓘ {result.message}</>
-            : <>⚠️ AeroDataBox לא מצא את הטיסה בתאריך שצוין. נסה תאריך מדויק לטיסה (התאריך שמופיע בכרטיס שלך).</>}
+            ? result.message
+            : 'AeroDataBox לא מצא את הטיסה בתאריך שצוין. נסה תאריך מדויק לטיסה (התאריך שמופיע בכרטיס שלך).'}
         </Banner>;
       case 'http-error':
-        return <Banner color="rgb(190, 18, 60)" bg="rgba(239, 68, 68, 0.08)" border="rgba(239, 68, 68, 0.2)">❌ {result.message}</Banner>;
+        return <Banner tone="error">{result.message}</Banner>;
       case 'network-error':
-        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.08)" border="rgba(245, 158, 11, 0.25)">📡 {result.message}</Banner>;
+        return <Banner tone="offline">{result.message}</Banner>;
       default:
-        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.08)" border="rgba(245, 158, 11, 0.25)">ⓘ נטענו נתונים משוערים מהמאגר המקומי.</Banner>;
+        return <Banner tone="info">נטענו נתונים משוערים מהמאגר המקומי.</Banner>;
     }
   };
 
@@ -719,10 +717,7 @@ export default function FlightTab({ tripId }) {
 
   if (loading || !tripData) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, height: '100%', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: '12px', height: '12px' }}></div>
-        <span style={{ marginRight: '10px', color: 'var(--text-muted)', fontSize: '15px' }}>טוען נתוני טיסה ומלון...</span>
-      </div>
+      <Skeleton rows={3} label="טוען נתוני טיסה ומלון" />
     );
   }
 
@@ -762,16 +757,13 @@ export default function FlightTab({ tripId }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {canEdit && (
             <button
+              type="button"
+              className="icon-btn accent"
               onClick={() => openEditModal(kind)}
               title={`ערוך ${label}`}
-              style={{
-                background: 'var(--p-6)',
-                border: 'none', padding: '6px', borderRadius: 8, cursor: 'pointer',
-                color: 'var(--accent)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}
+              aria-label={`ערוך ${label}`}
             >
-              <Edit2 size={14} />
+              <Pencil size={16} />
             </button>
             )}
             <button
@@ -973,16 +965,13 @@ export default function FlightTab({ tripId }) {
           </h4>
           {canEdit && (
           <button
+            type="button"
+            className="icon-btn accent"
             onClick={() => openEditModal('hotel')}
             title="ערוך פרטי מלון"
-            style={{
-              background: 'var(--p-6)', border: 'none',
-              padding: '6px', borderRadius: 8, cursor: 'pointer',
-              color: 'var(--accent)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}
+            aria-label="ערוך פרטי מלון"
           >
-            <Edit2 size={14} />
+            <Pencil size={16} />
           </button>
           )}
         </div>

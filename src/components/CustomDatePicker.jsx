@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useBackHandler from '../hooks/useBackHandler';
-import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, X, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, Check } from 'lucide-react';
 
 const MONTHS_HE = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -438,13 +438,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>
                 {label || 'בחירת תאריך'}
               </span>
-              <button 
-                type="button" 
-                onClick={() => setIsOpen(false)}
-                style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                <X size={15} />
-              </button>
+              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
             </div>
 
             {/* Calendar grid */}
@@ -572,9 +566,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
-              <button type="button" onClick={() => setIsOpen(false)} style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={15} />
-              </button>
+              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
             </div>
 
             {/* Hour + Minute columns (24-hour). Laid out left-to-right so
@@ -625,8 +617,8 @@ export function CustomTimePicker({ value, onChange, label, required }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={handleSave} className="btn-primary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>בחירה</button>
-              <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>ביטול</button>
+              <button type="button" onClick={handleSave} className="btn-primary" style={{ flex: 1 }}>בחירה</button>
+              <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1 }}>ביטול</button>
             </div>
           </div>
         </div>,
@@ -754,13 +746,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>
                 {label || 'בחירת תאריך ושעה'}
               </span>
-              <button 
-                type="button" 
-                onClick={() => setIsOpen(false)}
-                style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                <X size={15} />
-              </button>
+              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
             </div>
 
             {/* Tabs for Date / Time */}

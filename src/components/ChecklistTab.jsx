@@ -533,14 +533,8 @@ function RemindersCard({ tripId, canEdit }) {
                   type="submit"
                   disabled={!draft.trim()}
                   aria-label={editingId ? 'שמור תזכורת' : 'הוסף תזכורת'}
-                  style={{
-                    width: 46, height: 46, borderRadius: '50%', flexShrink: 0, border: 'none',
-                    background: draft.trim() ? 'var(--accent)' : 'var(--ink-8)',
-                    color: draft.trim() ? '#fff' : 'var(--text-muted)',
-                    cursor: draft.trim() ? 'pointer' : 'default',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'background 0.18s',
-                  }}
+                  className={`round-btn${draft.trim() ? ' on' : ''}`}
+                  style={{ width: 46, height: 46, minWidth: 46 }}
                 >
                   {editingId ? <Check size={20} strokeWidth={3} /> : <ArrowUp size={20} strokeWidth={3} />}
                 </button>
@@ -694,10 +688,8 @@ function SortableCategoryBlock({
                   style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
                   <Plus size={14} />
                 </button>
-                <button type="button"
-                  onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
-                  <X size={14} />
+                <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}>
+                  <X size={16} />
                 </button>
               </form>
             ) : (
