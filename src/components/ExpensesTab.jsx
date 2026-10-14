@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import {
-  Plus, Trash2, Search, X, TrendingUp,
+  Plus, Trash2, Search, X, Check, TrendingUp,
   Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin,
   Utensils, Bus, BedDouble, Ticket, ShoppingBag,
 } from 'lucide-react';
@@ -378,14 +378,10 @@ export default function ExpensesTab({ tripId }) {
         <div style={{ display: 'flex', gap: 8 }}>
           {expenses.length > 0 && (
             <button
+              type="button"
+              className="chip"
+              aria-pressed={showSummary}
               onClick={() => setShowSummary(s => !s)}
-              style={{
-                padding: '8px 14px', borderRadius: 20, border: 'none',
-                background: showSummary ? 'var(--accent)' : 'var(--p-8)',
-                color: showSummary ? '#fff' : 'var(--accent)',
-                fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
-              }}
             >
               <TrendingUp size={14} />
               סיכום
@@ -801,10 +797,8 @@ export default function ExpensesTab({ tripId }) {
                             <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 2, opacity: 0.75 }}>{linked.category}</div>
                           )}
                         </div>
-                        <button type="button"
-                          onClick={() => { setLinkedPlanId(''); setShowPlanDropdown(false); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2, flexShrink: 0 }}>
-                          <X size={14} />
+                        <button type="button" className="btn-x" aria-label="נקה קישור למקום" title="נקה קישור למקום" onClick={() => { setLinkedPlanId(''); setShowPlanDropdown(false); }}>
+                          <X size={16} />
                         </button>
                       </div>
                     );
@@ -832,9 +826,8 @@ export default function ExpensesTab({ tripId }) {
                             />
                             <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             {planFilter && (
-                              <button type="button" onClick={() => setPlanFilter('')}
-                                style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
-                                <X size={13} />
+                              <button type="button" className="btn-x" aria-label="נקה חיפוש" title="נקה חיפוש" style={{ position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)' }} onClick={() => setPlanFilter('')}>
+                                <X size={16} />
                               </button>
                             )}
                           </div>
@@ -938,12 +931,11 @@ export default function ExpensesTab({ tripId }) {
                             }
                             setShowNewCatInput(false); setNewCatDraft('');
                           }}
-                          className="btn-primary" style={{ minHeight: 38, padding: '6px 14px', fontSize: 13, flexShrink: 0 }}>
-                          הוסף
+                          className="round-btn on" aria-label="הוסף" title="הוסף">
+                          <Check size={16} />
                         </button>
-                        <button type="button" onClick={() => { setShowNewCatInput(false); setNewCatDraft(''); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex', flexShrink: 0 }}>
-                          <X size={14} />
+                        <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setShowNewCatInput(false); setNewCatDraft(''); }}>
+                          <X size={16} />
                         </button>
                       </div>
                     ) : (

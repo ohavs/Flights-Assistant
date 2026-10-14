@@ -39,14 +39,14 @@ import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmptyState from './components/EmptyState';
 import Sheet from './ui/Sheet';
+import Notice from './ui/Notice';
 import Skeleton from './components/Skeleton';
 import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, Coins,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff, ClipboardList, Settings, Download
-} from 'lucide-react';
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff, ClipboardList, Settings, Download, WifiOff } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
 
@@ -578,14 +578,14 @@ function ShareModal({ tripId, currentUid, onClose }) {
               </button>
             </form>
 
-            {status === 'success' && <p style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: 13 }}>✅ נוסף בהצלחה.</p>}
-            {status === 'not-found' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13 }}>❌ אין משתמש רשום עם האימייל הזה.</p>}
-            {status === 'self' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13 }}>❌ אי אפשר לשתף את עצמך.</p>}
-            {status === 'already' && <p style={{ color: 'rgb(146, 64, 14)', fontWeight: 700, fontSize: 13 }}>ⓘ המשתמש כבר חבר בטיול.</p>}
+            {status === 'success' && <Notice tone="success">נוסף בהצלחה.</Notice>}
+            {status === 'not-found' && <Notice tone="error">אין משתמש רשום עם האימייל הזה.</Notice>}
+            {status === 'self' && <Notice tone="error">אי אפשר לשתף את עצמך.</Notice>}
+            {status === 'already' && <Notice tone="info">המשתמש כבר חבר בטיול.</Notice>}
             {status === 'error' && (
-              <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
-                ❌ שגיאה.{errorMsg && <><br /><span style={{ fontWeight: 600, fontSize: 11 }} dir="ltr">{errorMsg}</span></>}
-              </p>
+              <Notice tone="error">
+                שגיאה.{errorMsg && <><br /><span style={{ fontWeight: 600, fontSize: 11 }} dir="ltr">{errorMsg}</span></>}
+              </Notice>
             )}
           </>
         )}
@@ -617,7 +617,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
                 ) : (
                   <div style={{
                     width: 34, height: 34, borderRadius: '50%',
-                    background: 'var(--accent)', color: '#fff',
+                    background: 'var(--brand)', color: 'var(--brand-fg)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 14, fontWeight: 800
                   }}>
@@ -943,12 +943,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                         value={editCatText} onChange={e => setEditCatText(e.target.value)}
                         style={{ flex: 1, minHeight: 34, fontSize: 13 }}
                       />
-                      <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
-                        <Check size={13} />
+                      <button type="submit" className="round-btn on" aria-label="שמור" title="שמור">
+                        <Check size={16} />
                       </button>
-                      <button type="button" onClick={() => setEditingCat(null)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
-                        <X size={14} />
+                      <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => setEditingCat(null)}>
+                        <X size={16} />
                       </button>
                     </form>
                   ) : (
@@ -997,9 +996,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                             style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                             <Trash2 size={13} />
                           </button>
-                          <button type="button" onClick={() => setLongPressedCat(null)}
-                            style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
-                            <X size={14} />
+                          <button type="button" className="btn-x" aria-label="סגור" title="סגור" onClick={() => setLongPressedCat(null)}>
+                            <X size={16} />
                           </button>
                         </>
                       )}
@@ -1056,10 +1054,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                           style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
                           <Plus size={14} />
                         </button>
-                        <button type="button"
-                          onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
-                          <X size={14} />
+                        <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}>
+                          <X size={16} />
                         </button>
                       </form>
                     ) : (
@@ -1680,8 +1676,10 @@ function AppInner() {
       background: '#dc2626', color: '#fff', textAlign: 'center',
       fontSize: 12, fontWeight: 700, padding: '6px 16px',
       letterSpacing: 0.2, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
     }}>
-      ⚠️ אין חיבור לאינטרנט — שינויים נשמרים ויסונכרנו בהתחברות
+      <WifiOff size={14} aria-hidden="true" />
+      אין חיבור לאינטרנט — שינויים נשמרים ויסונכרנו בהתחברות
     </div>
   ) : null;
 
@@ -1694,7 +1692,7 @@ function AppInner() {
             {user.photoURL ? (
               <img src={user.photoURL} alt="" style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0 }} referrerPolicy="no-referrer" />
             ) : (
-              <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14, fontWeight: 800, flexShrink: 0 }}>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand-fg)', fontSize: 14, fontWeight: 800, flexShrink: 0 }}>
                 {(user.displayName || user.email || '?')[0]}
               </div>
             )}
@@ -1827,12 +1825,11 @@ function AppInner() {
                 </div>
                 <button
                   type="button"
+                  aria-label="סגור"
+                  className="btn-close"
                   onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
                   disabled={deleteBusy}
-                  style={{ background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: deleteBusy ? 'default' : 'pointer', color: 'var(--text-muted)', flexShrink: 0, opacity: deleteBusy ? 0.5 : 1 }}
-                >
-                  <X size={16} />
-                </button>
+                >✕</button>
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
                 <button
