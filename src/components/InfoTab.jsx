@@ -310,14 +310,9 @@ export default function InfoTab({ tripId, embedded = false }) {
                     />
                   </div>
                 ))}
-                <button type="button"
-                  onClick={() => setFExtraFields(prev => [...prev, { id: 'ef-' + Date.now(), label: '', type: 'text', value: '' }])}
-                  style={{
-                    width: '100%', border: '1.5px dashed rgba(79,70,229,0.3)', background: 'transparent',
-                    color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '8px 0',
-                    borderRadius: 12, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-                  }}>
-                  <Plus size={13} /> הוסף שדה נוסף
+                <button type="button" className="chip add" style={{ alignSelf: 'flex-start' }}
+                  onClick={() => setFExtraFields(prev => [...prev, { id: 'ef-' + Date.now(), label: '', type: 'text', value: '' }])}>
+                  <Plus size={14} /> שדה נוסף
                 </button>
               </div>
 

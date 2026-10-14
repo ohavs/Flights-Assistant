@@ -179,8 +179,9 @@ await step('expenses and bookings group under the same header', async () => {
   await page.locator('.app-content .section-header').first().waitFor({ timeout: 5000 });
 });
 
-// Buttons, labels and notices carry icons, never emoji, and there are two
-// ✕: the sheet's .btn-close and the quiet in-form .btn-x.
+// Buttons, labels and notices carry icons, never emoji; there are two ✕
+// (the sheet's .btn-close, the quiet in-form .btn-x) and + is always one
+// of the shared buttons.
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{2712}\u{2714}\u{2716}-\u{27BF}\u{2B50}\u{24D8}]/u;   // not ✓ ✕
 const chromeProblems = (scope) => page.evaluate(([src, scope]) => {
   const re = new RegExp(src, 'u');
@@ -192,7 +193,11 @@ const chromeProblems = (scope) => page.evaluate(([src, scope]) => {
   const xs = [...root.querySelectorAll('button:has(svg.lucide-x)')]
     .filter(el => !el.matches('.btn-x, .round-btn'))
     .map(el => `X: ${el.outerHTML.slice(0, 80)}`);
-  return [...hits, ...xs];
+  // "+" is one of the shared buttons, never a one-off.
+  const pluses = [...root.querySelectorAll('button:has(svg.lucide-plus)')]
+    .filter(el => !el.matches('.fab, .chip, .round-btn, .btn-primary, .btn-secondary, .section-header-btn'))
+    .map(el => `+: ${el.outerHTML.slice(0, 80)}`);
+  return [...hits, ...xs, ...pluses];
 }, [EMOJI.source, scope]);
 const expectClean = async (scope) => {
   const bad = await chromeProblems(scope);

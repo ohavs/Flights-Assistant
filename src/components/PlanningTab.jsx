@@ -2161,7 +2161,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         onClick={handleAddLinkRow}
                         disabled={!newLinkUrl.trim()}
                         className="btn-secondary"
-                        style={{ width: '100%', minHeight: 38, fontSize: 13, padding: '8px', opacity: newLinkUrl.trim() ? 1 : 0.5 }}
+                        style={{ width: '100%', opacity: newLinkUrl.trim() ? 1 : 0.5 }}
                       >
                         <Plus size={14} />
                         <span>הוסף קישור</span>
@@ -3506,11 +3506,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <button
                       type="button"
                       onClick={() => setAddingCatInSettings(true)}
-                      className="btn-secondary"
-                      style={{ minHeight: 44, fontSize: 14 }}
+                      className="chip add"
+                      style={{ alignSelf: 'flex-start' }}
                     >
-                      <Plus size={15} />
-                      <span>הוסף קטגוריה</span>
+                      <Plus size={14} />
+                      <span>קטגוריה</span>
                     </button>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -3706,15 +3706,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <button
                       type="button"
                       onClick={addSavedPlaceSelection}
-                      style={{
-                        border: 'none', background: 'var(--card-bg-solid)',
-                        color: 'var(--text)', borderRadius: 999, padding: '8px 14px',
-                        fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start'
-                      }}
+                      className="chip add"
+                      style={{ alignSelf: 'flex-start' }}
                     >
-                      <Plus size={13} />
-                      הוסף מקום שמור
+                      <Plus size={14} />
+                      מקום שמור
                     </button>
                   )}
                 </div>
