@@ -1,0 +1,99 @@
+name: Firestore rules
+
+# Manual only. Rules are deployed as a deliberate step, never as a side effect
+# of a merge (see CLAUDE.md, "Data-safety rules").
+#   check  — read-only: compares the live rules with firestore.rules.
+#   deploy — runs the rules tests against the emulator, deploys
+#            firestore.rules, then checks the live rules match the file.
+# Logs of this public repo are public: tokens are masked, and only the rules
+# text (which is in the repo anyway) is printed.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: check (read-only) or deploy
+        required: true
+        default: check
+        type: choice
+        options: [check, deploy]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firestore-rules
+  cancel-in-progress: false
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PROJECT: listify-84018
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Firebase CLI
+        run: npm install --prefix "$RUNNER_TEMP/ft" --no-audit --no-fund firebase-tools@14.27.0 > /dev/null
+
+      - name: Access token from FIREBASE_TOKEN
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          # FIREBASE_TOKEN is a Firebase CLI refresh token. Exchange it the way
+          # the CLI itself does (with the CLI's own public OAuth client).
+          CLIENT=$(node -e "const a=require('$RUNNER_TEMP/ft/node_modules/firebase-tools/lib/api'); console.log(a.clientId() + ' ' + a.clientSecret())")
+          TOKEN=$(curl -sf https://oauth2.googleapis.com/token \
+            -d client_id="${CLIENT% *}" -d client_secret="${CLIENT#* }" -d grant_type=refresh_token \
+            --data-urlencode "refresh_token=$(printf '%s' "$FIREBASE_TOKEN" | tr -d '[:space:]')" | jq -r .access_token)
+          [ -n "$TOKEN" ] && [ "$TOKEN" != null ] || { echo "::error::Could not get an access token from FIREBASE_TOKEN"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Live rules vs firestore.rules (before)
+        run: |
+          API=https://firebaserules.googleapis.com/v1/projects/$PROJECT
+          RULESET=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "$API/releases/cloud.firestore" | jq -r .rulesetName)
+          echo "Live ruleset: $RULESET"
+          curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
+            | jq -r '.source.files[0].content' > live.rules
+          if diff -u live.rules firestore.rules; then
+            echo "Live rules are IDENTICAL to firestore.rules"
+          else
+            echo "Live rules DIFFER from firestore.rules (diff above: - live, + repo)"
+            [ "${{ inputs.mode }}" = check ] || echo "Deploying will replace the live rules with firestore.rules"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: inputs.mode == 'deploy'
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        if: inputs.mode == 'deploy'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Rules tests (emulator)
+        if: inputs.mode == 'deploy'
+        run: |
+          npm ci --no-audit --no-fund --legacy-peer-deps
+          npm run test:data
+
+      - name: Deploy firestore.rules
+        if: inputs.mode == 'deploy'
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          "$RUNNER_TEMP/ft/node_modules/.bin/firebase" deploy --only firestore:rules --project "$PROJECT" --non-interactive \
+            --token "$(printf '%s' "$FIREBASE_TOKEN" | tr -d '[:space:]')"
+
+      - name: Live rules match firestore.rules (after)
+        if: inputs.mode == 'deploy'
+        run: |
+          API=https://firebaserules.googleapis.com/v1/projects/$PROJECT
+          RULESET=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "$API/releases/cloud.firestore" | jq -r .rulesetName)
+          curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
+            | jq -r '.source.files[0].content' > live.rules
+          diff -u live.rules firestore.rules && echo "Deployed: live rules now match firestore.rules"
