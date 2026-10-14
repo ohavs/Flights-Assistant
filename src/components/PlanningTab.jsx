@@ -401,6 +401,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [newCatName, setNewCatName] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  // The phone's back gesture closes the options sheet before anything else.
+  useBackHandler(showSortMenu, () => setShowSortMenu(false));
   const optionsBtnRef = useRef(null);
   // Category filter dropdown (replaces the old row of filter pills). The
   // trigger's position is captured on click rather than read during render,
@@ -1932,9 +1934,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 placeholder="חיפוש אטרקציות, מסעדות..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingRight: '40px' }}
+                style={{ paddingRight: '42px', paddingLeft: searchQuery ? '44px' : undefined }}
               />
-              <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <Search size={18} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="נקה חיפוש"
+                  onClick={() => setSearchQuery('')}
+                  className="round-btn"
+                  style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, minWidth: 30, background: 'var(--surface-3)' }}
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
 
           </div>
@@ -2483,32 +2496,29 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     style={{
                       flex: 1, minWidth: 0,
                       display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '9px 12px',
-                      borderRadius: 12,
+                      minHeight: 44,
+                      padding: '9px 14px',
+                      borderRadius: 16,
                       cursor: 'pointer',
                       fontFamily: 'var(--font-hebrew)',
-                      fontSize: 13, fontWeight: 800,
+                      fontSize: 14, fontWeight: 800,
                       textAlign: 'right',
-                      background: activeColor ? `${activeColor}14` : 'var(--surface)',
-                      border: `1.5px solid ${activeColor || 'var(--p-12)'}`,
-                      color: activeColor || 'var(--primary)',
-                      boxShadow: 'var(--shadow-sm)',
+                      // A filter in effect tints the whole control in its colour.
+                      background: activeColor ? `${activeColor}1F` : 'var(--card-bg-solid)',
+                      border: 'none',
+                      color: 'var(--text)',
+                      boxShadow: activeColor ? 'none' : 'var(--shadow-sm)',
                     }}
                   >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--accent)', flexShrink: 0 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--text-muted)', flexShrink: 0 }}>
                       {current?.icon}
                     </span>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {current?.label || 'הכל'}
                     </span>
-                    <span style={{
-                      flexShrink: 0, fontSize: 11, fontWeight: 800,
-                      background: activeColor ? `${activeColor}22` : 'var(--ink-5)',
-                      color: activeColor || 'var(--text-muted)',
-                      padding: '2px 7px', borderRadius: 999,
-                    }}>
+                    <Pill size="sm" tone={activeColor ? 'neutral' : 'muted'} style={activeColor ? { background: 'var(--card-bg-solid)' } : undefined}>
                       {current?.count ?? 0}
-                    </span>
+                    </Pill>
                     <ChevronDown
                       size={15}
                       style={{
@@ -2535,16 +2545,17 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         maxHeight: '60vh',
                         overflowY: 'auto',
                         zIndex: 50,
-                        background: 'var(--surface)',
-                        border: '1.5px solid var(--p-12)',
-                        borderRadius: 14,
+                        background: 'var(--card-bg-solid)',
+                        border: 'none',
+                        borderRadius: 18,
                         boxShadow: 'var(--shadow-lg)',
+                        padding: '4px 0',
                         direction: 'rtl',
                       }}>
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
-                          color: 'var(--text-muted)', letterSpacing: '0.4px',
-                          background: 'var(--ink-3)',
+                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
+                          color: 'var(--text-muted)',
+                          background: 'var(--card-bg-solid)',
                           position: 'sticky', top: 0,
                         }}>סינון לפי קטגוריה</div>
                         {options.map(opt => {
@@ -2598,20 +2609,15 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               const openMenu = () => {
                 setShowSortMenu(s => !s);
               };
-              const rect = showSortMenu ? optionsBtnRef.current?.getBoundingClientRect() : null;
               return (
                 <>
                   <button
                     ref={optionsBtnRef}
                     onClick={openMenu}
                     title="מיון ותצוגה"
-                    className="filter-chip"
-                    style={{
-                      flexShrink: 0, gap: 4,
-                      color: optionsActive ? '#fff' : 'var(--text-muted)',
-                      background: optionsActive ? 'var(--accent)' : 'var(--ink-5)',
-                      borderColor: optionsActive ? 'var(--accent)' : undefined,
-                    }}
+                    aria-label="מיון ותצוגה"
+                    className={`round-btn ${optionsActive ? 'on' : 'raised'}`}
+                    style={{ width: 44, height: 44, minWidth: 44, gap: 4 }}
                   >
                     {bulkCalc ? (
                       <>
@@ -2626,29 +2632,40 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   {/* Portalled for the same reason as the category popup. */}
                   {showSortMenu && createPortal(
                     <>
-                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowSortMenu(false)} />
+                      {/* A bottom sheet (Payments-2026): ten-plus options did not
+                          fit a popover on a phone. */}
+                      <div
+                        style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
+                        onClick={() => setShowSortMenu(false)}
+                      />
                       <div style={{
                         position: 'fixed',
-                        top: rect ? rect.bottom + 6 : 120,
-                        left: rect ? Math.max(8, rect.left) : 8,
-                        zIndex: 50,
-                        background: 'var(--surface)',
-                        border: '1.5px solid var(--p-12)',
-                        borderRadius: 14,
+                        left: 0, right: 0, bottom: 0,
+                        marginInline: 'auto',
+                        zIndex: 2000,
+                        background: 'var(--modal-bg)',
+                        borderRadius: '24px 24px 0 0',
                         boxShadow: 'var(--shadow-lg)',
                         overflow: 'hidden auto',
-                        width: 250,
-                        maxWidth: 'calc(100vw - 16px)',
-                        maxHeight: 'min(70vh, calc(100vh - 140px))',
+                        width: '100%',
+                        maxWidth: 520,
+                        maxHeight: '82vh',
+                        paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
                         direction: 'rtl',
+                        animation: 'slideUp 0.25s ease',
                       }}>
+                        <div className="sheet-grab" />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px 4px' }}>
+                          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>מיון ותצוגה</h2>
+                          <button type="button" aria-label="סגור" className="btn-close" onClick={() => setShowSortMenu(false)}>✕</button>
+                        </div>
                         {/* — Card layout section — */}
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
-                          color: 'var(--text-muted)', letterSpacing: '0.4px',
-                          background: 'var(--ink-3)',
+                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
+                          color: 'var(--text-muted)',
+                          background: 'transparent',
                         }}>תצוגת כרטיסים</div>
-                        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ink-4)' }}>
+                        <div style={{ display: 'flex', gap: 4, margin: '2px 16px 6px', padding: 4, borderRadius: 14, background: 'var(--surface-2)' }}>
                           {Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => {
                             const Icon = cfg.icon;
                             const active = key === planLayout;
@@ -2661,10 +2678,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                 style={{
                                   flex: 1, display: 'flex', flexDirection: 'column',
                                   alignItems: 'center', gap: 4, padding: '8px 4px',
-                                  borderRadius: 10,
-                                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-6)'}`,
-                                  background: active ? 'var(--p-8)' : 'var(--surface)',
-                                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                                  borderRadius: 11,
+                                  border: 'none',
+                                  background: active ? 'var(--card-bg-solid)' : 'transparent',
+                                  boxShadow: active ? '0 2px 8px rgba(20, 20, 20, 0.08)' : 'none',
+                                  color: active ? 'var(--text)' : 'var(--text-muted)',
                                   cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
                                   fontSize: 11, fontWeight: 700,
                                 }}
@@ -2678,9 +2696,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                         {/* — Sort section — */}
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
-                          color: 'var(--text-muted)', letterSpacing: '0.4px',
-                          background: 'var(--ink-3)',
+                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
+                          color: 'var(--text-muted)',
+                          background: 'transparent',
                         }}>מיון</div>
                         {[
                           { key: 'default',      label: 'ברירת מחדל' },
@@ -2711,11 +2729,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                         {/* — Grouping: how the long list is broken up — */}
                         <div style={{
-                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
-                          color: 'var(--text-muted)', letterSpacing: '0.4px',
-                          background: 'var(--ink-3)',
+                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
+                          color: 'var(--text-muted)',
+                          background: 'transparent',
                         }}>חלוקה לקבוצות</div>
-                        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ink-4)' }}>
+                        <div style={{ display: 'flex', gap: 4, margin: '2px 16px 6px', padding: 4, borderRadius: 14, background: 'var(--surface-2)' }}>
                           {[
                             { key: 'none', label: 'רשימה', Icon: LayoutList },
                             { key: 'category', label: 'קטגוריה', Icon: Tag },
@@ -2733,10 +2751,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                 style={{
                                   flex: 1, display: 'flex', flexDirection: 'column',
                                   alignItems: 'center', gap: 4, padding: '8px 4px',
-                                  borderRadius: 10,
-                                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-6)'}`,
-                                  background: active ? 'var(--p-8)' : 'var(--surface)',
-                                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                                  borderRadius: 11,
+                                  border: 'none',
+                                  background: active ? 'var(--card-bg-solid)' : 'transparent',
+                                  boxShadow: active ? '0 2px 8px rgba(20, 20, 20, 0.08)' : 'none',
+                                  color: active ? 'var(--text)' : 'var(--text-muted)',
                                   cursor: disabled ? 'default' : 'pointer',
                                   opacity: disabled ? 0.45 : 1,
                                   fontFamily: 'var(--font-hebrew)', fontSize: 11, fontWeight: 700,
@@ -2789,9 +2808,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {hasGmapsKey() && (
                           <>
                             <div style={{
-                              padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
-                              color: 'var(--text-muted)', letterSpacing: '0.4px',
-                              background: 'var(--ink-3)',
+                              padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
+                              color: 'var(--text-muted)',
+                              background: 'transparent',
                             }}>תצוגה</div>
 
                             <button
@@ -2833,9 +2852,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {canEdit && (
                           <>
                             <div style={{
-                              padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
-                              color: 'var(--text-muted)', letterSpacing: '0.4px',
-                              background: 'var(--ink-3)',
+                              padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
+                              color: 'var(--text-muted)',
+                              background: 'transparent',
                             }}>קטגוריות</div>
                             <button
                               type="button"
