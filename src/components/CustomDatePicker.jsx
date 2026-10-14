@@ -337,7 +337,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
   const isCompact = variant === 'compact';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+    <div className="date-picker" style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
       {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}</label>}
       
       {/* Trigger Button Input-styled */}
@@ -360,25 +360,36 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: 8,
+          minWidth: 0,
           cursor: 'pointer',
           background: 'var(--surface)'
         }}
       >
-        <span style={{
+        <span className={isCompact ? undefined : 'date-trigger-text'} style={{
           fontSize: isCompact ? '13px' : '15px',
           fontWeight: '800',
           color: 'var(--primary-color)',
           whiteSpace: 'nowrap',
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}>
           {value
             ? (isCompact
                 // The compact trigger sits inside a narrow tile — a full
                 // "27 באוגוסט 2026" wraps to two lines there.
                 ? parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
-                : formatHebrewDate(value))
+                : <>
+                    {/* Two pickers share a row on a phone. When the column is
+                        too narrow for "29 בנובמבר 2026" the month is
+                        abbreviated (container query in index.css). */}
+                    <span className="date-long">{formatHebrewDate(value)}</span>
+                    <span className="date-short">{parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </>)
             : 'בחר תאריך...'}
         </span>
-        {!isCompact && <CalendarIcon size={18} style={{ color: 'var(--text-muted)' }} />}
+        {!isCompact && <CalendarIcon className="date-trigger-icon" size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
       </div>
 
       {/* Modal overlay — portalled to <body>. Every one of these pickers

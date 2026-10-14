@@ -1295,8 +1295,24 @@ input[type="datetime-local"].form-control {
 
 .row-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …): a column may be narrower than its content's natural
+     width. Plain 1fr grows to fit a long date and pushes the form wider
+     than the screen (a sideways scroll on a phone). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
+}
+
+/* Date picker trigger: the full month name when it fits; abbreviated, a
+   little smaller and without the icon when the picker's column is narrow
+   (two pickers side by side on a phone). */
+.date-picker { container-type: inline-size; }
+.date-short { display: none; }
+@container (max-width: 200px) {
+  .date-long { display: none; }
+  .date-short { display: inline; }
+  /* The whole field opens the calendar; the icon gives its room to the date. */
+  .date-trigger-icon { display: none; }
+  .date-trigger-text { font-size: 14px !important; }
 }
 
 /* ── Badges ── */

@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.16.1 (`changelog.md`)
+- גרסת ווב: 8.16.2 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`
 
 ## כללים קריטיים — לקרוא לפני כל שינוי
@@ -63,6 +63,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [x] שלב 2ב (#14): מעטפת Capacitor, כניסה נייטיב, כפתור חזור, status bar, אייקון ו־splash. ה־SW נרשם רק בווב.
 - [x] שלב 4.1 (8.16.0): טוקנים בשפת Payments (צבעים, רדיוסים, צללים, כהה), Rubik מקומי, כפתור ראשי "מדבקה", ירוק כברירת מחדל. צילומים: `bash scripts/run-e2e.sh tests/e2e/screens.e2e.mjs`.
 - [x] שלב 4.2 (8.16.1): סרגל ניווט צמוד בסגנון Payments עם אייקוני מדבקה (`src/ui/icons.jsx`), קפיצה ונקודה. FAB בסגנון מדבקה.
+- [x] באג (8.16.2): תאריכי הטיול בעריכת פרטי הנסיעה יצאו מהבלוק וגרמו לגלילה הצידה. תוקן ב־`.row-2` (`minmax(0,1fr)`) וב־container query בבורר התאריך. `layout.e2e.mjs` ב־CI.
 - [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
 
 ## הבא
@@ -153,7 +154,7 @@ curl -X POST "https://routes.googleapis.com/directions/v2:computeRoutes" \
 הכל מול emulators (`demo-flights`).
 - `npm run test:data`: בדיקות חוקים (`tests/*.test.mjs`). צריך Java 11+.
 - `npm run test:e2e`:
-  - בונה במצב emulators (`VITE_USE_FIREBASE_EMULATORS=true`) ומריץ `tests/e2e/smoke.e2e.mjs`.
+  - בונה במצב emulators (`VITE_USE_FIREBASE_EMULATORS=true`) ומריץ את `tests/e2e/smoke.e2e.mjs` ואת `layout.e2e.mjs` (בלי גלילה הצידה ב־360/390/412px).
   - בקונטיינר הענן של Claude, להוסיף לפני הפקודה `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
   - צילומי המסך נשמרים ב־`.e2e/`.
 - הדפדפן בבדיקות חוסם service workers: בביקור ראשון ה־PWA נטען מחדש וקוטע את הבדיקה באמצע.
