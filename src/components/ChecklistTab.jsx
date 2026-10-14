@@ -12,7 +12,8 @@ import {
 import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, User, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Skeleton from './Skeleton';
-import SwipeRow from './SwipeRow';
+import ListCard from '../ui/ListCard';
+import { CheckCircle } from '../ui/kit';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
 import Sheet from '../ui/Sheet';
@@ -445,73 +446,29 @@ function RemindersCard({ tripId, canEdit }) {
               const done = !!r.completed;
               const editing = editingId === r.id;
               return (
-                <SwipeRow
+                <ListCard
                   key={r.id}
-                  enabled={canEdit}
-                  actions={[
-                    { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => startEdit(r) },
-                    { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => remove(r) },
-                  ]}
-                  className="glass-card"
-                  onClick={() => toggleDone(r)}
-                  style={{
-                    display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12,
-                    padding: '12px 14px', textAlign: 'right',
-                    minHeight: 56, cursor: canEdit ? 'pointer' : 'default',
-                    background: editing ? 'var(--p-8)' : done ? 'var(--ink-2)' : 'var(--card-bg)',
-                    border: editing ? '1px solid var(--p-18)' : 'var(--card-border)',
-                    transition: 'background 0.18s',
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 26, height: 26, borderRadius: 9, flexShrink: 0,
-                      border: done ? 'none' : '2px solid var(--p-22)',
-                      background: done ? 'var(--accent)' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.18s',
-                    }}
-                  >
-                    {done && <Check size={15} color="#fff" strokeWidth={3} />}
-                  </span>
-
-                  <span style={{
-                    flex: 1, minWidth: 0, fontSize: 15, lineHeight: 1.45,
-                    fontWeight: done ? 500 : 700,
-                    color: done ? 'var(--text-muted)' : 'var(--text-main)',
-                    textDecoration: done ? 'line-through' : 'none',
-                    wordBreak: 'break-word',
-                  }}>
-                    {r.text}
-                  </span>
-
-                  {(r.addedByPhoto || r.addedByName) && (
+                  style={{ padding: '12px 14px', ...(editing ? { background: 'var(--p-8)', boxShadow: '0 0 0 1px var(--p-18)' } : null) }}
+                  lead={(
+                    <CheckCircle
+                      checked={done}
+                      onToggle={canEdit ? () => toggleDone(r) : undefined}
+                      label={done ? 'בטל סימון' : 'סמן כבוצע'}
+                    />
+                  )}
+                  title={r.text}
+                  muted={done && !editing}
+                  onOpen={canEdit ? () => toggleDone(r) : undefined}
+                  trailing={(r.addedByPhoto || r.addedByName) && (
                     <span title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.4 : 0.9 }}>
                       <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
                     </span>
                   )}
-
-                  {/* Pointer devices keep buttons; on touch the same two ride the swipe. */}
-                  {canEdit && (
-                    <span className="row-inline-actions" style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                      <button
-                        type="button" aria-label="ערוך תזכורת"
-                        onClick={e => { e.stopPropagation(); startEdit(r); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button" aria-label="מחק תזכורת"
-                        onClick={e => { e.stopPropagation(); remove(r); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-red2)', padding: 6, display: 'flex' }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </span>
-                  )}
-                </SwipeRow>
+                  actions={canEdit ? [
+                    { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(r), swipe: true },
+                    { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => remove(r), danger: true, swipe: true },
+                  ] : []}
+                />
               );
             })}
           </div>
@@ -716,38 +673,27 @@ function SortableCategoryBlock({
             const assigned = Array.isArray(item.assignedTo) ? item.assignedTo
               : item.assignedTo ? [item.assignedTo] : [];
             return (
-              <SwipeRow
+              <ListCard
                 key={item.id}
-                enabled={canEdit}
-                actions={[
-                  { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => handleStartEdit(item) },
-                  { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDeleteItem(item.id) },
-                ]}
-                className="glass-card checklist-item-row list-in"
-                onClick={canEdit ? () => handleToggle(item) : undefined}
-                style={{
-                  // Cap the stagger so the tail of a long list isn't delayed.
-                  '--i': Math.min(idx, 8),
-                  padding: '12px 14px',
-                  cursor: canEdit ? 'pointer' : 'default',
-                  background: item.completed ? 'var(--surface-2)' : 'var(--card-bg)',
-                  border: item.completed ? '1px solid transparent' : 'var(--card-border)',
-                  transition: 'background 0.2s, border 0.2s',
-                }}
-              >
-                <div style={{ width: 22, height: 22, borderRadius: 6, border: item.completed ? 'none' : '2px solid var(--ink-20)', background: item.completed ? 'var(--brand)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
-                  {item.completed && <Check size={14} color="var(--brand-fg)" strokeWidth={3} />}
-                </div>
-                <span style={{ fontSize: 15, fontWeight: item.completed ? 500 : 600, textDecoration: item.completed ? 'line-through' : 'none', color: item.completed ? 'var(--text-muted)' : 'var(--text-main)', transition: 'all 0.2s ease', textAlign: 'right', wordBreak: 'break-word', flex: 1 }}>
-                  {item.text}
-                </span>
-                {canEdit ? (
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                    {allMembers.length > 1 && (
-                      <button type="button" onClick={e => { e.stopPropagation(); setAssignPickerItemId(item.id); }}
-                        title="שייך לחברים"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                        {assigned.length > 0 ? (
+                className="list-in"
+                // Cap the stagger so the tail of a long list isn't delayed.
+                style={{ '--i': Math.min(idx, 8), padding: '12px 14px' }}
+                lead={(
+                  <CheckCircle
+                    checked={!!item.completed}
+                    onToggle={canEdit ? () => handleToggle(item) : undefined}
+                    label={item.completed ? 'בטל סימון' : 'סמן כבוצע'}
+                  />
+                )}
+                title={item.text}
+                muted={!!item.completed}
+                // Tapping a checklist row ticks it, as before.
+                onOpen={canEdit ? () => handleToggle(item) : undefined}
+                trailing={assigned.length > 0 && (
+                  <button type="button" title="שייך לחברים" aria-label="שייך לחברים"
+                    onClick={e => { e.stopPropagation(); if (canEdit) setAssignPickerItemId(item.id); }}
+                    style={{ background: 'none', border: 'none', cursor: canEdit ? 'pointer' : 'default', padding: 2, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+
                           <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center' }}>
                             {assigned.slice(0, 3).map((uid, idx) => {
                               const m = allMembers.find(x => x.uid === uid);
@@ -769,26 +715,14 @@ function SortableCategoryBlock({
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <User size={15} style={{ color: 'var(--text-muted)', opacity: 0.35 }} />
-                        )}
-                      </button>
-                    )}
-                    <span className="row-inline-actions" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <button onClick={e => { e.stopPropagation(); handleStartEdit(item); }}
-                        aria-label="ערוך פריט"
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
-                        <Pencil size={15} />
-                      </button>
-                      <button onClick={e => { e.stopPropagation(); handleDeleteItem(item.id); }}
-                        aria-label="מחק פריט"
-                        style={{ background: 'transparent', border: 'none', borderRadius: 7, color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </span>
-                  </div>
-                ) : <div />}
-              </SwipeRow>
+                  </button>
+                )}
+                actions={canEdit ? [
+                  { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => handleStartEdit(item), swipe: true },
+                  allMembers.length > 1 && { key: 'assign', label: 'שיוך לחברים', Icon: User, run: () => setAssignPickerItemId(item.id) },
+                  { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDeleteItem(item.id), danger: true, swipe: true },
+                ] : []}
+              />
             );
           })}
 

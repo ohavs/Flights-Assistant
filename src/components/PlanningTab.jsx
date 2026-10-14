@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
-import { Pill, CategoryDisc } from '../ui/kit';
+import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { createPortal } from 'react-dom';
@@ -2947,22 +2947,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   >
                     {/* Visited toggle — the one action that stays on the card,
                         so places can be ticked off without opening anything. */}
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleToggleVisited(plan); }}
-                        className={`plan-visit-toggle${plan.visited ? ' on' : ''}`}
-                        title={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
-                        aria-pressed={!!plan.visited}
-                      >
-                        {plan.visited && <Check size={18} strokeWidth={3} />}
-                      </button>
-                    ) : (
-                      plan.visited && (
-                        <div className="plan-visit-toggle on" aria-hidden="true">
-                          <Check size={18} strokeWidth={3} />
-                        </div>
-                      )
+                    {(canEdit || plan.visited) && (
+                      <CheckCircle
+                        checked={!!plan.visited}
+                        onToggle={canEdit ? () => handleToggleVisited(plan) : undefined}
+                        label={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
+                      />
                     )}
 
                     <CategoryDisc color={getCategoryColor(plan.category)} size={LO.iconBox} muted={plan.visited}>

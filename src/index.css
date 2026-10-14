@@ -367,7 +367,8 @@ button:not(:disabled):active,
   .custom-dropdown-trigger:hover,
   .custom-dropdown-option:hover,
   .filter-chip:hover,
-  .plan-visit-toggle:hover {
+  .plan-visit-toggle:hover,
+  .check-circle:hover {
     background: inherit;
     border-color: inherit;
   }
@@ -2077,7 +2078,7 @@ input[type="datetime-local"].form-control {
 
 /* The one control that stays on the card. A circle, not a form
    checkbox: it reports a state rather than collecting an answer. */
-.plan-visit-toggle {
+.plan-visit-toggle, .check-circle {
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -2092,10 +2093,10 @@ input[type="datetime-local"].form-control {
   transition: all 0.15s ease;
   padding: 0;
 }
-.plan-visit-toggle:hover {
+.plan-visit-toggle:hover, .check-circle:hover {
   border-color: var(--ink-35);
 }
-.plan-visit-toggle.on {
+.plan-visit-toggle.on, .check-circle.on {
   /* Lighter than the empty ring beside it, not darker: a solid dark
      mark on a receding card would pull the eye back to the one place
      that needs nothing. */
@@ -2104,7 +2105,7 @@ input[type="datetime-local"].form-control {
   color: var(--text-muted);
 }
 /* Ticking a place off pops the check (transform only). */
-.plan-visit-toggle.on svg { animation: nav-pop 0.45s var(--ease-spring); }
+.plan-visit-toggle.on svg, .check-circle.on svg { animation: nav-pop 0.45s var(--ease-spring); }
 
 /* Round add button (used next to search) — guaranteed circular */
 .btn-add-circle {

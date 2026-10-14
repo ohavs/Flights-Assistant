@@ -109,5 +109,35 @@ await step('info: items are ListCards; ⋯ edits', async () => {
   await page.locator('.sheet-footer').waitFor({ state: 'detached' });
 });
 
+  // Close the info sheet before moving on.
+for (let i = 0; i < 3 && await page.locator('.modal-overlay').count(); i++) {
+  await page.locator('.modal-overlay button[aria-label="סגור"]').last().click().catch(() => {});
+  await page.waitForTimeout(400);
+}
+
+// ── Checklist: one "done" circle, no strike-through, ⋯ like everywhere ──
+await tab("צ'קליסט");
+await step('checklist: the circle ticks an item; done is quiet, not struck through', async () => {
+  await page.locator('.app-content button:has(h3)').first().click();   // categories start collapsed
+  const row = page.locator('.app-content .list-card').first();
+  await row.waitFor();
+  const title = (await row.locator('.list-card-title').innerText()).trim();
+  const circle = row.locator('button.check-circle');
+  if ((await circle.getAttribute('aria-pressed')) !== 'false') throw new Error('item starts ticked');
+  await circle.tap();
+  await page.locator('.app-content .list-card.muted', { hasText: title }).waitFor();
+  const deco = await page.locator('.app-content .list-card', { hasText: title }).first()
+    .locator('.list-card-title').evaluate(el => getComputedStyle(el).textDecorationLine);
+  if (deco.includes('line-through')) throw new Error('done item is struck through');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: '.e2e/lists-checklist.png' });
+  const more = await moreIsVisible(title);
+  await more.tap();
+  await sheet(title).getByRole('button', { name: 'עריכה' }).click();
+  await page.locator('.sheet-footer button[type="submit"]').waitFor();
+  await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
+  await page.locator('.sheet-footer').waitFor({ state: 'detached' });
+});
+
 await browser.close();
 process.exit(failed ? 1 : 0);
