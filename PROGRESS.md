@@ -3,11 +3,11 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.20.3 (`changelog.md`)
+- גרסת ווב: 8.21.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
-  - לבדוק ש־PR של 8.20.3 (שמירה אופליין בטופס הטיסה) מוזג ונפרס, וש־`deploy.yml` האחרון ירוק.
-  - אחר כך C6.
+  - לבדוק שה־PR של 8.21.0 (C6א) מוזג ונפרס, וש־`deploy.yml` האחרון ירוק.
+  - אחר כך C6ב: הצ'קליסט, יחד עם C7.
 - הרצת e2e מקומית: `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome bash scripts/run-e2e.sh tests/e2e/<name>.e2e.mjs`. בלי ארגומנטים רצות כל הבדיקות של CI: smoke, layout, planning, flight, sheets, contrast.
 
 ## כללים קריטיים — לקרוא לפני כל שינוי
@@ -82,6 +82,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [x] 8.20.1 (C5ב): הזמנות, פריט מידע והוצאה עברו ל־`Sheet`. בהוצאות נוספה בדיקת שינויים; במידע ובהוצאות היא משווה למה שהטופס נפתח איתו. `sheets.e2e` בודק שישה טפסים.
 - [x] 8.20.2 (C5ג): תזכורות, פריט בצ'קליסט, שיוך לחברים, שיתוף ורשימה קבועה עברו ל־`Sheet`. מעטפת ה־`Sheet` הפרטית של הצ'קליסט נמחקה. **C5 הושלם:** כל החלוניות התחתונות הן `src/ui/Sheet.jsx` (מלבד חלונות אישור ממורכזים: `ConfirmModal` ומחיקת טיול).
 - [x] באג (8.20.3): "שמור" בטופס פרטי הנסיעה לא נסגר בלי רשת (`await setDoc`). עכשיו fire-and-forget. `flight.e2e` בודק שמירה אופליין.
+- [x] 8.21.0 (C6א): `src/ui/ListCard.jsx`. כרטיס אחד ⋯ ופעולות בהזמנות, בהוצאות ובמידע. החלקה כקיצור דרך (`SwipeRow` מעביר עכשיו `role`/`tabIndex`). "הוצאה חדשה" מוסתר מצופים. `lists.e2e.mjs` ב־CI.
 - [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
 
 ## הבא
@@ -101,7 +102,8 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
     - מידע חשוב: כפתור בכותרת, בכל הטאבים.
     - בתכנון: גלולת קטגוריה ושני כפתורים עגולים לבנים (הגדרות, חיפוש).
     - מצב כהה: אפור פחם (`#212329`).
-  - **הבא: C6** (`ListCard` ופעולות ⋯ בהזמנות, הוצאות, מידע וצ'קליסט; באגים 4–5).
+  - **הבא: C6ב + C7.** הצ'קליסט עובר ל־`ListCard` עם ⋯, ועיגול "בוצע" אחד (`CheckCircle`, כמו `.plan-visit-toggle` בתכנון) לפריטים ולתזכורות. בלי קו חוצה. הכרטיס של פריט שבוצע: `muted`.
+  - `ListCard`: `lead` (למשל עיגול בוצע), `icon` (`CategoryDisc`), `title`, `meta`, `tags`, `onOpen`, `actions` [{key,label,Icon,run,danger,swipe}], `muted`. ה־children מוצגים מתחת לכותרת.
   - טופס חדש בחלונית: `<Sheet title onClose dirty={formDirty()}>{({ close, cancel }) => <form>… <div className="sheet-footer"><button type="submit" className="btn-primary">שמור</button><button type="button" onClick={cancel} className="btn-secondary">ביטול</button></div></form>}</Sheet>`. `dirty` משווה למה שהטופס נפתח איתו. בבדיקות, כפתור השמירה: `.sheet-footer button[type="submit"]`.
   - אחרי C6: C7 (`CheckCircle`), C8 (שדות), C9 (`SectionHeader`, `Pill`), C10 (כפתורים ואייקונים), C11 (צבעים קשיחים).
 

@@ -15,7 +15,8 @@ import { CSS } from '@dnd-kit/utilities';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import { defaultInfoItems } from '../data/seedData';
-import SwipeRow from './SwipeRow';
+import ListCard from '../ui/ListCard';
+import { CategoryDisc } from '../ui/kit';
 import EmptyState from './EmptyState';
 
 
@@ -436,39 +437,36 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
             const href = hrefFor(item);
             const hasValue = !!item.value;
             const valueClickable = !!href;
+            const emergency = item.type === 'phone' && item.category === 'מספרי חירום';
             return (
-              <SwipeRow
+              <ListCard
                 key={item.id}
-                enabled={canEdit}
-                actions={[
-                  { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => startEdit(item) },
-                  { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(item) },
-                ]}
-                className="glass-card"
-                style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                  background: item.type === 'phone' && item.category === 'מספרי חירום' ? 'rgba(220,38,38,0.1)' : 'rgba(79,70,229,0.1)',
-                  color: item.type === 'phone' && item.category === 'מספרי חירום' ? 'rgb(220,38,38)' : 'var(--accent)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon size={18} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', textAlign: 'right' }}>{item.title}</div>
+                icon={<CategoryDisc color={emergency ? '#E5484D' : '#2DBE6C'} size={42}><Icon size={19} /></CategoryDisc>}
+                title={item.title}
+                onOpen={canEdit ? () => startEdit(item) : undefined}
+                actions={canEdit ? [
+                  { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(item), swipe: true },
+                  { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(item), danger: true, swipe: true },
+                ] : []}
+              >
                   {hasValue ? (
                     valueClickable ? (
                       <a href={href} target={item.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 14, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none', marginTop: 2, direction: item.type === 'phone' || item.type === 'url' ? 'ltr' : 'rtl' }}>
+                        onClick={e => e.stopPropagation()}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 14, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none', alignSelf: 'flex-start', direction: item.type === 'phone' || item.type === 'url' ? 'ltr' : 'rtl' }}>
                         <span style={{ overflowWrap: 'anywhere' }}>{item.value}</span>
                         {item.type !== 'phone' && <ExternalLink size={11} style={{ opacity: 0.7 }} />}
                       </a>
                     ) : (
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2, textAlign: 'right' }}>{item.value}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{item.value}</div>
                     )
                   ) : (
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'rgb(180,180,195)', marginTop: 2, textAlign: 'right', fontStyle: 'italic' }}>לא הוגדר — לחץ עיפרון להוסיף</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      לא הוגדר{canEdit ? ' — הקישו על הכרטיס כדי להוסיף' : ''}
+                    </div>
                   )}
                   {item.extraFields && item.extraFields.length > 0 && (
-                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {item.extraFields.map(field => {
                         if (!field.label && !field.value) return null;
                         const FieldIcon = iconFor(field.type);
@@ -479,13 +477,14 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                             {field.value ? (
                               fieldHref ? (
                                 <a href={fieldHref} target={field.type === 'phone' ? undefined : '_blank'} rel="noreferrer"
+                                  onClick={e => e.stopPropagation()}
                                   style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3, direction: field.type === 'phone' || field.type === 'url' ? 'ltr' : 'rtl' }}>
                                   <FieldIcon size={11} />
                                   <span style={{ overflowWrap: 'anywhere' }}>{field.value}</span>
                                   {field.type !== 'phone' && <ExternalLink size={10} style={{ opacity: 0.6 }} />}
                                 </a>
                               ) : (
-                                <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, overflowWrap: 'anywhere' }}>{field.value}</span>
+                                <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, overflowWrap: 'anywhere' }}>{field.value}</span>
                               )
                             ) : (
                               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>לא הוגדר</span>
@@ -495,22 +494,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                       })}
                     </div>
                   )}
-                </div>
-                {/* On touch these hide and the same two actions come from
-                    the swipe; on a mouse they stay exactly where they were. */}
-                {canEdit ? (
-                  <div className="row-inline-actions" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    <button type="button" onClick={() => startEdit(item)} aria-label="ערוך פריט"
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
-                      <Pencil size={15} />
-                    </button>
-                    <button type="button" onClick={() => handleDelete(item)} aria-label="מחק פריט"
-                      style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6 }}>
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ) : <div />}
-              </SwipeRow>
+              </ListCard>
             );
           })}
         </div>

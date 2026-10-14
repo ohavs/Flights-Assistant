@@ -12,7 +12,8 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
-import SwipeRow from './SwipeRow';
+import ListCard from '../ui/ListCard';
+import { Pill, CategoryDisc } from '../ui/kit';
 import EmptyState from './EmptyState';
 
 /* ══════════════════════════════════════════════════════════
@@ -249,58 +250,23 @@ export default function BookingsTab({ tripId }) {
     ].filter(Boolean);
 
     return (
-      <SwipeRow
+      <ListCard
         key={b.id}
-        enabled={canEdit}
-        actions={[
-          { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => startEdit(b) },
-          { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(b) },
+        icon={<CategoryDisc color={t.color} size={42}><t.Icon size={19} /></CategoryDisc>}
+        title={b.title}
+        meta={meta}
+        metaIcon={meta ? (b.date || b.time ? <Clock size={12} /> : <Users size={12} />) : null}
+        tags={[
+          b.status === 'pending' && <Pill key="pending" size="sm" tone="butter">ממתינה לאישור</Pill>,
+          cancelled && <Pill key="cancelled" size="sm" tone="muted">בוטלה</Pill>,
         ]}
-        onClick={canEdit ? () => startEdit(b) : undefined}
-        className="glass-card"
-        style={{ padding: '12px 14px', gap: 10, cursor: canEdit ? 'pointer' : 'default', opacity: cancelled ? 0.6 : 1 }}
+        muted={cancelled}
+        onOpen={canEdit ? () => startEdit(b) : undefined}
+        actions={canEdit ? [
+          { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(b), swipe: true },
+          { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(b), danger: true, swipe: true },
+        ] : []}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <span style={{
-            width: 40, height: 40, borderRadius: 11, flexShrink: 0,
-            background: `${t.color}1a`, color: t.color,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <t.Icon size={19} />
-          </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--primary)', lineHeight: 1.3, wordBreak: 'break-word' }}>
-                {b.title}
-              </h3>
-              {b.status === 'pending' && (
-                <span className="booking-pill" style={{ background: 'var(--c-orange-12)', color: 'var(--c-orange)' }}>ממתינה לאישור</span>
-              )}
-              {cancelled && (
-                <span className="booking-pill" style={{ background: 'var(--ink-8)', color: 'var(--text-muted)' }}>בוטלה</span>
-              )}
-            </div>
-            {meta && (
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-                {b.date || b.time ? <Clock size={12} style={{ flexShrink: 0 }} /> : <Users size={12} style={{ flexShrink: 0 }} />}
-                <span>{meta}</span>
-              </div>
-            )}
-          </div>
-          {canEdit && (
-            <div className="row-inline-actions" style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-              <button type="button" aria-label="ערוך הזמנה" onClick={(e) => { e.stopPropagation(); startEdit(b); }}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
-                <Pencil size={15} />
-              </button>
-              <button type="button" aria-label="מחק הזמנה" onClick={(e) => { e.stopPropagation(); handleDelete(b); }}
-                style={{ background: 'transparent', border: 'none', color: 'var(--c-red2)', opacity: 0.7, cursor: 'pointer', padding: 6 }}>
-                <Trash2 size={15} />
-              </button>
-            </div>
-          )}
-        </div>
-
         {(b.confirmation || b.price || b.payment) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             {b.confirmation && (
@@ -311,21 +277,15 @@ export default function BookingsTab({ tripId }) {
                 {copiedId === b.id ? <Check size={13} /> : <Copy size={13} style={{ opacity: 0.6 }} />}
               </button>
             )}
-            {b.price && (
-              <span className="booking-pill" style={{ background: 'var(--ink-6)', color: 'var(--primary)' }}>{b.price}</span>
-            )}
+            {b.price && <Pill size="sm">{b.price}</Pill>}
             {b.payment && (
-              <span className="booking-pill" style={
-                b.payment === 'paid'
-                  ? { background: 'var(--c-green-10)', color: 'var(--c-green)' }
-                  : { background: 'var(--ink-6)', color: 'var(--text-muted)' }
-              }>{PAYMENT_LABEL[b.payment]}</span>
+              <Pill size="sm" tone={b.payment === 'paid' ? 'mint' : 'muted'}>{PAYMENT_LABEL[b.payment]}</Pill>
             )}
           </div>
         )}
 
         {b.notes && (
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--c-slate)', lineHeight: 1.45, fontWeight: 500, whiteSpace: 'pre-wrap' }}>{b.notes}</p>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.45, fontWeight: 500, whiteSpace: 'pre-wrap' }}>{b.notes}</p>
         )}
 
         {quick.length > 0 && (
@@ -340,7 +300,7 @@ export default function BookingsTab({ tripId }) {
             ))}
           </div>
         )}
-      </SwipeRow>
+      </ListCard>
     );
   };
 
