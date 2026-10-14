@@ -118,8 +118,12 @@ real project. CI (`.github/workflows/ci.yml`) runs them on every PR and push.
    that any client still in use reads or writes. Once the Android app exists,
    the web app, the Android app and older installed APK versions all share the
    same data.
-4. **Rules changes** (`firestore.rules`): test them in the emulator first, then
-   deploy them as their own deliberate step. `deploy.yml` deploys Hosting only.
+4. **Rules changes** (`firestore.rules`) go in a PR of their own, with
+   emulator tests. On that PR, `rules.yml` runs `check` and shows the live
+   rules next to the PR's file: read it before merging. On merge, `rules.yml`
+   runs the tests, deploys the rules and confirms the live rules match.
+   `deploy.yml` deploys Hosting only. (Claude's GitHub access cannot start
+   workflows by hand, so they trigger on PR and push.)
 5. **Public repo:** workflow logs are public. Never print keys or user data,
    never commit secrets, never use `pull_request_target`.
 
