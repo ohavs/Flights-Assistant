@@ -3,10 +3,11 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.22.1 (`changelog.md`)
+- גרסת ווב: 8.23.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
-  - לבדוק שה־PR של 8.22.1 (C9) מוזג ונפרס, וש־`deploy.yml` האחרון ירוק.
+  - לבדוק שה־PR של 8.23.0 (אנדרואיד 2ג) מוזג, וש־`android.yml` על master פרסם Release ראשון (`v1.0.N`) עם `flights-assistant.apk`.
+  - לשלוח לבעלים לינק להורדה ולבדוק איתו כניסה עם Google באפליקציה. הטביעות החדשות כבר ב־Firebase.
   - אחר כך C10.
 - הרצת e2e מקומית: `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome bash scripts/run-e2e.sh tests/e2e/<name>.e2e.mjs`. בלי ארגומנטים רצות כל הבדיקות של CI: smoke, layout, planning, flight, sheets, contrast.
 
@@ -86,7 +87,10 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [x] 8.21.1 (C6ב + C7): צ'קליסט ותזכורות על `ListCard`. `CheckCircle` אחד (גם בתכנון) בלי קו חוצה.
 - [x] 8.22.0 (C8): שדה/תפריט/תאריך באותו מראה, ‎16px‎ בטלפון (כלל `pointer: coarse`), `.chip` ו־`Segmented` בכל הטפסים.
 - [x] 8.22.1 (C9): `SectionHeader` בכל הטאבים, ⋯ לקטגוריה בצ'קליסט (במקום לחיצה ארוכה), `EmptyState` בתזכורות ובצ'קליסט הקבוע. `ActionsMenu` משותף.
-- [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
+- [x] שלב 2ג (8.23.0):
+  - `android.yml`: APK חתום, בדיקת חתימה מול `CERT_SHA256` ואמולטור. Release במיזוג ל־master, רק כשמשהו באפליקציה השתנה.
+  - "בדוק עדכונים": `ApkUpdaterPlugin`, `src/lib/updater.js`, `AppSettingsSheet` על `Sheet`.
+  - באנר עדכון במסך הבית.
 
 ## הבא
 לפי `docs/PLAN.md`:
@@ -139,13 +143,19 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - lint: 87 שגיאות ישנות. לא חוסם CI; לא להוסיף חדשות.
 
 ## חתימת Android
-- keystore: PKCS12, alias `flights-assistant`, נוצר 2026-10-14. הקבצים נשלחו לבעלים לגיבוי.
-- SHA1: `BC:EF:52:E9:D8:9E:82:22:E7:62:40:0F:17:DA:EE:77:3F:E0:91:A7`
-- SHA256: `A6:F4:20:DE:C1:7D:56:65:6C:31:CB:93:DF:67:D7:37:BE:CA:1A:30:19:B5:05:A0:5D:BC:9A:31:3B:47:43:3B`
+- keystore: PKCS12, alias `flights-assistant`.
+- **המפתח הוחלף ב־2026-10-14 (ערב).** המפתח הראשון אבד: הקבצים לא נשמרו אצל הבעלים, והשיחות נמחקו. אף APK לא נחתם בו, כך שההחלפה בטוחה.
+  - המפתח החדש נשלח לבעלים: `.p12`, base64 וסיסמה.
+  - הבעלים שם אותו ב־GitHub Secrets והוסיף את טביעות האצבע ל־Firebase בעצמו.
+  - **מעכשיו אסור להחליף אותו.** עדכון של APK חתום במפתח אחר לא יותקן.
+- SHA1: `B5:4A:9B:1B:5D:50:5E:78:83:24:6F:EE:D0:01:88:30:3F:E8:50:4B`
+- SHA256: `09:EF:FD:90:FE:15:E4:57:B4:A5:54:CE:1A:D3:AE:FC:6D:18:E1:A7:40:A1:AA:DE:65:6D:E0:91:91:9C:DC:D3`
+- הטביעות של המפתח הישן (`BC:EF…`, `A6:F4…`) עדיין רשומות ב־Firebase, בלי נזק. אפשר למחוק.
+- `firebase-android-setup.yml` עדיין מכיל את הטביעות הישנות. העדכון שלו נחסם בבדיקת הבטיחות של הסשן, כי push של הקובץ כותב ל־Firebase. הוא רץ רק כשהקובץ משתנה, אז זה לא מזיק.
 
 ## סודות (שמות בלבד)
 - `VITE_GOOGLE_MAPS_KEY`, `VITE_AERODATABOX_KEY`, `FIREBASE_TOKEN`: קיימים (build, Hosting ו־rules).
-- `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`: הבעלים מוסיף מהקבצים שנשלחו. `android.yml` נכשל בלעדיהם, עם "Missing repository secret".
+- `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`: הוגדרו ב־2026-10-14 (המפתח החדש).
 - מפתח Maps: אם יש לו הגבלת אתרים, צריך להוסיף `https://localhost/*`, המקור של האפליקציה. לא נבדק.
 
 ---

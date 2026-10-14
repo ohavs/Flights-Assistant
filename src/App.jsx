@@ -33,6 +33,8 @@ const PlanningTab  = lazy(() => import('./components/PlanningTab'));
 const ChecklistTab = lazy(() => import('./components/ChecklistTab'));
 const BookingsTab  = lazy(() => import('./components/BookingsTab'));
 const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
+// Android app only — never loaded on the web.
+const AppSettingsSheet = lazy(() => import('./components/AppSettingsSheet'));
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmptyState from './components/EmptyState';
@@ -43,7 +45,7 @@ import {
   Plane, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, Coins,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff, ClipboardList
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff, ClipboardList, Settings, Download
 } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
@@ -1156,6 +1158,19 @@ function AppInner() {
   }, []);
   const [globalExtraCategories, setGlobalExtraCategories] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
+  // Android app: settings sheet ("check for updates"), and a newer release
+  // found by the quiet check on launch.
+  const [showAppSettings, setShowAppSettings] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null);
+
+  // Quietly look for a newer APK once signed in (at most every 6 hours).
+  const signedInUid = user?.uid;
+  useEffect(() => {
+    if (!isNative || !signedInUid) return;
+    import('./lib/updater').then(m => m.checkForUpdateQuietly())
+      .then(r => { if (r?.available) setUpdateInfo(r); })
+      .catch(() => {});
+  }, [signedInUid]);
 
   /* The back gesture is the app's own: it unwinds sheets and screens
      instead of dropping the traveller out mid-trip. */
@@ -1667,6 +1682,11 @@ function AppInner() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <ThemeToggle />
+            {isNative && (
+              <button onClick={() => setShowAppSettings(true)} className="icon-btn" title="הגדרות" aria-label="הגדרות">
+                <Settings size={16} />
+              </button>
+            )}
             <button
               onClick={async () => {
                 const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
@@ -1680,6 +1700,22 @@ function AppInner() {
             </button>
           </div>
         </header>
+
+        {/* A newer version of the Android app was found on launch. */}
+        {updateInfo?.available && !showAppSettings && (
+          <button type="button" className="update-banner" onClick={() => setShowAppSettings(true)}>
+            <Download size={16} />
+            <span>גרסה {updateInfo.latest.versionName} זמינה · הקישו לעדכון</span>
+          </button>
+        )}
+        {showAppSettings && (
+          <Suspense fallback={null}>
+            <AppSettingsSheet
+              initial={updateInfo}
+              onClose={() => { setShowAppSettings(false); setUpdateInfo(null); }}
+            />
+          </Suspense>
+        )}
 
         <main className="app-content">
           <input

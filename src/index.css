@@ -530,6 +530,15 @@ button:not(:disabled):active,
 }
 .route-city > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Android app: "a newer version is ready" under the home header. */
+.update-banner {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  margin: 8px 16px 0; padding: 10px 14px; border: none; border-radius: 14px;
+  background: var(--brand); color: var(--brand-fg);
+  font-family: var(--font-hebrew); font-size: 14px; font-weight: 800;
+  text-align: start; cursor: pointer;
+}
+
 /* ── Content — the ONLY scrollable area ── */
 .app-content {
   flex: 1 1 0%;       /* take all remaining space */
