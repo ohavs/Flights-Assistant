@@ -1926,35 +1926,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       {/* Render sub-tab content */}
       {subTab === 'pool' ? (
         <>
-          {/* Search and Toggle Form */}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            {/* Search fills the row — the add button moved to the floating
-                one, which every tab now shares. */}
-            <div style={{ position: 'relative', flex: 1 }}>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="חיפוש אטרקציות, מסעדות..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingRight: '42px', paddingLeft: searchQuery ? '44px' : undefined }}
-              />
-              <Search size={18} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              {searchQuery && (
-                <button
-                  type="button"
-                  aria-label="נקה חיפוש"
-                  onClick={() => setSearchQuery('')}
-                  className="round-btn"
-                  style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, minWidth: 30, background: 'var(--surface-3)' }}
-                >
-                  <X size={15} />
-                </button>
-              )}
-            </div>
-
-          </div>
-
           {/* Adding a place is a whole-tab action, so it gets the floating
               button. Adding an activity in the daily sub-tab is not — it
               belongs to one specific day, and stays on that day's card. */}
@@ -2445,15 +2416,34 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             zIndex: 5,
             marginInline: -16,
             paddingInline: 16,
-            paddingTop: '8px',
+            paddingTop: '6px',
             paddingBottom: '10px',
-            background: 'var(--header-bg)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
+            background: 'var(--body-bg)',
           }}>
+          {/* One block (the owner's ask): search, category filter and the
+              options button side by side in a single white bar. */}
+          <div className="plan-toolbar">
+            <div className="plan-toolbar-search">
+              <Search size={18} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <input
+                type="text"
+                placeholder="חיפוש מקומות"
+                aria-label="חיפוש מקומות"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="נקה חיפוש"
+                  onClick={() => setSearchQuery('')}
+                  className="round-btn"
+                  style={{ width: 28, height: 28, minWidth: 28, background: 'var(--surface-3)' }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
             {/* Category filter — a single dropdown instead of a pill per
                 category, so the row stays readable however many there are.
                 Fixed positioning (anchored via getBoundingClientRect) because
@@ -2493,20 +2483,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     }}
                     title="סינון לפי קטגוריה"
                     style={{
-                      flex: 1, minWidth: 0,
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      minHeight: 44,
-                      padding: '9px 14px',
-                      borderRadius: 16,
+                      flex: '0 1 auto', minWidth: 0, maxWidth: '44%',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      minHeight: 40,
+                      padding: '6px 10px',
+                      borderRadius: 14,
                       cursor: 'pointer',
                       fontFamily: 'var(--font-hebrew)',
-                      fontSize: 14, fontWeight: 800,
+                      fontSize: 13.5, fontWeight: 800,
                       textAlign: 'right',
-                      // A filter in effect tints the whole control in its colour.
-                      background: activeColor ? `${activeColor}1F` : 'var(--card-bg-solid)',
+                      // A filter in effect tints the control in its colour.
+                      background: activeColor ? `${activeColor}1F` : 'var(--surface-2)',
                       border: 'none',
                       color: 'var(--text)',
-                      boxShadow: activeColor ? 'none' : 'var(--shadow-sm)',
                     }}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--text-muted)', flexShrink: 0 }}>
@@ -2538,8 +2527,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <div style={{
                         position: 'fixed',
                         top: rect ? rect.bottom + 6 : 120,
-                        right: rect ? Math.max(8, window.innerWidth - rect.right) : 8,
-                        width: rect ? Math.max(rect.width, 220) : 240,
+                        // Anchored under the button, but kept on screen: the
+                        // button now sits mid-bar, not at the screen's edge.
+                        right: rect ? Math.max(8, Math.min(window.innerWidth - rect.right, window.innerWidth - 8 - Math.min(280, window.innerWidth - 16))) : 8,
+                        width: Math.min(280, window.innerWidth - 16),
                         maxWidth: 'calc(100vw - 16px)',
                         maxHeight: '60vh',
                         overflowY: 'auto',
@@ -2615,8 +2606,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     onClick={openMenu}
                     title="מיון ותצוגה"
                     aria-label="מיון ותצוגה"
-                    className={`round-btn ${optionsActive ? 'on' : 'raised'}`}
-                    style={{ width: 44, height: 44, minWidth: 44, gap: 4 }}
+                    className={`round-btn ${optionsActive ? 'on' : ''}`}
+                    style={{ width: 40, height: 40, minWidth: 40, gap: 4 }}
                   >
                     {bulkCalc ? (
                       <>
@@ -2879,6 +2870,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 </>
               );
             })()}
+          </div>
           </div>
 
           {/* Active-view summary — one quiet line telling you how much of the
