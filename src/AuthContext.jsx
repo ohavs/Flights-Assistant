@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, googleProvider } from './firebase';
-import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { isNative } from './lib/platform';
+
+// Android app: popups don't work in a WebView, so Google sign-in runs natively
+// and hands its ID token to the Firebase JS SDK. Loaded only in the app.
+const nativeAuth = () => import('@capacitor-firebase/authentication').then(m => m.FirebaseAuthentication);
 
 const AuthContext = createContext(null);
 
@@ -43,6 +48,11 @@ export function AuthProvider({ children }) {
 
   const signInWithGoogle = async () => {
     try {
+      if (isNative) {
+        const res = await (await nativeAuth()).signInWithGoogle();
+        await signInWithCredential(auth, GoogleAuthProvider.credential(res.credential?.idToken));
+        return;
+      }
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error('Google sign-in error:', error);
@@ -52,6 +62,8 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     try {
+      // Also forget the Android account choice so the picker shows next time.
+      if (isNative) await (await nativeAuth()).signOut().catch(() => {});
       await firebaseSignOut(auth);
     } catch (error) {
       console.error('Sign out error:', error);

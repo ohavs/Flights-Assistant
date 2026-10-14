@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { setStatusBarTheme } from './lib/platform';
 
 // Selectable accent palettes. `swatch` is the light-mode accent (for the
 // picker dot); the actual colours live in index.css keyed by `data-accent`.
@@ -27,6 +28,7 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    setStatusBarTheme(isDark);
   }, [isDark]);
 
   useEffect(() => {

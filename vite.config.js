@@ -7,6 +7,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered in main.jsx, on the web only (see there).
+      injectRegister: null,
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'עוזר טיסות — Flights Assistant',

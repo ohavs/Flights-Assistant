@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isNative, onNativeBack, exitApp } from '../lib/platform';
 
 /* ── useBackHandler ──────────────────────────────────────────────────────
    Makes the phone's back gesture mean "one step back in the app" instead
@@ -25,14 +26,18 @@ import { useEffect, useRef } from 'react';
 
      useBackHandler(showForm, () => formSheet.close());
 
-   `active` false unregisters, so a closed sheet costs nothing.          */
+   `active` false unregisters, so a closed sheet costs nothing.
+
+   In the Android app there is no browser history to borrow: the hardware
+   back button closes the same topmost layer, and with nothing open it
+   leaves the app.                                                        */
 
 const layers = [];        // LIFO — the last one opened closes first
 let armed = false;        // is our spare entry currently on the stack?
 let leaving = false;      // stepping off our entry on the way out
 
 function arm() {
-  if (armed || typeof window === 'undefined') return;
+  if (isNative || armed || typeof window === 'undefined') return;
   armed = true;
   // No URL argument: the address bar must not change, and the app reads
   // its own query string for the share target.
@@ -58,6 +63,13 @@ function onPopState() {
 /* Call once, from the app root. Returns its own cleanup. */
 export function installBackGuard() {
   if (typeof window === 'undefined') return () => {};
+  if (isNative) {
+    return onNativeBack(() => {
+      const top = layers[layers.length - 1];
+      if (top) top.close();
+      else exitApp();
+    });
+  }
   window.addEventListener('popstate', onPopState);
   arm();
   return () => window.removeEventListener('popstate', onPopState);

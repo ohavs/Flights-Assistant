@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">עוזר טיסות</string>
+    <string name="title_activity_main">עוזר טיסות</string>
+    <string name="package_name">com.ohavs.flightsassistant</string>
+    <string name="custom_url_scheme">com.ohavs.flightsassistant</string>
+</resources>

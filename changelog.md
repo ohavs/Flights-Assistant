@@ -1,5 +1,17 @@
 # Changelog — Flights-Assistant
 
+## [8.15.3] - 2026-10-14 — מעטפת אנדרואיד
+
+### Added
+- **[app] מעטפת אנדרואיד (Capacitor 8)**: `com.ohavs.flightsassistant`, אייקון ו־splash מהאייקון של ה־PWA (`scripts/android-icons.py`). הכל מאותו קוד כמו הווב.
+  - כניסת Google נייטיב (`@capacitor-firebase/authentication`), כי popup לא עובד ב־WebView. האפליקציה רשומה ב־Firebase עם טביעות מפתח החתימה, ו־`google-services.json` בריפו.
+  - כפתור חזור: סוגר את השכבה העליונה (גיליון, טיול פתוח), ובלי כלום פתוח — יוצא מהאפליקציה.
+  - status bar לפי מצב בהיר/כהה, והתוכן לא נכנס מתחתיו.
+  - `android.yml`: APK חתום, בדיקה שהחתימה היא מפתח השחרור, הרצה על emulator.
+
+### Changed
+- **[web] בלי שינוי בהתנהגות:** ה־service worker נרשם מ־`main.jsx` ולא מסקריפט מוזרק, ורק בווב. בתוך ה־APK הקבצים מקומיים, ו־worker היה ממשיך להגיש גרסה ישנה אחרי עדכון.
+
 ## [8.15.2] - 2026-10-14 — Firebase SDK 12
 
 ### Changed
