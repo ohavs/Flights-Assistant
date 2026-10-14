@@ -112,10 +112,12 @@ const ICON_OPTIONS = [
 
 const ICON_MAP = Object.fromEntries(ICON_OPTIONS.map(({ key, Icon }) => [key, Icon]));
 
+// The category colour picker. Starts with the built-in categories' own
+// colours (DEFAULT_CATEGORY_COLORS) so they can be picked back.
 const COLOR_OPTIONS = [
-  '#4f46e5', '#7c3aed', '#db2777', '#dc2626',
-  '#ea580c', '#d97706', '#16a34a', '#0f766e',
-  '#0891b2', '#1d4ed8', '#64748b', '#334155',
+  '#F2701D', '#E5484D', '#16874A', '#2563EB',
+  '#6E56CF', '#C2410C', '#DB2777', '#0891B2',
+  '#CA8A04', '#4F46E5', '#64748B', '#334155',
 ];
 
 // Colours of the built-in categories until the user picks one in category
@@ -2001,7 +2003,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <Star size={13} style={{ color: '#f59e0b' }} />
                       עדיפות
                     </label>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 14, background: 'var(--surface-2)' }}>
                       {[
                         { value: null,       label: 'לא מוגדר',      icon: null },
                         { value: 'must',     label: 'חובה',          icon: <Star size={13} fill="#f59e0b" color="#f59e0b" /> },
@@ -2016,20 +2018,17 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             style={{
                               flex: 1,
                               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                              padding: '9px 4px',
-                              borderRadius: 10,
-                              border: active
-                                ? `1.5px solid ${opt.value === 'must' ? '#f59e0b' : opt.value === 'optional' ? 'var(--ink-20)' : 'var(--accent)'}`
-                                : '1.5px solid var(--ink-10)',
-                              background: active
-                                ? opt.value === 'must' ? 'rgba(245,158,11,0.12)' : opt.value === 'optional' ? 'var(--ink-6)' : 'var(--p-8)'
-                                : 'transparent',
-                              color: active
-                                ? opt.value === 'must' ? '#f59e0b' : opt.value === 'optional' ? 'var(--text-muted)' : 'var(--accent)'
-                                : 'var(--text-muted)',
+                              minHeight: 40,
+                              padding: '8px 4px',
+                              borderRadius: 11,
+                              border: 'none',
+                              // Segmented (Payments-2026): the choice is white and raised.
+                              background: active ? 'var(--card-bg-solid)' : 'transparent',
+                              boxShadow: active ? '0 2px 8px rgba(20, 20, 20, 0.08)' : 'none',
+                              color: active ? 'var(--text)' : 'var(--text-muted)',
                               fontFamily: 'var(--font-hebrew)',
-                              fontSize: 12, fontWeight: 800,
-                              cursor: 'pointer', transition: 'all 0.15s ease',
+                              fontSize: 13, fontWeight: 800,
+                              cursor: 'pointer', transition: 'background-color 0.2s ease, color 0.2s ease',
                             }}
                           >
                             {opt.icon}
@@ -2046,38 +2045,31 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     onClick={() => setFormNeedsReservation(v => !v)}
                     aria-pressed={formNeedsReservation}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      width: '100%', padding: '11px 12px', borderRadius: 12,
-                      border: formNeedsReservation ? '1.5px solid var(--c-red)' : '1.5px dashed var(--ink-10)',
-                      background: formNeedsReservation ? 'var(--c-red-10)' : 'transparent',
-                      color: formNeedsReservation ? 'var(--c-red)' : 'var(--text-muted)',
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      width: '100%', padding: '12px 14px', borderRadius: 16,
+                      border: 'none',
+                      background: formNeedsReservation ? 'var(--c-red-8)' : 'var(--surface-2)',
+                      color: 'var(--text)',
                       fontFamily: 'var(--font-hebrew)', textAlign: 'right',
-                      cursor: 'pointer', transition: 'all 0.15s ease',
+                      cursor: 'pointer', transition: 'background-color 0.2s ease',
                     }}
                   >
-                    <CalendarCheck size={18} style={{ flexShrink: 0 }} />
+                    <CalendarCheck size={20} style={{ flexShrink: 0, color: formNeedsReservation ? 'var(--c-red)' : 'var(--text-muted)' }} />
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', fontSize: 13, fontWeight: 800 }}>צריך לסגור / להזמין מראש</span>
                       <span style={{ display: 'block', fontSize: 11, fontWeight: 600, opacity: 0.8, marginTop: 1 }}>
                         {formNeedsReservation ? 'יסומן על כרטיס המקום' : 'לא חובה – לחצו לסימון'}
                       </span>
                     </span>
-                    <span style={{
-                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: formNeedsReservation ? 'none' : '1.5px solid var(--ink-20)',
-                      background: formNeedsReservation ? 'var(--c-red)' : 'transparent',
-                      color: '#fff',
-                    }}>
-                      {formNeedsReservation && <Check size={13} strokeWidth={3} />}
-                    </span>
+                    {/* A switch rather than a checkbox: it is an on/off setting. */}
+                    <span className={`switch${formNeedsReservation ? ' on danger' : ''}`} aria-hidden="true"><i /></span>
                   </button>
 
                   {/* Event date/time — only for the events category */}
                   {category === EVENTS_CATEGORY && (
                     <div style={{
-                      background: 'var(--p-4)',
-                      border: '1.5px solid var(--p-12)',
+                      background: 'var(--surface-2)',
+                      border: 'none',
                       borderRadius: 12,
                       padding: 14,
                       display: 'flex',
@@ -2120,7 +2112,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                         {links.map((link, idx) => (
                           editingLinkIdx === idx ? (
-                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--accent)' }}>
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--card-bg-solid)', borderRadius: 16, border: '1.5px solid var(--accent)' }}>
                               <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)' }}>עריכת קישור</span>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
@@ -2168,7 +2160,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               </div>
                             </div>
                           ) : (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1px solid var(--p-12)' }}>
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 16, border: 'none' }}>
                               <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: link.label ? 'var(--primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2189,7 +2181,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     )}
 
                     {/* New-link row — stacked, each field under its own label */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--ink-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--ink-6)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 16, border: 'none' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
                         <input
@@ -2359,8 +2351,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     const computed = cache && !cache.loading && !cache.error && !cache.noLocation;
                     return (
                       <div style={{
-                        background: 'var(--p-4)',
-                        border: '1.5px solid var(--p-12)',
+                        background: 'var(--surface-2)',
+                        border: 'none',
                         borderRadius: 12,
                         padding: 14,
                         display: 'flex',
@@ -2426,7 +2418,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     />
                   </div>
 
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px', paddingBottom: '20px' }}>
+                  {/* Save stays in reach however long the form is. */}
+                  <div style={{
+                    position: 'sticky', bottom: 0, zIndex: 2,
+                    display: 'flex', gap: '12px', marginTop: '8px',
+                    marginInline: -16, padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
+                    background: 'var(--modal-bg)', borderTop: '1px solid var(--ink-7)',
+                  }}>
                     <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
                     <button type="button" onClick={attemptClosePlanForm} className="btn-secondary">ביטול</button>
                   </div>
@@ -3680,20 +3678,16 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 16 }}>
               {categories.map(cat => {
                 const s = categorySettings[cat] || {};
-                const color = s.color || '#4f46e5';
+                const color = s.color || getCategoryColor(cat);
                 const isCustom = !defaultCategoryNames.includes(cat);
                 return (
-                  <div key={cat} style={{ background: 'var(--ink-3)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div key={cat} style={{ background: 'var(--surface-2)', borderRadius: 20, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {/* Category label with live preview + delete if custom */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{
-                        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                        background: `${color}1a`, color,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        {getCategoryIcon(cat, 18)}
-                      </span>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', flex: 1 }}>{cat}</span>
+                      <CategoryDisc color={color} size={42} radius={14}>
+                        {getCategoryIcon(cat, 20)}
+                      </CategoryDisc>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', flex: 1 }}>{cat}</span>
                       {isCustom && canEdit && (
                         <button
                           type="button"
@@ -3736,12 +3730,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               }}
                               title={key}
                               style={{
-                                width: 36, height: 36, borderRadius: 10, border: 'none',
-                                background: selected ? color : 'rgba(11,11,48,0.06)',
-                                color: selected ? '#fff' : 'var(--primary)',
+                                width: 38, height: 38, borderRadius: '50%', border: 'none',
+                                background: selected ? color : 'var(--card-bg-solid)',
+                                color: selected ? '#fff' : 'var(--text)',
                                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.15s ease',
-                                boxShadow: selected ? `0 2px 8px ${color}60` : 'none',
+                                transition: 'background-color 0.15s ease, transform 0.22s var(--ease-spring)',
+                                transform: selected ? 'scale(1.06)' : 'none',
                               }}>
                               <Icon size={16} />
                             </button>
