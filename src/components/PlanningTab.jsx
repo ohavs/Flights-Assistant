@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { Pill, CategoryDisc } from '../ui/kit';
+import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { createPortal } from 'react-dom';
 import {
@@ -89,6 +90,8 @@ import {
   SlidersHorizontal,
   MessageSquare,
   CalendarCheck,
+  Footprints,
+  Bus,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -404,7 +407,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [sortBy, setSortBy] = useState('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
   // The phone's back gesture closes the options sheet before anything else.
-  useBackHandler(showSortMenu, () => setShowSortMenu(false));
   const optionsBtnRef = useRef(null);
   // Category filter dropdown (replaces the old row of filter pills). The
   // trigger's position is captured on click rather than read during render,
@@ -517,9 +519,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     } catch { /* ignore */ }
   }, [collapsedTimeGroups, tripId]);
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
-  useBackHandler(!!hourlyWeatherDate, () => setHourlyWeatherDate(null));
   const [activityDetail, setActivityDetail] = useState(null);
-  useBackHandler(!!activityDetail, () => setActivityDetail(null));
   const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
   const [destCoords, setDestCoords] = useState(null);
@@ -2619,253 +2619,84 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     )}
                   </button>
 
-                  {/* Portalled for the same reason as the category popup. */}
-                  {showSortMenu && createPortal(
-                    <>
-                      {/* A bottom sheet (Payments-2026): ten-plus options did not
-                          fit a popover on a phone. */}
-                      <div
-                        style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
-                        onClick={() => setShowSortMenu(false)}
-                      />
-                      <div role="dialog" aria-label="מיון ותצוגה" style={{
-                        position: 'fixed',
-                        left: 0, right: 0, bottom: 0,
-                        marginInline: 'auto',
-                        zIndex: 2000,
-                        background: 'var(--modal-bg)',
-                        borderRadius: '24px 24px 0 0',
-                        boxShadow: 'var(--shadow-lg)',
-                        overflow: 'hidden auto',
-                        width: '100%',
-                        maxWidth: 520,
-                        maxHeight: '82vh',
-                        paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
-                        direction: 'rtl',
-                        animation: 'slideUp 0.25s ease',
-                      }}>
-                        <div className="sheet-grab" />
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px 4px' }}>
-                          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>מיון ותצוגה</h2>
-                          <button type="button" aria-label="סגור" className="btn-close" onClick={() => setShowSortMenu(false)}>✕</button>
-                        </div>
-                        {/* — Card layout section — */}
-                        <div style={{
-                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
-                          color: 'var(--text-muted)',
-                          background: 'transparent',
-                        }}>תצוגת כרטיסים</div>
-                        <div style={{ display: 'flex', gap: 4, margin: '2px 16px 6px', padding: 4, borderRadius: 14, background: 'var(--surface-2)' }}>
-                          {Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => {
-                            const Icon = cfg.icon;
-                            const active = key === planLayout;
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => setPlanLayout(key)}
-                                title={cfg.label}
-                                style={{
-                                  flex: 1, display: 'flex', flexDirection: 'column',
-                                  alignItems: 'center', gap: 4, padding: '8px 4px',
-                                  borderRadius: 11,
-                                  border: 'none',
-                                  background: active ? 'var(--card-bg-solid)' : 'transparent',
-                                  boxShadow: active ? '0 2px 8px rgba(20, 20, 20, 0.08)' : 'none',
-                                  color: active ? 'var(--text)' : 'var(--text-muted)',
-                                  cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
-                                  fontSize: 11, fontWeight: 700,
-                                }}
-                              >
-                                <Icon size={16} />
-                                <span>{cfg.label}</span>
+                  {showSortMenu && (
+                    <Sheet title="מיון ותצוגה" onClose={() => setShowSortMenu(false)}>
+                      {({ close }) => (<>
+                        <SheetSection label="תצוגת כרטיסים">
+                          <Segmented
+                            value={planLayout}
+                            onChange={setPlanLayout}
+                            options={Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => ({ key, label: cfg.label, Icon: cfg.icon }))}
+                          />
+                        </SheetSection>
+
+                        <SheetSection label="מיון">
+                          <div className="list-group" role="radiogroup" aria-label="מיון">
+                            {[
+                              { key: 'default',      label: 'ברירת מחדל' },
+                              { key: 'walk-asc',     label: 'הליכה — מהקרוב לרחוק', Icon: Footprints },
+                              { key: 'walk-desc',    label: 'הליכה — מהרחוק לקרוב', Icon: Footprints },
+                              { key: 'transit-asc',  label: 'תחבורה — מהקרוב לרחוק', Icon: Bus },
+                              { key: 'transit-desc', label: 'תחבורה — מהרחוק לקרוב', Icon: Bus },
+                            ].map(({ key, label, Icon }) => (
+                              <button key={key} type="button" role="radio" aria-checked={sortBy === key} className="list-row"
+                                onClick={() => { setSortBy(key); close(); }}>
+                                {Icon ? <Icon size={16} className="list-row-icon" /> : <span className="list-row-icon" />}
+                                <span className="list-row-label">{label}</span>
+                                {sortBy === key && <Check size={16} />}
                               </button>
-                            );
-                          })}
-                        </div>
+                            ))}
+                          </div>
+                        </SheetSection>
 
-                        {/* — Sort section — */}
-                        <div style={{
-                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
-                          color: 'var(--text-muted)',
-                          background: 'transparent',
-                        }}>מיון</div>
-                        {[
-                          { key: 'default',      label: 'ברירת מחדל' },
-                          { key: 'walk-asc',     label: '🚶 הליכה — מהקרוב לרחוק' },
-                          { key: 'walk-desc',    label: '🚶 הליכה — מהרחוק לקרוב' },
-                          { key: 'transit-asc',  label: '🚌 תחבורה — מהקרוב לרחוק' },
-                          { key: 'transit-desc', label: '🚌 תחבורה — מהרחוק לקרוב' },
-                        ].map(opt => (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
-                            style={{
-                              width: '100%', display: 'flex', alignItems: 'center',
-                              justifyContent: 'space-between', padding: '10px 14px',
-                              border: 'none',
-                              background: sortBy === opt.key ? 'var(--p-6)' : 'var(--surface)',
-                              color: sortBy === opt.key ? 'var(--accent)' : 'var(--primary)',
-                              cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
-                              fontSize: 13, fontWeight: 700,
-                              borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
-                            }}
-                          >
-                            <span>{opt.label}</span>
-                            {sortBy === opt.key && <Check size={13} />}
-                          </button>
-                        ))}
+                        <SheetSection label="חלוקה לקבוצות">
+                          <Segmented
+                            value={groupBy}
+                            onChange={setGroupBy}
+                            options={[
+                              { key: 'none', label: 'רשימה', Icon: LayoutList },
+                              { key: 'category', label: 'קטגוריה', Icon: Tag },
+                              { key: 'area', label: 'איזור', Icon: Layers, disabled: !hasGmapsKey(), title: hasGmapsKey() ? undefined : 'דורש מפתח מפות' },
+                            ]}
+                          />
+                          {/* Hide places already visited — the quickest way to
+                              shorten a list that has grown over the trip. */}
+                          <div className="list-group">
+                            <button type="button" role="switch" aria-checked={hideVisited} className="list-row" onClick={() => setHideVisited(v => !v)}>
+                              {hideVisited ? <EyeOff size={16} className="list-row-icon" /> : <Eye size={16} className="list-row-icon" />}
+                              <span className="list-row-label">הסתר מקומות שביקרנו בהם</span>
+                              <span className={`switch${hideVisited ? ' on' : ''}`} aria-hidden="true"><i /></span>
+                            </button>
+                          </div>
+                        </SheetSection>
 
-                        {/* — Grouping: how the long list is broken up — */}
-                        <div style={{
-                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
-                          color: 'var(--text-muted)',
-                          background: 'transparent',
-                        }}>חלוקה לקבוצות</div>
-                        <div style={{ display: 'flex', gap: 4, margin: '2px 16px 6px', padding: 4, borderRadius: 14, background: 'var(--surface-2)' }}>
-                          {[
-                            { key: 'none', label: 'רשימה', Icon: LayoutList },
-                            { key: 'category', label: 'קטגוריה', Icon: Tag },
-                            { key: 'area', label: 'איזור', Icon: Layers, needsMaps: true },
-                          ].map(({ key, label, Icon, needsMaps }) => {
-                            const active = groupBy === key;
-                            const disabled = needsMaps && !hasGmapsKey();
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => setGroupBy(key)}
-                                title={disabled ? 'דורש מפתח מפות' : label}
-                                style={{
-                                  flex: 1, display: 'flex', flexDirection: 'column',
-                                  alignItems: 'center', gap: 4, padding: '8px 4px',
-                                  borderRadius: 11,
-                                  border: 'none',
-                                  background: active ? 'var(--card-bg-solid)' : 'transparent',
-                                  boxShadow: active ? '0 2px 8px rgba(20, 20, 20, 0.08)' : 'none',
-                                  color: active ? 'var(--text)' : 'var(--text-muted)',
-                                  cursor: disabled ? 'default' : 'pointer',
-                                  opacity: disabled ? 0.45 : 1,
-                                  fontFamily: 'var(--font-hebrew)', fontSize: 11, fontWeight: 700,
-                                }}
-                              >
-                                <Icon size={16} />
-                                <span>{label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Hide places already visited — the quickest way to
-                            shorten a list that has grown over the trip. */}
-                        <button
-                          type="button"
-                          onClick={() => setHideVisited(v => !v)}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center',
-                            justifyContent: 'space-between', gap: 8,
-                            padding: '10px 14px', border: 'none',
-                            background: 'var(--surface)', cursor: 'pointer',
-                            fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
-                            color: 'var(--primary)', textAlign: 'right',
-                            borderBottom: '1px solid var(--ink-4)',
-                          }}
-                        >
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {hideVisited
-                              ? <EyeOff size={14} style={{ color: 'var(--accent)' }} />
-                              : <Eye size={14} style={{ color: 'var(--accent)' }} />}
-                            הסתר מקומות שביקרנו בהם
-                          </span>
-                          <span style={{
-                            width: 36, height: 20, borderRadius: 999, flexShrink: 0,
-                            background: hideVisited ? 'var(--accent)' : 'var(--ink-15)',
-                            position: 'relative', transition: 'background 0.2s ease',
-                          }}>
-                            <span style={{
-                              position: 'absolute', top: 2,
-                              right: hideVisited ? 2 : 18,
-                              width: 16, height: 16, borderRadius: '50%',
-                              background: '#fff', transition: 'right 0.2s ease',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                            }} />
-                          </span>
-                        </button>
-
-                        {/* — View / distance section (needs Maps key) — */}
+                        {/* Distances need the Maps key. */}
                         {hasGmapsKey() && (
-                          <>
-                            <div style={{
-                              padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
-                              color: 'var(--text-muted)',
-                              background: 'transparent',
-                            }}>תצוגה</div>
-
-                            <button
-                              type="button"
-                              onClick={handleCalculateAll}
-                              disabled={!!bulkCalc || !online}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center',
-                                gap: 8, padding: '10px 14px', border: 'none',
-                                background: 'var(--surface)',
-                                cursor: (bulkCalc || !online) ? 'default' : 'pointer',
-                                opacity: !online && !bulkCalc ? 0.5 : 1,
-                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
-                                color: 'var(--accent)', textAlign: 'right',
-                              }}
-                            >
-                              {bulkCalc ? (
-                                <>
-                                  <Loader2 size={14} className="spinning" />
-                                  <span>מחשב… {bulkCalc.done}/{bulkCalc.total}</span>
-                                </>
-                              ) : !online ? (
-                                <>
-                                  <RefreshCw size={14} />
-                                  <span>חשב ושמור מרחקים (דרוש חיבור)</span>
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw size={14} />
-                                  <span>חשב ושמור מרחקים</span>
-                                </>
-                              )}
-                            </button>
-                          </>
+                          <SheetSection label="מרחקים">
+                            <div className="list-group">
+                              <button type="button" className="list-row" onClick={handleCalculateAll} disabled={!!bulkCalc || !online}>
+                                {bulkCalc ? <Loader2 size={16} className="spinning list-row-icon" /> : <RefreshCw size={16} className="list-row-icon" />}
+                                <span className="list-row-label">
+                                  {bulkCalc ? `מחשב… ${bulkCalc.done}/${bulkCalc.total}` : !online ? 'חשב ושמור מרחקים (דרוש חיבור)' : 'חשב ושמור מרחקים'}
+                                </span>
+                              </button>
+                            </div>
+                          </SheetSection>
                         )}
 
-                        {/* — Category settings — lives here rather than as its
-                            own toolbar button, keeping the row to one control. */}
                         {canEdit && (
-                          <>
-                            <div style={{
-                              padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
-                              color: 'var(--text-muted)',
-                              background: 'transparent',
-                            }}>קטגוריות</div>
-                            <button
-                              type="button"
-                              onClick={() => { setShowSortMenu(false); setShowCategorySettings(true); }}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                                padding: '10px 14px', border: 'none', background: 'var(--surface)',
-                                color: 'var(--primary)', cursor: 'pointer',
-                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
-                                textAlign: 'right',
-                              }}
-                            >
-                              <Settings size={15} style={{ flexShrink: 0 }} />
-                              <span style={{ flex: 1 }}>הגדרות קטגוריות</span>
-                              <ChevronDown size={14} style={{ flexShrink: 0, transform: 'rotate(-90deg)', opacity: 0.6 }} />
-                            </button>
-                          </>
+                          <SheetSection label="קטגוריות">
+                            <div className="list-group">
+                              <button type="button" className="list-row" onClick={() => { setShowSortMenu(false); setShowCategorySettings(true); }}>
+                                <Settings size={16} className="list-row-icon" />
+                                <span className="list-row-label">הגדרות קטגוריות</span>
+                                <ChevronLeft size={16} className="list-row-chevron" />
+                              </button>
+                            </div>
+                          </SheetSection>
                         )}
-                      </div>
-                    </>,
-                    document.body
+                      </>)}
+                    </Sheet>
                   )}
                 </>
               );
@@ -4108,40 +3939,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       })()}
 
       {/* Hourly weather popup */}
-      {hourlyWeatherDate && createPortal(
-        <div
-          onClick={() => setHourlyWeatherDate(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'var(--ink-35)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            animation: 'overlayIn var(--dur-base) var(--ease-out)',
-          }}
-        >
-          {/* A bottom sheet like the others; the hours are one swipeable strip. */}
-          <div
-            role="dialog"
-            aria-label="מזג אוויר לפי שעה"
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 520,
-              background: 'var(--modal-bg)',
-              borderRadius: '24px 24px 0 0',
-              boxShadow: 'var(--shadow-lg)',
-              display: 'flex', flexDirection: 'column',
-              maxHeight: '80vh',
-              overflow: 'hidden',
-              direction: 'rtl',
-              paddingBottom: 'calc(14px + env(safe-area-inset-bottom))',
-              animation: 'slideUp 0.25s ease',
-            }}
-          >
-            <div className="sheet-grab" />
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '0 18px 12px', flexShrink: 0,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {hourlyWeatherDate && (
+        <Sheet label="מזג אוויר לפי שעה" onClose={() => setHourlyWeatherDate(null)} title={(
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)' }}>
                   {(() => {
                     const d = new Date(hourlyWeatherDate);
@@ -4154,12 +3954,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     {weatherByDate[hourlyWeatherDate].max}° / {weatherByDate[hourlyWeatherDate].min}°
                   </Pill>
                 )}
-              </div>
-              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setHourlyWeatherDate(null)}>✕</button>
-            </div>
+              </span>
+        )}>
             <div className="hide-scroll" style={{
               overflowX: 'auto',
-              padding: '0 14px 4px',
+              marginInline: -16, padding: '0 16px 4px',
               display: 'flex', gap: 8,
               scrollSnapType: 'x proximity',
             }}>
@@ -4185,14 +3984,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 </div>
               ))}
             </div>
-          </div>
-        </div>,
-        document.body
+        </Sheet>
       )}
 
       {/* Activity details — a bottom sheet like the place details: what it
           is, when, where, the place it comes from, and what you can do. */}
-      {activityDetail && createPortal(
+      {activityDetail && (
         (() => {
           const { __dayId: actDayId, ...act } = activityDetail;
           const linked = act.placeId ? plans.find(p => p.id === act.placeId) : null;
@@ -4207,20 +4004,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           if (linked) actions.push({ key: 'place', label: 'פרטי המקום', Icon: MapPin, tone: 'lavender', run: () => { close(); openPlanDetail(linked.id); } });
           if (canEdit && actDayId) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); handleStartEditActivity(actDayId, act); } });
           return (
-            <>
-              <div
-                onClick={close}
-                style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
-              />
-              <div role="dialog" aria-label={act.title} style={{
-                position: 'fixed', left: 0, right: 0, bottom: 0, marginInline: 'auto', zIndex: 2000,
-                width: '100%', maxWidth: 520, maxHeight: '80vh', overflow: 'auto', direction: 'rtl',
-                background: 'var(--modal-bg)', borderRadius: '24px 24px 0 0', boxShadow: 'var(--shadow-lg)',
-                padding: '0 18px calc(18px + env(safe-area-inset-bottom))',
-                display: 'flex', flexDirection: 'column', gap: 14,
-                animation: 'slideUp 0.25s ease',
-              }}>
-                <div className="sheet-grab" />
+            <Sheet label={act.title} onClose={close} header={({ close: closeSheet }) => (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                   <CategoryDisc color={getCategoryColor(act.category)} size={48} radius={16}>
                     {getCategoryIcon(act.category, 22)}
@@ -4238,8 +4022,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         : linked?.needsReservation && <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>צריך לסגור מראש</Pill>}
                     </div>
                   </div>
-                  <button type="button" aria-label="סגור" className="btn-close" onClick={close} style={{ flexShrink: 0 }}>✕</button>
+                  <button type="button" aria-label="סגור" className="btn-close" onClick={closeSheet} style={{ flexShrink: 0 }}>✕</button>
                 </div>
+              )}>
 
                 {act.description && (
                   <p style={{ fontSize: 15, color: 'var(--text)', lineHeight: 1.55, margin: 0, wordBreak: 'break-word' }}>
@@ -4280,11 +4065,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     ))}
                   </div>
                 )}
-              </div>
-            </>
+            </Sheet>
           );
-        })(),
-        document.body
+        })()
       )}
 
     </div>
@@ -4325,7 +4108,6 @@ const DayCard = React.memo(function DayCard({
 }) {
   // The activity whose ⋯ actions sheet is open (with its neighbours, for moving).
   const [actMenu, setActMenu] = useState(null);
-  useBackHandler(!!actMenu, () => setActMenu(null));
         return (
         <SortableDayCard
           key={day.id}
@@ -4771,24 +4553,9 @@ const DayCard = React.memo(function DayCard({
           )}
           </>}
 
-          {actMenu && createPortal(
-            <>
-              <div
-                style={{ position: 'fixed', inset: 0, zIndex: 1999, background: 'var(--ink-35)', animation: 'overlayIn var(--dur-base) var(--ease-out)' }}
-                onClick={() => setActMenu(null)}
-              />
-              <div role="dialog" aria-label={actMenu.act.title} style={{
-                position: 'fixed', left: 0, right: 0, bottom: 0, marginInline: 'auto', zIndex: 2000,
-                width: '100%', maxWidth: 520, direction: 'rtl',
-                background: 'var(--modal-bg)', borderRadius: '24px 24px 0 0', boxShadow: 'var(--shadow-lg)',
-                padding: '0 16px calc(16px + env(safe-area-inset-bottom))',
-                animation: 'slideUp 0.25s ease',
-              }}>
-                <div className="sheet-grab" />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 2px 10px' }}>
-                  <h2 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 18, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{actMenu.act.title}</h2>
-                  <button type="button" aria-label="סגור" className="btn-close" onClick={() => setActMenu(null)}>✕</button>
-                </div>
+          {actMenu && (
+            <Sheet title={actMenu.act.title} onClose={() => setActMenu(null)}>
+              <div className="list-group">
                 {[
                   { key: 'up', label: 'הזז למעלה', Icon: ArrowUp, disabled: actMenu.isFirst,
                     run: () => moveActivity(day.id, actMenu.act.id, -1, actMenu.prevActId) },
@@ -4803,23 +4570,15 @@ const DayCard = React.memo(function DayCard({
                     key={key}
                     type="button"
                     disabled={disabled}
+                    className={`list-row${danger ? ' danger' : ''}`}
                     onClick={() => { setActMenu(null); run(); }}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                      minHeight: 52, padding: '0 12px', marginTop: 6,
-                      border: 'none', borderRadius: 16, background: 'var(--surface-2)',
-                      color: danger ? 'var(--c-red)' : 'var(--text)', opacity: disabled ? 0.4 : 1,
-                      fontFamily: 'inherit', fontSize: 15, fontWeight: 700, textAlign: 'right',
-                      cursor: disabled ? 'default' : 'pointer',
-                    }}
                   >
-                    <Icon size={19} />
-                    <span>{label}</span>
+                    <Icon size={18} className="list-row-icon" />
+                    <span className="list-row-label">{label}</span>
                   </button>
                 ))}
               </div>
-            </>,
-            document.body
+            </Sheet>
           )}
         </SortableDayCard>
 

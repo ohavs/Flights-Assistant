@@ -1402,6 +1402,57 @@ input[type="datetime-local"].form-control {
   font-size: 16px;
 }
 
+/* ── Inside a sheet: sections, segmented controls, list rows ──
+   The parts every sheet is made of (src/ui/Sheet.jsx), so a settings
+   sheet in one tab reads exactly like one in another. */
+.sheet-section { display: flex; flex-direction: column; gap: 8px; }
+.sheet-section-label {
+  font-size: 12.5px; font-weight: 800; color: var(--text-muted);
+  padding-inline: 4px;
+}
+
+.segmented {
+  display: flex; gap: 4px; padding: 4px;
+  border-radius: 16px; background: var(--surface-2);
+}
+.segmented > button {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px; border: none; border-radius: 12px;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font-hebrew); font-size: 12px; font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur-fast, .15s) ease, color var(--dur-fast, .15s) ease;
+}
+.segmented > button[aria-checked="true"] {
+  background: var(--card-bg-solid); color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.segmented > button:disabled { opacity: .45; cursor: default; }
+
+.list-group {
+  display: flex; flex-direction: column;
+  border-radius: 16px; background: var(--surface-2); overflow: hidden;
+}
+.list-row {
+  width: 100%; min-height: 48px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border: none; background: transparent;
+  color: var(--text); text-align: start;
+  font-family: var(--font-hebrew); font-size: 14px; font-weight: 700;
+  cursor: pointer;
+}
+.list-row + .list-row { border-top: 1px solid var(--ink-6); }
+.list-row:disabled { opacity: .5; cursor: default; }
+.list-row.danger, .list-row.danger .list-row-icon { color: var(--c-red); }
+.list-row[aria-checked="true"]:not([role="switch"]) { color: var(--accent); }
+.list-row-icon { width: 18px; flex-shrink: 0; color: var(--text-muted); }
+.list-row[aria-checked="true"]:not([role="switch"]) .list-row-icon { color: currentColor; }
+.list-row-label { flex: 1; min-width: 0; }
+.list-row-chevron { flex-shrink: 0; color: var(--text-muted); opacity: .7; }
+@media (hover: hover) { .list-row:not(:disabled):hover { background: var(--ink-4); } }
+.list-row:not(:disabled):active { background: var(--ink-6); }
+
 /* ── Swipeable rows ──
    The action layer lives under the row and is uncovered as the row slides
    toward the start edge (right, in RTL). */
