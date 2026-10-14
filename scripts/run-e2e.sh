@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Builds the app in emulator mode, starts the Firebase emulators and a preview
 # server, then runs the browser smoke test. Never touches the real project.
-# Usage: npm run test:e2e   (or: bash scripts/run-e2e.sh <test file>)
+# Usage: npm run test:e2e   (or: bash scripts/run-e2e.sh <test file>...)
 set -u
 set -m  # background jobs get their own process group, so cleanup stops their children too
 cd "$(dirname "$0")/.."
 OUT=.e2e
-TEST=${1:-tests/e2e/smoke.e2e.mjs}
+TESTS=("${@:-tests/e2e/smoke.e2e.mjs}")
+[ $# -eq 0 ] && TESTS=(tests/e2e/smoke.e2e.mjs tests/e2e/layout.e2e.mjs)
 rm -rf "$OUT" && mkdir -p "$OUT"
 FIREBASE="npx -y firebase-tools@14.27.0"
 
@@ -29,4 +30,9 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 
-node "$TEST" "$OUT"
+status=0
+for t in "${TESTS[@]}"; do
+  echo "── $t"
+  node "$t" "$OUT" || status=1
+done
+exit $status
