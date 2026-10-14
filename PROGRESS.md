@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.15.3 (`changelog.md`)
+- גרסת ווב: 8.16.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`
 
 ## כללים קריטיים — לקרוא לפני כל שינוי
@@ -61,6 +61,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [x] `deploy.yml` (#13): אחרי כל פריסה בודק שהאתר החי מגיש בדיוק את ה־build. הקונטיינר של Claude לא מגיע לאתר (הפרוקסי חוסם), אז זה האימות.
 - [x] אפליקציית Android רשומה ב־Firebase: `1:883919555591:android:1ad4ccc419e3b985b32ea2`, עם SHA-1 ו־SHA-256 של מפתח השחרור (`firebase-android-setup.yml`). `google-services.json` ב־`android/app/`.
 - [x] שלב 2ב (#14): מעטפת Capacitor, כניסה נייטיב, כפתור חזור, status bar, אייקון ו־splash. ה־SW נרשם רק בווב.
+- [x] שלב 4.1 (8.16.0): טוקנים בשפת Payments (צבעים, רדיוסים, צללים, כהה), Rubik מקומי, כפתור ראשי "מדבקה", ירוק כברירת מחדל. צילומים: `bash scripts/run-e2e.sh tests/e2e/screens.e2e.mjs`.
 - [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
 
 ## הבא
