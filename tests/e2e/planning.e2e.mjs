@@ -202,6 +202,19 @@ await step('daily plan: add activities', async () => {
   await shot('days-activities');
 });
 
+await step('daily plan: activity actions sheet moves an activity', async () => {
+  await page.locator('button[aria-label="פעולות: ארוחת בוקר במלון"]').click();
+  await page.getByRole('dialog', { name: 'ארוחת בוקר במלון' }).waitFor();
+  await shot('activity-actions');
+  await page.getByRole('button', { name: 'הזז למטה' }).click();
+  await page.waitForTimeout(600);
+  const order = await page.evaluate(() => {
+    const text = document.body.innerText;
+    return [text.indexOf('סיור ברובע היהודי'), text.indexOf('ארוחת בוקר במלון')];
+  });
+  if (!(order[0] >= 0 && order[0] < order[1])) throw new Error(`order did not change: ${order}`);
+});
+
 await step('daily plan: summary layout', async () => {
   const toggle = page.locator('button[aria-label="תצוגה מקוצרת"], button[aria-label="תצוגת סיכום"], button[aria-label="תצוגה מלאה"]').first();
   await toggle.click();

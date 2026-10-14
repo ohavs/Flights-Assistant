@@ -1555,11 +1555,11 @@ input[type="datetime-local"].form-control {
 @keyframes highlightPulseAnimation {
   0% {
     box-shadow: var(--shadow-sm);
-    border-color: rgba(79, 70, 229, 0.1);
+    border-color: transparent;
   }
   30% {
-    box-shadow: 0 0 25px rgba(79, 70, 229, 0.6);
-    border-color: rgba(79, 70, 229, 0.8);
+    box-shadow: 0 0 0 3px var(--brand), var(--shadow-sm);
+    border-color: transparent;
   }
   100% {
     box-shadow: var(--shadow-sm);
