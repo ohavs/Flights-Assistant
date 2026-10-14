@@ -1,13 +1,19 @@
 name: Firestore rules
 
-# Manual only. Rules are deployed as a deliberate step, never as a side effect
-# of a merge (see CLAUDE.md, "Data-safety rules").
-#   check  — read-only: compares the live rules with firestore.rules.
-#   deploy — runs the rules tests against the emulator, deploys
-#            firestore.rules, then checks the live rules match the file.
-# Logs of this public repo are public: tokens are masked, and only the rules
-# text (which is in the repo anyway) is printed.
+# Rules change only through a PR that changes firestore.rules (one change per
+# PR, see CLAUDE.md "Data-safety rules"):
+#   check  — on that PR (read-only): compares the live rules with the PR's
+#            firestore.rules, so the diff is reviewed before merging.
+#   deploy — on merge to master: runs the rules tests against the emulator,
+#            deploys firestore.rules, then checks the live rules match it.
+# Both modes can also be run by hand. Logs of this public repo are public:
+# tokens are masked, and only the rules text (in the repo anyway) is printed.
 on:
+  pull_request:
+    paths: [firestore.rules, .github/workflows/rules.yml]
+  push:
+    branches: [master]
+    paths: [firestore.rules]
   workflow_dispatch:
     inputs:
       mode:
@@ -30,6 +36,7 @@ jobs:
     timeout-minutes: 15
     env:
       PROJECT: listify-84018
+      MODE: ${{ github.event_name == 'push' && 'deploy' || (github.event_name == 'workflow_dispatch' && inputs.mode) || 'check' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,32 +64,32 @@ jobs:
           echo "Live ruleset: $RULESET"
           curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
             | jq -r '.source.files[0].content' > live.rules
-          if diff -u live.rules firestore.rules; then
+          if diff -u -B live.rules firestore.rules; then
             echo "Live rules are IDENTICAL to firestore.rules"
           else
             echo "Live rules DIFFER from firestore.rules (diff above: - live, + repo)"
-            [ "${{ inputs.mode }}" = check ] || echo "Deploying will replace the live rules with firestore.rules"
+            [ "$MODE" = check ] || echo "Deploying will replace the live rules with firestore.rules"
           fi
 
       - uses: actions/setup-node@v4
-        if: inputs.mode == 'deploy'
+        if: env.MODE == 'deploy'
         with:
           node-version: 22
           cache: npm
       - uses: actions/setup-java@v4
-        if: inputs.mode == 'deploy'
+        if: env.MODE == 'deploy'
         with:
           distribution: temurin
           java-version: 21
 
       - name: Rules tests (emulator)
-        if: inputs.mode == 'deploy'
+        if: env.MODE == 'deploy'
         run: |
           npm ci --no-audit --no-fund --legacy-peer-deps
           npm run test:data
 
       - name: Deploy firestore.rules
-        if: inputs.mode == 'deploy'
+        if: env.MODE == 'deploy'
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
@@ -90,10 +97,10 @@ jobs:
             --token "$(printf '%s' "$FIREBASE_TOKEN" | tr -d '[:space:]')"
 
       - name: Live rules match firestore.rules (after)
-        if: inputs.mode == 'deploy'
+        if: env.MODE == 'deploy'
         run: |
           API=https://firebaserules.googleapis.com/v1/projects/$PROJECT
           RULESET=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "$API/releases/cloud.firestore" | jq -r .rulesetName)
           curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "https://firebaserules.googleapis.com/v1/$RULESET" \
             | jq -r '.source.files[0].content' > live.rules
-          diff -u live.rules firestore.rules && echo "Deployed: live rules now match firestore.rules"
+          diff -u -B live.rules firestore.rules && echo "Deployed: live rules now match firestore.rules"
