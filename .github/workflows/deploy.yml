@@ -1,0 +1,99 @@
+name: Deploy to Firebase Hosting
+
+# Builds master with the API keys from the repository secrets and
+# deploys it to https://listify-84018.web.app.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VITE_GOOGLE_MAPS_KEY, VITE_AERODATABOX_KEY, FIREBASE_TOKEN
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-hosting-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Keys never contain whitespace, but a value pasted on a phone can pick
+      # up a trailing space or newline — which would change every build hash.
+      - name: Check that all secrets are set (and trim whitespace)
+        env:
+          RAW_VITE_GOOGLE_MAPS_KEY: ${{ secrets.VITE_GOOGLE_MAPS_KEY }}
+          RAW_VITE_AERODATABOX_KEY: ${{ secrets.VITE_AERODATABOX_KEY }}
+          RAW_FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          missing=0
+          for v in VITE_GOOGLE_MAPS_KEY VITE_AERODATABOX_KEY FIREBASE_TOKEN; do
+            raw="RAW_$v"
+            val="$(printf '%s' "${!raw}" | tr -d '[:space:]')"
+            if [ -z "$val" ]; then echo "::error::Missing repository secret $v"; missing=1; continue; fi
+            echo "::add-mask::$val"
+            [ "$val" != "${!raw}" ] && echo "$v: removed surrounding whitespace"
+            echo "$v length: ${#val}"
+            echo "$v=$val" >> "$GITHUB_ENV"
+          done
+          exit $missing
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Safety net: when this branch was started the site was running commit
+      # 80f12ed built with the keys, whose service worker lists index.html at
+      # the revision below. Rebuilding 80f12ed here must reproduce it exactly — that proves
+      # the secrets are the right keys and that this branch sits on exactly
+      # what is live. Anything else stops before touching the site.
+      - name: Verify the base commit reproduces the live site
+        run: |
+          git worktree add ../live-base 80f12ed
+          cd ../live-base
+          npm ci --no-audit --no-fund --legacy-peer-deps
+          npm run build
+          if grep -q 'url:"index.html",revision:"272b96cdd92643170b812d46c1307a15"' dist/sw.js; then
+            echo "Base build is identical to the live site."
+            exit 0
+          fi
+          echo "::error::Building 80f12ed did not reproduce the live site — not deploying."
+          grep -o 'url:"index.html",revision:"[0-9a-f]*"' dist/sw.js || true
+
+          # Diagnostics: are the secrets the same keys the live site was built
+          # with? Only counts are printed, never a key. The repo is public.
+          mkdir -p ../live && cd ../live
+          LIVE=https://listify-84018.web.app
+          curl -fsS "$LIVE/sw.js" -o sw.js
+          for f in $(grep -o 'assets/[^"]*\.js' sw.js); do curl -fsS "$LIVE/$f" -o "$(basename "$f")" || true; done
+          echo "Live files containing the Maps key secret:        $(grep -l -F "$VITE_GOOGLE_MAPS_KEY" *.js | wc -l)"
+          echo "Built files containing the Maps key secret:       $(grep -l -F "$VITE_GOOGLE_MAPS_KEY" ../live-base/dist/assets/*.js | wc -l)"
+          echo "Live files containing the AeroDataBox secret:     $(grep -l -F "$VITE_AERODATABOX_KEY" *.js | wc -l)"
+          echo "Built files containing the AeroDataBox secret:    $(grep -l -F "$VITE_AERODATABOX_KEY" ../live-base/dist/assets/*.js | wc -l)"
+          # Code difference in the main chunk, with anything key-shaped blanked.
+          norm() {
+            sed -E -e 's/AIza[0-9A-Za-z_-]{35}/<GOOGLE_KEY>/g' \
+                   -e 's/[0-9a-f]{10}msh[0-9a-f]{15,}jsn[0-9a-f]{12}/<RAPIDAPI_KEY>/g' \
+                   -e 's/(index|[A-Za-z.-]+)-[A-Za-z0-9_-]{8}\.(js|css)/\1-HASH.\2/g' "$1" | tr ';' '\n'
+          }
+          echo "--- main chunk: built (<) vs live (>), key-shaped strings and chunk hashes blanked"
+          diff <(norm ../live-base/dist/assets/index-*.js) <(norm index-*.js) | head -60 || true
+          exit 1
+
+      - name: Install
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the keys made it into the build
+        run: |
+          grep -q "$VITE_GOOGLE_MAPS_KEY" dist/assets/*.js || { echo "::error::Maps key missing from the build"; exit 1; }
+          grep -q "$VITE_AERODATABOX_KEY" dist/assets/*.js || { echo "::error::AeroDataBox key missing from the build"; exit 1; }
+
+      - name: Deploy
+        run: npx -y firebase-tools@latest deploy --only hosting --project listify-84018 --non-interactive

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import {
@@ -6,16 +6,44 @@ import {
   query, where, getDocs, updateDoc, arrayUnion, arrayRemove,
   getDoc, writeBatch
 } from 'firebase/firestore';
-import { defaultPraguePlans } from './components/PlanningTab';
-import { defaultChecklist } from './components/ChecklistTab';
-import FlightTab, { defaultTrip } from './components/FlightTab';
-import PlanningTab from './components/PlanningTab';
-import ChecklistTab from './components/ChecklistTab';
+import ConfirmModal from './components/ConfirmModal';
+import ExportMenu from './components/ExportMenu';
+import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
+import { TripProvider } from './TripContext';
+import { ThemeProvider, useTheme, PALETTES } from './ThemeContext';
+import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
+import { CustomDropdown } from './components/CustomDatePicker';
+import { defaultChecklist, defaultInfoItems } from './data/seedData';
+
+/* The five tabs are loaded on demand.
+ *
+ * Only one is ever on screen, but all five used to be parsed before the
+ * first paint — PlanningTab alone is over 4,000 lines. The service worker
+ * still precaches every chunk (`globPatterns` covers all built JS), so a
+ * tab that was never opened online still opens offline; what changes is
+ * how much JavaScript the phone has to compile before showing anything.
+ *
+ * Each lazy tab already sits inside a per-tab ErrorBoundary, so a chunk
+ * that fails to arrive degrades to that tab's error card. */
+const FlightTab    = lazy(() => import('./components/FlightTab'));
+const PlanningTab  = lazy(() => import('./components/PlanningTab'));
+const ChecklistTab = lazy(() => import('./components/ChecklistTab'));
+const BookingsTab  = lazy(() => import('./components/BookingsTab'));
+const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
+import CurrencyConverter from './components/CurrencyConverter';
+import ShareTargetScreen from './components/ShareTargetScreen';
+import ErrorBoundary from './components/ErrorBoundary';
+import EmptyState from './components/EmptyState';
+import useSheetDrag from './hooks/useSheetDrag';
+import Skeleton from './components/Skeleton';
+import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, Compass, ClipboardList, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, RotateCcw
+  Check, ChevronDown, ChevronUp, CalendarCheck, Coins, Wallet,
+  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Palette, Pin, PinOff
 } from 'lucide-react';
+import { useConfirm } from './ConfirmContext';
 import './index.css';
 
 /* ══════════════════════════════════════════════════════════
@@ -42,7 +70,7 @@ function LoginScreen({ onSignIn }) {
         }}>
           <Plane size={36} color="#fff" style={{ transform: 'rotate(-45deg)' }} />
         </div>
-        <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
           עוזר טיסות
         </h1>
         <p style={{ fontSize: 15, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
@@ -93,9 +121,53 @@ function LoadingScreen() {
 }
 
 /* ══════════════════════════════════════════════════════════
+   STANDALONE CONVERTER SCREEN — opened from the manifest shortcut
+   so the user can long-press the installed icon → "המרת מטבעות"
+   and get straight to the converter without the app navigation.
+   ══════════════════════════════════════════════════════════ */
+function ConverterScreen() {
+  return (
+    <div className="app-container">
+      <header className="app-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: 'rgba(5, 150, 105, 0.12)', color: 'var(--text-success)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+          }}>
+            <Coins size={18} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 18 }}>המרת מטבעות</h1>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, marginTop: 1 }}>
+              עובד אופליין
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => { window.location.href = '/'; }}
+          style={{
+            background: 'rgba(11,11,48,0.05)', border: 'none',
+            width: 34, height: 34, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', color: 'var(--primary)'
+          }}
+          title="פתח את האפליקציה המלאה"
+        >
+          <Plane size={14} style={{ transform: 'rotate(-45deg)' }} />
+        </button>
+      </header>
+      <main className="app-content" style={{ paddingBottom: 24 }}>
+        <CurrencyConverter />
+      </main>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist }) {
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, onExportTrip, onImportTrip, exportBusyId, importBusy, importError, userName, onOpenGlobalChecklist, pinnedTripId, onTogglePinned }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -142,18 +214,41 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <span className="homepage-section-title" style={{ margin: 0 }}>טיולים מתוכננים</span>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'var(--accent)', color: '#fff', border: 'none',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
-          }}
-        >
-          <Plus size={18} />
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={onImportTrip}
+            disabled={importBusy}
+            title="ייבוא טיול מגיבוי"
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: importBusy ? 'rgba(5,150,105,0.2)' : 'rgba(5,150,105,0.1)',
+              color: 'var(--text-success)', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: importBusy ? 'default' : 'pointer'
+            }}
+          >
+            {importBusy ? <Loader2 size={16} className="spinning" /> : <Upload size={16} />}
+          </button>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            aria-label={showCreate ? 'סגור טופס טיול חדש' : 'טיול חדש'}
+            aria-expanded={showCreate}
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'var(--accent)', color: '#fff', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
+            }}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </div>
+      {importError && (
+        <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+          {importError}
+        </div>
+      )}
 
       {/* Create trip form */}
       {showCreate && (
@@ -176,15 +271,38 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
 
       {/* Trip cards */}
       {trips.length === 0 && !showCreate && (
-        <div className="glass-card" style={{ textAlign: 'center', padding: 32 }}>
-          <Plane size={36} color="var(--text-muted)" style={{ margin: '0 auto 12px', opacity: 0.4, transform: 'rotate(-45deg)' }} />
-          <p style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: 15 }}>
-            עדיין אין טיולים.<br />לחץ על + כדי להוסיף אחד!
-          </p>
-        </div>
+        <EmptyState
+          icon={Plane}
+          title="עוד אין טיולים"
+          hint="טיול מחזיק את הטיסות, המקומות, רשימת הציוד וההוצאות במקום אחד."
+          action={
+            <button onClick={() => setShowCreate(true)} className="btn-primary">
+              <Plus size={16} /><span>צור טיול ראשון</span>
+            </button>
+          }
+        />
       )}
 
-      {trips.map(trip => (
+      <div className="trip-list-grid">
+      {trips.map(trip => {
+        const myRole = trip.members?.[currentUid];
+        const isOwner = myRole === 'owner';
+        const memberEntries = Object.entries(trip.members || {}).filter(([, role]) => role);
+        const ownerEntry = memberEntries.find(([, r]) => r === 'owner');
+        const ownerUid = ownerEntry?.[0];
+        const ownerProfile = ownerUid
+          ? (ownerUid === currentUid ? currentUserProfile : memberProfiles?.[ownerUid])
+          : null;
+        // Avatar stack data — owner first, then others. Cap to 4 visible.
+        const stackEntries = [
+          ...(ownerEntry ? [ownerEntry] : []),
+          ...memberEntries.filter(([uid, r]) => r !== 'owner').sort((a, b) => a[0].localeCompare(b[0])),
+        ];
+        const visibleStack = stackEntries.slice(0, 4);
+        const overflowCount = stackEntries.length - visibleStack.length;
+        const showStack = stackEntries.length > 1; // only when actually shared
+
+        return (
         <div className="trip-card" key={trip.id} onClick={() => onOpenTrip(trip.id)}>
           <div className="trip-card-header">
             <div className="trip-card-icon">
@@ -194,11 +312,67 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
               <h3>{trip.name || 'טיול ללא שם'}</h3>
               <p>{trip.destination || ''}</p>
             </div>
+
+            {showStack && (
+              <div className="member-stack" title={`${stackEntries.length} חברים בטיול`}>
+                {visibleStack.map(([uid, role]) => {
+                  const profile = uid === currentUid ? currentUserProfile : memberProfiles?.[uid];
+                  const isOwnerAvatar = role === 'owner';
+                  const initial = (profile?.displayName || profile?.email || '?')[0];
+                  return (
+                    <div
+                      key={uid}
+                      className={`member-stack-avatar${isOwnerAvatar ? ' owner' : ''}`}
+                      title={`${profile?.displayName || profile?.email || ''}${isOwnerAvatar ? ' · בעלים' : ''}`}
+                    >
+                      {profile?.photoURL ? (
+                        <img src={profile.photoURL} alt="" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span>{initial}</span>
+                      )}
+                      {isOwnerAvatar && (
+                        <svg className="member-stack-crown" viewBox="0 0 24 24" width="10" height="10" fill="currentColor" aria-hidden="true">
+                          <path d="M5 19h14l1-9-4 3-4-7-4 7-4-3z" />
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
+                {overflowCount > 0 && (
+                  <div className="member-stack-avatar more">+{overflowCount}</div>
+                )}
+              </div>
+            )}
           </div>
 
-          {trip.dates && (
+          {!isOwner && ownerProfile && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '6px 10px', background: 'rgba(79,70,229,0.08)',
+              border: '1px solid rgba(79,70,229,0.18)', borderRadius: 999,
+              alignSelf: 'flex-start'
+            }}>
+              {ownerProfile.photoURL ? (
+                <img src={ownerProfile.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+              ) : (
+                <Users size={14} style={{ color: 'var(--accent)' }} />
+              )}
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
+                טיול של {ownerProfile.displayName || ownerProfile.email || ''}
+                {' · '}
+                {myRole === 'viewer' ? 'צפייה' : 'עריכה'}
+              </span>
+            </div>
+          )}
+
+          {(trip.dates || pinnedTripId === trip.id) && (
             <div className="trip-card-meta">
-              <span className="trip-card-badge"><Calendar size={13} />{trip.dates}</span>
+              {pinnedTripId === trip.id && (
+                <span className="trip-card-badge" style={{ background: 'var(--p-12)', color: 'var(--accent)' }}>
+                  <Pin size={13} />נפתח אוטומטית
+                </span>
+              )}
+              {trip.dates && <span className="trip-card-badge"><Calendar size={13} />{trip.dates}</span>}
             </div>
           )}
 
@@ -209,41 +383,96 @@ function Homepage({ trips, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, 
             </div>
             <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
               <button
+                onClick={() => onTogglePinned(trip.id)}
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  background: pinnedTripId === trip.id ? 'var(--accent)' : 'var(--p-8)',
+                  color: pinnedTripId === trip.id ? '#fff' : 'var(--accent)',
+                }}
+                title={pinnedTripId === trip.id ? 'בטל טיול נוכחי' : 'קבע כטיול הנוכחי'}
+                aria-pressed={pinnedTripId === trip.id}
+              >
+                {pinnedTripId === trip.id ? <Pin size={15} /> : <PinOff size={15} />}
+              </button>
+              <button
+                onClick={() => onExportTrip(trip.id)}
+                disabled={exportBusyId === trip.id}
+                style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(5,150,105,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: exportBusyId === trip.id ? 'default' : 'pointer', color: 'var(--text-success)' }}
+                title="ייצוא גיבוי JSON"
+              >
+                {exportBusyId === trip.id ? <Loader2 size={15} className="spinning" /> : <Archive size={15} />}
+              </button>
+              <button
                 onClick={() => onShareTrip(trip.id)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(79,70,229,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
-                title="שתף טיול"
+                title={isOwner ? 'שתף וניהול חברים' : 'הצג חברי טיול'}
               >
                 <UserPlus size={15} />
               </button>
               <button
-                onClick={() => { if (window.confirm('למחוק את הטיול?')) onDeleteTrip(trip.id); }}
+                onClick={() => onDeleteTrip(trip.id, isOwner)}
                 style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(220,38,38,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' }}
-                title="מחק טיול"
+                title={isOwner ? 'מחק טיול' : 'צא מהטיול'}
               >
                 <Trash2 size={15} />
               </button>
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
+      </div>
     </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════
-   SHARE MODAL — Invite user by email
+   SHARE MODAL — Invite + manage trip members
    ══════════════════════════════════════════════════════════ */
-function ShareModal({ tripId, onClose }) {
+function ShareModal({ tripId, currentUid, onClose }) {
+  const [trip, setTrip] = useState(null);
+  const [members, setMembers] = useState([]); // [{ uid, role, profile? }]
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState(''); // '', 'searching', 'success', 'not-found', 'already', 'error'
+  const [newRole, setNewRole] = useState('viewer'); // viewer | editor
+  const [status, setStatus] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Live-listen to the trip so members list refreshes when roles change
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(doc(db, 'trips', tripId), (snap) => {
+      if (!snap.exists()) { setTrip(null); setMembers([]); return; }
+      setTrip(snap.data());
+    });
+  }, [tripId]);
+
+  // Load each member's profile (displayName/email)
+  useEffect(() => {
+    if (!trip?.members) { setMembers([]); return; }
+    const entries = Object.entries(trip.members).filter(([, role]) => role);
+    let cancelled = false;
+    (async () => {
+      const enriched = await Promise.all(entries.map(async ([uid, role]) => {
+        try {
+          const u = await getDoc(doc(db, 'users', uid));
+          return { uid, role, profile: u.exists() ? u.data() : null };
+        } catch {
+          return { uid, role, profile: null };
+        }
+      }));
+      if (!cancelled) setMembers(enriched);
+    })();
+    return () => { cancelled = true; };
+  }, [trip]);
 
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!email.trim()) return;
     setStatus('searching');
+    setErrorMsg('');
 
     try {
-      // Find user by email in users collection
       const q = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()));
       const snap = await getDocs(q);
 
@@ -252,23 +481,20 @@ function ShareModal({ tripId, onClose }) {
         return;
       }
 
-      const targetDoc = snap.docs[0];
-      const targetUid = targetDoc.id;
+      const targetUid = snap.docs[0].id;
+      if (targetUid === currentUid) {
+        setStatus('self');
+        return;
+      }
+      if (trip?.members?.[targetUid]) {
+        setStatus('already');
+        return;
+      }
 
-      // Check if already member
-      const tripDoc = await getDocs(query(collection(db, 'trips')));
-      // Simpler: just add them directly
       const tripRef = doc(db, 'trips', tripId);
-
-      // Add user to trip members
       await updateDoc(tripRef, {
-        [`members.${targetUid}`]: 'member'
-      });
-
-      // Add tripId to user's tripIds array
-      const userRef = doc(db, 'users', targetUid);
-      await updateDoc(userRef, {
-        tripIds: arrayUnion(tripId)
+        [`members.${targetUid}`]: newRole,
+        memberIds: arrayUnion(targetUid),
       });
 
       setStatus('success');
@@ -276,41 +502,200 @@ function ShareModal({ tripId, onClose }) {
     } catch (err) {
       console.error('Share error:', err);
       setStatus('error');
+      setErrorMsg(err?.message || 'Unknown error');
     }
   };
 
+  const changeRole = async (uid, role) => {
+    try {
+      await updateDoc(doc(db, 'trips', tripId), {
+        [`members.${uid}`]: role,
+      });
+    } catch (err) {
+      console.error('Change role failed:', err);
+      setStatus('error');
+      setErrorMsg(err?.message || 'Unknown error');
+    }
+  };
+
+  const removeMember = async (uid) => {
+    try {
+      // Build the new members map without that uid
+      const newMembers = { ...(trip?.members || {}) };
+      delete newMembers[uid];
+      const gone = members.find(m => m.uid === uid);
+      await updateDoc(doc(db, 'trips', tripId), {
+        members: newMembers,
+        memberIds: arrayRemove(uid),
+        // Nothing they added is deleted — the content belongs to the trip,
+        // not to the person. But once the uid leaves `members` their
+        // profile is never fetched again, so every expense they paid and
+        // every item assigned to them would go nameless. Keep a snapshot.
+        [`formerMembers.${uid}`]: {
+          displayName: gone?.profile?.displayName || '',
+          email: gone?.profile?.email || '',
+          photoURL: gone?.profile?.photoURL || '',
+          leftAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('Remove member failed:', err);
+      setStatus('error');
+      setErrorMsg(err?.message || 'Unknown error');
+    }
+  };
+
+  const shareSheet = useSheetDrag(() => onClose());
+
+  const currentRole = trip?.members?.[currentUid];
+  const isOwner = currentRole === 'owner';
+
+  // For non-owners: this modal only shows members + leave button (no controls)
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ height: 'auto', maxHeight: '50%' }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" data-closing={shareSheet.closing || undefined} onClick={onClose}>
+      <div className="modal-content" {...shareSheet.handlers}
+        style={{ height: 'auto', maxHeight: '90%', ...shareSheet.style }}
+        onClick={e => e.stopPropagation()}>
+        <div className="sheet-grab" />
         <div className="modal-header">
-          <h2>שתף טיול</h2>
-          <button className="btn-close" onClick={onClose}>✕</button>
+          <h2>שיתוף וניהול חברי הטיול</h2>
+          <button aria-label="סגור" className="btn-close" onClick={onClose}>✕</button>
         </div>
 
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
-          הזן את כתובת האימייל של משתמש רשום כדי לשתף אותו בטיול. הוא יוכל לצפות ולערוך את כל הנתונים.
-        </p>
+        {isOwner && (
+          <>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.55 }}>
+              הזן אימייל של משתמש רשום, בחר הרשאה, והוא יראה את הטיול אצלו באפליקציה.
+              {' '}אתה תמיד נשאר הבעלים ויכול לשנות הרשאות או להוריד גישה בכל זמן.
+            </p>
 
-        <form onSubmit={handleInvite} style={{ display: 'flex', gap: 8 }}>
-          <input
-            className="form-control"
-            type="email"
-            placeholder="example@gmail.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-            dir="ltr"
-            style={{ flex: 1 }}
-          />
-          <button type="submit" className="btn-primary" style={{ padding: '12px 20px', flexShrink: 0 }} disabled={status === 'searching'}>
-            <UserPlus size={16} />
-          </button>
-        </form>
+            <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input
+                className="form-control"
+                type="email"
+                placeholder="example@gmail.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                dir="ltr"
+              />
 
-        {status === 'searching' && <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 14 }}>מחפש משתמש...</p>}
-        {status === 'success' && <p style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: 14 }}>✅ המשתמש נוסף בהצלחה! הטיול יופיע אצלו באפליקציה.</p>}
-        {status === 'not-found' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 14 }}>❌ לא נמצא משתמש עם האימייל הזה. ודא שהוא רשום לאפליקציה.</p>}
-        {status === 'error' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 14 }}>שגיאה בשיתוף. נסה שוב.</p>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'rgba(11,11,48,0.04)', padding: 4, borderRadius: 12 }}>
+                {[
+                  { val: 'viewer', label: 'צפייה בלבד', desc: 'יראה את הטיול אבל לא יוכל לערוך' },
+                  { val: 'editor', label: 'עריכה', desc: 'יוכל לערוך טיסות, מלון, תכנון וצ\'קליסט' },
+                ].map(opt => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setNewRole(opt.val)}
+                    style={{
+                      border: 'none', borderRadius: 8, padding: '10px 12px',
+                      fontFamily: 'var(--font-hebrew)',
+                      background: newRole === opt.val ? '#fff' : 'transparent',
+                      color: newRole === opt.val ? 'var(--primary)' : 'var(--text-muted)',
+                      boxShadow: newRole === opt.val ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                      cursor: 'pointer', textAlign: 'right'
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 900 }}>{opt.label}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600 }}>{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <button type="submit" className="btn-primary" disabled={status === 'searching'}>
+                <UserPlus size={16} />
+                <span>{status === 'searching' ? 'מחפש...' : 'שתף'}</span>
+              </button>
+            </form>
+
+            {status === 'success' && <p style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: 13 }}>✅ נוסף בהצלחה.</p>}
+            {status === 'not-found' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13 }}>❌ אין משתמש רשום עם האימייל הזה.</p>}
+            {status === 'self' && <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13 }}>❌ אי אפשר לשתף את עצמך.</p>}
+            {status === 'already' && <p style={{ color: 'rgb(146, 64, 14)', fontWeight: 700, fontSize: 13 }}>ⓘ המשתמש כבר חבר בטיול.</p>}
+            {status === 'error' && (
+              <p style={{ color: '#dc2626', fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
+                ❌ שגיאה.{errorMsg && <><br /><span style={{ fontWeight: 600, fontSize: 11 }} dir="ltr">{errorMsg}</span></>}
+              </p>
+            )}
+          </>
+        )}
+
+        {!isOwner && (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.55 }}>
+            רק הבעלים של הטיול יכול להוסיף או להסיר חברים.
+          </p>
+        )}
+
+        <h4 style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary)', marginTop: 4 }}>חברי הטיול ({members.length})</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {members.map(({ uid, role, profile }) => {
+            const isSelf = uid === currentUid;
+            const isOwnerRow = role === 'owner';
+            return (
+              <div
+                key={uid}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px',
+                  background: 'rgba(11,11,48,0.03)',
+                  border: '1px solid rgba(11,11,48,0.06)',
+                  borderRadius: 12,
+                }}
+              >
+                {profile?.photoURL ? (
+                  <img src={profile.photoURL} alt="" style={{ width: 34, height: 34, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                ) : (
+                  <div style={{
+                    width: 34, height: 34, borderRadius: '50%',
+                    background: 'var(--accent)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontWeight: 800
+                  }}>
+                    {(profile?.displayName || profile?.email || '?')[0]}
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {profile?.displayName || profile?.email || uid}
+                    {isSelf && <span style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>(אתה)</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                    {isOwnerRow ? 'בעלים' : (role === 'editor' || role === 'member') ? 'עריכה' : 'צפייה'}
+                  </div>
+                </div>
+
+                {isOwner && !isOwnerRow && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => changeRole(uid, (role === 'editor' || role === 'member') ? 'viewer' : 'editor')}
+                      className="btn-secondary"
+                      style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
+                      title={(role === 'editor' || role === 'member') ? 'הפוך לצפייה בלבד' : 'אפשר עריכה'}
+                    >
+                      {(role === 'editor' || role === 'member') ? 'הפוך לצופה' : 'אפשר עריכה'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeMember(uid)}
+                      style={{
+                        background: 'rgba(220,38,38,0.08)', border: 'none',
+                        color: '#dc2626', borderRadius: 8, width: 32, height: 32,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer'
+                      }}
+                      title="הסר מהטיול"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -319,231 +704,584 @@ function ShareModal({ tripId, onClose }) {
 /* ══════════════════════════════════════════════════════════
    GLOBAL CHECKLIST MODAL
    ══════════════════════════════════════════════════════════ */
-function GlobalChecklistModal({ isOpen, onClose, globalChecklist, userId }) {
+function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategories = [], userId }) {
+  const confirm = useConfirm();
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('מסמכים וסידורים');
   const [editingItemId, setEditingItemId] = useState(null);
+  const [openCategories, setOpenCategories] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [quickAddCat, setQuickAddCat] = useState(null);
+  const [quickAddText, setQuickAddText] = useState('');
+  const quickAddInputRef = useRef(null);
+  const [longPressedCat, setLongPressedCat] = useState(null);
+  const longPressTimer = useRef(null);
+  const longPressActive = useRef(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [editCatText, setEditCatText] = useState('');
 
-  if (!isOpen) return null;
-
-  const categories = [
+  const defaultCategoryNames = [
     'מסמכים וסידורים',
     'בגדים',
     'אלקטרוניקה',
     'תרופות ועזרה ראשונה',
     'סידורים אחרונים בארץ'
   ];
+  const categories = Array.from(new Set([
+    ...defaultCategoryNames,
+    ...extraCategories,
+    ...(globalChecklist || []).map(i => i.category).filter(Boolean),
+  ]));
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!newItemText.trim() || !userId) return;
+  const duplicateSuggestions = useMemo(() => {
+    if (!newItemText.trim() || newItemText.trim().length < 2) return [];
+    const q = newItemText.toLowerCase();
+    return (globalChecklist || []).filter(i => i.id !== editingItemId && i.text.toLowerCase().includes(q));
+  }, [globalChecklist, newItemText, editingItemId]);
 
+  /* Above the early return on purpose: hooks have to run in the same
+     order on every render, and `if (!isOpen) return null` sits below —
+     declaring it after would add a hook the moment the sheet opens. */
+  const sheet = useSheetDrag(() => onClose(), { enabled: !newItemText.trim() && !editingItemId });
+
+  if (!isOpen) return null;
+
+  const toggleCategory = (cat) =>
+    setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+
+  const startLongPress = (cat) => {
+    longPressActive.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressActive.current = true;
+      setLongPressedCat(cat);
+    }, 550);
+  };
+  const cancelLongPress = () => clearTimeout(longPressTimer.current);
+
+  const saveExtraCategory = async (cat) => {
+    if (!cat || !userId || extraCategories.includes(cat)) return;
+    try {
+      await setDoc(doc(db, 'users', userId), {
+        globalExtraCategories: [...new Set([...extraCategories, cat])],
+      }, { merge: true });
+      setOpenCategories(prev => ({ ...prev, [cat]: true }));
+    } catch (err) {
+      console.error('Error saving extra category:', err);
+    }
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    const catItems = (globalChecklist || []).filter(i => i.category === cat);
+    const ok = await confirm({
+      title: 'מחיקת קטגוריה',
+      message: catItems.length > 0
+        ? `האם למחוק את "${cat}" ואת ${catItems.length} הפריטים שבה?`
+        : `האם למחוק את הקטגוריה "${cat}"?`,
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
+    setLongPressedCat(null);
+    if (!ok) return;
+    const updatedList = (globalChecklist || []).filter(i => i.category !== cat);
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        globalChecklist: updatedList,
+        globalExtraCategories: extraCategories.filter(c => c !== cat),
+      });
+    } catch (err) {
+      console.error('Error deleting category:', err);
+    }
+  };
+
+  const handleRenameCategory = (oldCat, newCat) => {
+    const trimmed = newCat.trim();
+    setEditingCat(null);
+    if (!trimmed || trimmed === oldCat) return;
+    const updatedList = (globalChecklist || []).map(item =>
+      item.category === oldCat ? { ...item, category: trimmed } : item
+    );
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error renaming category:', err));
+  };
+
+  const isDirty = !!newItemText.trim();
+
+  const attemptClose = async () => {
+    if (isDirty || editingItemId) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת טקסט בטופס שלא נשמר. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setEditingItemId(null);
+    setNewItemText('');
+    setNewItemCategory('מסמכים וסידורים');
+    onClose();
+  };
+
+  const doAdd = (overrideCategory) => {
+    const text = newItemText.trim();
+    if (!text || !userId) return;
+    const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
     let updatedList;
     if (editingItemId) {
       updatedList = globalChecklist.map(item =>
-        item.id === editingItemId
-          ? { ...item, text: newItemText.trim(), category: newItemCategory }
-          : item
+        item.id === editingItemId ? { ...item, text, category: cat } : item
       );
       setEditingItemId(null);
     } else {
-      const newItem = {
-        id: 'global-' + Date.now(),
-        text: newItemText.trim(),
-        completed: false,
-        category: newItemCategory
-      };
-      updatedList = [...globalChecklist, newItem];
+      updatedList = [...globalChecklist, { id: 'global-' + Date.now(), text, completed: false, category: cat }];
     }
+    setNewItemText('');
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error updating global checklist:', err));
+  };
 
-    try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: updatedList });
-      setNewItemText('');
-    } catch (err) {
-      console.error('Error updating global checklist:', err);
-    }
+  const handleAdd = (e) => {
+    e.preventDefault();
+    doAdd();
   };
 
   const handleDelete = async (id) => {
     if (!userId) return;
+    const item = globalChecklist.find(i => i.id === id);
+    const ok = await confirm({
+      title: 'מחיקת פריט קבוע',
+      message: item?.text ? <>האם למחוק את <strong>{item.text}</strong> מהרשימה הקבועה?</> : 'האם למחוק את הפריט הזה?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
     const updatedList = globalChecklist.filter(item => item.id !== id);
-    try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: updatedList });
-    } catch (err) {
-      console.error('Error deleting from global checklist:', err);
-    }
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error deleting from global checklist:', err));
   };
 
   const handleStartEdit = (item) => {
     setEditingItemId(item.id);
     setNewItemText(item.text);
     setNewItemCategory(item.category);
+    setShowAddForm(true);
   };
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת טקסט שלא נשמר. האם לבטל את העריכה?',
+        confirmText: 'בטל עריכה',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setEditingItemId(null);
     setNewItemText('');
     setNewItemCategory('מסמכים וסידורים');
   };
 
-  const handleReset = async () => {
-    if (!window.confirm('האם אתה בטוח שברצונך לאפס את רשימת הציוד הקבועה לרשימת ברירת המחדל?')) return;
-    try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { globalChecklist: defaultChecklist });
-    } catch (err) {
-      console.error('Error resetting global checklist:', err);
-    }
+  const handleQuickAdd = (e, cat) => {
+    e.preventDefault();
+    if (!quickAddText.trim() || !userId) return;
+    const updatedList = [
+      ...globalChecklist,
+      { id: 'global-' + Date.now(), text: quickAddText.trim(), completed: false, category: cat },
+    ];
+    setQuickAddText('');
+    setQuickAddCat(null);
+    updateDoc(doc(db, 'users', userId), { globalChecklist: updatedList })
+      .catch(err => console.error('Error adding to global checklist:', err));
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" data-closing={sheet.closing || undefined} onClick={attemptClose}>
+      <div className="modal-content" {...sheet.handlers}
+        style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column', ...sheet.style }}
+        onClick={e => e.stopPropagation()}>
+        <div className="sheet-grab" />
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2>רשימת ציוד קבועה</h2>
-          <button className="btn-close" onClick={onClose}>✕</button>
+          <button aria-label="סגור" className="btn-close" onClick={attemptClose}>✕</button>
         </div>
 
         <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5, marginBottom: 12, flexShrink: 0 }}>
           נהל כאן את רשימת הציוד הקבועה שלך. פריטים אלו יועתקו אוטומטית לכל טיול חדש שתפתח, ותוכל להתאים אותם אישית לכל טיול בנפרד.
         </p>
 
-        {/* Form Container */}
-        <form onSubmit={handleAdd} className="glass-card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
-          <h4 style={{ fontSize: 14, fontWeight: 800, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 4, margin: 0 }}>
-            {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
-          </h4>
-          
-          <div className="row-2" style={{ gap: 8 }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 11 }}>שם הפריט</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="למשל: רישיון נהיגה, כפכפים" 
-                value={newItemText}
-                onChange={(e) => setNewItemText(e.target.value)}
-                required
-                style={{ padding: '8px 12px', fontSize: 14, minHeight: 38 }}
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 11 }}>קטגוריה</label>
-              <select 
-                className="form-control" 
-                value={newItemCategory}
-                onChange={(e) => setNewItemCategory(e.target.value)}
-                style={{ padding: '8px 12px', fontSize: 14, minHeight: 38 }}
-              >
-                {categories.map((cat, idx) => (
-                  <option key={idx} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+        {/* Form Container — collapsible */}
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
+          <button
+            type="button"
+            onClick={() => setShowAddForm(s => !s)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', padding: 0 }}
+          >
+            {showAddForm
+              ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)', flex: 1, textAlign: 'right' }}>
+              {editingItemId ? 'עריכת פריט קבוע' : 'הוספת פריט קבוע חדש'}
+            </span>
+            {!showAddForm && <Plus size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+          </button>
 
-          {editingItemId ? (
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-              <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 36, fontSize: 14, padding: '6px 12px' }}>שמור</button>
-              <button type="button" className="btn-secondary" onClick={handleCancelEdit} style={{ minHeight: 36, fontSize: 14, padding: '6px 12px' }}>ביטול</button>
-            </div>
-          ) : (
-            <button type="submit" className="btn-primary" style={{ marginTop: 2, width: '100%', minHeight: 36, fontSize: 14, padding: '6px 12px' }}>
-              <Plus size={16} />
-              <span>הוסף לרשימה הקבועה</span>
-            </button>
+          {showAddForm && (
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מה להביא?</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="למשל: רישיון נהיגה, כפכפים"
+                    value={newItemText}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    required
+                  />
+                  {duplicateSuggestions.length > 0 && (
+                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', direction: 'rtl' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(180,120,0,0.85)', display: 'block', marginBottom: 4 }}>פריטים דומים ברשימה הקבועה:</span>
+                      {duplicateSuggestions.slice(0, 4).map(s => (
+                        <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13, color: 'var(--text-main)' }}>
+                          <span style={{ flex: 1, textAlign: 'right' }}>{s.text}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 8, flexShrink: 0 }}>{s.category}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={newItemCategory}
+                  onChange={setNewItemCategory}
+                  options={categories}
+                  addable
+                  addLabel="הוסף קטגוריה חדשה"
+                  onCommit={(cat) => saveExtraCategory(cat)}
+                />
+              </div>
+
+              {editingItemId ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
+                  <button type="button" className="btn-secondary" onClick={handleCancelEdit}>ביטול</button>
+                </div>
+              ) : (
+                <button type="submit" className="btn-primary" style={{ width: '100%' }}>
+                  <Plus size={18} />
+                  <span>הוסף פריט לרשימה</span>
+                </button>
+              )}
+            </form>
           )}
-        </form>
+        </div>
 
-        {/* Scrollable checklist items */}
+        {/* Scrollable checklist items — all categories closed by default */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {categories.map((category, catIdx) => {
             const categoryItems = globalChecklist.filter(item => item.category === category);
-            if (categoryItems.length === 0) return null;
+            if (categoryItems.length === 0 && !extraCategories.includes(category)) return null;
+            const isOpen = !!openCategories[category];
 
             return (
               <div key={catIdx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <h3 style={{ fontSize: 13, fontWeight: '800', color: 'var(--primary)', paddingRight: 2, margin: 0 }}>
-                  {category}
-                </h3>
+                {/* Category header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {editingCat === category ? (
+                    <form onSubmit={e => { e.preventDefault(); handleRenameCategory(category, editCatText); }}
+                      style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="text" autoFocus className="form-control"
+                        value={editCatText} onChange={e => setEditCatText(e.target.value)}
+                        style={{ flex: 1, minHeight: 34, fontSize: 13 }}
+                      />
+                      <button type="submit" className="btn-primary" style={{ padding: '5px 10px', flexShrink: 0 }}>
+                        <Check size={13} />
+                      </button>
+                      <button type="button" onClick={() => setEditingCat(null)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
+                        <X size={14} />
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (longPressActive.current) { longPressActive.current = false; return; }
+                          toggleCategory(category);
+                        }}
+                        onMouseDown={() => startLongPress(category)}
+                        onMouseUp={cancelLongPress}
+                        onTouchStart={e => { e.stopPropagation(); startLongPress(category); }}
+                        onTouchEnd={cancelLongPress}
+                        onTouchMove={cancelLongPress}
+                        style={{
+                          flex: 1, background: 'transparent', border: 'none',
+                          padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 8,
+                          cursor: 'pointer', fontFamily: 'var(--font-hebrew)'
+                        }}
+                      >
+                        <ChevronDown
+                          size={16}
+                          style={{
+                            color: 'var(--text-muted)',
+                            transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                            transition: 'transform 0.2s ease', flexShrink: 0
+                          }}
+                        />
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.2px', textAlign: 'right', flex: 1, margin: 0 }}>
+                          {category}
+                        </h3>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
+                          {categoryItems.length}
+                        </span>
+                      </button>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {categoryItems.map((item) => (
-                    <div 
-                      key={item.id} 
-                      className="glass-card" 
-                      style={{ 
-                        padding: '10px 12px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between',
-                        background: 'var(--card-bg)',
-                        border: 'var(--card-border)',
-                      }}
-                    >
-                      <span style={{ fontSize: 14, fontWeight: '600', color: 'var(--text-main)' }}>
-                        {item.text}
-                      </span>
-
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <button 
-                          onClick={() => handleStartEdit(item)}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                        >
-                          <Pencil size={14} />
-                        </button>
-
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          style={{ background: 'transparent', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: 4 }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      {longPressedCat === category && (
+                        <>
+                          <button type="button"
+                            onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteCategory(category)}
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            <Trash2 size={13} />
+                          </button>
+                          <button type="button" onClick={() => setLongPressedCat(null)}
+                            style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                            <X size={14} />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
+
+                {isOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {categoryItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="glass-card checklist-item-row"
+                        style={{ padding: '12px 14px', background: 'var(--card-bg)', border: 'var(--card-border)' }}
+                      >
+                        <div />
+                        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-main)', textAlign: 'right', wordBreak: 'break-word' }}>
+                          {item.text}
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(item)}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(item.id)}
+                            style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Quick-add at bottom of open category */}
+                    {quickAddCat === category ? (
+                      <form onSubmit={e => handleQuickAdd(e, category)}
+                        style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
+                        <input
+                          ref={quickAddInputRef}
+                          type="text"
+                          className="form-control"
+                          autoFocus
+                          placeholder={`פריט ב${category}...`}
+                          value={quickAddText}
+                          onChange={e => setQuickAddText(e.target.value)}
+                          style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                        />
+                        <button type="submit" className="btn-primary"
+                          style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
+                          <Plus size={14} />
+                        </button>
+                        <button type="button"
+                          onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                          <X size={14} />
+                        </button>
+                      </form>
+                    ) : (
+                      <button type="button"
+                        onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                        <Plus size={14} />
+                        הוסף לרשימה
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
 
           {globalChecklist.length === 0 && (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-              <p>הרשימה ריקה. הוסף פריטים או אפס לברירת המחדל.</p>
+              <p>הרשימה ריקה. הוסף פריטים חדשים.</p>
             </div>
           )}
-
-          {/* Reset button */}
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, paddingBottom: 16 }}>
-            <button 
-              onClick={handleReset} 
-              className="btn-secondary" 
-              style={{ fontSize: 12, padding: '8px 12px', gap: 6, color: 'var(--text-muted)', border: '1px dashed rgba(11, 11, 48, 0.15)', minHeight: 32 }}
-            >
-              <RotateCcw size={13} />
-              <span>איפוס רשימה קבועה לברירת מחדל</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
+
 /* ══════════════════════════════════════════════════════════
    MAIN APP
    ══════════════════════════════════════════════════════════ */
 export default function App() {
+  return <ThemeProvider><AppInner /></ThemeProvider>;
+}
+
+/* Accent-palette picker — small round button + swatch popover.
+   Sits next to the dark/light toggle in both headers. */
+function PalettePicker({ size = 34 }) {
+  const { accent, setAccent } = useTheme();
+  const [open, setOpen] = useState(false);
+  const iconSize = size >= 34 ? 16 : 15;
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="icon-btn"
+        style={{ width: size, height: size, minWidth: size }}
+        title="בחר ערכת צבעים"
+        aria-label="בחר ערכת צבעים"
+        aria-expanded={open}
+      >
+        <Palette size={iconSize} />
+      </button>
+
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1999 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 2000,
+            background: 'var(--dropdown-bg)', border: '1px solid var(--ink-8)',
+            borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: 12,
+            direction: 'rtl', minWidth: 168,
+            animation: 'fadeIn 0.15s ease-out',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', marginBottom: 10, paddingRight: 2 }}>
+              ערכת צבעים
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              {PALETTES.map(p => {
+                const active = p.key === accent;
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => { setAccent(p.key); setOpen(false); }}
+                    title={p.label}
+                    style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: p.swatch, cursor: 'pointer', padding: 0,
+                      border: active ? '2.5px solid var(--text)' : '2.5px solid transparent',
+                      boxShadow: active ? `0 0 0 2px var(--surface), 0 2px 8px ${p.swatch}66` : `0 2px 6px ${p.swatch}55`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'transform 0.12s ease',
+                    }}
+                  >
+                    {active && <Check size={15} color="#fff" strokeWidth={3} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* The five tabs, in nav order. Kept in one place so the travelling
+   indicator's index and the buttons can never drift apart. */
+const NAV_TABS = [
+  { key: 'flight',    label: 'טיסה ומלון', Icon: Plane },
+  { key: 'planning',  label: 'תכנון טיול', Icon: Compass },
+  { key: 'checklist', label: "צ'קליסט",    Icon: ClipboardList },
+  { key: 'bookings',  label: 'הזמנות',     Icon: CalendarCheck },
+  { key: 'expenses',  label: 'הוצאות',     Icon: Wallet },
+];
+
+// A short tick on tab change, where the device offers one. Android and
+// desktop Chrome support it; iOS Safari ignores it, which is fine.
+function tick(ms = 8) {
+  try { navigator.vibrate?.(ms); } catch { /* not supported — no feedback */ }
+}
+
+function AppInner() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
+  const confirm = useConfirm();
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [trips, setTrips] = useState([]);
+  const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // ── Share target (Google Maps → share → this app) ──
+  // Read once, on the very first render, before anything can rewrite the URL.
+  const [sharedPlace, setSharedPlace] = useState(() => readSharedPlace());
+  // Trip chosen in the picker while signed out — replayed after sign-in.
+  const [pendingTripPick, setPendingTripPick] = useState(null);
+  // Handed to PlanningTab, which opens the add-place form pre-filled with it.
+  const [pendingSharedPlace, setPendingSharedPlace] = useState(null);
+  // Header elevation + "scroll to top" both need the scrolling element.
+  const contentRef = useRef(null);
+  const [contentScrolled, setContentScrolled] = useState(false);
+  // The trip the app opens into. Kept on the device rather than in
+  // Firestore: it is a "this phone opens here" preference, and reading it
+  // from localStorage means the app can jump straight in on a cold start,
+  // without waiting for the trips query.
+  const [pinnedTripId, setPinnedTripId] = useState(null);
+  // Auto-open happens once per session — otherwise going back to the trip
+  // list would immediately bounce you into the trip again.
+  const autoOpenedRef = useRef(false);
+
+  useEffect(() => {
+    const handleOnline  = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online',  handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online',  handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  const [globalExtraCategories, setGlobalExtraCategories] = useState([]);
   const [showGlobalChecklistModal, setShowGlobalChecklistModal] = useState(false);
+
+  /* The back gesture is the app's own: it unwinds sheets and screens
+     instead of dropping the traveller out mid-trip. */
+  useEffect(() => installBackGuard(), []);
+
+  // Leaving a trip is the step back the trip screen itself owns; any sheet
+  // open on top of it registers later and so closes first.
+  useBackHandler(screen === 'trip', () => {
+    setScreen('home');
+    setSelectedTripId(null);
+  });
 
   // Save user profile to Firestore on first login
   useEffect(() => {
@@ -553,63 +1291,16 @@ export default function App() {
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
-        // User profile doesn't exist, this is a first-time login
-        // Seed the Prague trip
-        const defaultTripId = `trip_prague_${user.uid}`;
-        const tripRef = doc(db, 'trips', defaultTripId);
-
-        // Prepare the Prague trip document data
-        const pragueTripDoc = {
-          name: defaultTrip?.name || 'פראג - סוף שבוע אירופאי קלאסי',
-          destination: defaultTrip?.destination || 'פראג, צ\'כיה',
-          dates: defaultTrip?.dates || '15.06.2026 - 22.06.2026',
-          members: { [user.uid]: 'owner' },
-          createdAt: new Date().toISOString(),
-          outboundFlightDetails: defaultTrip?.outboundFlightDetails || {},
-          returnFlightDetails: defaultTrip?.returnFlightDetails || {},
-          hotelDetails: defaultTrip?.hotelDetails || {}
-        };
-
-        // Create the trip document
-        await setDoc(tripRef, pragueTripDoc);
-
-        // Batch write the planning plans to the subcollection
-        const batch = writeBatch(db);
-        if (Array.isArray(defaultPraguePlans)) {
-          defaultPraguePlans.forEach(plan => {
-            const planRef = doc(db, 'trips', defaultTripId, 'planning', plan.id);
-            batch.set(planRef, {
-              title: plan.title,
-              category: plan.category,
-              description: plan.description || '',
-              address: plan.address || '',
-              rating: plan.rating || 5,
-              price: plan.price || '',
-              visited: plan.visited || false
-            });
-          });
-        }
-
-        // Batch write the checklist items to the subcollection
-        if (Array.isArray(defaultChecklist)) {
-          defaultChecklist.forEach(item => {
-            const itemRef = doc(db, 'trips', defaultTripId, 'checklist', item.id);
-            batch.set(itemRef, {
-              text: item.text,
-              completed: item.completed || false,
-              category: item.category
-            });
-          });
-        }
-
-        await batch.commit();
-
-        // Save user profile with this trip in their tripIds list and the globalChecklist template
+        // First-time login: create ONLY the user profile — no pre-seeded
+        // trip. Every trip must be created explicitly by the user and stay
+        // fully self-contained, so a newly-added member never inherits any
+        // other trip's content. We keep a personal checklist template
+        // (generic packing items) that new trips can start from.
         await setDoc(userRef, {
           email: user.email?.toLowerCase() || '',
           displayName: user.displayName || '',
           photoURL: user.photoURL || '',
-          tripIds: [defaultTripId],
+          tripIds: [],
           globalChecklist: defaultChecklist
         });
       } else {
@@ -629,49 +1320,137 @@ export default function App() {
             photoURL: user.photoURL || ''
           }, { merge: true });
         }
+
+        // One-shot migration: trips listed in user.tripIds need to have
+        // memberIds populated so the new array-contains query finds them.
+        const legacyTripIds = userData?.tripIds || [];
+        for (const tid of legacyTripIds) {
+          try {
+            const tref = doc(db, 'trips', tid);
+            const tsnap = await getDoc(tref);
+            if (!tsnap.exists()) continue;
+            const td = tsnap.data();
+            if (!Array.isArray(td.memberIds)) {
+              const memberIds = td.members ? Object.keys(td.members) : [user.uid];
+              await updateDoc(tref, { memberIds });
+            }
+          } catch (err) {
+            console.warn('memberIds migration failed for', tid, err);
+          }
+        }
       }
     };
 
     checkAndSeed().catch(err => console.error("Error in checkAndSeed:", err));
   }, [user]);
 
-  // Listen to user's trips
+  // Read the pinned trip for whoever is signed in.
   useEffect(() => {
-    if (!user) { setTrips([]); return; }
-
-    // Listen to the user doc to get tripIds
-    const userRef = doc(db, 'users', user.uid);
-    const unsubUser = onSnapshot(userRef, (snap) => {
-      const data = snap.data();
-      const tripIds = data?.tripIds || [];
-      setGlobalChecklist(data?.globalChecklist || []);
-
-      if (tripIds.length === 0) {
-        setTrips([]);
-        return;
-      }
-
-      // Listen to each trip doc
-      const unsubs = tripIds.map(tripId => {
-        const tripRef = doc(db, 'trips', tripId);
-        return onSnapshot(tripRef, (tripSnap) => {
-          if (tripSnap.exists()) {
-            setTrips(prev => {
-              const filtered = prev.filter(t => t.id !== tripId);
-              return [...filtered, { id: tripId, ...tripSnap.data() }];
-            });
-          } else {
-            // Trip deleted — remove from list
-            setTrips(prev => prev.filter(t => t.id !== tripId));
-          }
-        });
-      });
-
-      return () => unsubs.forEach(u => u());
-    });
-
-    return () => unsubUser();
+    if (!user) { setPinnedTripId(null); autoOpenedRef.current = false; return; }
+    try { setPinnedTripId(localStorage.getItem(`currentTrip_${user.uid}`) || null); }
+    catch { setPinnedTripId(null); }
   }, [user]);
+
+  // Open straight into the pinned trip. Guarded so it happens only on the
+  // first load, only from the trip list, and never over a share in progress.
+  useEffect(() => {
+    if (autoOpenedRef.current || !user || !pinnedTripId) return;
+    if (sharedPlace || screen !== 'home' || selectedTripId) return;
+    if (!trips.some(t => t.id === pinnedTripId)) return;   // deleted or not shared any more
+    autoOpenedRef.current = true;
+    setSelectedTripId(pinnedTripId);
+    setActiveTab('flight');
+    setScreen('trip');
+  }, [user, pinnedTripId, trips, sharedPlace, screen, selectedTripId]);
+
+  const handleTogglePinned = (tripId) => {
+    const next = pinnedTripId === tripId ? null : tripId;
+    setPinnedTripId(next);
+    // Pinning from the list is a deliberate act — don't also jump into it.
+    autoOpenedRef.current = true;
+    if (!user) return;
+    try {
+      if (next) localStorage.setItem(`currentTrip_${user.uid}`, next);
+      else localStorage.removeItem(`currentTrip_${user.uid}`);
+    } catch { /* private mode — the pin just won't persist */ }
+  };
+
+  // A share hands us /share?title=…&text=…&url=… — take it out of the address
+  // bar right away so a refresh or the back button can't replay it.
+  useEffect(() => {
+    if (sharedPlace) clearShareUrl();
+    // Intentionally runs once: sharedPlace only ever goes from set to null.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep a light copy of the trip list on the device, so the share picker can
+  // list the trips immediately — before auth resolves and before Firestore
+  // answers on a cold start from the share sheet.
+  useEffect(() => {
+    if (user && trips.length > 0) cacheTripsForShare(trips, user.uid);
+  }, [trips, user]);
+
+  // Listen for the user's globalChecklist
+  useEffect(() => {
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    return onSnapshot(userRef, (snap) => {
+      setGlobalChecklist(snap.data()?.globalChecklist || []);
+      setGlobalExtraCategories(snap.data()?.globalExtraCategories || []);
+    });
+  }, [user]);
+
+  // Listen for trips where this user is a member. We always clear the
+  // trips + cached profiles immediately when the user changes so a brief
+  // stale render of the previous user's trips can't leak across accounts.
+  // We also filter client-side as a defensive check that the current uid
+  // really appears in members/memberIds.
+  useEffect(() => {
+    setTrips([]);
+    setMemberProfiles({});
+    if (!user) return;
+    const uid = user.uid;
+    const q = query(collection(db, 'trips'), where('memberIds', 'array-contains', uid));
+    return onSnapshot(q, (snap) => {
+      const filtered = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(t =>
+          (Array.isArray(t.memberIds) && t.memberIds.includes(uid)) ||
+          (t.members && t.members[uid])
+        );
+      setTrips(filtered);
+    }, (err) => {
+      console.error('Trips listener error:', err);
+    });
+  }, [user]);
+
+  // Pre-load profile docs for every trip owner so the homepage card can
+  // show "טיול של ..." badges without lazy-loading per card.
+  useEffect(() => {
+    if (!user || trips.length === 0) return;
+    const uids = new Set();
+    for (const t of trips) {
+      const members = t.members || {};
+      for (const uid of Object.keys(members)) {
+        if (uid !== user.uid) uids.add(uid);
+      }
+    }
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      await Promise.all([...uids].map(async (uid) => {
+        if (memberProfiles[uid]) return;
+        try {
+          const u = await getDoc(doc(db, 'users', uid));
+          if (u.exists()) updates[uid] = u.data();
+        } catch { /* ignore */ }
+      }));
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setMemberProfiles(prev => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips, user]);
 
   // Create a new trip
   const handleCreateTrip = async (name, destination) => {
@@ -712,6 +1491,7 @@ export default function App() {
       destination,
       dates: '',
       members: { [user.uid]: 'owner' },
+      memberIds: [user.uid],
       createdAt: new Date().toISOString(),
       outboundFlightDetails: emptyFlightDetails,
       returnFlightDetails: emptyFlightDetails,
@@ -737,6 +1517,18 @@ export default function App() {
         });
       });
     }
+    // Seed the default info / emergency contacts subcollection
+    if (Array.isArray(defaultInfoItems)) {
+      defaultInfoItems.forEach(item => {
+        const itemRef = doc(db, 'trips', tripId, 'info', item.id);
+        batch.set(itemRef, {
+          title: item.title,
+          value: item.value || '',
+          type: item.type,
+          category: item.category,
+        });
+      });
+    }
     await batch.commit();
 
     // Add to user's tripIds
@@ -748,33 +1540,185 @@ export default function App() {
     });
   };
 
-  // Delete a trip
-  const handleDeleteTrip = async (tripId) => {
-    if (!user) return;
-    // Remove from user's tripIds
-    const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, {
-      tripIds: arrayRemove(tripId)
-    });
-
-    // Remove user from trip members (don't delete trip entirely — others might still be in it)
+  // Full delete: remove the trip doc *and* all its subcollection docs.
+  // Also removes it from any legacy user.tripIds (best-effort).
+  const deleteTripFully = async (tripId) => {
     const tripRef = doc(db, 'trips', tripId);
-    await updateDoc(tripRef, {
-      [`members.${user.uid}`]: null
-    }).catch(() => {});
 
-    // If we were viewing this trip, go back home
-    if (selectedTripId === tripId) {
-      setScreen('home');
-      setSelectedTripId(null);
+    // Delete all docs in the known subcollections, batched.
+    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'settings'];
+    for (const name of subcollections) {
+      try {
+        const snap = await getDocs(collection(db, 'trips', tripId, name));
+        if (snap.size === 0) continue;
+        const batch = writeBatch(db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      } catch (err) {
+        console.warn(`Failed to clear subcollection "${name}":`, err);
+      }
+    }
+
+    // Delete the trip document itself. Hosts are members → rules allow it.
+    await deleteDoc(tripRef);
+
+    // Best-effort: clean up our own user.tripIds legacy field
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      updateDoc(userRef, { tripIds: arrayRemove(tripId) }).catch(() => {});
     }
   };
+
+  const leaveTrip = async (tripId) => {
+    if (!user) return;
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    const newMembers = { ...(trip.members || {}) };
+    delete newMembers[user.uid];
+    await updateDoc(doc(db, 'trips', tripId), {
+      members: newMembers,
+      memberIds: arrayRemove(user.uid),
+      // See removeMember: leaving takes the person out, never their work.
+      // The snapshot is what keeps their name on it afterwards.
+      [`formerMembers.${user.uid}`]: {
+        displayName: user.displayName || '',
+        email: user.email || '',
+        photoURL: user.photoURL || '',
+        leftAt: new Date().toISOString(),
+      },
+    });
+    // Best-effort legacy cleanup
+    updateDoc(doc(db, 'users', user.uid), { tripIds: arrayRemove(tripId) }).catch(() => {});
+  };
+
+  const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
+
+  // Home-screen layers, each one back press deep.
+  useBackHandler(!!sharingTripId, () => setSharingTripId(null));
+  useBackHandler(showGlobalChecklistModal, () => setShowGlobalChecklistModal(false));
+  useBackHandler(!!confirmDelete, () => setConfirmDelete(null));
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+
+  const [exportBusy, setExportBusy] = useState(null); // tripId | null
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  const importFileRef = useRef(null);
+
+  const requestDeleteTrip = (tripId, isOwner) => {
+    const t = trips.find(x => x.id === tripId);
+    setConfirmDelete({
+      tripId,
+      name: t?.name || 'הטיול הזה',
+      mode: isOwner ? 'delete' : 'leave',
+    });
+    setDeleteError('');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!user || !confirmDelete?.tripId) return;
+    if (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580') return;
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      if (confirmDelete.mode === 'delete') {
+        await deleteTripFully(confirmDelete.tripId);
+      } else {
+        await leaveTrip(confirmDelete.tripId);
+      }
+      if (selectedTripId === confirmDelete.tripId) {
+        setScreen('home');
+        setSelectedTripId(null);
+      }
+      setConfirmDelete(null);
+      setDeletePasswordInput('');
+    } catch (err) {
+      console.error('Trip delete failed:', err);
+      setDeleteError(err?.message || 'מחיקה נכשלה');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleExportTrip = async (tripId) => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    setExportBusy(tripId);
+    try {
+      const backup = await exportTripBackup(tripId, trip);
+      downloadBackupFile(backup, trip.name);
+      localStorage.setItem(`lastExport_${tripId}`, new Date().toISOString());
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('ייצוא נכשל: ' + (err?.message || err));
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportBusy(true);
+    setImportError('');
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      await importTripBackup(backup, user.uid);
+    } catch (err) {
+      console.error('Import failed:', err);
+      setImportError(err?.message || 'ייבוא נכשל — ודא שהקובץ תקין');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  // Trip picked in the share screen: jump straight into that trip's planning
+  // tab and hand the place to PlanningTab, which opens the add form filled in.
+  const openSharedPlaceInTrip = (tripId) => {
+    if (!tripId) return;
+    setSelectedTripId(tripId);
+    setActiveTab('planning');
+    setScreen('trip');
+    setPendingSharedPlace(sharedPlace);
+    setSharedPlace(null);
+    setPendingTripPick(null);
+    clearSharedPlace();
+  };
+
+  // Signing in from the share screen resumes the pick that triggered it.
+  useEffect(() => {
+    if (user && pendingTripPick && sharedPlace) openSharedPlaceInTrip(pendingTripPick);
+  }, [user, pendingTripPick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tapping the tab you are already on scrolls back to the top — the
+  // gesture every mobile app answers this way.
+  const selectTab = (key) => {
+    if (key === activeTab) {
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    tick();
+    setActiveTab(key);
+  };
+
+  // The header gains an edge once the content has scrolled beneath it.
+  const handleContentScroll = (e) => {
+    const scrolled = e.currentTarget.scrollTop > 4;
+    setContentScrolled(prev => (prev === scrolled ? prev : scrolled));
+  };
+
+  useEffect(() => { setContentScrolled(false); }, [activeTab, screen]);
 
   const getHeaderTitle = () => {
     switch (activeTab) {
       case 'flight':   return 'טיסה ומלון';
       case 'planning': return 'תכנון הטיול';
       case 'checklist': return 'רשימת ציוד';
+      case 'bookings':  return 'ההזמנות שלנו';
+      case 'expenses':  return 'מעקב הוצאות';
       default:          return 'עוזר טיסות';
     }
   };
@@ -784,13 +1728,55 @@ export default function App() {
   // ── Loading ──
   if (loading) return <LoadingScreen />;
 
+  // ── Standalone converter — opened from the manifest shortcut on the
+  // installed app icon (long-press → "המרת מטבעות"). No auth required.
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('screen') === 'converter') {
+    return <ConverterScreen />;
+  }
+
+  // ── Opened from the share sheet ── shown before the auth gate: the trips
+  // (from the local cache) are on screen straight away, and signing in only
+  // becomes necessary at the moment we actually need to save.
+  if (sharedPlace) {
+    return (
+      <ShareTargetScreen
+        place={sharedPlace}
+        trips={trips.map(t => ({
+          id: t.id,
+          name: t.name || '',
+          destination: t.destination || '',
+          canEdit: ['owner', 'editor', 'member'].includes(t.members?.[user?.uid]),
+        }))}
+        signedIn={!!user}
+        onPickTrip={(tripId) => {
+          if (user) openSharedPlaceInTrip(tripId);
+          else { setPendingTripPick(tripId); signInWithGoogle(); }
+        }}
+        onCancel={() => { setSharedPlace(null); setPendingTripPick(null); clearSharedPlace(); }}
+        onSignIn={signInWithGoogle}
+      />
+    );
+  }
+
   // ── Not signed in ──
   if (!user) return <LoginScreen onSignIn={signInWithGoogle} />;
 
   // ── Homepage ──
+  // Offline banner — rendered inside each screen container
+  const OfflineBanner = !isOnline ? (
+    <div style={{
+      background: '#dc2626', color: '#fff', textAlign: 'center',
+      fontSize: 12, fontWeight: 700, padding: '6px 16px',
+      letterSpacing: 0.2, flexShrink: 0,
+    }}>
+      ⚠️ אין חיבור לאינטרנט — שינויים נשמרים ויסונכרנו בהתחברות
+    </div>
+  ) : null;
+
   if (screen === 'home') {
     return (
       <div className="app-container">
+        {OfflineBanner}
         <header className="app-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             {user.photoURL ? (
@@ -802,42 +1788,155 @@ export default function App() {
             )}
             <h1 style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>עוזר טיסות</h1>
           </div>
-          <button
-            onClick={signOut}
-            style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: 'rgba(11,11,48,0.05)', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0
-            }}
-            title="התנתק"
-          >
-            <LogOut size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <PalettePicker size={34} />
+            <button
+              onClick={toggleTheme}
+              className="icon-btn"
+              title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+              aria-label={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
+              onClick={async () => {
+                const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
+                if (ok) signOut();
+              }}
+              className="icon-btn"
+              title="התנתק"
+              aria-label="התנתק"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </header>
 
         <main className="app-content">
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".json"
+            style={{ display: 'none' }}
+            onChange={handleImportFile}
+          />
           <Homepage
             trips={trips}
+            currentUid={user.uid}
+            memberProfiles={memberProfiles}
+            currentUserProfile={{ displayName: user.displayName, email: user.email, photoURL: user.photoURL }}
             onOpenTrip={(id) => { setSelectedTripId(id); setActiveTab('flight'); setScreen('trip'); }}
             onCreateTrip={handleCreateTrip}
-            onDeleteTrip={handleDeleteTrip}
+            onDeleteTrip={requestDeleteTrip}
             onShareTrip={(id) => setSharingTripId(id)}
+            onExportTrip={handleExportTrip}
+            onImportTrip={() => importFileRef.current?.click()}
+            exportBusyId={exportBusy}
+            importBusy={importBusy}
+            importError={importError}
             userName={user.displayName}
+            pinnedTripId={pinnedTripId}
+            onTogglePinned={handleTogglePinned}
             onOpenGlobalChecklist={() => setShowGlobalChecklistModal(true)}
           />
         </main>
 
         {sharingTripId && (
-          <ShareModal tripId={sharingTripId} onClose={() => setSharingTripId(null)} />
+          <ShareModal tripId={sharingTripId} currentUid={user.uid} onClose={() => setSharingTripId(null)} />
         )}
 
         <GlobalChecklistModal
           isOpen={showGlobalChecklistModal}
           onClose={() => setShowGlobalChecklistModal(false)}
           globalChecklist={globalChecklist}
+          extraCategories={globalExtraCategories}
           userId={user.uid}
         />
+
+        {confirmDelete && (
+          <div
+            className="modal-overlay"
+            onClick={deleteBusy ? undefined : () => { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); }}
+            style={{ alignItems: 'center' }}
+          >
+            <div
+              className="modal-content"
+              style={{ height: 'auto', maxHeight: '80%', maxWidth: 420, borderRadius: 'var(--radius-xl)', margin: 16, padding: '24px 20px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', color: 'rgb(220,38,38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <AlertTriangle size={22} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
+                    {confirmDelete.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
+                  </h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600, marginBottom: 0 }}>
+                    {confirmDelete.mode === 'leave' ? (
+                      <>האם לצאת מ-<strong>{confirmDelete.name}</strong>?<br />מה שהוספת — הוצאות, מקומות, פריטים ברשימה — נשאר בטיול על שמך. הטיול עצמו לא יימחק, הוא רק יוסר מהרשימה שלך; רק הבעלים יכול למחוק אותו לכולם.</>
+                    ) : (
+                      <>האם למחוק את <strong>{confirmDelete.name}</strong> לצמיתות?<br />כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.</>
+                    )}
+                  </p>
+                  {confirmDelete.mode === 'delete' && (
+                    <div style={{ marginTop: 14 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                        הזן סיסמת אישור למחיקה:
+                      </label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        placeholder="סיסמה"
+                        value={deletePasswordInput}
+                        onChange={e => setDeletePasswordInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && deletePasswordInput === '2580') handleConfirmDelete(); }}
+                        autoFocus
+                        style={{ fontSize: 18, letterSpacing: 6, textAlign: 'center' }}
+                      />
+                    </div>
+                  )}
+                  {deleteError && (
+                    <p style={{ color: '#dc2626', fontSize: 12, marginTop: 8, fontWeight: 700 }}>שגיאה: {deleteError}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  disabled={deleteBusy}
+                  style={{ background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: deleteBusy ? 'default' : 'pointer', color: 'var(--text-muted)', flexShrink: 0, opacity: deleteBusy ? 0.5 : 1 }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+                <button
+                  type="button"
+                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  disabled={deleteBusy}
+                  className="btn-secondary"
+                  style={{ flex: 1, opacity: deleteBusy ? 0.5 : 1 }}
+                >
+                  ביטול
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')}
+                  className="btn-primary"
+                  style={{
+                    flex: 1,
+                    background: 'rgb(220,38,38)',
+                    boxShadow: '0 4px 14px rgba(220,38,38,0.3)',
+                    opacity: (deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')) ? 0.45 : 1
+                  }}
+                >
+                  {deleteBusy ? 'פועל...' : (confirmDelete.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -845,17 +1944,13 @@ export default function App() {
   // ── Trip Detail ──
   return (
     <div className="app-container">
-      <header className="app-header">
+      {OfflineBanner}
+      <header className={`app-header${contentScrolled ? ' scrolled' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
           <button
             onClick={() => { setScreen('home'); setSelectedTripId(null); }}
-            aria-label="חזרה"
-            style={{
-              background: 'rgba(11,11,48,0.05)', border: 'none',
-              width: 34, height: 34, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--primary)', flexShrink: 0
-            }}
+            aria-label="חזרה לרשימת הטיולים"
+            className="icon-btn filled"
           >
             <ChevronLeft size={18} style={{ transform: 'rotate(180deg)' }} />
           </button>
@@ -868,32 +1963,102 @@ export default function App() {
             </p>
           </div>
         </div>
-        <div style={{
-          width: 34, height: 34, borderRadius: '50%',
-          background: 'rgba(11,11,48,0.05)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--primary)', flexShrink: 0
-        }}>
-          <Plane size={14} style={{ transform: 'rotate(-45deg)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {selectedTripId && selectedTrip && (
+            <ExportMenu tripId={selectedTripId} trip={selectedTrip} activeTab={activeTab} />
+          )}
+          {activeTab === 'flight' && ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]) && (
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
+              title="ערוך פרטי טיסה ומלון"
+              aria-label="ערוך פרטי טיסה ומלון"
+              className="icon-btn accent"
+            >
+              <Pencil size={16} />
+            </button>
+          )}
+          <PalettePicker size={34} />
+          <button
+            onClick={toggleTheme}
+            className="icon-btn"
+            title={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+            aria-label={isDark ? 'עבור למצב בהיר' : 'עבור למצב כהה'}
+          >
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         </div>
       </header>
 
-      <main className="app-content" key={activeTab}>
-        {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
-        {activeTab === 'planning'  && <PlanningTab tripId={selectedTripId} />}
-        {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
+      <main
+        className="app-content"
+        key={activeTab}
+        ref={contentRef}
+        onScroll={handleContentScroll}
+      >
+        <TripProvider value={{
+          tripId: selectedTripId,
+          role: selectedTrip?.members?.[user.uid] || null,
+          canEdit: ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]),
+          isOwner: selectedTrip?.members?.[user.uid] === 'owner',
+          ownerProfile: (() => {
+            const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
+            return ownerUid && ownerUid !== user.uid ? memberProfiles[ownerUid] : null;
+          })(),
+          currentUid: user.uid,
+          currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
+          memberProfiles: memberProfiles,
+          tripMembers: selectedTrip?.members || {},
+          // People who were on the trip and are not any more. Their work
+          // stays; the tabs render them greyed so it is clear why they
+          // can no longer be picked.
+          formerMembers: selectedTrip?.formerMembers || {},
+        }}>
+          {/* One boundary per tab: a failure stays inside the tab it came
+              from, leaving the nav and every other tab usable. */}
+          <ErrorBoundary label={getHeaderTitle()} resetKey={activeTab}>
+            {/* The skeleton stands in while the tab's chunk arrives. After
+                the first install that is a read from the service worker's
+                cache, so it is usually a single frame. */}
+            <Suspense fallback={<Skeleton rows={4} label="טוען" />}>
+            {activeTab === 'flight'    && <FlightTab tripId={selectedTripId} />}
+            {activeTab === 'planning'  && (
+              <PlanningTab
+                tripId={selectedTripId}
+                sharedPlace={pendingSharedPlace}
+                onSharedPlaceHandled={() => setPendingSharedPlace(null)}
+              />
+            )}
+            {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
+            {activeTab === 'bookings'  && <BookingsTab tripId={selectedTripId} />}
+            {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
+            </Suspense>
+          </ErrorBoundary>
+        </TripProvider>
       </main>
 
+      {/* Bottom nav — a floating pill. The active tab is marked by one
+          indicator that travels between the icons, so the eye follows the
+          move instead of noticing a colour change. */}
       <nav className="bottom-nav">
-        <button onClick={() => setActiveTab('flight')}   className={`nav-item ${activeTab === 'flight' ? 'active' : ''}`}>
-          <Plane /><span className="nav-label">טיסה ומלון</span>
-        </button>
-        <button onClick={() => setActiveTab('planning')}  className={`nav-item ${activeTab === 'planning' ? 'active' : ''}`}>
-          <Compass /><span className="nav-label">תכנון טיול</span>
-        </button>
-        <button onClick={() => setActiveTab('checklist')} className={`nav-item ${activeTab === 'checklist' ? 'active' : ''}`}>
-          <ClipboardList /><span className="nav-label">צ'קליסט</span>
-        </button>
+        <span
+          className="nav-indicator"
+          style={{ '--nav-i': Math.max(0, NAV_TABS.findIndex(t => t.key === activeTab)) }}
+          aria-hidden="true"
+        >
+          <i />
+        </span>
+        {NAV_TABS.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => selectTab(key)}
+            className={`nav-item ${activeTab === key ? 'active' : ''}`}
+            aria-label={label}
+            aria-current={activeTab === key ? 'page' : undefined}
+          >
+            <Icon />
+            <span className="nav-label">{label}</span>
+          </button>
+        ))}
       </nav>
     </div>
   );

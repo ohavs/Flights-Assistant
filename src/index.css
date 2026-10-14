@@ -3,18 +3,23 @@
    ═══════════════════════════════════════════════════════════ */
 
 :root {
+  /* ── Core palette ── */
   --primary: #0b0b30;
   --primary-hover: #171754;
   --accent: #4f46e5;
-  --accent-light: rgba(79, 70, 229, 0.08);
+  --accent-rgb: 79, 70, 229;          /* drives every --p-* tint below */
+  --accent-light: rgba(var(--accent-rgb), 0.08);
+  --accent-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
   --bg-gradient: linear-gradient(135deg, #e0e7ff 0%, #f5f3ff 50%, #fae8ff 100%);
-  --card-bg: rgba(255, 255, 255, 0.78);
+  --card-bg: rgba(255, 255, 255, 0.86);   /* see .glass-card — no blur behind it */
   --card-bg-solid: #ffffff;
   --card-border: 1px solid rgba(255, 255, 255, 0.7);
   --text: #0b0b26;
   --text-muted: #475569;
   --text-success: #059669;
   --success-bg: rgba(5, 150, 105, 0.1);
+
+  /* ── Layout ── */
   --radius-xl: 24px;
   --radius-lg: 18px;
   --radius-md: 12px;
@@ -24,9 +29,123 @@
   --shadow-lg: 0 16px 40px rgba(11, 11, 48, 0.09);
   --font-hebrew: 'Assistant', 'Inter', sans-serif;
   --font-en: 'Inter', sans-serif;
-  --nav-height: 72px;
   --header-height: 60px;
-  /* keep old names working */
+
+  /* ── Type ladder ──
+     Eleven steps, and every size in the app is one of them. Sizes are
+     written literally at the call site (there are ~475 of them, almost
+     all inline), so this is the reference rather than a set of tokens
+     — a new value that isn't on the list is a mistake, not a nuance.
+     Half-steps (9.5, 12.5, 14.5 …) are what an un-owned scale drifts
+     into; they were nudges, never decisions.
+
+       10  micro — avatar initials, counters inside a chip
+       11  labels, badges, timestamps
+       12  captions and secondary meta
+       13  secondary body — the app's most common size
+       14  body
+       15  emphasised body, row titles, section headers
+       16  sheet and dialog titles
+       18  screen title (mobile)
+       20  screen title (desktop), big numbers in a card
+       22  desktop header
+       26  display — a temperature, a converted amount, the sign-in title */
+
+  /* ── Bottom nav geometry ──
+     The bar floats over the content, so every docked control and the
+     scroll padding derive their offset from --nav-total instead of
+     hard-coding the bar's height. */
+  --nav-height: 62px;
+  --nav-gap: 10px;                       /* breathing room under the bar */
+  --nav-side: 12px;                      /* inset from the screen edges */
+  --nav-count: 5;                        /* tabs — drives the indicator */
+  --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
+
+  /* ── Motion ──
+     One small set of durations and curves so every transition in the app
+     belongs to the same family. --ease-spring overshoots slightly: it is
+     for things that travel (the nav indicator, sheets), never for colour. */
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.5, 1);
+
+  /* ── UI surfaces ── */
+  --body-bg: #f1f5f9;
+  --surface: #ffffff;
+  --header-bg: rgba(255, 255, 255, 0.5);
+  --nav-bg: rgba(255, 255, 255, 0.92);
+  --modal-bg: #ffffff;
+  --modal-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --dropdown-bg: #ffffff;
+  --scrollbar: rgba(11, 11, 48, 0.10);
+
+  /* ── Ink (dark-on-light borders & tints) ── */
+  --ink-2:  rgba(11,11,48,0.02);
+  --ink-3:  rgba(11,11,48,0.03);
+  --ink-4:  rgba(11,11,48,0.04);
+  --ink-5:  rgba(11,11,48,0.05);
+  --ink-6:  rgba(11,11,48,0.06);
+  --ink-7:  rgba(11,11,48,0.07);
+  --ink-8:  rgba(11,11,48,0.08);
+  --ink-10: rgba(11,11,48,0.10);
+  --ink-12: rgba(11,11,48,0.12);
+  --ink-15: rgba(11,11,48,0.15);
+  --ink-18: rgba(11,11,48,0.18);
+  --ink-20: rgba(11,11,48,0.20);
+  --ink-22: rgba(11,11,48,0.22);
+  --ink-35: rgba(11,11,48,0.35);
+  --ink-40: rgba(11,11,48,0.40);
+  --ink-50: rgba(11,11,48,0.50);
+
+  /* ── Accent tints (all derived from --accent-rgb so palettes recolour them) ── */
+  --p-3:  rgba(var(--accent-rgb),0.03);
+  --p-4:  rgba(var(--accent-rgb),0.04);
+  --p-6:  rgba(var(--accent-rgb),0.06);
+  --p-8:  rgba(var(--accent-rgb),0.08);
+  --p-10: rgba(var(--accent-rgb),0.10);
+  --p-12: rgba(var(--accent-rgb),0.12);
+  --p-15: rgba(var(--accent-rgb),0.15);
+  --p-18: rgba(var(--accent-rgb),0.18);
+  --p-20: rgba(var(--accent-rgb),0.20);
+  --p-22: rgba(var(--accent-rgb),0.22);
+  --p-30: rgba(var(--accent-rgb),0.30);
+
+  /* ── White tints ── */
+  --w-5:  rgba(255,255,255,0.05);
+  --w-6:  rgba(255,255,255,0.06);
+  --w-60: rgba(255,255,255,0.60);
+  --w-7:  rgba(255,255,255,0.70);
+  --w-78: rgba(255,255,255,0.78);
+  --w-85: rgba(255,255,255,0.85);
+  --w-92: rgba(255,255,255,0.92);
+  --w-95: rgba(255,255,255,0.95);
+
+  /* ── Status ── */
+  --success:    #16a34a;
+  --error:      #dc2626;
+  --error-bg:   rgba(220,38,38,0.08);
+  --c-red:      rgb(220,38,38);
+  --c-red-6:    rgba(220,38,38,0.06);
+  --c-red-8:    rgba(220,38,38,0.08);
+  --c-red-10:   rgba(220,38,38,0.10);
+  --c-red-12:   rgba(220,38,38,0.12);
+  --c-red2:     rgb(239,68,68);
+  --c-red2-6:   rgba(239,68,68,0.06);
+  --c-red2-10:  rgba(239,68,68,0.10);
+  --c-orange:   rgb(245,158,11);
+  --c-orange-12: rgba(245,158,11,0.12);
+  --c-green:    rgb(22,163,74);
+  --c-green-7:  rgba(22,163,74,0.07);
+  --c-green-10: rgba(22,163,74,0.10);
+  --c-teal:     rgb(5,150,105);
+  --c-teal-10:  rgba(5,150,105,0.10);
+  --c-teal-12:  rgba(5,150,105,0.12);
+  --c-slate:    #334155;
+
+  /* ── Aliases (keep old names working) ── */
   --primary-color: var(--primary);
   --secondary-color: var(--accent);
   --text-main: var(--text);
@@ -34,6 +153,197 @@
   --border-radius-lg: var(--radius-lg);
   --border-radius-md: var(--radius-md);
   --border-radius-sm: var(--radius-sm);
+}
+
+/* ══════════════════════════════════════════════════════════
+   DARK MODE
+   ══════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --primary: #c7d2fe;
+  --primary-hover: #e0e7ff;
+  --accent: #818cf8;
+  --accent-rgb: 129, 140, 248;
+  --accent-light: rgba(var(--accent-rgb),0.10);
+  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --bg-gradient: linear-gradient(135deg, #0d0d2b 0%, #160d2e 50%, #0e1825 100%);
+  --card-bg: rgba(255,255,255,0.07);
+  --card-bg-solid: #1c1a38;
+  --card-border: 1px solid rgba(255,255,255,0.07);
+  --text: #e2e8f0;
+  --text-muted: #8b98b8;
+  --text-success: #34d399;
+  --success-bg: rgba(52,211,153,0.08);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.30);
+  --shadow-md: 0 8px 30px rgba(0,0,0,0.40);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,0.55);
+
+  --body-bg: #0a0a20;
+  --surface: #1c1a38;
+  --header-bg: rgba(13,12,38,0.88);
+  --nav-bg: rgba(13,12,38,0.96);
+  --modal-bg: #1c1a38;
+  --modal-header-bg: #1c1a38;
+  --input-bg: rgba(255,255,255,0.06);
+  --dropdown-bg: #252448;
+  --scrollbar: rgba(255,255,255,0.08);
+
+  /* Ink → white tints in dark mode */
+  --ink-2:  rgba(255,255,255,0.02);
+  --ink-3:  rgba(255,255,255,0.03);
+  --ink-4:  rgba(255,255,255,0.05);
+  --ink-5:  rgba(255,255,255,0.06);
+  --ink-6:  rgba(255,255,255,0.06);
+  --ink-7:  rgba(255,255,255,0.07);
+  --ink-8:  rgba(255,255,255,0.08);
+  --ink-10: rgba(255,255,255,0.10);
+  --ink-12: rgba(255,255,255,0.12);
+  --ink-15: rgba(255,255,255,0.13);
+  --ink-18: rgba(255,255,255,0.15);
+  --ink-20: rgba(255,255,255,0.17);
+  --ink-22: rgba(255,255,255,0.18);
+  --ink-35: rgba(255,255,255,0.22);
+  --ink-40: rgba(0,0,20,0.72);   /* overlays stay dark */
+  --ink-50: rgba(0,0,20,0.78);
+
+  /* Accent tints → brighter alphas for dark surfaces, derived from --accent-rgb */
+  --p-3:  rgba(var(--accent-rgb),0.04);
+  --p-4:  rgba(var(--accent-rgb),0.05);
+  --p-6:  rgba(var(--accent-rgb),0.08);
+  --p-8:  rgba(var(--accent-rgb),0.10);
+  --p-10: rgba(var(--accent-rgb),0.12);
+  --p-12: rgba(var(--accent-rgb),0.14);
+  --p-15: rgba(var(--accent-rgb),0.18);
+  --p-18: rgba(var(--accent-rgb),0.20);
+  --p-20: rgba(var(--accent-rgb),0.22);
+  --p-22: rgba(var(--accent-rgb),0.25);
+  --p-30: rgba(var(--accent-rgb),0.35);
+
+  /* White tints → dark surfaces */
+  --w-5:  rgba(255,255,255,0.04);
+  --w-6:  rgba(255,255,255,0.05);
+  --w-60: rgba(255,255,255,0.05);
+  --w-7:  rgba(255,255,255,0.06);
+  --w-78: rgba(255,255,255,0.05);
+  --w-85: rgba(255,255,255,0.07);
+  --w-92: rgba(13,12,38,0.96);
+  --w-95: rgba(255,255,255,0.07);
+
+  /* Status in dark mode */
+  --success:    #34d399;
+  --error:      #f87171;
+  --error-bg:   rgba(248,113,113,0.10);
+  --c-red:      rgb(248,113,113);
+  --c-red-6:    rgba(248,113,113,0.08);
+  --c-red-8:    rgba(248,113,113,0.10);
+  --c-red-10:   rgba(248,113,113,0.12);
+  --c-red-12:   rgba(248,113,113,0.14);
+  --c-red2:     rgb(252,129,129);
+  --c-red2-6:   rgba(252,129,129,0.08);
+  --c-red2-10:  rgba(252,129,129,0.12);
+  --c-orange:   rgb(251,191,36);
+  --c-orange-12: rgba(251,191,36,0.15);
+  --c-green:    rgb(52,211,153);
+  --c-green-7:  rgba(52,211,153,0.08);
+  --c-green-10: rgba(52,211,153,0.10);
+  --c-teal:     rgb(52,211,153);
+  --c-teal-10:  rgba(52,211,153,0.10);
+  --c-teal-12:  rgba(52,211,153,0.12);
+  --c-slate:    #94a3b8;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ACCENT PALETTES
+   Each palette only re-defines the few "source" colours; every
+   --p-* tint, accent-light, chip, badge, etc. derives from
+   --accent-rgb automatically, so a swap recolours the whole app
+   identically in light AND dark mode.
+   Default (indigo) lives in :root / [data-theme="dark"] above.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Violet ── */
+[data-accent="violet"] {
+  --accent: #7c3aed; --accent-rgb: 124, 58, 237;
+  --primary: #2c0e57; --primary-hover: #42168a;
+  --accent-gradient: linear-gradient(135deg, #8b5cf6, #a855f7);
+  --bg-gradient: linear-gradient(135deg, #ede4ff 0%, #f3ecff 50%, #f7e8ff 100%);
+}
+[data-theme="dark"][data-accent="violet"] {
+  --accent: #a78bfa; --accent-rgb: 167, 139, 250;
+  --primary: #ddd6fe; --primary-hover: #ede9fe;
+  --accent-gradient: linear-gradient(135deg, #7c3aed, #9333ea);
+  --bg-gradient: linear-gradient(135deg, #190b2e 0%, #1f0d33 50%, #1a0b2b 100%);
+}
+
+/* ── Sky ── */
+[data-accent="sky"] {
+  --accent: #2563eb; --accent-rgb: 37, 99, 235;
+  --primary: #0c1f4d; --primary-hover: #163172;
+  --accent-gradient: linear-gradient(135deg, #3b82f6, #06b6d4);
+  --bg-gradient: linear-gradient(135deg, #dbe8ff 0%, #e8f1ff 50%, #def4ff 100%);
+}
+[data-theme="dark"][data-accent="sky"] {
+  --accent: #60a5fa; --accent-rgb: 96, 165, 250;
+  --primary: #bfdbfe; --primary-hover: #dbeafe;
+  --accent-gradient: linear-gradient(135deg, #2563eb, #0891b2);
+  --bg-gradient: linear-gradient(135deg, #0a142e 0%, #0c1a33 50%, #08182b 100%);
+}
+
+/* ── Teal ── */
+[data-accent="teal"] {
+  --accent: #0d9488; --accent-rgb: 13, 148, 136;
+  --primary: #0f3d38; --primary-hover: #155e56;
+  --accent-gradient: linear-gradient(135deg, #14b8a6, #0891b2);
+  --bg-gradient: linear-gradient(135deg, #d3f6f0 0%, #e0f7fa 50%, #dbf4ff 100%);
+}
+[data-theme="dark"][data-accent="teal"] {
+  --accent: #2dd4bf; --accent-rgb: 45, 212, 191;
+  --primary: #99f6e4; --primary-hover: #ccfbf1;
+  --accent-gradient: linear-gradient(135deg, #0d9488, #0891b2);
+  --bg-gradient: linear-gradient(135deg, #06201f 0%, #082a2e 50%, #07212b 100%);
+}
+
+/* ── Emerald ── */
+[data-accent="emerald"] {
+  --accent: #059669; --accent-rgb: 5, 150, 105;
+  --primary: #0a2e22; --primary-hover: #0f4733;
+  --accent-gradient: linear-gradient(135deg, #10b981, #059669);
+  --bg-gradient: linear-gradient(135deg, #d6f5e3 0%, #e7f9ef 50%, #def7ea 100%);
+}
+[data-theme="dark"][data-accent="emerald"] {
+  --accent: #34d399; --accent-rgb: 52, 211, 153;
+  --primary: #a7f3d0; --primary-hover: #d1fae5;
+  --accent-gradient: linear-gradient(135deg, #059669, #0d9488);
+  --bg-gradient: linear-gradient(135deg, #06231a 0%, #082a20 50%, #072420 100%);
+}
+
+/* ── Amber / Sunset ── */
+[data-accent="amber"] {
+  --accent: #ea580c; --accent-rgb: 234, 88, 12;
+  --primary: #451a06; --primary-hover: #6b2810;
+  --accent-gradient: linear-gradient(135deg, #f97316, #f59e0b);
+  --bg-gradient: linear-gradient(135deg, #ffe9d6 0%, #fff3e0 50%, #fff0d9 100%);
+}
+[data-theme="dark"][data-accent="amber"] {
+  --accent: #fb923c; --accent-rgb: 251, 146, 60;
+  --primary: #fed7aa; --primary-hover: #ffedd5;
+  --accent-gradient: linear-gradient(135deg, #ea580c, #d97706);
+  --bg-gradient: linear-gradient(135deg, #2b1408 0%, #2e1a08 50%, #281206 100%);
+}
+
+/* ── Rose ── */
+[data-accent="rose"] {
+  --accent: #e11d48; --accent-rgb: 225, 29, 72;
+  --primary: #4c0f21; --primary-hover: #6d1530;
+  --accent-gradient: linear-gradient(135deg, #f43f5e, #ec4899);
+  --bg-gradient: linear-gradient(135deg, #ffe4e9 0%, #fff0f3 50%, #ffe9f3 100%);
+}
+[data-theme="dark"][data-accent="rose"] {
+  --accent: #fb7185; --accent-rgb: 251, 113, 133;
+  --primary: #fecdd3; --primary-hover: #ffe4e9;
+  --accent-gradient: linear-gradient(135deg, #e11d48, #db2777);
+  --bg-gradient: linear-gradient(135deg, #2b0a13 0%, #2e0d1a 50%, #250a17 100%);
 }
 
 /* ── Reset ── */
@@ -54,7 +364,7 @@ body {
   height: 100%;
   overflow: hidden;
   font-family: var(--font-hebrew);
-  background: #f1f5f9;
+  background: var(--body-bg);
   color: var(--text);
   direction: rtl;
   -webkit-text-size-adjust: 100%;
@@ -67,10 +377,87 @@ body {
   justify-content: center;
 }
 
+/* ══════════════════════════════════════════════════════════
+   INPUT LAYER — how the app answers a finger
+   The app runs on phones and on desktop. Everything here keeps
+   both honest: pointer feedback for touch, hover only where a
+   real pointer exists, and a visible focus ring for keyboards.
+   ══════════════════════════════════════════════════════════ */
+
+/* No grey flash on tap — we draw our own press state instead. */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Chrome (buttons, tabs, chips) is for pressing, not for selecting.
+   Content text keeps normal selection. */
+button,
+[role="button"],
+.nav-item,
+.filter-chip,
+.trip-card {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Press feedback. Every button and card answers the finger; the
+   release is eased so it never looks like a flicker. Cards that the
+   planner animates with FLIP (inline transforms) get a tint instead of
+   a scale, so the two never fight over `transform`. */
+button,
+[role="button"],
+.trip-card {
+  transition: transform var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              opacity var(--dur-fast) var(--ease-out);
+}
+
+button:not(:disabled):active,
+[role="button"]:not(.plan-card):active,
+.trip-card:active {
+  transform: scale(0.97);
+}
+
+.plan-card:active,
+.checklist-item-row:active {
+  background: var(--ink-4);
+}
+
+/* Hover belongs to devices that actually have a pointer. On touch it
+   sticks to whatever you tapped last. */
+@media (hover: none) {
+  .category-select:hover,
+  .custom-dropdown-trigger:hover,
+  .custom-dropdown-option:hover,
+  .filter-chip:hover,
+  .plan-visit-toggle:hover {
+    background: inherit;
+    border-color: inherit;
+  }
+}
+
+/* Keyboard users (desktop) get a ring; mouse and touch don't. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* Someone who asked their OS for less motion gets none of ours. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(11,11,48,0.10); border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 10px; }
 
 /* ══════════════════════════════════════════════════════════
    LAYOUT SHELL — This is the core structure that NEVER changes
@@ -81,21 +468,27 @@ body {
   width: 100%;
   max-width: 520px;
   height: 100%;
+  height: 100dvh;          /* bind directly to the dynamic viewport */
+  max-height: 100dvh;
   background: var(--bg-gradient);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  isolation: isolate;      /* clean stacking/compositing root for children */
 }
 
-@media (min-width: 521px) {
-  .app-container {
-    box-shadow: 0 0 60px rgba(11,11,48,0.12);
-  }
+/* Homepage trip cards stack on mobile, grid on desktop. */
+.trip-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ── Header ── */
 .app-header {
+  transition: box-shadow var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out);
   height: var(--header-height);
   min-height: var(--header-height);
   max-height: var(--header-height);
@@ -103,12 +496,19 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255,255,255,0.5);
+  background: var(--header-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255,255,255,0.35);
+  border-bottom: 1px solid var(--ink-8);
   z-index: 100;
   flex-shrink: 0;
+}
+
+/* Set once the content below has scrolled — gives the bar an edge so it
+   reads as a layer above the page instead of part of it. */
+.app-header.scrolled {
+  box-shadow: 0 4px 16px var(--ink-8);
+  border-bottom-color: var(--ink-12);
 }
 
 .app-header h1 {
@@ -119,14 +519,62 @@ body {
   line-height: 1.2;
 }
 
+/* ── Header icon buttons ──
+   The bar carries the trip's name; its controls should not compete with
+   it. A filled circle behind every one of them turns a title bar into a
+   row of buttons with a caption beside them. These are plain glyphs on
+   the header's own surface — the tap target stays a full 34px, and
+   weight appears only under a finger or a focus ring. */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.icon-btn:active { background: var(--ink-8); }
+@media (hover: hover) {
+  .icon-btn:hover { background: var(--ink-6); color: var(--text); }
+}
+
+/* Navigation keeps its surface: going back is the one thing in the bar
+   you aim at rather than notice. */
+.icon-btn.filled {
+  background: var(--ink-5);
+  color: var(--primary);
+}
+
+/* Controls that carry the accent's meaning (the palette, a tab's own
+   edit action) keep the colour but not the disc. */
+.icon-btn.accent { color: var(--accent); }
+
+/* An open menu is a state worth showing. */
+.icon-btn[aria-expanded="true"] {
+  background: var(--p-10);
+  color: var(--accent);
+}
+
 /* ── Content — the ONLY scrollable area ── */
 .app-content {
   flex: 1 1 0%;       /* take all remaining space */
   min-height: 0;      /* allow flex child to shrink below content size */
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior-y: contain;   /* no scroll chaining / browser pull-to-refresh */
   padding: 16px;
-  padding-bottom: calc(var(--nav-height) + 24px);
+  /* The nav bar floats above this area, so the last item needs room to
+     clear it — derived from --nav-total, never a magic number. */
+  padding-bottom: calc(var(--nav-total) + 16px);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -135,65 +583,113 @@ body {
   margin-top: 16px;
 }
 
-/* ── Bottom Navigation ── */
+/* ── Bottom Navigation ──
+   A floating pill rather than a docked bar: it sits above the content
+   with air around it, and the active tab is marked by a single pill
+   that travels between the icons instead of a colour swap. It never
+   covers anything — .app-content reserves --nav-total at its bottom. */
 .bottom-nav {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
+  left: var(--nav-side);
+  right: var(--nav-side);
+  bottom: calc(var(--nav-gap) + env(safe-area-inset-bottom, 0px));
   height: var(--nav-height);
-  background: rgba(255,255,255,0.92);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-top: 1px solid rgba(11,11,48,0.06);
+  background: var(--nav-bg);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--w-60);
+  border-radius: 22px;
+  box-shadow: 0 6px 24px var(--ink-12), 0 1px 2px var(--ink-8);
   display: flex;
-  justify-content: space-around;
-  align-items: center;
-  padding: 0 8px;
-  padding-bottom: env(safe-area-inset-bottom);
+  align-items: stretch;
+  padding: 0;
   z-index: 1000;
+  /* Own compositing layer: without it some mobile browsers drop the
+     backdrop-filter after a tab's enter animation and the bar goes blank. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+[data-theme="dark"] .bottom-nav {
+  border-color: var(--w-6);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+}
+
+/* The travelling pill. Items are equal width, so the active one sits at
+   index × (100% / count) from the right edge (RTL). Transforms are
+   physical, so moving right-to-left is a negative translate. */
+.nav-indicator {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: 0;
+  width: calc(100% / var(--nav-count));
+  transform: translateX(calc(var(--nav-i, 0) * -100%));
+  transition: transform var(--dur-slow) var(--ease-spring);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.nav-indicator i {
+  display: block;
+  width: calc(100% - 12px);
+  border-radius: 16px;
+  background: var(--p-12);
 }
 
 .nav-item {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-width: 64px;
-  height: 52px;
-  border-radius: var(--radius-md);
+  gap: 3px;
+  border-radius: 16px;
   color: var(--text-muted);
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color var(--dur-base) var(--ease-out);
   position: relative;
+  z-index: 1;
   font-family: var(--font-hebrew);
+  padding: 0 2px;
 }
+
+/* The pill already marks the active tab, so pressing a nav item must not
+   also scale it — that would fight the indicator's travel. */
+.nav-item:active { transform: none; }
 
 .nav-item.active {
   color: var(--accent);
 }
 
 .nav-item svg {
-  width: 22px; height: 22px;
-  transition: transform 0.2s ease;
+  width: 21px; height: 21px;
+  transition: transform var(--dur-slow) var(--ease-spring);
 }
 
 .nav-item.active svg {
-  transform: translateY(-2px) scale(1.08);
+  transform: translateY(-1px) scale(1.06);
 }
 
 .nav-label {
   font-size: 10px;
   font-weight: 800;
-  opacity: 0.6;
-  transition: all 0.15s ease;
+  opacity: 0.65;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 
 .nav-item.active .nav-label {
   opacity: 1;
 }
-
 
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE
@@ -237,7 +733,7 @@ body {
   border-radius: var(--radius-lg);
   padding: 20px;
   box-shadow: var(--shadow-md);
-  border: 1px solid rgba(79,70,229,0.08);
+  border: 1px solid var(--p-8);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   display: flex;
@@ -258,7 +754,7 @@ body {
 .trip-card-icon {
   width: 52px; height: 52px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: var(--accent-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -267,7 +763,7 @@ body {
 }
 
 .trip-card-info h3 {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--primary);
   line-height: 1.3;
@@ -294,7 +790,7 @@ body {
   border-radius: 50px;
   font-size: 12px;
   font-weight: 700;
-  background: rgba(11,11,48,0.04);
+  background: var(--ink-4);
   color: var(--text-muted);
 }
 
@@ -324,10 +820,19 @@ body {
    ══════════════════════════════════════════════════════════ */
 
 /* Glass Card */
+/* No backdrop-filter here on purpose.
+   These are list cards on a static gradient — there is nothing moving
+   behind them for a blur to reveal, so it was invisible work. And it was
+   not cheap: a day list puts a dozen blurred surfaces on screen at once,
+   and expanding one day repositions all the ones below it, forcing the
+   compositor to re-sample and re-blur every one. That cost shows up as
+   dropped frames rather than as a long task, which is why the list felt
+   slow while the profiler stayed quiet. The blur is kept where it earns
+   its keep: the header, the nav and sheets, which really do float over
+   content that scrolls underneath them. The fill is a little more opaque
+   to compensate. */
 .glass-card {
   background: var(--card-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: var(--card-border);
   box-shadow: var(--shadow-sm);
   border-radius: var(--radius-lg);
@@ -348,44 +853,99 @@ body {
 
 .form-group label {
   font-size: 13px;
-  font-weight: 800;
-  color: var(--primary);
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
 }
 
+/* ── Fields ──
+   Recessed slots rather than white boxes with a grey outline: a filled
+   ground, a hairline that only carries weight on focus, and no drop
+   shadow — a field is a place to type into, not a card sitting on the
+   page. On focus the field lifts to the surface colour and the accent
+   ring does the talking. */
 .form-control {
   width: 100%;
-  min-height: 48px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  border: 1.5px solid rgba(11,11,48,0.12);
-  background: #fff;
+  min-height: 50px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: var(--ink-4);
   font-family: var(--font-hebrew);
   font-size: 16px; /* >= 16px prevents iOS auto-zoom */
   color: var(--text);
   font-weight: 600;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
   outline: none;
-  box-shadow: var(--shadow-sm);
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.form-control:focus {
+.form-control::placeholder {
+  color: var(--text-muted);
+  opacity: 0.62;
+  font-weight: 500;
+}
+
+.form-control:focus,
+.form-control:focus-visible {
+  background: var(--input-bg);
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+  box-shadow: 0 0 0 4px var(--p-12);
+  outline: none;
+}
+
+.form-control:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* A field that reads as filled-in gets a touch more presence than an
+   empty one, so a long form shows at a glance what is already answered. */
+.form-control:not(:placeholder-shown):not(:focus) {
+  background: var(--ink-3);
+  border-color: var(--ink-8);
+}
+
+[data-theme="dark"] .form-control {
+  background: var(--ink-8);
+}
+[data-theme="dark"] .form-control:not(:placeholder-shown):not(:focus) {
+  background: var(--ink-6);
+  border-color: var(--ink-12);
+}
+
+/* Number fields: the spinners are desktop furniture and break the
+   field's height on mobile. */
+input[type="number"].form-control {
+  -moz-appearance: textfield;
+}
+input[type="number"].form-control::-webkit-outer-spin-button,
+input[type="number"].form-control::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 textarea.form-control {
-  min-height: 90px;
+  min-height: 96px;
+  line-height: 1.55;
   resize: vertical;
 }
 
 select.form-control {
   appearance: none;
+  background-color: var(--ink-4);
   background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230b0b30' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: left 12px center;
   background-size: 14px;
   padding-left: 36px;
   cursor: pointer;
+}
+[data-theme="dark"] select.form-control {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23c7d2fe' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
 input[type="date"].form-control,
@@ -410,7 +970,7 @@ input[type="datetime-local"].form-control {
 .custom-checkbox {
   width: 24px; height: 24px;
   border-radius: 8px;
-  border: 2px solid rgba(11,11,48,0.18);
+  border: 2px solid var(--ink-18);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -425,11 +985,11 @@ input[type="datetime-local"].form-control {
 
 /* ── Buttons ── */
 .btn-primary {
-  min-height: 48px;
+  min-height: 50px;
   background: var(--primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   padding: 12px 24px;
   font-family: var(--font-hebrew);
   font-size: 16px;
@@ -448,11 +1008,11 @@ input[type="datetime-local"].form-control {
 }
 
 .btn-secondary {
-  min-height: 48px;
-  background: rgba(11,11,48,0.04);
+  min-height: 50px;
+  background: var(--ink-5);
   color: var(--primary);
-  border: 1.5px solid rgba(11,11,48,0.08);
-  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
   padding: 10px 20px;
   font-family: var(--font-hebrew);
   font-size: 15px;
@@ -470,8 +1030,8 @@ input[type="datetime-local"].form-control {
 }
 
 .btn-tab-toggle {
-  background: rgba(255,255,255,0.6);
-  border: 1.5px solid rgba(11,11,48,0.08);
+  background: var(--w-60);
+  border: 1.5px solid var(--ink-8);
   color: var(--text-muted);
   font-weight: 700;
   padding: 8px 16px;
@@ -489,20 +1049,255 @@ input[type="datetime-local"].form-control {
   border-color: var(--primary);
 }
 
-/* ── Map ── */
-.map-wrapper {
-  width: 100%;
-  height: 220px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-  border: var(--card-border);
-  position: relative;
-  z-index: 1;
+/* ── A day opening ──
+   Only opacity and a small translate: animating height would put layout
+   on every frame, which is the expensive kind of animation and exactly
+   what this is trying to avoid. The point is that the content arrives
+   rather than appearing between two frames. */
+.day-body {
+  animation: day-open var(--dur-base) var(--ease-out);
+}
+@keyframes day-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
 }
 
-.leaflet-container {
-  width: 100%; height: 100%;
+/* ── Sub-tab switch ──
+   Same idea as the bottom nav: one panel that travels between the two
+   labels instead of a background that blinks from one to the other, so
+   the eye follows the move and lands on where it is now. `right: 4px`
+   with a negative translate is the nav's own trick — the app is RTL, so
+   the first segment is the right one and travel is leftwards. */
+.subtab-switch {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: var(--ink-5);
+  border-radius: var(--radius-md);
+  padding: 4px;
+}
+.subtab-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 4px;
+  width: calc((100% - 8px) / 2);
+  border-radius: calc(var(--radius-md) - 2px);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(calc(var(--sub-i, 0) * -100%));
+  transition: transform var(--dur-base) var(--ease-spring);
+  pointer-events: none;
+}
+.subtab-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 9px 4px;
+  font-family: var(--font-hebrew);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color var(--dur-base) var(--ease-out);
+}
+.subtab-btn[aria-selected="true"] { color: var(--primary); }
+.subtab-btn svg {
+  flex-shrink: 0;
+  transition: color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-spring);
+}
+.subtab-btn[aria-selected="true"] svg {
+  color: var(--accent);
+  transform: scale(1.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .subtab-indicator { transition: none; }
+}
+
+/* ── Transient confirmation ──
+   Fades in, holds, fades out, timed to match the 4s the component keeps
+   it mounted — so it leaves on its own instead of blinking away. */
+.sync-flash {
+  animation: sync-flash 4s var(--ease-out) forwards;
+}
+@keyframes sync-flash {
+  0%   { opacity: 0; transform: translateY(-2px); }
+  8%   { opacity: 0.85; transform: none; }
+  84%  { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+/* Reduced motion collapses every animation to 0.01ms, and `forwards`
+   would then pin the *last* keyframe — opacity 0 — hiding the message
+   from exactly the people who asked for less movement, not less
+   information. They get it plain and static instead. */
+@media (prefers-reduced-motion: reduce) {
+  .sync-flash {
+    animation: none !important;
+    opacity: 0.85;
+  }
+}
+
+/* ── Someone who has left the trip ──
+   Their work stays where it is; only the attribution changes. Greyed and
+   desaturated rather than removed, so an expense still says who paid it
+   and a packing item still says whose it was — with a visible signal that
+   they can no longer be picked. */
+.person-former {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+.person-former img,
+.person-former .avatar {
+  filter: grayscale(1);
+}
+
+/* ── Weather card ──
+   The tab opens on where you are going, not on a line between two dots.
+   Three tiers, largest first: what it is like now, the numbers you would
+   actually check before walking out, then the days of the trip.
+
+   The temperature is the one big thing; everything else is set quietly
+   around it, so the card reads at a glance and still rewards a look. */
+.weather-card {
+  padding: 14px 16px 12px;
+  gap: 0;
+}
+
+.weather-now {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.weather-now-icon {
+  font-size: 26px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.weather-now-place {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.weather-now-city {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.weather-now-cond {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.weather-now-temp {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--primary);
+  flex-shrink: 0;
+  /* Digits keep their column as the temperature ticks over. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wind, humidity, today's range — one quiet line, dot-separated. */
+.weather-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ink-7);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.weather-facts b {
+  font-weight: 800;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+.weather-facts span + span::before {
+  content: '·';
+  margin-inline-end: 10px;
+  color: var(--ink-22);
+}
+
+/* The trip's days. Scrolls sideways rather than wrapping: a wrapped
+   second row of two days reads as a mistake. */
+.weather-days {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  margin: 10px -16px 0;
+  padding: 10px 16px 0;
+  border-top: 1px solid var(--ink-7);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.weather-days::-webkit-scrollbar { display: none; }
+
+.weather-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 9px;
+  /* Grow to fill a short trip, never shrink below a readable column, so a
+     long one scrolls instead of squeezing. */
+  flex: 1 0 auto;
+  min-width: 52px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+.weather-day.today {
+  background: var(--p-8);
+  border-color: var(--p-18);
+}
+.weather-day-dow {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+.weather-day.today .weather-day-dow { color: var(--accent); }
+.weather-day-date {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.weather-day-icon { font-size: 20px; line-height: 1; }
+.weather-day-max {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.weather-day-min {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.weather-day-rain {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 /* ── Grid helpers ── */
@@ -538,28 +1333,96 @@ input[type="datetime-local"].form-control {
 .modal-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(11,11,48,0.35);
+  background: var(--ink-35);
   display: flex;
   align-items: flex-end;
   justify-content: center;
   z-index: 2000;
   backdrop-filter: blur(3px);
+  animation: overlayIn var(--dur-base) var(--ease-out);
 }
 
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* The sheet is sliding out — take the backdrop with it. */
+.modal-overlay[data-closing="true"] {
+  animation: none;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+/* Grab handle. Signals "this can be dragged" and gives the finger a
+   target that is never a button. */
+.sheet-grab {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 6px;
+  flex-shrink: 0;
+  cursor: grab;
+  /* The handle is for dragging the sheet, never for panning the page. */
+  touch-action: none;
+}
+.sheet-grab::before {
+  content: '';
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-12);
+}
+
+/* A sheet is as tall as its content, up to 94% of the screen — a
+   three-line dialog no longer takes over the whole display. Anything
+   taller scrolls inside the sheet exactly as before. */
 .modal-content {
   width: 100%;
-  height: 94%;
-  background: #fff;
+  height: auto;
+  max-height: 94%;
+  overscroll-behavior: contain;
+  background: var(--modal-bg);
+  color: var(--text);
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
   padding: 20px 16px;
   overflow-y: auto;
-  box-shadow: 0 -8px 30px rgba(11,11,48,0.15);
+  box-shadow: 0 -8px 30px var(--ink-15);
   display: flex;
   flex-direction: column;
   gap: 16px;
   animation: slideUp 0.3s cubic-bezier(0.32,0.94,0.6,1);
   -webkit-overflow-scrolling: touch;
+}
+
+/* ── Reminder tile cycling ──
+   The ring under the tile's number is the countdown: it grows from this
+   reminder's share of the lap to the next one's across the dwell, so the
+   swap is announced by the very arc that already tracks position. One
+   indicator, both meanings — there is deliberately no second bar.
+
+   Only a `from`: the implicit `to` is the element's own stroke-dashoffset,
+   which is already this step's end value. An engine that will not run the
+   animation still shows the arc in the right place, stepping rather than
+   gliding.
+
+   Both animations are motion for its own sake to anyone who asked the
+   system for less of it, so both stop under prefers-reduced-motion — and
+   the timer stops in JS as well, leaving the tile holding one reminder
+   rather than swapping silently with no countdown to explain it. */
+@keyframes reminder-arc {
+  from { stroke-dashoffset: var(--arc-from); }
+}
+
+@keyframes reminder-swap {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.reminder-swap { animation: reminder-swap 0.32s var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .reminder-swap { animation: none; }
 }
 
 @keyframes slideUp {
@@ -571,11 +1434,11 @@ input[type="datetime-local"].form-control {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1.5px solid rgba(0,0,0,0.06);
+  border-bottom: 1.5px solid var(--ink-6);
   padding-bottom: 12px;
   position: sticky;
   top: 0;
-  background: #fff;
+  background: var(--modal-header-bg);
   z-index: 10;
 }
 
@@ -586,7 +1449,7 @@ input[type="datetime-local"].form-control {
 }
 
 .btn-close {
-  background: rgba(11,11,48,0.05);
+  background: var(--ink-5);
   border: none;
   width: 36px; height: 36px;
   border-radius: 50%;
@@ -599,16 +1462,105 @@ input[type="datetime-local"].form-control {
   font-size: 16px;
 }
 
+/* ── Swipeable rows ──
+   The action layer lives under the row and is uncovered as the row slides
+   toward the start edge (right, in RTL). */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.swipe-row-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: 0;   /* the end edge — left in RTL, right in LTR */
+  display: flex;
+  align-items: stretch;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Solid blocks, not tints: these sit on the page's own gradient once the
+   row slides off them, so a faint background would read as a smudge. */
+.swipe-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-hebrew);
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--accent);
+  color: #fff;
+}
+
+.swipe-action.danger {
+  background: var(--c-red2);
+  color: #fff;
+}
+
+/* The press state is drawn by the row above it, not here. */
+.swipe-action:active { transform: none; filter: brightness(0.95); }
+
+/* Inline row buttons are for pointers; on touch the same actions live
+   behind the swipe. */
+@media (hover: none) {
+  .row-inline-actions { display: none !important; }
+}
+
+/* ── List entry ──
+   Rows arrive with a short rise, staggered by their index so a list reads
+   as one movement rather than a dozen. The stagger is capped in the JSX so
+   a long list never delays its own last row. Only newly mounted rows
+   animate — React reuses the rest. */
+.list-in {
+  /* `backwards`, not `both`: `both` keeps the final keyframe applied for
+     good, and a running animation outranks inline styles — which silently
+     pinned every row's transform and made the swipe gesture do nothing
+     visible. `backwards` only covers the delay before the animation runs. */
+  animation: listIn var(--dur-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 24ms);
+}
+
+@keyframes listIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Skeletons ──
+   A sheen that travels across the placeholder. Kept slow and low-contrast
+   so a screen full of them doesn't shimmer like a slot machine. */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--ink-6) 25%,
+    var(--ink-10) 37%,
+    var(--ink-6) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeletonSheen 1.5s ease-in-out infinite;
+}
+
+@keyframes skeletonSheen {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+
 /* ══════════════════════════════════════════════════════════
    UTILITIES & ANIMATIONS
    ══════════════════════════════════════════════════════════ */
 
 .animate-fade {
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn var(--dur-slow) var(--ease-out);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -622,17 +1574,42 @@ input[type="datetime-local"].form-control {
 }
 .horizontal-scroll::-webkit-scrollbar { display: none; }
 
+/* ── "On time" pulse ──
+   The ring used to be an animated box-shadow. box-shadow is a paint
+   property, so every frame of a 1.6s loop repainted the element — and
+   the loop is infinite, on one dot per flight card, for as long as the
+   tab is open. Measured: 33% of the CPU with the app sitting completely
+   idle, and ~60 style recalculations a second.
+
+   Same picture, drawn as a pseudo-element that only scales and fades.
+   transform and opacity are composited, so the loop costs no repaints
+   at all. */
 .pulsing-dot {
   width: 8px; height: 8px;
   background: var(--text-success);
   border-radius: 50%;
-  animation: pulse 1.6s infinite;
+  position: relative;
+  flex-shrink: 0;
+}
+.pulsing-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--text-success);
+  animation: pulse-ring 1.6s var(--ease-out) infinite;
+  /* Its own layer, so the ring never repaints what is behind it. */
+  will-change: transform, opacity;
 }
 
-@keyframes pulse {
-  0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5,150,105,0.7); }
-  70%  { transform: scale(1);    box-shadow: 0 0 0 6px rgba(5,150,105,0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5,150,105,0); }
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulsing-dot::after { animation: none; }
 }
 
 @keyframes highlightPulseAnimation {
@@ -652,4 +1629,721 @@ input[type="datetime-local"].form-control {
 
 .highlight-pulse {
   animation: highlightPulseAnimation 2s ease-out;
+}
+
+/* ── Dashboard grid (flight/hotel column on mobile, 2-col on desktop) ── */
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Stacked member avatars on the homepage trip card ── */
+.member-stack {
+  display: flex;
+  flex-direction: row-reverse; /* in RTL this stacks visually right-to-left
+                                  with later items overlapping earlier ones */
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.member-stack-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  margin-left: -8px; /* overlap with the next sibling (which is visually to the left) */
+  box-shadow: 0 2px 6px var(--ink-12);
+  flex-shrink: 0;
+  position: relative;
+  overflow: visible; /* keep crown badge visible above the avatar */
+}
+.member-stack-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.member-stack-avatar.owner {
+  width: 34px;
+  height: 34px;
+  border: 2.5px solid #f5b400;
+  box-shadow: 0 0 0 1.5px #fff, 0 4px 12px rgba(245, 180, 0, 0.4);
+  z-index: 2;
+}
+.member-stack-avatar.more {
+  background: var(--ink-8);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+.member-stack-crown {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  background: #f5b400;
+  color: #fff;
+  border-radius: 50%;
+  padding: 2px;
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.owner-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--p-6);
+  border: 1px solid var(--p-20);
+  border-radius: var(--radius-lg);
+}
+.owner-banner img,
+.owner-banner-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.owner-banner-avatar {
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* "מידע חשוב" — one slim row on the flight tab that opens the info sheet. */
+.info-launcher {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  width: 100%;
+  cursor: pointer;
+  font-family: var(--font-hebrew);
+  color: inherit;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.info-launcher:active { transform: scale(0.985); }
+.info-launcher-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--c-red-10);
+  color: var(--c-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── הזמנות (bookings tab) ── */
+.booking-section {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.booking-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-hebrew);
+  text-align: right;
+}
+.booking-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.booking-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-hebrew);
+  font-size: 12px;
+  color: var(--primary);
+  background: var(--p-6);
+  border: 1px dashed var(--p-30);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.booking-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--p-6);
+  border: 1px solid var(--p-12);
+  border-radius: 10px;
+  padding: 6px 12px;
+  text-decoration: none;
+}
+.booking-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  border: 1.5px solid var(--ink-10);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-hebrew);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.booking-chip.on {
+  border-color: var(--accent);
+  background: var(--p-8);
+  color: var(--accent);
+}
+
+.hotel-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   PLANNING / CHECKLIST CATEGORY SELECT
+   ══════════════════════════════════════════════════════════ */
+
+.category-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--w-85);
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 14px center;
+  background-size: 14px;
+  border: 1.5px solid var(--p-18);
+  border-radius: var(--radius-md);
+  padding: 12px 18px 12px 38px;
+  width: 100%;
+  min-height: 48px;
+  font-family: var(--font-hebrew);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary);
+  text-align: right;
+  direction: rtl;
+  cursor: pointer;
+  box-shadow: 0 2px 8px var(--p-6);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+[data-theme="dark"] .category-select {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+.category-select:focus,
+.category-select:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--p-12);
+}
+.category-select option {
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--dropdown-bg);
+}
+
+/* Checklist row layout — uniform RTL: actions on the (visual) left, text center, checkbox right.
+   In RTL, with grid-template-columns "auto 1fr auto" and direction:rtl, the first child sits on the right.
+   We want checkbox on the right, so place it LAST in DOM and keep direction:rtl. */
+.checklist-item-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Custom dropdown (replaces native <select>) ── */
+/* The dropdown trigger is a field, so it matches the fields exactly —
+   same ground, same radius, same focus ring. */
+.custom-dropdown-trigger {
+  width: 100%;
+  min-height: 50px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: var(--ink-4);
+  font-family: var(--font-hebrew);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: right;
+  direction: rtl;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+  outline: none;
+}
+
+[data-theme="dark"] .custom-dropdown-trigger { background: var(--ink-8); }
+.custom-dropdown-trigger:hover,
+.custom-dropdown-trigger:focus-visible,
+.custom-dropdown-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--p-12);
+}
+
+.custom-dropdown-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 5000;
+  background: var(--dropdown-bg);
+  color: var(--text);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--ink-8);
+  box-shadow: 0 12px 32px var(--ink-18);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.custom-dropdown-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-family: var(--font-hebrew);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  direction: rtl;
+  text-align: right;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.custom-dropdown-option:hover {
+  background: var(--p-6);
+}
+.custom-dropdown-option.active {
+  background: var(--p-10);
+  color: var(--accent);
+}
+.custom-dropdown-add {
+  border-top: 1px dashed var(--ink-10);
+  margin-top: 4px;
+  padding-top: 12px !important;
+}
+.custom-dropdown-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px dashed var(--ink-10);
+  margin-top: 4px;
+}
+
+/* ── Filter chips (planning tab) ── */
+.filter-chips-row {
+  align-items: stretch;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 10px 18px;
+  min-height: 42px;
+  border-radius: 999px;
+  font-family: var(--font-hebrew);
+  font-size: 14px;
+  font-weight: 800;
+  border: 1.5px solid var(--p-15);
+  background: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 8px var(--ink-4);
+  flex-shrink: 0;
+}
+.filter-chip:hover {
+  border-color: var(--p-30);
+}
+.filter-chip:active {
+  transform: scale(0.97);
+}
+.filter-chip.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 6px 16px var(--ink-22);
+}
+.filter-chip svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Planning card: a place already visited ──
+   Done is not an alert. A visited card gives up its surface and its
+   shadow instead of gaining a colour: it sinks half a step into the
+   page, and the eye lands on what is still open. Spending an accent —
+   a green fill, a coloured rail — on the finished half of a list is
+   backwards, and in a list of forty places it is most of the screen. */
+.plan-card {
+  border-right: 1px solid var(--w-60);
+  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+}
+.plan-card.visited {
+  background: var(--ink-4);
+  border-color: transparent;
+  border-right-color: transparent;
+  box-shadow: none;
+}
+
+/* The one control that stays on the card. A circle, not a form
+   checkbox: it reports a state rather than collecting an answer. */
+.plan-visit-toggle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-18);
+  background: transparent;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.plan-visit-toggle:hover {
+  border-color: var(--ink-35);
+}
+.plan-visit-toggle.on {
+  /* Lighter than the empty ring beside it, not darker: a solid dark
+     mark on a receding card would pull the eye back to the one place
+     that needs nothing. */
+  background: var(--ink-15);
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+/* Round add button (used next to search) — guaranteed circular */
+.btn-add-circle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px var(--ink-18);
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+.btn-add-circle:active {
+  transform: scale(0.95);
+}
+
+/* ── Empty state ──
+   Reached at the moment someone most needs telling what a screen is for
+   and what to do next. One shape everywhere: a quiet disc, a line that
+   names the absence, a line that says what to do, and — only where
+   there is a shortcut worth offering — a button. */
+.empty-state {
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 34px 24px;
+}
+.empty-state-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--ink-5);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.empty-state-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary);
+  margin: 0;
+}
+.empty-state-hint {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+  /* Two short lines read faster than one long one on a phone. */
+  max-width: 32ch;
+  line-height: 1.55;
+}
+.empty-state .btn-primary,
+.empty-state .btn-secondary {
+  margin-top: 16px;
+  align-self: center;
+}
+
+/* ── Floating add button ──
+   One shape, one corner, on every tab that can add something. Extended
+   rather than a bare circle: "+" alone tells you there is an action but
+   not which one, and the tabs add four different things.
+
+   Placed at the inline-end corner, which in RTL is the bottom-left —
+   the mirrored position every RTL platform puts it in. Rendered into
+   `.app-container` (see Fab.jsx), so its `fixed` is the viewport's and
+   not the animating tab's. */
+.fab {
+  position: fixed;
+  inset-inline-end: 16px;
+  bottom: calc(var(--nav-total) + 10px);
+  /* Above the page, below the nav (1000) and every sheet (2000+). */
+  z-index: 900;
+  height: 48px;
+  padding-inline: 15px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb, 79, 70, 229), 0.34),
+              0 2px 6px var(--ink-12);
+  animation: fab-in var(--dur-base) var(--ease-spring) backwards;
+}
+
+.fab svg { flex-shrink: 0; }
+
+@keyframes fab-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The button sits over the bottom corner of the list, so the list needs
+   room to scroll past it — otherwise its last row is unreachable. */
+body[data-fab] .app-content {
+  padding-bottom: calc(var(--nav-total) + 74px);
+}
+
+/* ── Dark-mode button overrides ──
+   In dark mode --primary is a LIGHT colour (#c7d2fe) — fine for text, but
+   too bright when used as a button background. Swap to --accent (#818cf8)
+   for all button backgrounds that normally derive from --primary.           */
+[data-theme="dark"] .btn-primary {
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
+}
+[data-theme="dark"] .btn-add-circle {
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
+}
+[data-theme="dark"] .filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px rgba(var(--accent-rgb),0.30);
+}
+[data-theme="dark"] .btn-tab-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+[data-theme="dark"] .custom-checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+
+/* ── Event status highlights ── */
+.plan-card.event-today {
+  border-right: 4px solid var(--c-orange) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(245,158,11,0.10),
+    rgba(245,158,11,0.03)
+  ) !important;
+  box-shadow: 0 4px 16px rgba(245,158,11,0.18) !important;
+}
+[data-theme="dark"] .plan-card.event-today {
+  background: linear-gradient(
+    135deg,
+    rgba(251,191,36,0.12),
+    rgba(251,191,36,0.04)
+  ) !important;
+  box-shadow: 0 4px 16px rgba(251,191,36,0.15) !important;
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE — tablet & desktop
+   These live at the end on purpose. They override base rules of the
+   same specificity (.bottom-nav, .glass-card, .modal-content …), so
+   source order is what decides — sitting above those rules, as they
+   used to, meant most of them silently lost.
+   ══════════════════════════════════════════════════════════ */
+
+/* Tablet — single column but wider canvas, comfortable padding */
+@media (min-width: 768px) {
+  .app-container {
+    max-width: 720px;
+    box-shadow: 0 0 60px rgba(11,11,48,0.12);
+  }
+}
+
+/* Desktop — fill the screen. Container spans the full viewport;
+   inside, the dashboard / homepage / modal sit on a centred max-width
+   so very wide monitors don't end up with absurd line lengths. */
+@media (min-width: 1024px) {
+  .app-container {
+    max-width: 100%;
+    box-shadow: none;
+    /* The nav is taller here. Override the token rather than the rule,
+       so everything that reserves space for the nav follows along.
+       --nav-total has to be restated: a custom property resolves its
+       var()s where it is *declared*, so the :root copy still carries the
+       mobile height no matter what a descendant sets --nav-height to. */
+    --nav-height: 68px;
+    --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-header {
+    height: 72px;
+    min-height: 72px;
+    max-height: 72px;
+    padding: 0 40px;
+  }
+  .app-header h1 { font-size: 22px; }
+
+  .app-content {
+    padding: 32px 40px;
+    padding-bottom: calc(var(--nav-total) + 24px);
+  }
+  body[data-fab] .app-content {
+    padding-bottom: calc(var(--nav-total) + 80px);
+  }
+
+  /* All the per-tab roots are wrapped in `.animate-fade`. Centre them. */
+  .app-content > .animate-fade {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* Dashboard area (flight tab) — 2-col with bigger gap on desktop */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  .dashboard-grid > .owner-banner,
+  .dashboard-grid > .weather-card,
+  .dashboard-grid > .full-width {
+    grid-column: 1 / -1;
+  }
+
+  .hotel-meta-grid {
+    grid-template-columns: 1fr 1fr 1fr 1fr !important;
+  }
+
+
+  /* Glass cards and trip cards get larger padding */
+  .glass-card { padding: 22px; border-radius: 20px; }
+  .trip-card { padding: 24px; border-radius: 22px; }
+
+  /* Bottom nav: the same floating pill, centred and a little larger.
+     Capping the width keeps the travelling indicator's geometry exact. */
+  .bottom-nav {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) translateZ(0);
+    width: min(560px, calc(100% - 80px));
+    border-radius: 24px;
+  }
+  .nav-item svg { width: 24px; height: 24px; }
+  .nav-label { font-size: 11px; }
+
+  /* Modal — centred dialog instead of bottom-sheet on desktop */
+  .modal-overlay { align-items: center; }
+  .modal-content {
+    max-width: 760px;
+    height: auto;
+    max-height: 92vh;
+    border-radius: var(--radius-xl);
+    margin: 24px;
+    padding: 28px;
+  }
+
+  /* Homepage trip list: turn into responsive grid on desktop */
+  .trip-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 20px;
+  }
+}
+
+/* Wide desktop — slightly more breathing room */
+@media (min-width: 1440px) {
+  .app-content {
+    padding: 40px 64px;
+    padding-bottom: calc(var(--nav-total) + 32px);
+  }
+  body[data-fab] .app-content {
+    padding-bottom: calc(var(--nav-total) + 88px);
+  }
+  .app-content > .animate-fade { max-width: 1520px; }
+  .dashboard-grid { gap: 32px; }
+  .glass-card { padding: 26px; }
 }

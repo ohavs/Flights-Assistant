@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, X, Check } from 'lucide-react';
 
 const MONTHS_HE = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -91,8 +92,9 @@ function CalendarBody({ selectedDateStr, onSelect }) {
         <button
           type="button"
           onClick={handlePrevMonth}
+          aria-label="החודש הקודם"
           style={{
-            background: 'rgba(11,11,48,0.04)', border: 'none',
+            background: 'var(--ink-4)', border: 'none',
             width: '32px', height: '32px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', color: 'var(--primary)'
@@ -108,8 +110,9 @@ function CalendarBody({ selectedDateStr, onSelect }) {
         <button
           type="button"
           onClick={handleNextMonth}
+          aria-label="החודש הבא"
           style={{
-            background: 'rgba(11,11,48,0.04)', border: 'none',
+            background: 'var(--ink-4)', border: 'none',
             width: '32px', height: '32px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', color: 'var(--primary)'
@@ -152,7 +155,7 @@ function CalendarBody({ selectedDateStr, onSelect }) {
                   ? 'var(--primary)' 
                   : isToday 
                     ? 'rgba(79,70,229,0.05)' 
-                    : 'rgba(11,11,48,0.02)',
+                    : 'var(--ink-2)',
                 color: isSelected 
                   ? '#fff' 
                   : isToday 
@@ -176,6 +179,24 @@ function CalendarBody({ selectedDateStr, onSelect }) {
   );
 }
 
+/* Scroll a wheel so its selected row sits in the middle.
+
+   Measured from bounding rects on purpose. The obvious `el.offsetTop`
+   is relative to the nearest *positioned* ancestor, and these columns set
+   no position of their own — so offsetTop came back measured from the
+   modal's fixed overlay, hundreds of pixels too large, and the column
+   scrolled to a place that had nothing to do with the selected value.
+   That is what made an open picker show 19-23 while it held 15:00. */
+function centreOnActive(ref, cls) {
+  const wheel = ref.current;
+  if (!wheel) return;
+  const el = wheel.querySelector('.' + cls);
+  if (!el) return;
+  const wheelRect = wheel.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  wheel.scrollTop += (elRect.top - wheelRect.top) - (wheelRect.height - elRect.height) / 2;
+}
+
 /* ══════════════════════════════════════════════════════════
    TIME PICKER BODY
    ══════════════════════════════════════════════════════════ */
@@ -186,35 +207,29 @@ function TimeBody({ hour, minute, onChangeTime }) {
   const hourRef = useRef(null);
   const minRef = useRef(null);
 
-  // Auto-scroll selected elements into center view inside columns
+  // Open on the value already set, centred in both columns.
   useEffect(() => {
-    if (hourRef.current) {
-      const activeEl = hourRef.current.querySelector('.active-hour');
-      if (activeEl) {
-        hourRef.current.scrollTop = activeEl.offsetTop - hourRef.current.clientHeight / 2 + activeEl.clientHeight / 2;
-      }
-    }
-    if (minRef.current) {
-      const activeEl = minRef.current.querySelector('.active-min');
-      if (activeEl) {
-        minRef.current.scrollTop = activeEl.offsetTop - minRef.current.clientHeight / 2 + activeEl.clientHeight / 2;
-      }
-    }
+    requestAnimationFrame(() => {
+      centreOnActive(hourRef, 'active-hour');
+      centreOnActive(minRef, 'active-min');
+    });
   }, []);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', direction: 'rtl' }}>
+    // Hour left, minute right — the order HH:MM is read in.
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', maxHeight: '240px', direction: 'ltr' }}>
       {/* Hours Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>שעה</span>
-        <div 
+        <div
           ref={hourRef}
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            border: '1px solid rgba(11,11,48,0.08)', 
-            borderRadius: '12px', 
-            background: 'rgba(11,11,48,0.02)',
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            border: '1px solid rgba(11,11,48,0.08)',
+            borderRadius: '12px',
+            background: 'var(--ink-2)',
             padding: '6px',
             display: 'flex',
             flexDirection: 'column',
@@ -249,16 +264,17 @@ function TimeBody({ hour, minute, onChangeTime }) {
       </div>
 
       {/* Minutes Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>דקה</span>
-        <div 
+        <div
           ref={minRef}
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            border: '1px solid rgba(11,11,48,0.08)', 
-            borderRadius: '12px', 
-            background: 'rgba(11,11,48,0.02)',
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            border: '1px solid rgba(11,11,48,0.08)',
+            borderRadius: '12px',
+            background: 'var(--ink-2)',
             padding: '6px',
             display: 'flex',
             flexDirection: 'column',
@@ -331,7 +347,9 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
         style={isCompact ? {
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          // Centred: the compact trigger is the whole content of a tile,
+          // and space-between pushed it against the tile's start edge.
+          justifyContent: 'center',
           cursor: 'pointer',
           background: 'transparent',
           border: 'none',
@@ -343,27 +361,37 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
-          background: '#fff'
+          background: 'var(--surface)'
         }}
       >
-        <span style={{ 
-          fontSize: isCompact ? '13px' : '15px', 
-          fontWeight: '800', 
-          color: 'var(--primary-color)' 
+        <span style={{
+          fontSize: isCompact ? '13px' : '15px',
+          fontWeight: '800',
+          color: 'var(--primary-color)',
+          whiteSpace: 'nowrap',
         }}>
-          {value ? formatHebrewDate(value) : 'בחר תאריך...'}
+          {value
+            ? (isCompact
+                // The compact trigger sits inside a narrow tile — a full
+                // "27 באוגוסט 2026" wraps to two lines there.
+                ? parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                : formatHebrewDate(value))
+            : 'בחר תאריך...'}
         </span>
         {!isCompact && <CalendarIcon size={18} style={{ color: 'var(--text-muted)' }} />}
       </div>
 
-      {/* Modal overlay */}
-      {isOpen && (
+      {/* Modal overlay — portalled to <body>. Every one of these pickers
+          sits inside a .glass-card, and a backdrop-filtered ancestor becomes
+          the containing block for position:fixed children: left in place the
+          overlay is positioned against the card and clipped by it. */}
+      {isOpen && createPortal(
         <div 
           onClick={() => setIsOpen(false)}
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(11,11,48,0.4)',
+            background: 'var(--ink-40)',
             backdropFilter: 'blur(4px)',
             zIndex: 9999,
             display: 'flex',
@@ -378,7 +406,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
             style={{
               width: '100%',
               maxWidth: '360px',
-              background: '#fff',
+              background: 'var(--surface)',
               borderRadius: '24px',
               boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)',
               border: '1px solid rgba(11, 11, 48, 0.08)',
@@ -397,7 +425,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
               <button 
                 type="button" 
                 onClick={() => setIsOpen(false)}
-                style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
+                style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 <X size={15} />
               </button>
@@ -407,7 +435,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
             <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
 
             {/* Selected Value Preview */}
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '13.5px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
               {formatHebrewDate(tempDateStr)}
             </div>
 
@@ -431,7 +459,160 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   CUSTOM TIME PICKER — outputs "HH:MM" (24-hour)
+   ══════════════════════════════════════════════════════════ */
+function parseTime(str) {
+  const s = String(str || '').trim();
+  // 12-hour with AM/PM (legacy data) → convert to 24h
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10) % 12;
+    if (m12[3].toUpperCase() === 'PM') h += 12;
+    return { hh: String(h).padStart(2, '0'), mm: m12[2] };
+  }
+  // 24-hour
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return { hh: String(parseInt(m24[1], 10)).padStart(2, '0'), mm: m24[2] };
+  return { hh: '12', mm: '00' };
+}
+
+export function formatHebrewTime(timeStr) {
+  if (!timeStr) return 'בחר שעה';
+  const { hh, mm } = parseTime(timeStr);
+  return `${hh}:${mm}`;
+}
+
+export function CustomTimePicker({ value, onChange, label, required }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const parsed = parseTime(value);
+  const [tempH, setTempH] = useState(parsed.hh);
+  const [tempM, setTempM] = useState(parsed.mm);
+
+  useEffect(() => {
+    const p = parseTime(value);
+    setTempH(p.hh);
+    setTempM(p.mm);
+  }, [value]);
+
+  const hRef = useRef(null);
+  const mRef = useRef(null);
+
+  /* Centre both columns on the value the picker opened with — and only
+     then. Re-centring on every tap pulled the list out from under the
+     finger: you pressed 19, the column scrolled to put 19 in the middle,
+     and the number left under your finger was a different one. Picking an
+     hour dragged the minute column along with it too. */
+  useEffect(() => {
+    if (!isOpen) return;
+    requestAnimationFrame(() => {
+      centreOnActive(hRef, 'active-h');
+      centreOnActive(mRef, 'active-m');
+    });
+  }, [isOpen]);
+
+  const hours24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
+  const displayValue = value ? `${parseTime(value).hh}:${parseTime(value).mm}` : '';
+
+  const handleSave = () => {
+    onChange(`${tempH}:${tempM}`);
+    setIsOpen(false);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+      {label && <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+
+      <div
+        onClick={() => setIsOpen(true)}
+        className="form-control"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: 'var(--surface)' }}
+      >
+        <span style={{ fontSize: '15px', fontWeight: '700', color: displayValue ? 'var(--primary)' : 'var(--text-muted)' }}>
+          {displayValue || 'בחר שעה...'}
+        </span>
+        <Clock size={18} style={{ color: 'var(--text-muted)' }} />
+      </div>
+
+      {isOpen && createPortal(
+        <div
+          onClick={() => setIsOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'var(--ink-40)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '360px', background: 'var(--surface)', borderRadius: '24px', boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)', border: '1px solid rgba(11, 11, 48, 0.08)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
+              <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
+              <button type="button" onClick={() => setIsOpen(false)} style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Hour + Minute columns (24-hour). Laid out left-to-right so
+                they sit in the order the readout below spells them, HH:MM —
+                a clock reads the same way in Hebrew as anywhere else. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'ltr' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
+                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {hours24.map(h => {
+                    const isActive = h === tempH;
+                    return (
+                      <button
+                        key={h} type="button"
+                        className={isActive ? 'active-h' : ''}
+                        onClick={() => setTempH(h)}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? '0 2px 8px rgba(11,11,48,0.25)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
+                      >{h}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
+                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {minutes.map(m => {
+                    const isActive = m === tempM;
+                    return (
+                      <button
+                        key={m} type="button"
+                        className={isActive ? 'active-m' : ''}
+                        onClick={() => setTempM(m)}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? '0 2px 8px rgba(11,11,48,0.25)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
+                      >{m}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* The readout is the anchor: the columns can be scrolled
+                anywhere, this always says what is actually selected, and it
+                changes the instant a number is tapped. Tabular figures so
+                the digits don't jitter as it counts. */}
+            <div style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.14)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', direction: 'ltr', fontSize: 24, fontWeight: 900, letterSpacing: 1, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
+              {tempH}:{tempM}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={handleSave} className="btn-primary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>בחירה</button>
+              <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, fontSize: 14, padding: 6 }}>ביטול</button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -507,7 +688,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
-          background: '#fff'
+          background: 'var(--surface)'
         }}
       >
         <span style={{ fontSize: '15px', fontWeight: '600', color: value ? 'var(--primary)' : 'var(--text-muted)' }}>
@@ -516,14 +697,14 @@ export function CustomDateTimePicker({ value, onChange, label }) {
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
       </div>
 
-      {/* Modal overlay */}
-      {isOpen && (
+      {/* Modal overlay — portalled, same reason as the date picker above. */}
+      {isOpen && createPortal(
         <div 
           onClick={() => setIsOpen(false)}
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(11,11,48,0.4)',
+            background: 'var(--ink-40)',
             backdropFilter: 'blur(4px)',
             zIndex: 9999,
             display: 'flex',
@@ -538,7 +719,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             style={{
               width: '100%',
               maxWidth: '360px',
-              background: '#fff',
+              background: 'var(--surface)',
               borderRadius: '24px',
               boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)',
               border: '1px solid rgba(11, 11, 48, 0.08)',
@@ -557,14 +738,14 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               <button 
                 type="button" 
                 onClick={() => setIsOpen(false)}
-                style={{ background: 'rgba(11,11,48,0.04)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
+                style={{ background: 'var(--ink-4)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 <X size={15} />
               </button>
             </div>
 
             {/* Tabs for Date / Time */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'rgba(11,11,48,0.04)', padding: '4px', borderRadius: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--ink-4)', padding: '4px', borderRadius: '12px' }}>
               <button
                 type="button"
                 onClick={() => setActiveTab('date')}
@@ -604,7 +785,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
 
             {/* Tab content */}
-            <div style={{ minHeight: '240px' }}>
+            <div style={{ height: 280, display: 'flex', flexDirection: 'column' }}>
               {activeTab === 'date' ? (
                 <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
               ) : (
@@ -613,7 +794,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
 
             {/* Selected Value Preview */}
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '13.5px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
               {formatHebrewDate(tempDateStr)} בשעה {tempHour}:{tempMinute}
             </div>
 
@@ -637,7 +818,246 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   CUSTOM DROPDOWN — fully styled select replacement
+   ══════════════════════════════════════════════════════════ */
+export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש', onCommit }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [popupRect, setPopupRect] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const triggerRef = useRef(null);
+  const popupRef = useRef(null);
+  const draftInputRef = useRef(null);
+
+  const normalized = (options || []).map(o => (
+    typeof o === 'string' ? { value: o, label: o } : o
+  ));
+  const current = normalized.find(o => o.value === value);
+
+  // Compute popup position directly from the trigger's bounding rect.
+  // We also set right:'auto' in the popup inline style to prevent the
+  // CSS class's right:0 from fighting left in RTL mode (which caused the
+  // dropdown to snap to the right edge of the viewport).
+  useEffect(() => {
+    if (!isOpen) return;
+    const update = () => {
+      if (!triggerRef.current) return;
+      const r = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom;
+      const openAbove = spaceBelow < 220 && r.top > 220;
+      const w = Math.min(r.width, window.innerWidth - 32);
+      const left = Math.max(16, Math.min(r.left, window.innerWidth - w - 16));
+      setPopupRect({
+        top: openAbove ? undefined : r.bottom + 6,
+        bottom: openAbove ? (window.innerHeight - r.top + 6) : undefined,
+        left,
+        width: w,
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onDocClick = (e) => {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        popupRef.current && !popupRef.current.contains(e.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') setIsOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (val) => {
+    onChange(val);
+    setIsOpen(false);
+    setAdding(false);
+    setDraft('');
+  };
+
+  const handleStartAdd = () => {
+    setAdding(true);
+    setDraft('');
+    requestAnimationFrame(() => draftInputRef.current?.focus());
+  };
+
+  const handleCommitAdd = () => {
+    const val = draft.trim();
+    if (!val) { setAdding(false); return; }
+    handleSelect(val);
+    onCommit?.(val);
+  };
+
+  // Reset adding mode when closing
+  useEffect(() => {
+    if (!isOpen) { setAdding(false); setDraft(''); }
+  }, [isOpen]);
+
+  return (
+    <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
+      {label && <label style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{label}{required && ' *'}</label>}
+
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(o => !o)}
+        className="custom-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span style={{
+          flex: 1,
+          textAlign: 'right',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: current ? 'var(--primary)' : 'var(--text-muted)',
+          fontWeight: current ? 700 : 600
+        }}>
+          {current ? current.label : placeholder}
+        </span>
+        <ChevronDown
+          size={18}
+          style={{
+            color: 'var(--accent)',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      </button>
+
+      {isOpen && popupRect && createPortal(
+        <div
+          ref={popupRef}
+          role="listbox"
+          className="custom-dropdown-popup"
+          style={{
+            position: 'fixed',
+            top: popupRect.top,
+            bottom: popupRect.bottom,
+            left: popupRect.left,
+            right: 'auto',
+            width: popupRect.width
+          }}
+        >
+          {normalized.map((opt, optIdx) => {
+            const isActive = opt.value === value;
+            const isFirst = optIdx === 0;
+            return (
+              <button
+                key={String(opt.value)}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                onClick={() => handleSelect(opt.value)}
+                className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
+                style={{
+                  ...((!isFirst) ? { borderTop: '1px solid var(--ink-8)' } : {}),
+                  ...(opt.inUse ? { background: 'rgba(79,70,229,0.07)', opacity: 0.75 } : {}),
+                }}
+              >
+                {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
+                <span style={{ flex: 1, textAlign: 'right', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    color: opt.labelColor || 'inherit',
+                    textDecoration: opt.visited ? 'line-through' : 'none',
+                    opacity: opt.visited ? 0.6 : 1,
+                  }}>{opt.label}</span>
+                  {opt.meta && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap', opacity: 0.85 }}>
+                      {opt.meta}
+                    </span>
+                  )}
+                </span>
+                {isActive && <Check size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+
+          {addable && !adding && (
+            <button
+              type="button"
+              onClick={handleStartAdd}
+              className="custom-dropdown-option custom-dropdown-add"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>
+                <ChevronDown size={1} style={{ display: 'none' }} />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </span>
+              <span style={{ flex: 1, textAlign: 'right', color: 'var(--accent)', fontWeight: 800 }}>{addLabel}</span>
+            </button>
+          )}
+
+          {addable && adding && (
+            <div className="custom-dropdown-add-row" onClick={(e) => e.stopPropagation()}>
+              <input
+                ref={draftInputRef}
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleCommitAdd(); }
+                  if (e.key === 'Escape') { e.preventDefault(); setAdding(false); setDraft(''); }
+                }}
+                placeholder="שם הקטגוריה החדשה"
+                style={{
+                  flex: 1, minHeight: 36, padding: '6px 10px',
+                  border: '1.5px solid var(--accent)', borderRadius: 8,
+                  fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                  color: 'var(--primary)', outline: 'none', background: 'var(--surface)',
+                  textAlign: 'right'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCommitAdd}
+                className="btn-primary"
+                style={{ minHeight: 36, padding: '6px 12px', fontSize: 13 }}
+              >
+                הוסף
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAdding(false); setDraft(''); }}
+                style={{
+                  minHeight: 36, padding: '6px 10px', fontSize: 12,
+                  background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                  cursor: 'pointer', fontWeight: 700
+                }}
+              >
+                בטל
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -1,20 +1,47 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { lookupFlight, getFlightProgressInfo } from '../services/flightSimulator';
-import MapComponent from './MapComponent';
-import { CustomDatePicker, CustomDateTimePicker, formatHebrewDate } from './CustomDatePicker';
-import { 
-  Plane, 
-  MapPin, 
-  Calendar, 
-  Edit2, 
-  Share2, 
+import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
+import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
+import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
+import { useTrip } from '../TripContext';
+import { useConfirm } from '../ConfirmContext';
+import CurrencyConverter from './CurrencyConverter';
+import Skeleton from './Skeleton';
+import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
+import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
+import {
+  MapPin,
+  Edit2,
   Building,
+  Loader2,
   Search,
-  Compass,
+  Plane,
+  PlaneTakeoff,
+  PlaneLanding,
+  RefreshCw,
+  ExternalLink,
+  Link2,
+  LifeBuoy,
   ChevronLeft
 } from 'lucide-react';
+
+// Emergency numbers, contacts and addresses — opened from a sheet on this
+// tab. Loaded on first open so the flight tab itself stays light.
+const InfoTab = lazy(() => import('./InfoTab'));
+
+const FLIGHT_STATUS_OPTIONS = [
+  { value: 'בזמן', label: 'בזמן' },
+  { value: 'באיחור קל', label: 'באיחור קל' },
+  { value: 'באיחור רציני', label: 'באיחור רציני' },
+  { value: 'בוטלה', label: 'בוטלה' },
+  { value: 'נחתה', label: 'נחתה' },
+  { value: 'בטיסה', label: 'בטיסה' },
+];
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
 
 export const defaultTrip = {
   id: 'prague',
@@ -58,9 +85,9 @@ export const defaultTrip = {
   hotelDetails: {
     name: 'Grandium Hotel Prague',
     address: 'Politických vězňů 913/12, 110 00 Nové Město, Prague, Czech Republic',
+    link: 'https://www.grandium.cz/',
     checkIn: '2026-06-15T14:00',
     checkOut: '2026-06-22T12:00',
-    bookingRef: 'PRG-400192-GP',
     roomNumber: '308',
     notes: 'מלון 5 כוכבים במרכז העיר, קרוב לכיכר ואצלב. ארוחת בוקר כלולה.'
   }
@@ -76,10 +103,6 @@ const emptyFlightDetails = {
   scheduledArr: '',
   estimatedArr: '',
   status: 'בזמן',
-  aircraftType: '',
-  registration: '',
-  serialNumber: '',
-  country: '',
   date: '',
   gate: ''
 };
@@ -87,88 +110,366 @@ const emptyFlightDetails = {
 const emptyHotelDetails = {
   name: '',
   address: '',
+  link: '',
   checkIn: '',
   checkOut: '',
-  bookingRef: '',
   roomNumber: '',
   notes: ''
 };
 
+// Format date as DD.MM.YYYY for the trip "dates" summary string
+function formatDateRange(out, ret) {
+  const fmt = (s) => {
+    if (!s) return '';
+    const [y, m, d] = s.split('-');
+    if (!y || !m || !d) return '';
+    return `${d}.${m}.${y}`;
+  };
+  const a = fmt(out);
+  const b = fmt(ret);
+  if (a && b) return `${a} - ${b}`;
+  return a || b || '';
+}
+
+// Parse "07:35", "07:35 AM" etc. to minutes since midnight.
+function timeToMinutes(t) {
+  if (!t) return null;
+  const m = String(t).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const mins = parseInt(m[2], 10);
+  const period = (m[3] || '').toUpperCase();
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return h * 60 + mins;
+}
+
+// Compute the difference (in minutes) between scheduled and updated times,
+// rounding for next-day rollover (e.g. scheduled 23:50 -> actual 00:10).
+function deltaMinutes(scheduled, actual) {
+  const s = timeToMinutes(scheduled);
+  const a = timeToMinutes(actual);
+  if (s == null || a == null) return null;
+  let diff = a - s;
+  if (diff < -12 * 60) diff += 24 * 60;       // crossed midnight forward
+  else if (diff > 12 * 60) diff -= 24 * 60;   // wrapped backward
+  return diff;
+}
+
+function formatDelta(mins) {
+  if (mins == null || mins === 0) return null;
+  const abs = Math.abs(mins);
+  if (abs >= 60) {
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    const body = m ? `${h}:${String(m).padStart(2, '0')} שע'` : `${h} שע'`;
+    return mins > 0 ? `+${body}` : `−${body}`;
+  }
+  return mins > 0 ? `+${abs} דק'` : `−${abs} דק'`;
+}
+
+// One slot for an event time: shows the most up-to-date time,
+// highlighted red on delay, green on "earlier than scheduled",
+// strike-through if cancelled.
+function useTimeState({ scheduled, updated, cancelled, flightDate }) {
+  // Suppress delay/early chip for flights more than 18h in the future.
+  // Real airlines virtually never announce schedule changes that far
+  // out; any divergence at that range is almost certainly stale data
+  // (either from a previous fake-delay generator or from before the
+  // current refresh fixed it). For "imminent" flights, deltas are real.
+  let suppressDelta = false;
+  if (flightDate) {
+    const dep = new Date(flightDate + 'T00:00:00').getTime();
+    const hours = (dep - Date.now()) / 3600000;
+    if (hours > 18) suppressDelta = true;
+  }
+  const effective = updated || scheduled;
+  const delta = suppressDelta ? null : deltaMinutes(scheduled, updated);
+  const delayed = delta != null && delta > 0;
+  const early = delta != null && delta < 0;
+
+  let color = 'var(--primary)';
+  let chipBg = null;
+  let chipColor = null;
+  if (cancelled) color = 'var(--c-red)';
+  else if (delayed) { color = 'var(--c-red)'; chipBg = 'var(--c-red-10)'; chipColor = 'var(--c-red)'; }
+  else if (early) { chipBg = 'var(--c-teal-10)'; chipColor = 'var(--text-success)'; }
+
+  // When the chip is suppressed, also show the *scheduled* time rather
+  // than a stale "updated" value (otherwise the row would silently
+  // display fake numbers without explanation).
+  const display = cancelled ? '—' : (suppressDelta ? (scheduled || effective || '—') : (effective || '—'));
+
+  return { display, delta, delayed, early, color, chipBg, chipColor, cancelled };
+}
+
+/* One end of the route: the time, big, with its delay chip underneath.
+   The airport sits above it in the card, so this block carries only what
+   changes — which is what you check when you glance at the card. */
+function RouteTime({ scheduled, updated, cancelled, flightDate, align = 'right' }) {
+  const t = useTimeState({ scheduled, updated, cancelled, flightDate });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: align === 'right' ? 'flex-end' : 'flex-start', gap: 3 }}>
+      <span style={{
+        fontSize: 26, fontWeight: 900, lineHeight: 1,
+        color: t.color,
+        textDecoration: t.cancelled ? 'line-through' : 'none',
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '-0.5px',
+      }}>
+        {t.display}
+      </span>
+      {t.delta != null && t.delta !== 0 && !t.cancelled && (
+        <span style={{
+          background: t.chipBg, color: t.chipColor,
+          fontSize: 11, fontWeight: 800,
+          padding: '2px 7px', borderRadius: 999,
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+        }}>
+          {formatDelta(t.delta)}
+          {t.delayed && <span style={{ opacity: 0.75 }}>מעודכן</span>}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Live ticking clock for an airport, based on a "UTC ±HH:MM" string.
+function LocalClock({ timezone }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!timezone) return null;
+  const offsetH = parseUtcOffset(timezone);
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const local = new Date(utcMs + offsetH * 3600000);
+  const hh = String(local.getHours()).padStart(2, '0');
+  const mm = String(local.getMinutes()).padStart(2, '0');
+  const ss = String(local.getSeconds()).padStart(2, '0');
+  return (
+    <span style={{
+      fontFamily: 'monospace',
+      fontVariantNumeric: 'tabular-nums',
+      fontSize: 12,
+      fontWeight: 800,
+      color: 'var(--accent)',
+      letterSpacing: '0.5px',
+    }}>
+      {hh}:{mm}:{ss}
+    </span>
+  );
+}
+
 export default function FlightTab({ tripId }) {
+  const { canEdit, ownerProfile } = useTrip();
+  const confirm = useConfirm();
   const [tripData, setTripData] = useState(null);
+  // Snapshot of the form state when the modal opened, used to detect
+  // unsaved changes when the user tries to close it.
+  const initialFormSnapshot = useRef(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
+  // 'all' | 'trip' | 'outbound' | 'return' | 'hotel'
+  const [editScope, setEditScope] = useState('all');
   const [formTripName, setFormTripName] = useState('');
-  const [formTripDates, setFormTripDates] = useState('');
-  const [activeMapType, setActiveMapType] = useState('outbound'); // 'outbound' or 'return'
-  const [highlightedCard, setHighlightedCard] = useState(null);
-  
-  // Search query inputs in edit modal
-  const [searchOutboundCode, setSearchOutboundCode] = useState('');
-  const [searchReturnCode, setSearchReturnCode] = useState('');
+  const [lookupBusyOut, setLookupBusyOut] = useState(false);
+  const [lookupBusyRet, setLookupBusyRet] = useState(false);
+  // After a search: { kind: 'found'|'generated'|'empty', flightNumber, airline, route }
+  const [lookupResultOut, setLookupResultOut] = useState(null);
+  const [lookupResultRet, setLookupResultRet] = useState(null);
 
-  // Outbound Flight Form States
+  // Outbound Flight Form States — only user-editable fields
   const [formOutFlightNum, setFormOutFlightNum] = useState('');
   const [formOutAirline, setFormOutAirline] = useState('');
-  const [formOutDepCode, setFormOutDepCode] = useState('');
-  const [formOutDepCity, setFormOutDepCity] = useState('');
-  const [formOutDepLat, setFormOutDepLat] = useState(0);
-  const [formOutDepLng, setFormOutDepLng] = useState(0);
   const [formOutDepTz, setFormOutDepTz] = useState('UTC +02:00');
-  const [formOutArrCode, setFormOutArrCode] = useState('');
-  const [formOutArrCity, setFormOutArrCity] = useState('');
-  const [formOutArrLat, setFormOutArrLat] = useState(0);
-  const [formOutArrLng, setFormOutArrLng] = useState(0);
   const [formOutArrTz, setFormOutArrTz] = useState('UTC +02:00');
   const [formOutSchedDep, setFormOutSchedDep] = useState('');
   const [formOutActDep, setFormOutActDep] = useState('');
   const [formOutSchedArr, setFormOutSchedArr] = useState('');
   const [formOutEstArr, setFormOutEstArr] = useState('');
   const [formOutStatus, setFormOutStatus] = useState('בזמן');
-  const [formOutAcType, setFormOutAcType] = useState('');
-  const [formOutAcReg, setFormOutAcReg] = useState('');
-  const [formOutAcSerial, setFormOutAcSerial] = useState('');
-  const [formOutAcCountry, setFormOutAcCountry] = useState('');
   const [formOutDate, setFormOutDate] = useState('');
   const [formOutGate, setFormOutGate] = useState('');
+  // Hidden (auto-filled by lookup, used for the map)
+  const outAirportsRef = useRef({
+    dep: { code: '', city: '', name: '', lat: 0, lng: 0, timezone: 'UTC +02:00' },
+    arr: { code: '', city: '', name: '', lat: 0, lng: 0, timezone: 'UTC +02:00' }
+  });
 
   // Return Flight Form States
   const [formRetFlightNum, setFormRetFlightNum] = useState('');
   const [formRetAirline, setFormRetAirline] = useState('');
-  const [formRetDepCode, setFormRetDepCode] = useState('');
-  const [formRetDepCity, setFormRetDepCity] = useState('');
-  const [formRetDepLat, setFormRetDepLat] = useState(0);
-  const [formRetDepLng, setFormRetDepLng] = useState(0);
   const [formRetDepTz, setFormRetDepTz] = useState('UTC +02:00');
-  const [formRetArrCode, setFormRetArrCode] = useState('');
-  const [formRetArrCity, setFormRetArrCity] = useState('');
-  const [formRetArrLat, setFormRetArrLat] = useState(0);
-  const [formRetArrLng, setFormRetArrLng] = useState(0);
   const [formRetArrTz, setFormRetArrTz] = useState('UTC +02:00');
   const [formRetSchedDep, setFormRetSchedDep] = useState('');
   const [formRetActDep, setFormRetActDep] = useState('');
   const [formRetSchedArr, setFormRetSchedArr] = useState('');
   const [formRetEstArr, setFormRetEstArr] = useState('');
   const [formRetStatus, setFormRetStatus] = useState('בזמן');
-  const [formRetAcType, setFormRetAcType] = useState('');
-  const [formRetAcReg, setFormRetAcReg] = useState('');
-  const [formRetAcSerial, setFormRetAcSerial] = useState('');
-  const [formRetAcCountry, setFormRetAcCountry] = useState('');
   const [formRetDate, setFormRetDate] = useState('');
   const [formRetGate, setFormRetGate] = useState('');
+  const retAirportsRef = useRef({
+    dep: { code: '', city: '', name: '', lat: 0, lng: 0, timezone: 'UTC +02:00' },
+    arr: { code: '', city: '', name: '', lat: 0, lng: 0, timezone: 'UTC +02:00' }
+  });
 
   // Hotel Form States
   const [formHotelName, setFormHotelName] = useState('');
   const [formHotelAddress, setFormHotelAddress] = useState('');
   const [formHotelCheckIn, setFormHotelCheckIn] = useState('');
   const [formHotelCheckOut, setFormHotelCheckOut] = useState('');
-  const [formHotelRef, setFormHotelRef] = useState('');
   const [formHotelRoom, setFormHotelRoom] = useState('');
   const [formHotelNotes, setFormHotelNotes] = useState('');
+  const [formHotelLink, setFormHotelLink] = useState('');
 
-  // Automatic Lookup Trackers
-  const lastOutLookupRef = useRef({ flightNum: '', date: '' });
-  const lastRetLookupRef = useRef({ flightNum: '', date: '' });
+  // When the outbound flight date changes, slide the hotel check-in to
+  // the same calendar day (preserving the previously-picked time, or
+  // defaulting to 14:00 — standard hotel check-in). Same for return
+  // flight → check-out (default 12:00).
+  const syncOutboundDate = (newDate) => {
+    setFormOutDate(newDate);
+    if (!newDate) return;
+    const time = (formHotelCheckIn || '').split('T')[1] || '14:00';
+    setFormHotelCheckIn(`${newDate}T${time}`);
+  };
+  const syncReturnDate = (newDate) => {
+    setFormRetDate(newDate);
+    if (!newDate) return;
+    const time = (formHotelCheckOut || '').split('T')[1] || '12:00';
+    setFormHotelCheckOut(`${newDate}T${time}`);
+  };
+
+  const Banner = ({ color, bg, border, children }) => (
+    <div style={{ marginTop: 8, padding: '10px 12px', background: bg, border: `1px solid ${border}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color, lineHeight: 1.5 }}>
+      {children}
+    </div>
+  );
+
+  const renderLookupFeedback = (result) => {
+    if (!result) return null;
+    switch (result.kind) {
+      case 'empty':
+        return <Banner color="rgb(190, 18, 60)" bg="rgba(239, 68, 68, 0.08)" border="rgba(239, 68, 68, 0.2)">⚠️ הזן מספר טיסה לפני החיפוש.</Banner>;
+      case 'live':
+        return <Banner color="var(--text-success)" bg="rgba(5, 150, 105, 0.1)" border="rgba(5, 150, 105, 0.3)">✅ נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}</Banner>;
+      case 'no-key':
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">⚠️ חיפוש חי אינו זמין (חסר מפתח API מובנה). נטענו נתונים מקומיים.</Banner>;
+      case 'no-results':
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.1)" border="rgba(245, 158, 11, 0.3)">
+          {result.message
+            ? <>ⓘ {result.message}</>
+            : <>⚠️ AeroDataBox לא מצא את הטיסה בתאריך שצוין. נסה תאריך מדויק לטיסה (התאריך שמופיע בכרטיס שלך).</>}
+        </Banner>;
+      case 'http-error':
+        return <Banner color="rgb(190, 18, 60)" bg="rgba(239, 68, 68, 0.08)" border="rgba(239, 68, 68, 0.2)">❌ {result.message}</Banner>;
+      case 'network-error':
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.08)" border="rgba(245, 158, 11, 0.25)">📡 {result.message}</Banner>;
+      default:
+        return <Banner color="rgb(146, 64, 14)" bg="rgba(245, 158, 11, 0.08)" border="rgba(245, 158, 11, 0.25)">ⓘ נטענו נתונים משוערים מהמאגר המקומי.</Banner>;
+    }
+  };
+
+  const resultFromWrapper = (wrapper) => {
+    const flight = wrapper?.flight || null;
+    const route = flight ? `${flight.depAirport?.code} → ${flight.arrAirport?.code}` : '';
+    switch (wrapper?.status) {
+      case 'api':
+        return { kind: 'live', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
+      case 'no-key':
+        return { kind: 'no-key', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
+      case 'no-results':
+        return { kind: 'no-results', message: wrapper.message };
+      case 'http-error':
+        return { kind: 'http-error', message: wrapper.message, code: wrapper.code };
+      case 'network-error':
+        return { kind: 'network-error', message: wrapper.message };
+      default:
+        return { kind: 'generated', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
+    }
+  };
+
+  const runLookup = (which) => {
+    if (which === 'out') {
+      const num = (formOutFlightNum || '').trim().toUpperCase();
+      if (!num) {
+        setLookupResultOut({ kind: 'empty' });
+        return;
+      }
+      setLookupBusyOut(true);
+      setLookupResultOut(null);
+      lookupFlightLive(num, formOutDate)
+        .then(wrap => {
+          if (wrap?.flight) applyLookup('out', wrap.flight);
+          setLookupResultOut(resultFromWrapper(wrap));
+        })
+        .finally(() => setLookupBusyOut(false));
+    } else {
+      const num = (formRetFlightNum || '').trim().toUpperCase();
+      if (!num) {
+        setLookupResultRet({ kind: 'empty' });
+        return;
+      }
+      setLookupBusyRet(true);
+      setLookupResultRet(null);
+      lookupFlightLive(num, formRetDate)
+        .then(wrap => {
+          if (wrap?.flight) applyLookup('ret', wrap.flight);
+          setLookupResultRet(resultFromWrapper(wrap));
+        })
+        .finally(() => setLookupBusyRet(false));
+    }
+  };
+
+  // Refresh a saved flight's live data (called from card refresh button + auto-refresh)
+  const [refreshingOut, setRefreshingOut] = useState(false);
+  const [refreshingRet, setRefreshingRet] = useState(false);
+  const refreshFlight = async (kind) => {
+    if (!tripId || !tripData) return;
+    const flight = kind === 'outbound' ? tripData.outboundFlightDetails : tripData.returnFlightDetails;
+    if (!flight?.flightNumber) return;
+    if (kind === 'outbound') setRefreshingOut(true);
+    else setRefreshingRet(true);
+    try {
+      const wrap = await lookupFlightLive(flight.flightNumber, flight.date);
+      const res = wrap?.flight;
+      if (!res) return;
+      const docRef = doc(db, 'trips', tripId);
+      const newData = { ...tripData };
+      const merged = {
+        ...flight,
+        airline: res.airline || flight.airline,
+        depAirport: { ...(flight.depAirport || {}), ...(res.depAirport || {}) },
+        arrAirport: { ...(flight.arrAirport || {}), ...(res.arrAirport || {}) },
+        scheduledDep: res.scheduledDep || flight.scheduledDep,
+        actualDep: res.actualDep || flight.actualDep,
+        scheduledArr: res.scheduledArr || flight.scheduledArr,
+        estimatedArr: res.estimatedArr || flight.estimatedArr,
+        status: res.status || flight.status,
+        gate: res.gate || flight.gate,
+        lastRefreshed: new Date().toISOString(),
+      };
+      if (kind === 'outbound') newData.outboundFlightDetails = merged;
+      else newData.returnFlightDetails = merged;
+      await setDoc(docRef, newData, { merge: true });
+    } finally {
+      if (kind === 'outbound') setRefreshingOut(false);
+      else setRefreshingRet(false);
+    }
+  };
+
+  // Auto-refresh every 5 minutes (always on — API key is baked in)
+  useEffect(() => {
+    if (!tripId) return;
+    const interval = setInterval(() => {
+      refreshFlight('outbound');
+      refreshFlight('return');
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripId, tripData?.outboundFlightDetails?.flightNumber, tripData?.returnFlightDetails?.flightNumber]);
 
   // Listen to Firestore
   useEffect(() => {
@@ -179,21 +480,16 @@ export default function FlightTab({ tripId }) {
         setTripData(docSnap.data());
         setLoading(false);
       } else {
-        // Seed default flight/hotel data for new trip
         setLoading(true);
         const currentData = docSnap.data() || {};
-        const isPrague = currentData.destination?.includes('פראג') || currentData.name?.includes('פראג') || tripId.includes('prague');
-        
-        if (isPrague) {
-          await setDoc(docRef, { ...defaultTrip, ...currentData }, { merge: true });
-        } else {
-          await setDoc(docRef, {
-            outboundFlightDetails: emptyFlightDetails,
-            returnFlightDetails: emptyFlightDetails,
-            hotelDetails: emptyHotelDetails,
-            ...currentData
-          }, { merge: true });
-        }
+        // Always seed EMPTY details — never copy any other trip's data in.
+        // Each trip is fully self-contained.
+        await setDoc(docRef, {
+          outboundFlightDetails: emptyFlightDetails,
+          returnFlightDetails: emptyFlightDetails,
+          hotelDetails: emptyHotelDetails,
+          ...currentData
+        }, { merge: true });
         setLoading(false);
       }
     });
@@ -201,210 +497,174 @@ export default function FlightTab({ tripId }) {
     return () => unsubscribe();
   }, [tripId]);
 
-  // Debounced auto-fetch for outbound flight
-  useEffect(() => {
-    if (!showEditModal) return;
-    const flightNum = (formOutFlightNum || '').trim().toUpperCase();
-    const date = (formOutDate || '').trim();
-    
-    if (flightNum.length >= 3 && date) {
-      if (lastOutLookupRef.current.flightNum !== flightNum || lastOutLookupRef.current.date !== date) {
-        lastOutLookupRef.current = { flightNum, date };
-        const simResult = lookupFlight(flightNum);
-        if (simResult) {
-          setFormOutAirline(simResult.airline || '');
-          setFormOutDepCode(simResult.depAirport?.code || '');
-          setFormOutDepCity(simResult.depAirport?.city || '');
-          setFormOutDepLat(simResult.depAirport?.lat || 0);
-          setFormOutDepLng(simResult.depAirport?.lng || 0);
-          setFormOutDepTz(simResult.depAirport?.timezone || 'UTC +02:00');
-          setFormOutArrCode(simResult.arrAirport?.code || '');
-          setFormOutArrCity(simResult.arrAirport?.city || '');
-          setFormOutArrLat(simResult.arrAirport?.lat || 0);
-          setFormOutArrLng(simResult.arrAirport?.lng || 0);
-          setFormOutArrTz(simResult.arrAirport?.timezone || 'UTC +02:00');
-          setFormOutSchedDep(simResult.scheduledDep || '');
-          setFormOutActDep(simResult.actualDep || '');
-          setFormOutSchedArr(simResult.scheduledArr || '');
-          setFormOutEstArr(simResult.estimatedArr || '');
-          setFormOutStatus(simResult.status || 'בזמן');
-          setFormOutAcType(simResult.aircraftType || '');
-          setFormOutAcReg(simResult.registration || '');
-          setFormOutAcSerial(simResult.serialNumber || '');
-          setFormOutAcCountry(simResult.country || '');
-          setFormOutGate(simResult.gate || '');
-        }
-      }
+  const applyLookup = (which, simResult) => {
+    if (!simResult) return;
+    if (which === 'out') {
+      setFormOutAirline(simResult.airline || '');
+      setFormOutDepTz(simResult.depAirport?.timezone || 'UTC +02:00');
+      setFormOutArrTz(simResult.arrAirport?.timezone || 'UTC +02:00');
+      setFormOutSchedDep(simResult.scheduledDep || '');
+      setFormOutActDep(simResult.actualDep || '');
+      setFormOutSchedArr(simResult.scheduledArr || '');
+      setFormOutEstArr(simResult.estimatedArr || '');
+      setFormOutStatus(simResult.status || 'בזמן');
+      setFormOutGate(simResult.gate || '');
+      outAirportsRef.current = {
+        dep: simResult.depAirport || outAirportsRef.current.dep,
+        arr: simResult.arrAirport || outAirportsRef.current.arr,
+      };
+    } else {
+      setFormRetAirline(simResult.airline || '');
+      setFormRetDepTz(simResult.depAirport?.timezone || 'UTC +02:00');
+      setFormRetArrTz(simResult.arrAirport?.timezone || 'UTC +02:00');
+      setFormRetSchedDep(simResult.scheduledDep || '');
+      setFormRetActDep(simResult.actualDep || '');
+      setFormRetSchedArr(simResult.scheduledArr || '');
+      setFormRetEstArr(simResult.estimatedArr || '');
+      setFormRetStatus(simResult.status || 'בזמן');
+      setFormRetGate(simResult.gate || '');
+      retAirportsRef.current = {
+        dep: simResult.depAirport || retAirportsRef.current.dep,
+        arr: simResult.arrAirport || retAirportsRef.current.arr,
+      };
     }
-  }, [formOutFlightNum, formOutDate, showEditModal]);
-
-  // Debounced auto-fetch for return flight
-  useEffect(() => {
-    if (!showEditModal) return;
-    const flightNum = (formRetFlightNum || '').trim().toUpperCase();
-    const date = (formRetDate || '').trim();
-    
-    if (flightNum.length >= 3 && date) {
-      if (lastRetLookupRef.current.flightNum !== flightNum || lastRetLookupRef.current.date !== date) {
-        lastRetLookupRef.current = { flightNum, date };
-        const simResult = lookupFlight(flightNum);
-        if (simResult) {
-          setFormRetAirline(simResult.airline || '');
-          setFormRetDepCode(simResult.depAirport?.code || '');
-          setFormRetDepCity(simResult.depAirport?.city || '');
-          setFormRetDepLat(simResult.depAirport?.lat || 0);
-          setFormRetDepLng(simResult.depAirport?.lng || 0);
-          setFormRetDepTz(simResult.depAirport?.timezone || 'UTC +02:00');
-          setFormRetArrCode(simResult.arrAirport?.code || '');
-          setFormRetArrCity(simResult.arrAirport?.city || '');
-          setFormRetArrLat(simResult.arrAirport?.lat || 0);
-          setFormRetArrLng(simResult.arrAirport?.lng || 0);
-          setFormRetArrTz(simResult.arrAirport?.timezone || 'UTC +02:00');
-          setFormRetSchedDep(simResult.scheduledDep || '');
-          setFormRetActDep(simResult.actualDep || '');
-          setFormRetSchedArr(simResult.scheduledArr || '');
-          setFormRetEstArr(simResult.estimatedArr || '');
-          setFormRetStatus(simResult.status || 'בזמן');
-          setFormRetAcType(simResult.aircraftType || '');
-          setFormRetAcReg(simResult.registration || '');
-          setFormRetAcSerial(simResult.serialNumber || '');
-          setFormRetAcCountry(simResult.country || '');
-          setFormRetGate(simResult.gate || '');
-        }
-      }
-    }
-  }, [formRetFlightNum, formRetDate, showEditModal]);
-
-  const handleOutboundSearch = () => {
-    if (!searchOutboundCode.trim()) return;
-    const simResult = lookupFlight(searchOutboundCode);
-    
-    // Auto-fill outbound fields
-    setFormOutFlightNum(simResult.flightNumber);
-    setFormOutAirline(simResult.airline);
-    setFormOutDepCode(simResult.depAirport.code);
-    setFormOutDepCity(simResult.depAirport.city);
-    setFormOutDepLat(simResult.depAirport.lat);
-    setFormOutDepLng(simResult.depAirport.lng);
-    setFormOutDepTz(simResult.depAirport.timezone);
-    setFormOutArrCode(simResult.arrAirport.code);
-    setFormOutArrCity(simResult.arrAirport.city);
-    setFormOutArrLat(simResult.arrAirport.lat);
-    setFormOutArrLng(simResult.arrAirport.lng);
-    setFormOutArrTz(simResult.arrAirport.timezone);
-    setFormOutSchedDep(simResult.scheduledDep);
-    setFormOutActDep(simResult.actualDep);
-    setFormOutSchedArr(simResult.scheduledArr);
-    setFormOutEstArr(simResult.estimatedArr);
-    setFormOutStatus(simResult.status);
-    setFormOutAcType(simResult.aircraftType);
-    setFormOutAcReg(simResult.registration);
-    setFormOutAcSerial(simResult.serialNumber);
-    setFormOutAcCountry(simResult.country);
-    setFormOutGate(simResult.gate || '');
   };
 
-  const handleReturnSearch = () => {
-    if (!searchReturnCode.trim()) return;
-    const simResult = lookupFlight(searchReturnCode);
-    
-    // Auto-fill return fields
-    setFormRetFlightNum(simResult.flightNumber);
-    setFormRetAirline(simResult.airline);
-    setFormRetDepCode(simResult.depAirport.code);
-    setFormRetDepCity(simResult.depAirport.city);
-    setFormRetDepLat(simResult.depAirport.lat);
-    setFormRetDepLng(simResult.depAirport.lng);
-    setFormRetDepTz(simResult.depAirport.timezone);
-    setFormRetArrCode(simResult.arrAirport.code);
-    setFormRetArrCity(simResult.arrAirport.city);
-    setFormRetArrLat(simResult.arrAirport.lat);
-    setFormRetArrLng(simResult.arrAirport.lng);
-    setFormRetArrTz(simResult.arrAirport.timezone);
-    setFormRetSchedDep(simResult.scheduledDep);
-    setFormRetActDep(simResult.actualDep);
-    setFormRetSchedArr(simResult.scheduledArr);
-    setFormRetEstArr(simResult.estimatedArr);
-    setFormRetStatus(simResult.status);
-    setFormRetAcType(simResult.aircraftType);
-    setFormRetAcReg(simResult.registration);
-    setFormRetAcSerial(simResult.serialNumber);
-    setFormRetAcCountry(simResult.country);
-    setFormRetGate(simResult.gate || '');
-  };
+  // Lookup is triggered explicitly by the "חפש" button — no noisy auto-lookup
+  // on every keystroke (which previously made the form flicker between flights).
 
-  const openEditModal = () => {
+  // Listen for "open edit" events dispatched by the App header pencil button
+  useEffect(() => {
+    const handler = (e) => openEditModal(e?.detail?.scope || 'all');
+    window.addEventListener('flight:openEdit', handler);
+    return () => window.removeEventListener('flight:openEdit', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripData]);
+
+  const openEditModal = (scope = 'all') => {
+    if (!canEdit) return;
+    setEditScope(scope);
     if (!tripData) return;
     const out = tripData.outboundFlightDetails || emptyFlightDetails;
     const ret = tripData.returnFlightDetails || emptyFlightDetails;
     const htl = tripData.hotelDetails || emptyHotelDetails;
 
     setFormTripName(tripData.name || '');
-    setFormTripDates(tripData.dates || '');
 
-    // Outbound form states setup
     setFormOutFlightNum(out.flightNumber || '');
     setFormOutAirline(out.airline || '');
-    setFormOutDepCode(out.depAirport.code || '');
-    setFormOutDepCity(out.depAirport.city || '');
-    setFormOutDepLat(out.depAirport.lat || 0);
-    setFormOutDepLng(out.depAirport.lng || 0);
-    setFormOutDepTz(out.depAirport.timezone || 'UTC +02:00');
-    setFormOutArrCode(out.arrAirport.code || '');
-    setFormOutArrCity(out.arrAirport.city || '');
-    setFormOutArrLat(out.arrAirport.lat || 0);
-    setFormOutArrLng(out.arrAirport.lng || 0);
-    setFormOutArrTz(out.arrAirport.timezone || 'UTC +02:00');
-    setFormOutSchedDep(out.scheduledDep || '');
-    setFormOutActDep(out.actualDep || '');
-    setFormOutSchedArr(out.scheduledArr || '');
-    setFormOutEstArr(out.estimatedArr || '');
+    setFormOutDepTz(out.depAirport?.timezone || 'UTC +02:00');
+    setFormOutArrTz(out.arrAirport?.timezone || 'UTC +02:00');
+    setFormOutSchedDep(toTime24(out.scheduledDep));
+    setFormOutActDep(toTime24(out.actualDep));
+    setFormOutSchedArr(toTime24(out.scheduledArr));
+    setFormOutEstArr(toTime24(out.estimatedArr));
     setFormOutStatus(out.status || 'בזמן');
-    setFormOutAcType(out.aircraftType || '');
-    setFormOutAcReg(out.registration || '');
-    setFormOutAcSerial(out.serialNumber || '');
-    setFormOutAcCountry(out.country || '');
-    setFormOutDate(out.date || '2026-06-15');
+    setFormOutDate(out.date || '');
     setFormOutGate(out.gate || '');
+    outAirportsRef.current = {
+      dep: out.depAirport || outAirportsRef.current.dep,
+      arr: out.arrAirport || outAirportsRef.current.arr,
+    };
 
-    // Return form states setup
     setFormRetFlightNum(ret.flightNumber || '');
     setFormRetAirline(ret.airline || '');
-    setFormRetDepCode(ret.depAirport.code || '');
-    setFormRetDepCity(ret.depAirport.city || '');
-    setFormRetDepLat(ret.depAirport.lat || 0);
-    setFormRetDepLng(ret.depAirport.lng || 0);
-    setFormRetDepTz(ret.depAirport.timezone || 'UTC +02:00');
-    setFormRetArrCode(ret.arrAirport.code || '');
-    setFormRetArrCity(ret.arrAirport.city || '');
-    setFormRetArrLat(ret.arrAirport.lat || 0);
-    setFormRetArrLng(ret.arrAirport.lng || 0);
-    setFormRetArrTz(ret.arrAirport.timezone || 'UTC +02:00');
-    setFormRetSchedDep(ret.scheduledDep || '');
-    setFormRetActDep(ret.actualDep || '');
-    setFormRetSchedArr(ret.scheduledArr || '');
-    setFormRetEstArr(ret.estimatedArr || '');
+    setFormRetDepTz(ret.depAirport?.timezone || 'UTC +02:00');
+    setFormRetArrTz(ret.arrAirport?.timezone || 'UTC +02:00');
+    setFormRetSchedDep(toTime24(ret.scheduledDep));
+    setFormRetActDep(toTime24(ret.actualDep));
+    setFormRetSchedArr(toTime24(ret.scheduledArr));
+    setFormRetEstArr(toTime24(ret.estimatedArr));
     setFormRetStatus(ret.status || 'בזמן');
-    setFormRetAcType(ret.aircraftType || '');
-    setFormRetAcReg(ret.registration || '');
-    setFormRetAcSerial(ret.serialNumber || '');
-    setFormRetAcCountry(ret.country || '');
-    setFormRetDate(ret.date || '2026-06-22');
+    setFormRetDate(ret.date || '');
     setFormRetGate(ret.gate || '');
+    retAirportsRef.current = {
+      dep: ret.depAirport || retAirportsRef.current.dep,
+      arr: ret.arrAirport || retAirportsRef.current.arr,
+    };
 
-    // Hotel form states setup
     setFormHotelName(htl.name || '');
     setFormHotelAddress(htl.address || '');
+    setFormHotelLink(htl.link || '');
     setFormHotelCheckIn(htl.checkIn || '');
     setFormHotelCheckOut(htl.checkOut || '');
-    setFormHotelRef(htl.bookingRef || '');
     setFormHotelRoom(htl.roomNumber || '');
     setFormHotelNotes(htl.notes || '');
 
-    setSearchOutboundCode('');
-    setSearchReturnCode('');
+    // Snapshot the seeded form values so we can detect unsaved changes.
+    initialFormSnapshot.current = JSON.stringify({
+      formTripName: tripData.name || '',
+      formOutFlightNum: out.flightNumber || '',
+      formOutAirline: out.airline || '',
+      formOutDepTz: out.depAirport?.timezone || 'UTC +02:00',
+      formOutArrTz: out.arrAirport?.timezone || 'UTC +02:00',
+      formOutSchedDep: out.scheduledDep || '',
+      formOutActDep: out.actualDep || '',
+      formOutSchedArr: out.scheduledArr || '',
+      formOutEstArr: out.estimatedArr || '',
+      formOutStatus: out.status || 'בזמן',
+      formOutDate: out.date || '',
+      formOutGate: out.gate || '',
+      formRetFlightNum: ret.flightNumber || '',
+      formRetAirline: ret.airline || '',
+      formRetDepTz: ret.depAirport?.timezone || 'UTC +02:00',
+      formRetArrTz: ret.arrAirport?.timezone || 'UTC +02:00',
+      formRetSchedDep: ret.scheduledDep || '',
+      formRetActDep: ret.actualDep || '',
+      formRetSchedArr: ret.scheduledArr || '',
+      formRetEstArr: ret.estimatedArr || '',
+      formRetStatus: ret.status || 'בזמן',
+      formRetDate: ret.date || '',
+      formRetGate: ret.gate || '',
+      formHotelName: htl.name || '',
+      formHotelAddress: htl.address || '',
+      formHotelLink: htl.link || '',
+      formHotelCheckIn: htl.checkIn || '',
+      formHotelCheckOut: htl.checkOut || '',
+      formHotelRoom: htl.roomNumber || '',
+      formHotelNotes: htl.notes || '',
+    });
+
     setShowEditModal(true);
   };
+
+  const currentFormSerialized = () => JSON.stringify({
+    formTripName, formOutFlightNum, formOutAirline, formOutDepTz, formOutArrTz,
+    formOutSchedDep, formOutActDep, formOutSchedArr, formOutEstArr, formOutStatus,
+    formOutDate, formOutGate, formRetFlightNum, formRetAirline, formRetDepTz,
+    formRetArrTz, formRetSchedDep, formRetActDep, formRetSchedArr, formRetEstArr,
+    formRetStatus, formRetDate, formRetGate, formHotelName, formHotelAddress, formHotelLink,
+    formHotelCheckIn, formHotelCheckOut, formHotelRoom, formHotelNotes,
+  });
+
+  // The flight/hotel form guards unsaved changes on the ✕, so the drag is
+  // enabled only when nothing has been edited yet.
+  const editSheet = useSheetDrag(() => setShowEditModal(false), {
+    enabled: !initialFormSnapshot.current || currentFormSerialized() === initialFormSnapshot.current,
+  });
+
+  const attemptCloseEdit = async () => {
+    if (initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'ערכת נתונים שלא נשמרו עדיין. אם תצא עכשיו השינויים יאבדו.',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setShowEditModal(false);
+  };
+
+  /* Back goes through the same guard as the ✕ — an unsaved form asks
+     before it disappears, however it was dismissed. */
+  useBackHandler(showEditModal, attemptCloseEdit);
+
+  // "מידע חשוב" sheet
+  const [showInfo, setShowInfo] = useState(false);
+  const infoSheet = useSheetDrag(() => setShowInfo(false));
+  useBackHandler(showInfo, () => infoSheet.close());
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -412,74 +672,46 @@ export default function FlightTab({ tripId }) {
     const docRef = doc(db, 'trips', tripId);
 
     await setDoc(docRef, {
+      name: formTripName,
+      dates: formatDateRange(formOutDate, formRetDate),
       outboundFlightDetails: {
-        flightNumber: formOutFlightNum,
+        // Store the compact designator so saved flights always match what the
+        // lookup and refresh calls send.
+        flightNumber: normaliseFlightNumber(formOutFlightNum),
         airline: formOutAirline,
-        depAirport: {
-          code: formOutDepCode,
-          city: formOutDepCity,
-          lat: Number(formOutDepLat),
-          lng: Number(formOutDepLng),
-          timezone: formOutDepTz
-        },
-        arrAirport: {
-          code: formOutArrCode,
-          city: formOutArrCity,
-          lat: Number(formOutArrLat),
-          lng: Number(formOutArrLng),
-          timezone: formOutArrTz
-        },
+        depAirport: { ...outAirportsRef.current.dep, timezone: formOutDepTz },
+        arrAirport: { ...outAirportsRef.current.arr, timezone: formOutArrTz },
         scheduledDep: formOutSchedDep,
         actualDep: formOutActDep,
         scheduledArr: formOutSchedArr,
         estimatedArr: formOutEstArr,
         status: formOutStatus,
-        aircraftType: formOutAcType,
-        registration: formOutAcReg,
-        serialNumber: formOutAcSerial,
-        country: formOutAcCountry,
         date: formOutDate,
         gate: formOutGate
       },
       returnFlightDetails: {
-        flightNumber: formRetFlightNum,
+        flightNumber: normaliseFlightNumber(formRetFlightNum),
         airline: formRetAirline,
-        depAirport: {
-          code: formRetDepCode,
-          city: formRetDepCity,
-          lat: Number(formRetDepLat),
-          lng: Number(formRetDepLng),
-          timezone: formRetDepTz
-        },
-        arrAirport: {
-          code: formRetArrCode,
-          city: formRetArrCity,
-          lat: Number(formRetArrLat),
-          lng: Number(formRetArrLng),
-          timezone: formRetArrTz
-        },
+        depAirport: { ...retAirportsRef.current.dep, timezone: formRetDepTz },
+        arrAirport: { ...retAirportsRef.current.arr, timezone: formRetArrTz },
         scheduledDep: formRetSchedDep,
         actualDep: formRetActDep,
         scheduledArr: formRetSchedArr,
         estimatedArr: formRetEstArr,
         status: formRetStatus,
-        aircraftType: formRetAcType,
-        registration: formRetAcReg,
-        serialNumber: formRetAcSerial,
-        country: formRetAcCountry,
         date: formRetDate,
         gate: formRetGate
       },
       hotelDetails: {
         name: formHotelName,
         address: formHotelAddress,
+        link: formHotelLink,
         checkIn: formHotelCheckIn,
         checkOut: formHotelCheckOut,
-        bookingRef: formHotelRef,
         roomNumber: formHotelRoom,
         notes: formHotelNotes
       }
-    });
+    }, { merge: true });
 
     setShowEditModal(false);
   };
@@ -487,42 +719,28 @@ export default function FlightTab({ tripId }) {
   const handleUpdateFlightDate = async (type, dateValue) => {
     if (!tripId) return;
     const docRef = doc(db, 'trips', tripId);
-    
-    // Quick inline date updates
+    const newData = { ...tripData };
     if (type === 'outbound') {
-      await setDoc(docRef, {
-        ...tripData,
-        outboundFlightDetails: {
-          ...tripData.outboundFlightDetails,
-          date: dateValue
-        }
-      });
+      newData.outboundFlightDetails = { ...tripData.outboundFlightDetails, date: dateValue };
     } else {
-      await setDoc(docRef, {
-        ...tripData,
-        returnFlightDetails: {
-          ...tripData.returnFlightDetails,
-          date: dateValue
-        }
-      });
+      newData.returnFlightDetails = { ...tripData.returnFlightDetails, date: dateValue };
     }
-  };
+    newData.dates = formatDateRange(
+      type === 'outbound' ? dateValue : tripData.outboundFlightDetails?.date,
+      type === 'return' ? dateValue : tripData.returnFlightDetails?.date
+    );
 
-  const handleMapTypeChange = (type) => {
-    setActiveMapType(type);
-    setHighlightedCard(type);
-    
-    // Smooth scroll to card
-    const cardId = type === 'outbound' ? 'outbound-card' : 'return-card';
-    const element = document.getElementById(cardId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Keep the hotel's check-in / check-out aligned with the flights.
+    const hotel = tripData.hotelDetails || {};
+    if (type === 'outbound') {
+      const time = (hotel.checkIn || '').split('T')[1] || '14:00';
+      newData.hotelDetails = { ...hotel, checkIn: `${dateValue}T${time}` };
+    } else {
+      const time = (hotel.checkOut || '').split('T')[1] || '12:00';
+      newData.hotelDetails = { ...(newData.hotelDetails || hotel), checkOut: `${dateValue}T${time}` };
     }
-    
-    // Remove glow after animation completes
-    setTimeout(() => {
-      setHighlightedCard(null);
-    }, 2000);
+
+    await setDoc(docRef, newData, { merge: true });
   };
 
   const formatDateTime = (dateTimeStr) => {
@@ -531,11 +749,24 @@ export default function FlightTab({ tripId }) {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} בשעה ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
-  const formatDateString = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  };
+  const outbound = tripData?.outboundFlightDetails || emptyFlightDetails;
+  const returning = tripData?.returnFlightDetails || emptyFlightDetails;
+  const hotel = tripData?.hotelDetails || emptyHotelDetails;
+
+  const destCoords = outbound.arrAirport || returning.depAirport;
+  const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
+
+  const todayRange = (() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return weather?.daily?.find(d => d.date === today) || null;
+  })();
+
+  const tripDayForecasts = (() => {
+    if (!weather?.daily || !outbound.date || !returning.date) return [];
+    const start = outbound.date;
+    const end = returning.date;
+    return weather.daily.filter(d => d.date >= start && d.date <= end);
+  })();
 
   if (loading || !tripData) {
     return (
@@ -546,619 +777,632 @@ export default function FlightTab({ tripId }) {
     );
   }
 
-  const outbound = tripData.outboundFlightDetails || emptyFlightDetails;
-  const returning = tripData.returnFlightDetails || emptyFlightDetails;
-  const hotel = tripData.hotelDetails || emptyHotelDetails;
+  // Render a flight card (extracted to share between outbound + return)
+  // Tiles inside a flight card: gate, date and status all read the same way.
+  const tileStyle = {
+    display: 'flex', flexDirection: 'column', gap: 3,
+    alignItems: 'center', justifyContent: 'center',
+    background: 'var(--ink-3)', borderRadius: 12,
+    padding: '9px 6px', minHeight: 56, textAlign: 'center',
+  };
+  const tileLabel = { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' };
+  const tileValue = { fontSize: 15, fontWeight: 900, color: 'var(--primary-color)', fontVariantNumeric: 'tabular-nums' };
 
-  // Progress info calculation
-  const outProgress = getFlightProgressInfo(outbound);
-  const retProgress = getFlightProgressInfo(returning);
+  const renderFlightCard = (flight, kind) => {
+    const label = kind === 'outbound' ? 'טיסת הלוך' : 'טיסת חזור';
+    const badgeColor = kind === 'outbound' ? 'var(--p-10)' : 'var(--c-red2-10)';
+    const badgeText = kind === 'outbound' ? 'var(--secondary-color)' : 'var(--c-red2)';
+    const isRefreshing = kind === 'outbound' ? refreshingOut : refreshingRet;
+    const lastRefreshed = flight.lastRefreshed
+      ? new Date(flight.lastRefreshed).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+      : null;
 
-  // Selected map config
-  const mapFlight = activeMapType === 'outbound' ? outbound : returning;
-  const mapProgress = activeMapType === 'outbound' ? outProgress : retProgress;
+    return (
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
+        {/* Card Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span className="badge-success" style={{ background: badgeColor, color: badgeText, padding: '4px 10px', fontSize: '11px', flexShrink: 0 }}>{label}</span>
+            <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary-color)', whiteSpace: 'nowrap' }}>{flight.flightNumber || '—'}</span>
+            <span style={{
+              fontSize: '12px', color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{flight.airline}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {canEdit && (
+            <button
+              onClick={() => openEditModal(kind)}
+              title={`ערוך ${label}`}
+              style={{
+                background: 'var(--p-6)',
+                border: 'none', padding: '6px', borderRadius: 8, cursor: 'pointer',
+                color: 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}
+            >
+              <Edit2 size={14} />
+            </button>
+            )}
+            <button
+              onClick={() => refreshFlight(kind)}
+              disabled={isRefreshing || !flight.flightNumber}
+              title={lastRefreshed ? `עודכן לאחרונה: ${lastRefreshed}` : 'רענן מידע טיסה'}
+              style={{
+                background: 'var(--p-8)',
+                border: 'none',
+                padding: '6px 10px',
+                borderRadius: 8,
+                cursor: isRefreshing ? 'default' : 'pointer',
+                color: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 800,
+                opacity: !flight.flightNumber ? 0.4 : 1
+              }}
+            >
+              <RefreshCw size={13} className={isRefreshing ? 'spinning' : ''} />
+              <span>רענן</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Route — the two ends of the flight, side by side, with the times
+            that actually change sitting under each airport. This is what
+            you glance at in the terminal; everything else is secondary. */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1.1 }}>
+              {flight.depAirport?.code || '—'}
+            </div>
+            <div style={{
+              fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {flight.depAirport?.city || ''}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <RouteTime
+                scheduled={toTime24(flight.scheduledDep)}
+                updated={toTime24(flight.actualDep)}
+                cancelled={flight.status === 'בוטלה'}
+                flightDate={flight.date}
+                align="right"
+              />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginTop: 4, display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+              <PlaneTakeoff size={11} style={{ color: 'var(--accent)' }} />
+              <span>המראה</span>
+            </div>
+          </div>
+
+          {/* The line between them — direction of travel, in RTL: departure
+              on the right, arrival on the left. */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 6, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--p-30)' }} />
+              <span style={{ width: 26, height: 2, background: 'var(--p-15)', borderRadius: 2 }} />
+              <Plane size={15} style={{ color: 'var(--accent)', transform: 'rotate(-90deg)' }} />
+              <span style={{ width: 26, height: 2, background: 'var(--p-15)', borderRadius: 2 }} />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--p-30)' }} />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1.1 }}>
+              {flight.arrAirport?.code || '—'}
+            </div>
+            <div style={{
+              fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {flight.arrAirport?.city || ''}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <RouteTime
+                scheduled={toTime24(flight.scheduledArr)}
+                updated={toTime24(flight.estimatedArr)}
+                cancelled={flight.status === 'בוטלה'}
+                flightDate={flight.date}
+                align="left"
+              />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginTop: 4, display: 'flex', gap: 5 }}>
+              <PlaneLanding size={11} style={{ color: 'var(--accent)' }} />
+              <span>נחיתה</span>
+            </div>
+          </div>
+        </div>
+
+        {/* The three things you are asked for at the airport, as tiles
+            rather than "label: value" rows. */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.85fr 0.95fr', gap: 8 }}>
+          <div style={{ ...tileStyle, fontSize: 13 }}>
+            <span style={tileLabel}>תאריך</span>
+            {canEdit ? (
+              <CustomDatePicker
+                value={flight.date || ''}
+                onChange={(val) => handleUpdateFlightDate(kind, val)}
+                variant="compact"
+              />
+            ) : (
+              <span style={tileValue}>
+                {flight.date
+                  ? new Date(flight.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                  : '—'}
+              </span>
+            )}
+          </div>
+
+          <div style={tileStyle}>
+            <span style={tileLabel}>שער (Gate)</span>
+            <span style={{ ...tileValue, color: flight.gate ? 'var(--accent)' : 'var(--text-muted)' }}>
+              {flight.gate || '—'}
+            </span>
+          </div>
+
+          <div style={tileStyle}>
+            <span style={tileLabel}>סטטוס</span>
+            <span className="badge-success" style={{
+              ...(flight.status === 'בוטלה' ? { background: 'var(--c-red-10)', color: 'var(--c-red)' }
+                : flight.status === 'באיחור קל' || flight.status === 'באיחור רציני' ? { background: 'var(--c-orange-12)', color: 'var(--c-orange)' }
+                : {}),
+              fontSize: 12, padding: '3px 8px', gap: 5,
+            }}>
+              <span className="pulsing-dot" style={
+                flight.status === 'בוטלה' ? { background: 'var(--c-red)' }
+                : flight.status?.includes('איחור') ? { background: 'var(--c-orange)' }
+                : undefined
+              } />
+              <span>{flight.status || '—'}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Local time at both ends — useful, but never the headline. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+          borderTop: '1px solid var(--ink-6)', paddingTop: 10,
+        }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontWeight: 800 }}>{flight.depAirport?.code || '—'}</span>
+            <LocalClock timezone={flight.depAirport?.timezone} />
+            <span style={{ opacity: 0.7 }}>{flight.depAirport?.timezone}</span>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ opacity: 0.7 }}>{flight.arrAirport?.timezone}</span>
+            <LocalClock timezone={flight.arrAirport?.timezone} />
+            <span style={{ fontWeight: 800 }}>{flight.arrAirport?.code || '—'}</span>
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      
-      {/* Map Switcher Header and Map */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Compass size={18} />
-            <span>מפת נתיב טיסה:</span>
-          </h3>
-          
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={() => handleMapTypeChange('outbound')}
-              className={`btn-tab-toggle ${activeMapType === 'outbound' ? 'active' : ''}`}
-            >
-              הלוך ({outbound.flightNumber || 'לא מוגדר'})
-            </button>
-            <button 
-              onClick={() => handleMapTypeChange('return')}
-              className={`btn-tab-toggle ${activeMapType === 'return' ? 'active' : ''}`}
-            >
-              חזור ({returning.flightNumber || 'לא מוגדר'})
-            </button>
+    <div className="animate-fade dashboard-grid">
+      {ownerProfile && (
+        <div className="owner-banner">
+          {ownerProfile.photoURL ? (
+            <img src={ownerProfile.photoURL} alt="" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="owner-banner-avatar">
+              {(ownerProfile.displayName || ownerProfile.email || '?')[0]}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>טיול משותף של</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {ownerProfile.displayName || ownerProfile.email}
+            </div>
           </div>
+          <span style={{
+            fontSize: 11, fontWeight: 800,
+            padding: '4px 10px', borderRadius: 999,
+            background: canEdit ? 'var(--c-teal-12)' : 'var(--ink-6)',
+            color: canEdit ? 'var(--text-success)' : 'var(--text-muted)'
+          }}>
+            {canEdit ? 'הרשאה: עריכה' : 'הרשאה: צפייה בלבד'}
+          </span>
+        </div>
+      )}
+
+      {/* Important info (emergency numbers, contacts, addresses) lives in
+          a sheet behind this one button instead of a tab of its own. */}
+      <button type="button" className="glass-card info-launcher" onClick={() => setShowInfo(true)}>
+        <span className="info-launcher-icon"><LifeBuoy size={18} /></span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+          <span style={{ display: 'block', fontSize: 14, fontWeight: 800, color: 'var(--primary)' }}>מידע חשוב</span>
+          <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>
+            מספרי חירום, אנשי קשר, כתובות וקישורים
+          </span>
+        </span>
+        <ChevronLeft size={16} style={{ color: 'var(--ink-20)', flexShrink: 0 }} />
+      </button>
+
+      {showInfo && createPortal(
+        <div className="modal-overlay" data-closing={infoSheet.closing || undefined} onClick={infoSheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...infoSheet.handlers}
+            style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...infoSheet.style }}>
+            <div className="sheet-grab" />
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LifeBuoy size={18} style={{ color: 'var(--c-red)' }} />מידע חשוב</h2>
+              <button aria-label="סגור" className="btn-close" onClick={infoSheet.close}>✕</button>
+            </div>
+            <div data-sheet-scroll style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 8 }}>
+              <Suspense fallback={<Skeleton rows={3} header={false} label="טוען מידע חשוב" />}>
+                <InfoTab tripId={tripId} embedded />
+              </Suspense>
+            </div>
+          </div>
+        </div>,
+        document.querySelector('.app-container') || document.body
+      )}
+
+      {/* Weather at the destination.
+          The flight-path map that used to head this tab is gone: it drew
+          a straight dashed line between two dots on a basemap that twice
+          stopped rendering, and it answered a question nobody had. What
+          is worth a card at the top of a trip is what it is like there
+          right now, and what to pack for the days ahead. */}
+      {weather && (
+        <div className="glass-card weather-card">
+          <div className="weather-now">
+            <span className="weather-now-icon" aria-hidden="true">{getWeatherIcon(weather.current.code)}</span>
+            <div className="weather-now-place">
+              <span className="weather-now-city">{destCoords?.city || tripData?.destination || 'היעד'}</span>
+              <span className="weather-now-cond">{getWeatherLabel(weather.current.code) || 'עכשיו'}</span>
+            </div>
+            <span className="weather-now-temp">{weather.current.temp}°</span>
+          </div>
+
+          <div className="weather-facts">
+            <span><b>{weather.current.wind}</b> קמ״ש רוח</span>
+            <span><b>{weather.current.humidity}%</b> לחות</span>
+            {todayRange && <span><b>{todayRange.max}°</b> / {todayRange.min}° היום</span>}
+          </div>
+
+          {tripDayForecasts.length > 0 && (
+            <div className="weather-days">
+              {tripDayForecasts.map((d) => {
+                const dayDate = new Date(d.date);
+                const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dayDate.getDay()];
+                const dd = String(dayDate.getDate()).padStart(2, '0');
+                const mm = String(dayDate.getMonth() + 1).padStart(2, '0');
+                const isToday = d.date === new Date().toISOString().slice(0, 10);
+                return (
+                  <div key={d.date} className={`weather-day${isToday ? ' today' : ''}`}>
+                    <span className="weather-day-dow">{dow}</span>
+                    <span className="weather-day-date">{dd}.{mm}</span>
+                    <span className="weather-day-icon">{getWeatherIcon(d.code)}</span>
+                    <span className="weather-day-max">{d.max}°</span>
+                    <span className="weather-day-min">{d.min}°</span>
+                    {/* Only a rain chance worth planning around earns a line. */}
+                    {d.rain >= 20 && <span className="weather-day-rain">💧{d.rain}%</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Outbound flight card */}
+      {renderFlightCard(outbound, 'outbound')}
+
+      {/* Return flight card — same gap as flight→hotel (handled by .dashboard-grid gap) */}
+      {renderFlightCard(returning, 'return')}
+
+      {/* Hotel */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '8px' }}>
+          <Building size={18} style={{ color: 'var(--primary-color)' }} />
+          <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)', flex: 1 }}>
+            פרטי המלון ביעד
+          </h4>
+          {canEdit && (
+          <button
+            onClick={() => openEditModal('hotel')}
+            title="ערוך פרטי מלון"
+            style={{
+              background: 'var(--p-6)', border: 'none',
+              padding: '6px', borderRadius: 8, cursor: 'pointer',
+              color: 'var(--accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            <Edit2 size={14} />
+          </button>
+          )}
         </div>
 
-        <MapComponent 
-          depCoords={mapFlight.depAirport} 
-          arrCoords={mapFlight.arrAirport} 
-          progressPercent={mapProgress.progressPercent}
-        />
-      </div>
-
-      {/* Dynamic Grid for Outbound & Return Flight Cards */}
-      <div className="dashboard-grid">
-        
-        {/* Outbound Flight Card */}
-        <div id="outbound-card" className={`glass-card ${highlightedCard === 'outbound' ? 'highlight-pulse' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
-          
-          {/* Card Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <span className="badge-success" style={{ background: 'rgba(79, 70, 229, 0.1)', color: 'var(--secondary-color)', padding: '4px 10px', fontSize: '11px', marginLeft: '8px' }}>טיסת הלוך</span>
-              <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary-color)' }}>{outbound.flightNumber}</span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '6px' }}>{outbound.airline}</span>
-            </div>
-            
-            <button onClick={openEditModal} style={{ background: 'transparent', border: 'none', padding: '6px', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Edit2 size={16} />
-            </button>
-          </div>
-
-          {/* Date Picker Section */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(11,11,48,0.03)', padding: '10px 14px', borderRadius: 'var(--border-radius-md)' }}>
-            <Calendar size={16} style={{ color: 'var(--primary-color)' }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>תאריך טיסה</div>
-              <CustomDatePicker
-                value={outbound.date || '2026-06-15'}
-                onChange={(val) => handleUpdateFlightDate('outbound', val)}
-                variant="compact"
-              />
-            </div>
-          </div>
-
-          {/* Airport Details */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'right' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '28px', fontWeight: '900', color: 'var(--primary-color)' }}>{outbound.depAirport.code}</div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{outbound.depAirport.city}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{outbound.depAirport.timezone}</div>
-            </div>
-
-            <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                <div style={{ flex: 1, borderTop: '2px dashed rgba(11, 11, 48, 0.15)' }}></div>
-                <Plane size={16} style={{ color: 'var(--primary-color)', margin: '0 6px', transform: 'rotate(-90deg)' }} />
-                <div style={{ flex: 1, borderTop: '2px dashed rgba(11, 11, 48, 0.15)' }}></div>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={{ fontSize: '28px', fontWeight: '900', color: 'var(--primary-color)' }}>{outbound.arrAirport.code}</div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{outbound.arrAirport.city}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{outbound.arrAirport.timezone}</div>
-            </div>
-          </div>
-
-          <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }} />
-
-          {/* Progress Slider */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ position: 'relative', height: '14px', width: '100%' }}>
-              <div style={{ position: 'absolute', top: '6px', left: 0, right: 0, height: '2px', background: 'rgba(11,11,48,0.1)' }}></div>
-              <div style={{ position: 'absolute', top: '6px', right: 0, width: `${outProgress.progressPercent * 100}%`, height: '2px', background: 'var(--primary-color)' }}></div>
-              <div style={{ 
-                position: 'absolute', 
-                top: '-3px', 
-                right: `${outProgress.progressPercent * 100}%`, 
-                transform: 'translateX(50%) rotate(-90deg)', 
-                color: 'var(--primary-color)',
-                background: '#ffffff',
-                borderRadius: '50%',
-                padding: '2px',
-                display: 'flex',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-              }}>
-                <Plane size={12} fill="var(--primary-color)" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700' }}>
-              <span>{outProgress.completedDistance} ק"מ</span>
-              <span>{outProgress.remainingDistance} ק"מ נותר • כ-{outProgress.remainingTime} שעות</span>
-              <span>{outProgress.totalDistance} ק"מ</span>
-            </div>
-          </div>
-
-          {/* Table Grid Times */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>המראה מתוכננת / מעודכנת:</span>
-              <span style={{ fontWeight: '800' }}>{outbound.scheduledDep} ◄ {outbound.actualDep}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>נחיתה מתוכננת / משוערת:</span>
-              <span style={{ fontWeight: '800' }}>{outbound.scheduledArr} ◄ {outbound.estimatedArr}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה:</span>
-              <span className="badge-success">
-                <span className="pulsing-dot"></span>
-                <span>{outbound.status}</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Aircraft Subcard */}
-          <div style={{ background: 'rgba(11,11,48,0.03)', padding: '12px', borderRadius: 'var(--border-radius-md)', fontSize: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>מטוס: </span>
-              <strong style={{ color: 'var(--primary-color)' }}>{outbound.aircraftType || 'N/A'}</strong>
-            </div>
-            <div>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>רישום: </span>
-              <strong style={{ color: 'var(--primary-color)' }}>{outbound.registration || 'N/A'}</strong>
-            </div>
-            {outbound.gate && (
-              <div style={{ gridColumn: 'span 2', borderTop: '1px dashed rgba(0,0,0,0.04)', paddingTop: '6px', marginTop: '2px' }}>
-                <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>שער עלייה למטוס (Gate): </span>
-                <strong style={{ color: 'var(--accent)', fontSize: '13px' }}>{outbound.gate}</strong>
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary-color)' }}>{hotel.name}</div>
+            {hotel.address && (
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent(hotel.address)}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  color: 'var(--text-muted)', fontSize: 13,
+                  fontWeight: 600, textDecoration: 'none'
+                }}
+              >
+                <MapPin size={14} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{hotel.address}</span>
+                <ExternalLink size={11} style={{ opacity: 0.6, marginRight: 2, flexShrink: 0 }} />
+              </a>
+            )}
+            {hotel.link && (
+              <a
+                href={hotel.link}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  color: 'var(--accent)', fontSize: 12,
+                  fontWeight: 700, textDecoration: 'none',
+                  background: 'var(--p-8)',
+                  border: '1px solid rgba(79,70,229,0.18)',
+                  borderRadius: 999, padding: '4px 10px',
+                  alignSelf: 'flex-start',
+                  maxWidth: '100%'
+                }}
+                dir="ltr"
+              >
+                <Link2 size={12} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                  {hotel.link.replace(/^https?:\/\//, '')}
+                </span>
+                <ExternalLink size={11} style={{ opacity: 0.6, flexShrink: 0 }} />
+              </a>
             )}
           </div>
 
-        </div>
+          <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '4px 0' }} />
 
-        {/* Return Flight Card */}
-        <div id="return-card" className={`glass-card ${highlightedCard === 'return' ? 'highlight-pulse' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
-          
-          {/* Card Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="hotel-meta-grid">
             <div>
-              <span className="badge-success" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'rgb(239, 68, 68)', padding: '4px 10px', fontSize: '11px', marginLeft: '8px' }}>טיסת חזור</span>
-              <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary-color)' }}>{returning.flightNumber}</span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '6px' }}>{returning.airline}</span>
-            </div>
-            
-            <button onClick={openEditModal} style={{ background: 'transparent', border: 'none', padding: '6px', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Edit2 size={16} />
-            </button>
-          </div>
-
-          {/* Date Picker Section */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(11,11,48,0.03)', padding: '10px 14px', borderRadius: 'var(--border-radius-md)' }}>
-            <Calendar size={16} style={{ color: 'var(--primary-color)' }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>תאריך טיסה</div>
-              <CustomDatePicker
-                value={returning.date || '2026-06-22'}
-                onChange={(val) => handleUpdateFlightDate('return', val)}
-                variant="compact"
-              />
-            </div>
-          </div>
-
-          {/* Airport Details */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'right' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '28px', fontWeight: '900', color: 'var(--primary-color)' }}>{returning.depAirport.code}</div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{returning.depAirport.city}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{returning.depAirport.timezone}</div>
-            </div>
-
-            <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                <div style={{ flex: 1, borderTop: '2px dashed rgba(11, 11, 48, 0.15)' }}></div>
-                <Plane size={16} style={{ color: 'var(--primary-color)', margin: '0 6px', transform: 'rotate(-90deg)' }} />
-                <div style={{ flex: 1, borderTop: '2px dashed rgba(11, 11, 48, 0.15)' }}></div>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={{ fontSize: '28px', fontWeight: '900', color: 'var(--primary-color)' }}>{returning.arrAirport.code}</div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>{returning.arrAirport.city}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{returning.arrAirport.timezone}</div>
-            </div>
-          </div>
-
-          <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }} />
-
-          {/* Progress Slider */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ position: 'relative', height: '14px', width: '100%' }}>
-              <div style={{ position: 'absolute', top: '6px', left: 0, right: 0, height: '2px', background: 'rgba(11,11,48,0.1)' }}></div>
-              <div style={{ position: 'absolute', top: '6px', right: 0, width: `${retProgress.progressPercent * 100}%`, height: '2px', background: 'var(--primary-color)' }}></div>
-              <div style={{ 
-                position: 'absolute', 
-                top: '-3px', 
-                right: `${retProgress.progressPercent * 100}%`, 
-                transform: 'translateX(50%) rotate(-90deg)', 
-                color: 'var(--primary-color)',
-                background: '#ffffff',
-                borderRadius: '50%',
-                padding: '2px',
-                display: 'flex',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-              }}>
-                <Plane size={12} fill="var(--primary-color)" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700' }}>
-              <span>{retProgress.completedDistance} ק"מ</span>
-              <span>{retProgress.remainingDistance} ק"מ נותר • כ-{retProgress.remainingTime} שעות</span>
-              <span>{retProgress.totalDistance} ק"מ</span>
-            </div>
-          </div>
-
-          {/* Table Grid Times */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>המראה מתוכננת / מעודכנת:</span>
-              <span style={{ fontWeight: '800' }}>{returning.scheduledDep} ◄ {returning.actualDep}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>נחיתה מתוכננת / משוערת:</span>
-              <span style={{ fontWeight: '800' }}>{returning.scheduledArr} ◄ {returning.estimatedArr}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>סטטוס טיסה:</span>
-              <span className="badge-success">
-                <span className="pulsing-dot"></span>
-                <span>{returning.status}</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Aircraft Subcard */}
-          <div style={{ background: 'rgba(11,11,48,0.03)', padding: '12px', borderRadius: 'var(--border-radius-md)', fontSize: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>מטוס: </span>
-              <strong style={{ color: 'var(--primary-color)' }}>{returning.aircraftType || 'N/A'}</strong>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>כניסה למלון (Check-in)</div>
+              <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{formatDateTime(hotel.checkIn)}</div>
             </div>
             <div>
-              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>רישום: </span>
-              <strong style={{ color: 'var(--primary-color)' }}>{returning.registration || 'N/A'}</strong>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>עזיבת המלון (Check-out)</div>
+              <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{formatDateTime(hotel.checkOut)}</div>
             </div>
-            {returning.gate && (
-              <div style={{ gridColumn: 'span 2', borderTop: '1px dashed rgba(0,0,0,0.04)', paddingTop: '6px', marginTop: '2px' }}>
-                <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>שער עלייה למטוס (Gate): </span>
-                <strong style={{ color: 'var(--accent)', fontSize: '13px' }}>{returning.gate}</strong>
-              </div>
-            )}
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* Hotel Card & Bottom Action bar */}
-      <div className="dashboard-grid">
-        
-        {/* Hotel Details Card */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '8px' }}>
-            <Building size={18} style={{ color: 'var(--primary-color)' }} />
-            <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)', flex: 1 }}>
-              פרטי המלון ביעד
-            </h4>
-            <span className="badge-success" style={{ background: 'rgba(16, 185, 129, 0.08)', color: 'var(--text-success)' }}>מאושר</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
-            <div>
-              <div style={{ fontSize: '17px', fontWeight: '800', color: 'var(--primary-color)' }}>{hotel.name}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px', fontWeight: '600' }}>
-                <MapPin size={14} />
-                <span>{hotel.address}</span>
-              </div>
-            </div>
-
-            <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '4px 0' }} />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {hotel.roomNumber && (
               <div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>כניסה למלון (Check-in)</div>
-                <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{formatDateTime(hotel.checkIn)}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>סוג חדר / מספר חדר</div>
+                <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{hotel.roomNumber}</div>
               </div>
-              <div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>עזיבת המלון (Check-out)</div>
-                <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{formatDateTime(hotel.checkOut)}</div>
-              </div>
-              {hotel.bookingRef && (
-                <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>מספר הזמנה במלון</div>
-                  <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{hotel.bookingRef}</div>
-                </div>
-              )}
-              {hotel.roomNumber && (
-                <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>סוג חדר / מספר חדר</div>
-                  <div style={{ fontWeight: '800', color: 'var(--primary-color)', fontSize: '13px' }}>{hotel.roomNumber}</div>
-                </div>
-              )}
-            </div>
-
-            {hotel.notes && (
-              <>
-                <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '2px 0' }} />
-                <div style={{ background: 'rgba(11,11,48,0.03)', padding: '12px 14px', borderRadius: 'var(--border-radius-md)', fontSize: '13px', lineHeight: '1.4', fontWeight: '600' }}>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', marginBottom: '4px' }}>הנחיות והערות מיוחדות:</div>
-                  {hotel.notes}
-                </div>
-              </>
             )}
           </div>
-        </div>
 
-        {/* Action Panel */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
-          <h4 style={{ fontSize: '17px', fontWeight: '800', color: 'var(--primary-color)' }}>ניהול ועריכת הנסיעה</h4>
-          <p style={{ fontSize: '13.5px', color: 'var(--text-muted)', lineHeight: '1.5', fontWeight: '600' }}>
-            רוצה לשנות קודי טיסה, זמנים, קואורדינטות, רישומי מטוסים או את פרטי המלון? 
-            הכל פתוח ועריץ לחלוטין.
-          </p>
-          <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '360px' }}>
-            <button onClick={openEditModal} className="btn-primary" style={{ flex: 1, padding: '14px 0' }}>
-              <Edit2 size={16} />
-              <span>ערוך את כל פרטי הנסיעה</span>
-            </button>
-            <button className="btn-secondary" style={{ padding: '14px' }}>
-              <Share2 size={16} />
-            </button>
-          </div>
+          {hotel.notes && (
+            <>
+              <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '2px 0' }} />
+              <div style={{ background: 'var(--ink-3)', padding: '12px 14px', borderRadius: 'var(--border-radius-md)', fontSize: '13px', lineHeight: '1.4', fontWeight: '600' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', marginBottom: '4px' }}>הנחיות והערות מיוחדות:</div>
+                {hotel.notes}
+              </div>
+            </>
+          )}
         </div>
-
       </div>
 
-      {/* Full Field Editor Modal (Outbound + Return + Hotel) */}
+      {/* Currency converter widget — works offline thanks to localStorage cache */}
+      <CurrencyConverter />
+
+      {/* Edit Modal */}
       {showEditModal && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            
+        <div className="modal-overlay" data-closing={editSheet.closing || undefined} onClick={attemptCloseEdit}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} {...editSheet.handlers} style={editSheet.style}>
+            <div className="sheet-grab" />
+
             <div className="modal-header">
-              <h2>עריכת כל פרטי הנסיעה</h2>
-              <button className="btn-close" onClick={() => setShowEditModal(false)}>✕</button>
+              <h2>{
+                editScope === 'outbound' ? 'עריכת טיסת הלוך' :
+                editScope === 'return' ? 'עריכת טיסת חזור' :
+                editScope === 'hotel' ? 'עריכת פרטי המלון' :
+                editScope === 'trip' ? 'עריכת פרטי הטיול' :
+                'עריכת כל פרטי הנסיעה'
+              }</h2>
+              <button aria-label="סגור" className="btn-close" onClick={attemptCloseEdit}>✕</button>
             </div>
 
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
-              {/* === GENERAL TRIP METADATA === */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(79, 70, 229, 0.03)' }}>
+
+              {/* === TRIP HEADER: name + 2 decisive date pickers === */}
+              {(editScope === 'all' || editScope === 'trip') && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--p-3)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>פרטי כותרת ותאריכי הטיול</span>
                 </h3>
-                
+
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>שם הטיול</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={formTripName} 
-                    onChange={(e) => setFormTripName(e.target.value)} 
-                    required 
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={formTripName}
+                    onChange={(e) => setFormTripName(e.target.value)}
+                    required
                     placeholder="למשל: פראג - סוף שבוע רומנטי"
                   />
                 </div>
-                
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>תאריכים</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={formTripDates} 
-                    onChange={(e) => setFormTripDates(e.target.value)} 
-                    required 
-                    placeholder="למשל: 15.06.2026 - 22.06.2026"
-                  />
+
+                {/* Two "decisive" date pickers — these set the source of truth */}
+                <div className="row-2">
+                  <CustomDatePicker value={formOutDate} onChange={syncOutboundDate} label="תאריך טיסת הלוך" required />
+                  <CustomDatePicker value={formRetDate} onChange={syncReturnDate} label="תאריך טיסת חזור" required />
                 </div>
               </div>
-              
-              {/* === SECTION 1: OUTBOUND FLIGHT === */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
+              )}
+
+              {/* === OUTBOUND FLIGHT === */}
+              {(editScope === 'all' || editScope === 'outbound') && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>1. פרטי טיסת הלוך</span>
+                  {lookupBusyOut && <Loader2 size={14} className="spinning" style={{ color: 'var(--accent)' }} />}
                 </h3>
 
-                {/* Lookup bar */}
-                <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: 'var(--border-radius-md)', border: '1px solid rgba(11,11,48,0.08)' }}>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    placeholder="שליפה מהירה (למשל: FR3891, LY381)" 
-                    value={searchOutboundCode}
-                    onChange={(e) => setSearchOutboundCode(e.target.value)}
-                    style={{ flex: 1, minHeight: '40px', padding: '8px 12px', fontSize: '14px' }}
-                  />
-                  <button type="button" onClick={handleOutboundSearch} className="btn-primary" style={{ minHeight: '40px', padding: '0 16px', fontSize: '14px' }}>
-                    <Search size={14} />
-                    <span>שלוף</span>
-                  </button>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מספר טיסה</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={formOutFlightNum}
+                      onChange={(e) => setFormOutFlightNum(e.target.value)}
+                      placeholder="למשל: LY381, FR3891"
+                      required
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => runLookup('out')}
+                      className="btn-primary"
+                      style={{ minHeight: 48, padding: '0 18px', gap: 6, flexShrink: 0 }}
+                      aria-label="חיפוש טיסה"
+                    >
+                      {lookupBusyOut ? <Loader2 size={16} className="spinning" /> : <Search size={16} />}
+                      <span>חפש</span>
+                    </button>
+                  </div>
+                  <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
+                    לחץ "חפש" כדי למלא אוטומטית את שאר הפרטים.
+                  </small>
+                  {renderLookupFeedback(lookupResultOut)}
                 </div>
 
+                <CustomDatePicker value={formOutDate} onChange={syncOutboundDate} label="תאריך טיסה" required />
+
                 <div className="row-2">
-                  <div className="form-group">
-                    <label>מספר טיסה</label>
-                    <input type="text" className="form-control" value={formOutFlightNum} onChange={(e) => setFormOutFlightNum(e.target.value)} required />
-                  </div>
-                  <div className="form-group">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label>חברת תעופה</label>
-                    <input type="text" className="form-control" value={formOutAirline} onChange={(e) => setFormOutAirline(e.target.value)} required />
+                    <input type="text" className="form-control" value={formOutAirline} onChange={(e) => setFormOutAirline(e.target.value)} />
                   </div>
-                </div>
-
-                <div className="form-group">
-                  <label>שער עלייה למטוס (Gate)</label>
-                  <input type="text" className="form-control" value={formOutGate} onChange={(e) => setFormOutGate(e.target.value)} placeholder="למשל: B12" />
-                </div>
-
-                <div className="form-group">
-                  <CustomDatePicker value={formOutDate} onChange={(val) => setFormOutDate(val)} label="תאריך טיסה" required />
-                </div>
-
-                {/* Departure details */}
-                <div style={{ background: '#ffffff', padding: '12px', borderRadius: 'var(--border-radius-md)', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary-color)' }}>שדה מוצא</span>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קוד IATA</label><input type="text" className="form-control" value={formOutDepCode} onChange={(e) => setFormOutDepCode(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>עיר מוצא</label><input type="text" className="form-control" value={formOutDepCity} onChange={(e) => setFormOutDepCity(e.target.value)} required /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>שער עלייה למטוס (Gate)</label>
+                    <input type="text" className="form-control" value={formOutGate} onChange={(e) => setFormOutGate(e.target.value)} placeholder="B12" />
                   </div>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו רוחב (Lat)</label><input type="number" step="any" className="form-control" value={formOutDepLat} onChange={(e) => setFormOutDepLat(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו אורך (Lng)</label><input type="number" step="any" className="form-control" value={formOutDepLng} onChange={(e) => setFormOutDepLng(e.target.value)} required /></div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>אזור זמן</label><input type="text" className="form-control" value={formOutDepTz} onChange={(e) => setFormOutDepTz(e.target.value)} required /></div>
-                </div>
-
-                {/* Arrival details */}
-                <div style={{ background: '#ffffff', padding: '12px', borderRadius: 'var(--border-radius-md)', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary-color)' }}>שדה יעד</span>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קוד IATA</label><input type="text" className="form-control" value={formOutArrCode} onChange={(e) => setFormOutArrCode(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>עיר יעד</label><input type="text" className="form-control" value={formOutArrCity} onChange={(e) => setFormOutArrCity(e.target.value)} required /></div>
-                  </div>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו רוחב (Lat)</label><input type="number" step="any" className="form-control" value={formOutArrLat} onChange={(e) => setFormOutArrLat(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו אורך (Lng)</label><input type="number" step="any" className="form-control" value={formOutArrLng} onChange={(e) => setFormOutArrLng(e.target.value)} required /></div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>אזור זמן</label><input type="text" className="form-control" value={formOutArrTz} onChange={(e) => setFormOutArrTz(e.target.value)} required /></div>
-                </div>
-
-                <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה מתוכננת</label><input type="text" className="form-control" value={formOutSchedDep} onChange={(e) => setFormOutSchedDep(e.target.value)} required /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה בפועל</label><input type="text" className="form-control" value={formOutActDep} onChange={(e) => setFormOutActDep(e.target.value)} required /></div>
-                </div>
-                <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה מתוכננת</label><input type="text" className="form-control" value={formOutSchedArr} onChange={(e) => setFormOutSchedArr(e.target.value)} required /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה משוערת</label><input type="text" className="form-control" value={formOutEstArr} onChange={(e) => setFormOutEstArr(e.target.value)} required /></div>
                 </div>
 
                 <div className="row-2">
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>סטטוס טיסה</label>
-                    <select className="form-control" value={formOutStatus} onChange={(e) => setFormOutStatus(e.target.value)}>
-                      <option value="בזמן">בזמן</option>
-                      <option value="באיחור קל">באיחור קל</option>
-                      <option value="באיחור רציני">באיחור רציני</option>
-                      <option value="בוטלה">בוטלה</option>
-                    </select>
+                    <label>אזור זמן – מוצא ({formatOffsetFromIsrael(formOutDepTz)})</label>
+                    <input type="text" className="form-control" value={formOutDepTz} onChange={(e) => setFormOutDepTz(e.target.value)} placeholder="UTC +03:00" />
                   </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>סוג מטוס</label><input type="text" className="form-control" value={formOutAcType} onChange={(e) => setFormOutAcType(e.target.value)} /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>אזור זמן – יעד ({formatOffsetFromIsrael(formOutArrTz)})</label>
+                    <input type="text" className="form-control" value={formOutArrTz} onChange={(e) => setFormOutArrTz(e.target.value)} placeholder="UTC +02:00" />
+                  </div>
                 </div>
 
                 <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>רישום (Reg)</label><input type="text" className="form-control" value={formOutAcReg} onChange={(e) => setFormOutAcReg(e.target.value)} /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>מספר סידורי</label><input type="text" className="form-control" value={formOutAcSerial} onChange={(e) => setFormOutAcSerial(e.target.value)} /></div>
+                  <CustomTimePicker value={formOutSchedDep} onChange={setFormOutSchedDep} label="המראה מתוכננת" />
+                  <CustomTimePicker value={formOutActDep} onChange={setFormOutActDep} label="המראה בפועל" />
                 </div>
-                <div className="form-group" style={{ marginBottom: 0 }}><label>מדינת רישום</label><input type="text" className="form-control" value={formOutAcCountry} onChange={(e) => setFormOutAcCountry(e.target.value)} /></div>
-              </div>
+                <div className="row-2">
+                  <CustomTimePicker value={formOutSchedArr} onChange={setFormOutSchedArr} label="נחיתה מתוכננת" />
+                  <CustomTimePicker value={formOutEstArr} onChange={setFormOutEstArr} label="נחיתה משוערת" />
+                </div>
 
-              {/* === SECTION 2: RETURN FLIGHT === */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'rgb(239, 68, 68)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
+                <CustomDropdown
+                  label="סטטוס טיסה"
+                  value={formOutStatus}
+                  onChange={setFormOutStatus}
+                  options={FLIGHT_STATUS_OPTIONS}
+                />
+              </div>
+              )}
+
+              {/* === RETURN FLIGHT === */}
+              {(editScope === 'all' || editScope === 'return') && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--c-red2)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>2. פרטי טיסת חזור</span>
+                  {lookupBusyRet && <Loader2 size={14} className="spinning" style={{ color: 'var(--accent)' }} />}
                 </h3>
 
-                {/* Lookup bar */}
-                <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: 'var(--border-radius-md)', border: '1px solid rgba(11,11,48,0.08)' }}>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    placeholder="שליפה מהירה (למשל: FR3892, LY382)" 
-                    value={searchReturnCode}
-                    onChange={(e) => setSearchReturnCode(e.target.value)}
-                    style={{ flex: 1, minHeight: '40px', padding: '8px 12px', fontSize: '14px' }}
-                  />
-                  <button type="button" onClick={handleReturnSearch} className="btn-primary" style={{ minHeight: '40px', padding: '0 16px', fontSize: '14px' }}>
-                    <Search size={14} />
-                    <span>שלוף</span>
-                  </button>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>מספר טיסה</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={formRetFlightNum}
+                      onChange={(e) => setFormRetFlightNum(e.target.value)}
+                      placeholder="למשל: LY382, FR3892"
+                      required
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => runLookup('ret')}
+                      className="btn-primary"
+                      style={{ minHeight: 48, padding: '0 18px', gap: 6, flexShrink: 0 }}
+                      aria-label="חיפוש טיסה"
+                    >
+                      {lookupBusyRet ? <Loader2 size={16} className="spinning" /> : <Search size={16} />}
+                      <span>חפש</span>
+                    </button>
+                  </div>
+                  {renderLookupFeedback(lookupResultRet)}
                 </div>
 
+                <CustomDatePicker value={formRetDate} onChange={syncReturnDate} label="תאריך טיסה" required />
+
                 <div className="row-2">
-                  <div className="form-group">
-                    <label>מספר טיסה</label>
-                    <input type="text" className="form-control" value={formRetFlightNum} onChange={(e) => setFormRetFlightNum(e.target.value)} required />
-                  </div>
-                  <div className="form-group">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label>חברת תעופה</label>
-                    <input type="text" className="form-control" value={formRetAirline} onChange={(e) => setFormRetAirline(e.target.value)} required />
+                    <input type="text" className="form-control" value={formRetAirline} onChange={(e) => setFormRetAirline(e.target.value)} />
                   </div>
-                </div>
-
-                <div className="form-group">
-                  <label>שער עלייה למטוס (Gate)</label>
-                  <input type="text" className="form-control" value={formRetGate} onChange={(e) => setFormRetGate(e.target.value)} placeholder="למשל: A4" />
-                </div>
-
-                <div className="form-group">
-                  <CustomDatePicker value={formRetDate} onChange={(val) => setFormRetDate(val)} label="תאריך טיסה" required />
-                </div>
-
-                {/* Departure details */}
-                <div style={{ background: '#ffffff', padding: '12px', borderRadius: 'var(--border-radius-md)', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary-color)' }}>שדה מוצא</span>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קוד IATA</label><input type="text" className="form-control" value={formRetDepCode} onChange={(e) => setFormRetDepCode(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>עיר מוצא</label><input type="text" className="form-control" value={formRetDepCity} onChange={(e) => setFormRetDepCity(e.target.value)} required /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>שער עלייה למטוס (Gate)</label>
+                    <input type="text" className="form-control" value={formRetGate} onChange={(e) => setFormRetGate(e.target.value)} placeholder="A4" />
                   </div>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו רוחב (Lat)</label><input type="number" step="any" className="form-control" value={formRetDepLat} onChange={(e) => setFormRetDepLat(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו אורך (Lng)</label><input type="number" step="any" className="form-control" value={formRetDepLng} onChange={(e) => setFormRetDepLng(e.target.value)} required /></div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>אזור זמן</label><input type="text" className="form-control" value={formRetDepTz} onChange={(e) => setFormRetDepTz(e.target.value)} required /></div>
-                </div>
-
-                {/* Arrival details */}
-                <div style={{ background: '#ffffff', padding: '12px', borderRadius: 'var(--border-radius-md)', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary-color)' }}>שדה יעד</span>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קוד IATA</label><input type="text" className="form-control" value={formRetArrCode} onChange={(e) => setFormRetArrCode(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>עיר יעד</label><input type="text" className="form-control" value={formRetArrCity} onChange={(e) => setFormRetArrCity(e.target.value)} required /></div>
-                  </div>
-                  <div className="row-2">
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו רוחב (Lat)</label><input type="number" step="any" className="form-control" value={formRetArrLat} onChange={(e) => setFormRetArrLat(e.target.value)} required /></div>
-                    <div className="form-group" style={{ marginBottom: 0 }}><label>קו אורך (Lng)</label><input type="number" step="any" className="form-control" value={formRetArrLng} onChange={(e) => setFormRetArrLng(e.target.value)} required /></div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>אזור זמן</label><input type="text" className="form-control" value={formRetArrTz} onChange={(e) => setFormRetArrTz(e.target.value)} required /></div>
-                </div>
-
-                <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה מתוכננת</label><input type="text" className="form-control" value={formRetSchedDep} onChange={(e) => setFormRetSchedDep(e.target.value)} required /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>המראה בפועל</label><input type="text" className="form-control" value={formRetActDep} onChange={(e) => setFormRetActDep(e.target.value)} required /></div>
-                </div>
-                <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה מתוכננת</label><input type="text" className="form-control" value={formRetSchedArr} onChange={(e) => setFormRetSchedArr(e.target.value)} required /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>נחיתה משוערת</label><input type="text" className="form-control" value={formRetEstArr} onChange={(e) => setFormRetEstArr(e.target.value)} required /></div>
                 </div>
 
                 <div className="row-2">
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>סטטוס טיסה</label>
-                    <select className="form-control" value={formRetStatus} onChange={(e) => setFormRetStatus(e.target.value)}>
-                      <option value="בזמן">בזמן</option>
-                      <option value="באיחור קל">באיחור קל</option>
-                      <option value="באיחור רציני">באיחור רציני</option>
-                      <option value="בוטלה">בוטלה</option>
-                    </select>
+                    <label>אזור זמן – מוצא ({formatOffsetFromIsrael(formRetDepTz)})</label>
+                    <input type="text" className="form-control" value={formRetDepTz} onChange={(e) => setFormRetDepTz(e.target.value)} placeholder="UTC +02:00" />
                   </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>סוג מטוס</label><input type="text" className="form-control" value={formRetAcType} onChange={(e) => setFormRetAcType(e.target.value)} /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>אזור זמן – יעד ({formatOffsetFromIsrael(formRetArrTz)})</label>
+                    <input type="text" className="form-control" value={formRetArrTz} onChange={(e) => setFormRetArrTz(e.target.value)} placeholder="UTC +03:00" />
+                  </div>
                 </div>
 
                 <div className="row-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>רישום (Reg)</label><input type="text" className="form-control" value={formRetAcReg} onChange={(e) => setFormRetAcReg(e.target.value)} /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>מספר סידורי</label><input type="text" className="form-control" value={formRetAcSerial} onChange={(e) => setFormRetAcSerial(e.target.value)} /></div>
+                  <CustomTimePicker value={formRetSchedDep} onChange={setFormRetSchedDep} label="המראה מתוכננת" />
+                  <CustomTimePicker value={formRetActDep} onChange={setFormRetActDep} label="המראה בפועל" />
                 </div>
-                <div className="form-group" style={{ marginBottom: 0 }}><label>מדינת רישום</label><input type="text" className="form-control" value={formRetAcCountry} onChange={(e) => setFormRetAcCountry(e.target.value)} /></div>
-              </div>
+                <div className="row-2">
+                  <CustomTimePicker value={formRetSchedArr} onChange={setFormRetSchedArr} label="נחיתה מתוכננת" />
+                  <CustomTimePicker value={formRetEstArr} onChange={setFormRetEstArr} label="נחיתה משוערת" />
+                </div>
 
-              {/* === SECTION 3: HOTEL DETAILS === */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'rgba(11,11,48,0.01)' }}>
+                <CustomDropdown
+                  label="סטטוס טיסה"
+                  value={formRetStatus}
+                  onChange={setFormRetStatus}
+                  options={FLIGHT_STATUS_OPTIONS}
+                />
+              </div>
+              )}
+
+              {/* === HOTEL === */}
+              {(editScope === 'all' || editScope === 'hotel') && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>3. פרטי מלון</span>
                 </h3>
@@ -1170,23 +1414,32 @@ export default function FlightTab({ tripId }) {
 
                 <div className="form-group">
                   <label>כתובת המלון</label>
-                  <input type="text" className="form-control" value={formHotelAddress} onChange={(e) => setFormHotelAddress(e.target.value)} />
+                  <input type="text" className="form-control" value={formHotelAddress} onChange={(e) => setFormHotelAddress(e.target.value)} placeholder="הכתובת הפיזית — תיפתח ב-Google Maps" />
+                </div>
+
+                <div className="form-group">
+                  <label>קישור Google Maps</label>
+                  <input
+                    type="url"
+                    className="form-control"
+                    value={formHotelLink}
+                    onChange={(e) => setFormHotelLink(e.target.value)}
+                    placeholder="https://maps.google.com/..."
+                    dir="ltr"
+                  />
+                  <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
+                    קישור לגוגל מפות — ישמש לחישוב מרחק אוטומטי מהמלון לאטרקציות.
+                  </small>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <CustomDateTimePicker value={formHotelCheckIn} onChange={(val) => setFormHotelCheckIn(val)} label="כניסה (Check-in)" />
-                  <CustomDateTimePicker value={formHotelCheckOut} onChange={(val) => setFormHotelCheckOut(val)} label="עזיבה (Check-out)" />
+                  <CustomDateTimePicker value={formHotelCheckIn} onChange={setFormHotelCheckIn} label="כניסה (Check-in)" />
+                  <CustomDateTimePicker value={formHotelCheckOut} onChange={setFormHotelCheckOut} label="עזיבה (Check-out)" />
                 </div>
 
-                <div className="row-2">
-                  <div className="form-group">
-                    <label>סימוכין הזמנה</label>
-                    <input type="text" className="form-control" value={formHotelRef} onChange={(e) => setFormHotelRef(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>חדר</label>
-                    <input type="text" className="form-control" value={formHotelRoom} onChange={(e) => setFormHotelRoom(e.target.value)} />
-                  </div>
+                <div className="form-group">
+                  <label>חדר</label>
+                  <input type="text" className="form-control" value={formHotelRoom} onChange={(e) => setFormHotelRoom(e.target.value)} />
                 </div>
 
                 <div className="form-group">
@@ -1194,11 +1447,11 @@ export default function FlightTab({ tripId }) {
                   <textarea className="form-control" rows="3" value={formHotelNotes} onChange={(e) => setFormHotelNotes(e.target.value)} style={{ resize: 'none', fontFamily: 'inherit' }} />
                 </div>
               </div>
+              )}
 
-              {/* Action Buttons */}
               <div style={{ display: 'flex', gap: '12px', paddingBottom: '20px' }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור את כל השינויים</button>
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">ביטול</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
+                <button type="button" onClick={attemptCloseEdit} className="btn-secondary">ביטול</button>
               </div>
 
             </form>

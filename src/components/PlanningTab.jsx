@@ -1,36 +1,176 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  writeBatch 
+import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
+import { createPortal } from 'react-dom';
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+  arrayUnion,
+  arrayRemove,
+  deleteField,
 } from 'firebase/firestore';
-import { 
-  Search, 
-  Plus, 
-  Trash2, 
-  Star, 
-  MapPin, 
-  ExternalLink, 
-  DollarSign, 
-  Compass, 
-  UtensilsCrossed, 
-  Train, 
-  Info, 
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  hasGmapsKey,
+  resolveOriginString,
+  hasPreciseOrigin,
+  buildOriginCandidates,
+  originFingerprint,
+  isOnlineNow,
+  isSaneTravel,
+  clearPlaceCache,
+  resolveRegionCoords,
+  resolveDestinationAsync,
+  resolvePlanCoords,
+  fetchTravelTimes,
+} from '../services/distanceApi';
+import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
+import Skeleton from './Skeleton';
+import Fab from './Fab';
+import EmptyState from './EmptyState';
+import useSheetDrag from '../hooks/useSheetDrag';
+import useBackHandler from '../hooks/useBackHandler';
+import { useTrip } from '../TripContext';
+import { useConfirm } from '../ConfirmContext';
+import {
+  Search,
+  Plus,
+  Trash2,
+  MapPin,
+  ExternalLink,
+  DollarSign,
+  Compass,
+  UtensilsCrossed,
+  Train,
+  Info,
   CheckCircle2,
   Pencil,
   ArrowUp,
   ArrowDown,
+  Loader2,
+  Hotel,
   Calendar,
-  Clock,
-  ChevronUp,
   ChevronDown,
-  CalendarCheck
+  ChevronLeft,
+  Eye,
+  EyeOff,
+  Tag,
+  Link2,
+  X,
+  Settings,
+  Camera,
+  Coffee,
+  ShoppingBag,
+  Plane,
+  Star,
+  Clock,
+  Bike,
+  Car,
+  Landmark,
+  Mountain,
+  Tent,
+  Navigation,
+  GripVertical,
+  ArrowUpDown,
+  Check,
+  Layers,
+  LayoutList,
+  LayoutGrid,
+  Rows3,
+  RefreshCw,
+  SlidersHorizontal,
+  MessageSquare,
+  CalendarCheck,
 } from 'lucide-react';
+
+const ICON_OPTIONS = [
+  { key: 'Compass',        Icon: Compass },
+  { key: 'UtensilsCrossed',Icon: UtensilsCrossed },
+  { key: 'Train',          Icon: Train },
+  { key: 'Info',           Icon: Info },
+  { key: 'MapPin',         Icon: MapPin },
+  { key: 'Camera',         Icon: Camera },
+  { key: 'Coffee',         Icon: Coffee },
+  { key: 'ShoppingBag',   Icon: ShoppingBag },
+  { key: 'Plane',          Icon: Plane },
+  { key: 'Star',           Icon: Star },
+  { key: 'Bike',           Icon: Bike },
+  { key: 'Car',            Icon: Car },
+  { key: 'Landmark',       Icon: Landmark },
+  { key: 'Mountain',       Icon: Mountain },
+  { key: 'Tent',           Icon: Tent },
+  { key: 'Calendar',       Icon: Calendar },
+];
+
+const ICON_MAP = Object.fromEntries(ICON_OPTIONS.map(({ key, Icon }) => [key, Icon]));
+
+const COLOR_OPTIONS = [
+  '#4f46e5', '#7c3aed', '#db2777', '#dc2626',
+  '#ea580c', '#d97706', '#16a34a', '#0f766e',
+  '#0891b2', '#1d4ed8', '#64748b', '#334155',
+];
+
+// Dedicated category whose items carry a date + time (concerts, reservations,
+// guided tours…). Items in this category render date/time inputs in the form
+// and are shown as a chronological agenda.
+const EVENTS_CATEGORY = 'אירועים';
+
+// Two places within this many metres of each other are treated as "near" and
+// grouped into the same area in the proximity-grouping view.
+const PROXIMITY_THRESHOLD_M = 800;
+
+// Local today date (YYYY-MM-DD) evaluated once on module load.
+// Used for event-status badges; stale by at most one day if tab is left open overnight.
+const todayISO = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
+// Short, readable form of a URL — used whenever a link has no name of its
+// own, so the UI never has to fall back to showing the raw address twice.
+function prettyUrl(url) {
+  if (!url) return '';
+  let s = String(url).trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+  s = s.replace(/\/$/, '');
+  return s.length > 42 ? s.slice(0, 40) + '…' : s;
+}
+
+// Great-circle distance between two {lat,lng} points, in metres.
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Greedy single-link clustering: each place joins an existing cluster if it is
+// within PROXIMITY_THRESHOLD_M of any member, otherwise it seeds a new cluster.
+function clusterByProximity(items, thresholdM) {
+  const clusters = [];
+  for (const item of items) {
+    let placed = false;
+    for (const cluster of clusters) {
+      if (cluster.some(m => haversineMeters(m.coords, item.coords) <= thresholdM)) {
+        cluster.push(item);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push([item]);
+  }
+  return clusters;
+}
 
 export const defaultGironaPlans = [
   {
@@ -85,83 +225,112 @@ export const defaultGironaPlans = [
   }
 ];
 
-export const defaultPraguePlans = [
-  {
-    id: 'plan-1',
-    title: 'גשר קארל (Charles Bridge)',
-    category: 'אטרקציות ודברים לעשות',
-    description: 'הגשר ההיסטורי המפורסם ביותר בפראג, המחבר בין העיר העתיקה לרובע מאלה סטרנה. מומלץ לבקר מוקדם בבוקר או בשקיעה לצילומים מרהיבים ללא המוני תיירים.',
-    address: 'Karlův most, 110 00 Praha 1',
-    rating: 4.9,
-    price: 'חינם',
-    visited: false
+// Card layouts for the places list. Each entry drives the density of the
+// card chrome, so every layout keeps the same behaviour (expand, navigate,
+// mark visited) and only the spacing changes.
+const PLAN_LAYOUTS = {
+  comfortable: {
+    label: 'מרווח',
+    icon: LayoutList,
+    listGap: 14,
+    cardPad: '12px 14px',
+    iconBox: 32,
+    titleSize: 14,
+    headerGap: 10,
+    showSubtitle: true,
+    columns: 1,
   },
-  {
-    id: 'plan-2',
-    title: 'מצודת פראג (Prague Castle)',
-    category: 'מקומות לבקר',
-    description: 'מתחם המצודות העתיק הגדול בעולם. כולל את קתדרלת ויטוס הקדוש המרשימה, סמטת הזהב וארמון המלוכה הישן. כדאי להקדיש למקום לפחות חצי יום.',
-    address: 'Hradčany, 119 08 Prague 1',
-    rating: 4.8,
-    price: '250 CZK',
-    visited: false
+  compact: {
+    label: 'קומפקטי',
+    icon: Rows3,
+    listGap: 8,
+    cardPad: '8px 10px',
+    iconBox: 26,
+    titleSize: 13,
+    headerGap: 8,
+    showSubtitle: true,
+    columns: 1,
   },
-  {
-    id: 'plan-3',
-    title: 'השעון האסטרונומי בכיכר העיר העתיקה (Astronomical Clock)',
-    category: 'אטרקציות ודברים לעשות',
-    description: 'שעון ימי-ביניימי מפורסם המציג מופע של דמויות השליחים בכל שעה עגולה. מומלץ לעלות גם לראש מגדל בית העירייה לתצפית פנורמית על פראג.',
-    address: 'Staroměstské nám. 1, 110 00 Josefov',
-    rating: 4.7,
-    price: 'חינם',
-    visited: false
+  grid: {
+    label: 'רשת',
+    icon: LayoutGrid,
+    listGap: 8,
+    cardPad: '10px 11px',
+    iconBox: 26,
+    titleSize: 12.5,
+    headerGap: 7,
+    showSubtitle: false,
+    columns: 2,
   },
-  {
-    id: 'plan-4',
-    title: 'בית הקפה קפה סאבוי (Café Savoy)',
-    category: 'מסעדות ומקומות אכילה',
-    description: 'בית קפה ומסעדה היסטורית בעיצוב ניאו-רנסנסי מרהיב. מומלץ במיוחד לארוחות בוקר עשירות או לשטרודל תפוחים מסורתי לצד קפה משובח.',
-    address: 'Vítězná 124/5, Malá Strana, 150 00 Praha',
-    rating: 4.6,
-    price: '150-400 CZK',
-    visited: false
-  },
-  {
-    id: 'plan-5',
-    title: 'רכישת כרטיס נסיעה יומי בתחבורה ציבורית',
-    category: 'תחבורה ציבורית',
-    description: 'החשמליות והמטרו בפראג יעילים וזולים במיוחד. מומלץ לקנות כרטיס ל-24 שעות או 72 שעות המאפשר נסיעה חופשית בכל אמצעי התחבורה.',
-    address: 'Prague Metro Stations',
-    rating: 4.8,
-    price: '120 CZK',
-    visited: false
-  }
-];
+};
 
-// Clear amber badge marking a place that must be booked/reserved in advance
-function ReservationBadge({ compact = false }) {
-  return (
-    <div style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: compact ? 4 : 6,
-      alignSelf: 'flex-start',
-      background: '#fef3c7',
-      color: '#b45309',
-      border: '1px solid #fcd34d',
-      borderRadius: compact ? 6 : 10,
-      padding: compact ? '2px 7px' : '6px 12px',
-      fontSize: compact ? 11 : 13,
-      fontWeight: 800,
-      whiteSpace: 'nowrap'
-    }}>
-      <CalendarCheck size={compact ? 12 : 15} />
-      <span>צריך לסגור מראש</span>
-    </div>
-  );
+// Group a day's activities by their time-of-day label.
+// Known labels come first in canonical order, custom labels (e.g. "10:30")
+// follow by first appearance, and unlabeled activities are grouped last.
+const TIME_GROUP_ORDER = ['בוקר', 'צהריים', 'ערב', 'לילה'];
+const TIME_GROUP_ICONS = { 'בוקר': '🌅', 'צהריים': '☀️', 'ערב': '🌆', 'לילה': '🌙' };
+
+function groupActivitiesByTime(acts) {
+  const map = new Map();
+  acts.forEach((act, i) => {
+    const label = (act.timeLabel || '').trim();
+    if (!map.has(label)) map.set(label, { label, acts: [], firstIdx: i });
+    map.get(label).acts.push(act);
+  });
+  const rank = (g) => g.label === '' ? 3 : TIME_GROUP_ORDER.includes(g.label) ? 1 : 2;
+  return [...map.values()].sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 1) return TIME_GROUP_ORDER.indexOf(a.label) - TIME_GROUP_ORDER.indexOf(b.label);
+    return a.firstIdx - b.firstIdx;
+  });
 }
 
-export default function PlanningTab({ tripId }) {
+export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceHandled }) {
+  const { canEdit, currentUid, currentUserProfile, memberProfiles } = useTrip();
+  const confirm = useConfirm();
+
+  // Profile of whoever added a place, for the little avatar on the card.
+  const profileFor = (uid) => {
+    if (!uid) return null;
+    if (uid === currentUid && currentUserProfile) return currentUserProfile;
+    return memberProfiles?.[uid] || null;
+  };
+
+  // FLIP animation: only fires when the sorted order of cards changes
+  // (i.e. a visited-toggle moves a card to the bottom). Expanding/collapsing
+  // a card shifts cards below it but does NOT change order — without this
+  // guard those positional shifts triggered an unwanted scroll-like animation.
+  const itemRefs = useRef(new Map());
+  const lastPositions = useRef(new Map());
+  const prevSortedIds = useRef([]);
+  useLayoutEffect(() => {
+    const currentIds = filteredPlans.map(p => p.id);
+    const orderChanged =
+      currentIds.length !== prevSortedIds.current.length ||
+      currentIds.some((id, i) => id !== prevSortedIds.current[i]);
+    prevSortedIds.current = currentIds;
+
+    for (const [id, node] of itemRefs.current.entries()) {
+      if (!node) continue;
+      const newRect = node.getBoundingClientRect();
+      if (orderChanged) {
+        const prev = lastPositions.current.get(id);
+        if (prev) {
+          const dy = prev.top - newRect.top;
+          if (Math.abs(dy) > 2) {
+            node.style.transition = 'none';
+            node.style.transform = `translateY(${dy}px)`;
+            // eslint-disable-next-line no-unused-expressions
+            node.offsetHeight;
+            node.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+            node.style.transform = 'translateY(0)';
+          }
+        }
+      }
+      lastPositions.current.set(id, newRect);
+    }
+  });
   const [plans, setPlans] = useState([]);
   const [days, setDays] = useState([]);
   const [subTab, setSubTab] = useState('pool'); // 'pool' | 'daily'
@@ -177,15 +346,96 @@ export default function PlanningTab({ tripId }) {
   const [category, setCategory] = useState('אטרקציות ודברים לעשות');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
-  const [rating, setRating] = useState(5);
   const [price, setPrice] = useState('');
-  const [needsReservation, setNeedsReservation] = useState(false);
+  const [links, setLinks] = useState([]); // [{ label, url }]
+  const [newLinkLabel, setNewLinkLabel] = useState('');
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+  // Inline editing of an already-added link (index into `links`).
+  const [editingLinkIdx, setEditingLinkIdx] = useState(null);
+  const [editLinkLabel, setEditLinkLabel] = useState('');
+  const [editLinkUrl, setEditLinkUrl] = useState('');
+  // Event fields (shown only when category === EVENTS_CATEGORY)
+  const [eventStartDate, setEventStartDate] = useState('');
+  const [eventEndDate, setEventEndDate] = useState('');
+  const [eventStartTime, setEventStartTime] = useState('');
+  const [eventEndTime, setEventEndTime] = useState('');
+  // Manual travel-time overrides (edit form only, in minutes)
+  const [editWalkMins, setEditWalkMins] = useState('');
+  const [editTransitMins, setEditTransitMins] = useState('');
+  // Priority: null | 'must' | 'optional'
+  const [formPriority, setFormPriority] = useState(null);
+  // Has to be booked / reserved ahead of time. Optional, off by default.
+  const [formNeedsReservation, setFormNeedsReservation] = useState(false);
+
+  // Tapping a place card opens a details sheet instead of expanding the card
+  // in place — the card itself stays plain text, every action lives here.
+  const [detailPlanId, setDetailPlanId] = useState(null);
+
+  // Category customisation (icon + color), synced with Firestore
+  const [categorySettings, setCategorySettings] = useState({});
+  const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [addingCatInSettings, setAddingCatInSettings] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const optionsBtnRef = useRef(null);
+  // Category filter dropdown (replaces the old row of filter pills). The
+  // trigger's position is captured on click rather than read during render,
+  // so the popup can be positioned without touching a ref mid-render.
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const [categoryMenuRect, setCategoryMenuRect] = useState(null);
+  const categoryBtnRef = useRef(null);
+  // Card layout, remembered per trip.
+  const [planLayout, setPlanLayout] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`planLayout_${tripId}`);
+      return saved && PLAN_LAYOUTS[saved] ? saved : 'comfortable';
+    } catch { return 'comfortable'; }
+  });
+  // How the list is broken into sections: none, by category, or by area
+  // (proximity clusters). Remembered per trip, like the card layout.
+  const [groupBy, setGroupBy] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`planGroupBy_${tripId}`);
+      return ['none', 'category', 'area'].includes(saved) ? saved : 'none';
+    } catch { return 'none'; }
+  });
+  // Quick way to get finished places out of the way in a long list.
+  const [hideVisited, setHideVisited] = useState(false);
+  const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
+  const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
+  // Places whose address/links were just edited — their travel times are
+  // recomputed as soon as the updated document comes back.
+  const [recomputeIds, setRecomputeIds] = useState([]);
+  const [coordsCache, setCoordsCache] = useState({}); // planId → {lat,lng} | null
+
+  // Locations modal: when a card has multiple navigation targets
+  const [locationsModal, setLocationsModal] = useState(null);
+
+  // Distance from hotel/origin
+  const [hotelDetails, setHotelDetails] = useState(null);
+  const [tripDestination, setTripDestination] = useState('');
+  // Coordinates of the destination city, resolved once and cached. Keeps a
+  // title-only place lookup inside the trip's region.
+  const [regionCoords, setRegionCoords] = useState(null);
+  // Bumped when connectivity returns, so distances that failed while offline
+  // are retried automatically instead of staying stuck.
+  const [netEpoch, setNetEpoch] = useState(0);
+  const [online, setOnline] = useState(isOnlineNow());
+  const [distanceOrigins, setDistanceOrigins] = useState([]); // [{id,name,mapsUrl}]
+  const [distanceCache, setDistanceCache] = useState({}); // cacheKey → {walk,transit,loading,error}
+  // Form: distance origin selector
+  const [formOriginId, setFormOriginId] = useState('hotel');
+  const [originDropOpen, setOriginDropOpen] = useState(false);
+  const [showAddOriginForm, setShowAddOriginForm] = useState(false);
+  const [newOriginName, setNewOriginName] = useState('');
+  const [newOriginUrl, setNewOriginUrl] = useState('');
 
   // Form states for daily activities
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState('');
   const [editingActivityId, setEditingActivityId] = useState(null);
-  const [placeId, setPlaceId] = useState('');
+  const [savedPlaceSelections, setSavedPlaceSelections] = useState([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
   const [activityTitle, setActivityTitle] = useState('');
   const [activityTimeLabel, setActivityTimeLabel] = useState('');
   const [activityAddress, setActivityAddress] = useState('');
@@ -194,15 +444,123 @@ export default function PlanningTab({ tripId }) {
 
   // Day Title Editing states
   const [editingDayId, setEditingDayId] = useState(null);
-  const [editingDayTitle, setEditingDayTitle] = useState('');
+  /* A day is appended to the bottom of the list, which on a trip of any
+     length is off-screen — so adding one looked like nothing happened.
+     A toast would say "it worked" and still leave you to go find it;
+     taking you to the new card puts you where the next action is, which
+     is filling it in. The pulse says which of the cards is the new one. */
+  const dayNodes = useRef(new Map());
+  const [arrivedDayId, setArrivedDayId] = useState(null);
 
-  const categories = [
+  /* A second layout for the day list: one line per day instead of a full
+     timeline. On a week-long trip the full view is several screens of
+     scrolling to answer "what is on Thursday?". */
+  const [dayLayout, setDayLayout] = useState(() => {
+    try { return localStorage.getItem(`dayLayout_${tripId}`) === 'summary' ? 'summary' : 'full'; }
+    catch { return 'full'; }
+  });
+  useEffect(() => {
+    try { if (tripId) localStorage.setItem(`dayLayout_${tripId}`, dayLayout); } catch { /* private mode */ }
+  }, [dayLayout, tripId]);
+  // Which days are opened out of the summary. Kept apart from
+  // collapsedDays so switching layouts never disturbs the other one.
+  const [openSummaryDays, setOpenSummaryDays] = useState(() => new Set());
+
+  const [collapsedDays, setCollapsedDays] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`collapsed_days_${tripId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`collapsed_days_${tripId}`, JSON.stringify([...collapsedDays]));
+    } catch { /* ignore */ }
+  }, [collapsedDays, tripId]);
+  // Collapsed time-of-day groups inside day cards, keyed `${dayId}|${label}`
+  const [collapsedTimeGroups, setCollapsedTimeGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`collapsed_timegroups_${tripId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`collapsed_timegroups_${tripId}`, JSON.stringify([...collapsedTimeGroups]));
+    } catch { /* ignore */ }
+  }, [collapsedTimeGroups, tripId]);
+  const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
+  const [activityDetail, setActivityDetail] = useState(null);
+  const [editingDayTitle, setEditingDayTitle] = useState('');
+  const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
+  const [destCoords, setDestCoords] = useState(null);
+
+  const defaultCategoryNames = [
     'אטרקציות ודברים לעשות',
     'מסעדות ומקומות אכילה',
     'מקומות לבקר',
     'תחבורה ציבורית',
-    'מידע כללי וטיפים'
+    'מידע כללי וטיפים',
+    EVENTS_CATEGORY,
   ];
+  // Derive the full category list: defaults + custom (saved in Firestore settings) + anything used
+  const categories = Array.from(new Set([
+    ...defaultCategoryNames,
+    ...Object.keys(categorySettings), // custom categories saved via settings
+    ...plans.map(p => p.category).filter(Boolean),
+    ...days.flatMap(d => (d.activities || []).map(a => a.category).filter(Boolean)),
+  ]));
+
+  // Load category customisation settings
+  // Places that already have a booking in the הזמנות tab — shown as
+  // booked instead of "to book".
+  const [bookedPlaceIds, setBookedPlaceIds] = useState(() => new Set());
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(collection(db, 'trips', tripId, 'bookings'), snap => {
+      setBookedPlaceIds(new Set(
+        snap.docs.map(d => d.data()).filter(b => b.placeId && b.status !== 'cancelled').map(b => b.placeId)
+      ));
+    });
+  }, [tripId]);
+
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
+      setCategorySettings(snap.exists() ? (snap.data() || {}) : {});
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  /* One listener on the trip document.
+   *
+   * There were two, with identical deps, reading different fields of the
+   * same doc — so every trip edit woke two subscriptions, two callbacks
+   * and two render passes, and Firestore held two streams open for one
+   * document. Everything read from the trip doc is set here together. */
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      setHotelDetails(d.hotelDetails || null);
+      setTripDestination(d.destination || '');
+      setDistanceOrigins(Array.isArray(d.distanceOrigins) ? d.distanceOrigins : []);
+      setTripFlightDates({
+        out: d.outboundFlightDetails?.date || null,
+        ret: d.returnFlightDetails?.date || null,
+        plannerSync: d.plannerDaysFromFlight || null,
+      });
+      const arr = d.outboundFlightDetails?.arrAirport || d.returnFlightDetails?.depAirport;
+      if (arr?.lat && arr?.lng) setDestCoords(arr);
+    });
+    return () => unsub();
+  }, [tripId]);
+
+  const saveCategorySettings = async (updated) => {
+    if (!tripId) return;
+    await setDoc(doc(db, 'trips', tripId, 'settings', 'categories'), updated);
+  };
 
   // Listen to Firestore planning items (pool)
   useEffect(() => {
@@ -218,6 +576,43 @@ export default function PlanningTab({ tripId }) {
 
     return () => unsubscribe();
   }, [tripId]);
+
+  // Geocode the trip destination once so title lookups can be scoped to it.
+  useEffect(() => {
+    let cancelled = false;
+    resolveRegionCoords(tripDestination)
+      .then(c => { if (!cancelled) setRegionCoords(prev => (prev === (c || null) ? prev : (c || null))); })
+      .catch(() => { /* falls back to text-only scoping */ });
+    return () => { cancelled = true; };
+  }, [tripDestination]);
+
+  // Hydrate runtime caches from persisted Firestore data (distances + coords)
+  // so we don't re-hit the Routes API on every reload. Runtime values already
+  // present (fresher) are kept.
+  useEffect(() => {
+    if (!plans.length) return;
+    setDistanceCache(prev => {
+      const next = { ...prev };
+      for (const plan of plans) {
+        if (!plan.distances) continue;
+        for (const [originId, val] of Object.entries(plan.distances)) {
+          const key = `${plan.id}_${originId}`;
+          // Skip implausible values saved before the geocoding fix — leaving
+          // them out means they get recomputed instead of shown.
+          if (!isSaneTravel(val)) continue;
+          if (!next[key]) next[key] = val;
+        }
+      }
+      return next;
+    });
+    setCoordsCache(prev => {
+      const next = { ...prev };
+      for (const plan of plans) {
+        if (plan.coords && !(plan.id in next)) next[plan.id] = plan.coords;
+      }
+      return next;
+    });
+  }, [plans]);
 
   // Listen to Firestore daily planner days
   useEffect(() => {
@@ -235,6 +630,215 @@ export default function PlanningTab({ tripId }) {
     return () => unsubscribe();
   }, [tripId]);
 
+
+  const { data: weather } = useWeather(destCoords?.lat, destCoords?.lng);
+  const weatherByDate = useMemo(() => {
+    if (!weather?.daily) return {};
+    const map = {};
+    weather.daily.forEach(d => { map[d.date] = d; });
+    return map;
+  }, [weather]);
+
+  // Persist sort preference per trip
+  useEffect(() => {
+    if (!tripId) return;
+    const saved = localStorage.getItem(`sortBy_${tripId}`);
+    if (saved) setSortBy(saved);
+  }, [tripId]);
+
+  useEffect(() => {
+    if (tripId) localStorage.setItem(`sortBy_${tripId}`, sortBy);
+  }, [sortBy, tripId]);
+
+  // Persist the chosen card layout per trip. It is read back by the useState
+  // initializer above — the trip UI unmounts when you go back to the trip
+  // list, so the layout is re-read on every entry into a trip.
+  useEffect(() => {
+    if (tripId) localStorage.setItem(`planLayout_${tripId}`, planLayout);
+  }, [planLayout, tripId]);
+
+  useEffect(() => {
+    if (tripId) localStorage.setItem(`planGroupBy_${tripId}`, groupBy);
+  }, [groupBy, tripId]);
+
+  /* ══════════════════════════════════════════════════════════
+     DISTANCE HELPERS
+     ══════════════════════════════════════════════════════════ */
+  const fetchPlanDistances = async (plan) => {
+    if (!hasGmapsKey()) return;
+    const originId = plan.distanceOriginId || 'hotel';
+    const cacheKey = `${plan.id}_${originId}`;
+    const existing = distanceCache[cacheKey];
+
+    const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+    // Fingerprint of every input the origin derives from. If the user edits
+    // the hotel address/link, this changes and the cached numbers are stale.
+    const fp = originFingerprint(hotelDetails, customOrigin, tripDestination);
+
+    // Decide against the value saved on the plan document as well as the
+    // runtime cache. The hydration effect and this one both run off the same
+    // `plans` update, so on the first load after opening a trip the runtime
+    // cache is still empty in this closure — relying on it alone would
+    // re-measure everything over the network despite having saved results.
+    // `plan.distances` comes straight from the snapshot and is never stale.
+    const persisted = plan.distances?.[originId];
+    const saved = (persisted && isSaneTravel(persisted)) ? persisted : null;
+    const known = existing || saved;
+    const hasResult = !!(known?.walk || known?.transit);
+
+    if (existing && (existing.loading || existing.manualOverride)) return;
+    // Nothing about the origin changed → reuse the saved result, no network.
+    if (hasResult && known.originFp === fp) {
+      // Make sure the saved value is actually on screen.
+      if (!existing && saved) {
+        setDistanceCache(prev => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: saved }));
+      }
+      return;
+    }
+    // Offline: never discard a good result to re-measure it — show what we have.
+    const online = isOnlineNow();
+    if (!online && hasResult) {
+      if (!existing && saved) {
+        setDistanceCache(prev => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: saved }));
+      }
+      return;
+    }
+
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+
+    // Resolve origin and destination CONCURRENTLY. Both may need to expand a
+    // short Maps link over the network, and running them in sequence made
+    // adding a new place noticeably slow. The destination only needs a hint
+    // for its (fallback) title lookup, and resolveOriginString gives that
+    // synchronously from already-cached data.
+    const originHint = resolveOriginString(hotelDetails, customOrigin, tripDestination);
+    const region = { coords: regionCoords, text: tripDestination };
+    const [candidates, dest] = await Promise.all([
+      // Ordered origin options: custom → hotel coords → hotel address →
+      // expanded hotel link → hotel name → city centre.
+      buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online }),
+      resolveDestinationAsync(plan, originHint, region),
+    ]);
+
+    if (candidates.length === 0) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      return;
+    }
+    if (!dest) {
+      setDistanceCache(prev => ({
+        ...prev,
+        [cacheKey]: online ? { noLocation: true } : { offline: true },
+      }));
+      return;
+    }
+
+    // Try each origin until one yields a route, so a mistyped address or an
+    // unresolvable link falls through to the next option instead of failing.
+    let value = null;
+    let networkFailed = false;
+    let bogusLocation = false;
+    for (const cand of candidates) {
+      const result = await fetchTravelTimes(cand.value, dest);
+      if (result?.networkError) { networkFailed = true; break; }
+      if (result && (result.walk || result.transit)) {
+        // An implausible route means `dest` geocoded to the wrong place —
+        // trying other origins would only produce more nonsense. Drop the
+        // cached title match so it can be resolved cleanly next time.
+        if (!isSaneTravel(result)) {
+          clearPlaceCache(plan.id);
+          bogusLocation = true;
+          break;
+        }
+        value = {
+          walk: result.walk || null, transit: result.transit || null,
+          fetchedAt: Date.now(),
+          origin: cand.value, originKind: cand.kind, originFp: fp,
+        };
+        break;
+      }
+    }
+
+    if (bogusLocation) {
+      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      // Remove the bad value already persisted, so it isn't rehydrated.
+      if (tripId) {
+        updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+          [`distances.${originId}`]: deleteField(),
+        }).catch(() => { /* non-fatal */ });
+      }
+      return;
+    }
+
+    if (!value) {
+      // Keep whatever we had rather than replacing it with an error state.
+      setDistanceCache(prev => ({
+        ...prev,
+        [cacheKey]: (networkFailed || !online)
+          ? (hasResult ? known : { offline: true })
+          : { noLocation: true },
+      }));
+      return;
+    }
+
+    setDistanceCache(prev => ({ ...prev, [cacheKey]: { ...value, loading: false } }));
+    // Persist so it survives reloads — no API call needed next time. Firestore
+    // queues this locally when offline and syncs it on reconnect.
+    if (tripId) {
+      updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+        [`distances.${originId}`]: value,
+      }).catch(() => { /* non-fatal: runtime cache still holds the result */ });
+    }
+  };
+
+  const handleSaveDistanceOrigin = async () => {
+    if (!newOriginName.trim() || !newOriginUrl.trim() || !tripId) return;
+    const newOrigin = {
+      id: 'origin-' + Date.now(),
+      name: newOriginName.trim(),
+      mapsUrl: newOriginUrl.trim(),
+    };
+    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayUnion(newOrigin) });
+    setFormOriginId(newOrigin.id);
+    setNewOriginName('');
+    setNewOriginUrl('');
+    setShowAddOriginForm(false);
+  };
+
+  // One-shot: walk every place, fetch + persist its travel times and resolve
+  // its coordinates (for proximity grouping). Skips places already computed so
+  // re-pressing is cheap. Runs sequentially to stay gentle on the API quota.
+  const handleCalculateAll = async () => {
+    if (!hasGmapsKey() || bulkCalc) return;
+    // Offline there is nothing to measure — bail out instead of walking every
+    // place only to fail on each one.
+    if (!isOnlineNow()) return;
+    const origin = resolveOriginString(hotelDetails, null, tripDestination);
+    const list = [...plans];
+    setBulkCalc({ done: 0, total: list.length });
+    for (let i = 0; i < list.length; i++) {
+      const plan = list[i];
+      await fetchPlanDistances(plan);
+      if (!(plan.id in coordsCache)) {
+        const c = await resolvePlanCoords(plan, origin, { coords: regionCoords, text: tripDestination })
+          .catch(() => null);
+        setCoordsCache(prev => ({ ...prev, [plan.id]: c }));
+        if (c && tripId) {
+          try { await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: c }); } catch { /* keep runtime */ }
+        }
+      }
+      setBulkCalc({ done: i + 1, total: list.length });
+    }
+    setBulkCalc(null);
+  };
+
+  const handleRemoveDistanceOrigin = async (originId) => {
+    if (!tripId) return;
+    const origin = distanceOrigins.find(o => o.id === originId);
+    if (!origin) return;
+    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayRemove(origin) });
+    if (formOriginId === originId) setFormOriginId('hotel');
+  };
+
   /* ══════════════════════════════════════════════════════════
      PLACES POOL (OLD PLANNING) OPERATIONS
      ══════════════════════════════════════════════════════════ */
@@ -244,10 +848,64 @@ export default function PlanningTab({ tripId }) {
     setCategory('אטרקציות ודברים לעשות');
     setDescription('');
     setAddress('');
-    setRating(5);
     setPrice('');
-    setNeedsReservation(false);
+    setLinks([]);
+    setEditingLinkIdx(null);
+    setNewLinkLabel('');
+    setNewLinkUrl('');
+    setEventStartDate('');
+    setEventEndDate('');
+    setEventStartTime('');
+    setEventEndTime('');
+    setFormOriginId('hotel');
+    setOriginDropOpen(false);
+    setShowAddOriginForm(false);
+    setFormPriority(null);
+    setFormNeedsReservation(false);
     setShowAddForm(true);
+  };
+
+  // A place shared from Google Maps: open the add form on the places sub-tab
+  // with the name, the maps link (as the address, so navigation and travel
+  // times work off it) and anything else the share carried already filled in.
+  useEffect(() => {
+    if (!sharedPlace) return;
+    // Nothing to fill in a trip this user can only view — release it rather
+    // than leaving it pending forever.
+    if (!canEdit) { onSharedPlaceHandled?.(); return; }
+    setSubTab('pool');
+    handleOpenAdd();
+    if (sharedPlace.name) setTitle(sharedPlace.name);
+    if (sharedPlace.url) setAddress(sharedPlace.url);
+    if (sharedPlace.note) setDescription(sharedPlace.note);
+    onSharedPlaceHandled?.();
+    // handleOpenAdd is recreated every render; the place itself is the trigger.
+  }, [sharedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compute whether the add-plan form has content (used by the
+  // "unsaved changes" prompt when the user tries to close).
+  const planFormDirty = () =>
+    !!(title.trim() || description.trim() || address.trim() || price.trim() ||
+       links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim() ||
+       (editingId && category !== 'אטרקציות ודברים לעשות'));
+
+  // Dragging the form away is only offered while there is nothing to lose;
+  // a filled-in form still asks before closing.
+  const planFormSheet = useSheetDrag(() => setShowAddForm(false), { enabled: !planFormDirty() });
+
+  const attemptClosePlanForm = async () => {
+    if (planFormDirty()) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת נתונים בטופס שלא נשמר. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setShowAddForm(false);
+    setEditingId(null);
   };
 
   const handleStartEdit = (plan) => {
@@ -256,10 +914,86 @@ export default function PlanningTab({ tripId }) {
     setCategory(plan.category);
     setDescription(plan.description || '');
     setAddress(plan.address || '');
-    setRating(plan.rating || 5);
     setPrice(plan.price || '');
-    setNeedsReservation(!!plan.needsReservation);
+    setLinks(Array.isArray(plan.links) ? plan.links : []);
+    setEditingLinkIdx(null);
+    setNewLinkLabel('');
+    setNewLinkUrl('');
+    setEventStartDate(plan.event?.startDate || '');
+    setEventEndDate(plan.event?.endDate || '');
+    setEventStartTime(plan.event?.startTime || '');
+    setEventEndTime(plan.event?.endTime || '');
+    setFormOriginId(plan.distanceOriginId || 'hotel');
+    setOriginDropOpen(false);
+    setShowAddOriginForm(false);
+    setFormPriority(plan.priority || null);
+    setFormNeedsReservation(!!plan.needsReservation);
+    // Pre-populate manual override fields from cache (only when already overridden)
+    const originKey = plan.distanceOriginId || 'hotel';
+    const cacheEntry = distanceCache[`${plan.id}_${originKey}`];
+    if (cacheEntry?.manualOverride) {
+      setEditWalkMins(cacheEntry.walk?.seconds ? String(Math.round(cacheEntry.walk.seconds / 60)) : '');
+      setEditTransitMins(cacheEntry.transit?.seconds ? String(Math.round(cacheEntry.transit.seconds / 60)) : '');
+    } else {
+      setEditWalkMins('');
+      setEditTransitMins('');
+    }
     setShowAddForm(true);
+  };
+
+  const handleAddLinkRow = () => {
+    const url = newLinkUrl.trim();
+    if (!url) return;
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    // An empty name stays empty — the URL is never copied into the name
+    // field, so editing the link later shows the two values distinctly.
+    setLinks(prev => [...prev, { label: newLinkLabel.trim(), url: normalized }]);
+    setNewLinkLabel('');
+    setNewLinkUrl('');
+  };
+
+  const handleRemoveLinkRow = async (idx) => {
+    const link = links[idx];
+    const ok = await confirm({
+      title: 'מחיקת קישור',
+      message: <>האם למחוק את הקישור <strong>{link?.label || prettyUrl(link?.url)}</strong>?</>,
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
+    setLinks(prev => prev.filter((_, i) => i !== idx));
+    // The edited row may have shifted or disappeared — drop the edit state.
+    setEditingLinkIdx(null);
+  };
+
+  const handleStartEditLink = (idx) => {
+    const link = links[idx] || {};
+    setEditingLinkIdx(idx);
+    setEditLinkLabel(link.label || '');
+    setEditLinkUrl(link.url || '');
+  };
+
+  const handleCancelEditLink = () => {
+    setEditingLinkIdx(null);
+    setEditLinkLabel('');
+    setEditLinkUrl('');
+  };
+
+  const handleSaveEditLink = () => {
+    const url = editLinkUrl.trim();
+    if (!url) return;
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    setLinks(prev => prev.map((l, i) => (
+      i === editingLinkIdx ? { label: editLinkLabel.trim(), url: normalized } : l
+    )));
+    handleCancelEditLink();
+  };
+
+  const openPlanDetail = (id) => {
+    setDetailPlanId(id);
+    const plan = plans.find(p => p.id === id);
+    if (plan) setTimeout(() => fetchPlanDistances(plan), 0);
   };
 
   const handleToggleVisited = async (plan) => {
@@ -270,115 +1004,647 @@ export default function PlanningTab({ tripId }) {
     });
   };
 
+  const cyclePriority = async (plan) => {
+    if (!tripId || !canEdit) return;
+    const next = !plan.priority ? 'must' : plan.priority === 'must' ? 'optional' : null;
+    await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { priority: next });
+  };
+
   const handleDelete = async (id) => {
     if (!tripId) return;
-    if (window.confirm('האם למחוק פריט תכנון זה?')) {
-      const docRef = doc(db, 'trips', tripId, 'planning', id);
-      await deleteDoc(docRef);
-    }
+    const plan = plans.find(p => p.id === id);
+    const ok = await confirm({
+      title: 'מחיקת פריט תכנון',
+      message: plan?.title ? <>האם למחוק את <strong>{plan.title}</strong>?</> : 'האם למחוק פריט תכנון זה?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
+    await deleteDoc(doc(db, 'trips', tripId, 'planning', id));
   };
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim() || !tripId) return;
 
+    const originId = formOriginId !== 'hotel' ? formOriginId : null;
+    const eventData = category === EVENTS_CATEGORY ? {
+      startDate: eventStartDate || null,
+      endDate: eventEndDate || null,
+      startTime: eventStartTime || null,
+      endTime: eventEndTime || null,
+    } : null;
+
     if (editingId) {
+      const oldPlan = plans.find(p => p.id === editingId);
+      // Resolved location depends on address / links / chosen origin — if any
+      // changed, drop the persisted distances + coords so they recompute.
+      const locationChanged = !oldPlan ||
+        (oldPlan.address || '') !== address.trim() ||
+        JSON.stringify(oldPlan.links || []) !== JSON.stringify(links) ||
+        (oldPlan.distanceOriginId || null) !== originId;
+
+      // Build manual distance entry if the user entered values
+      const cacheOriginKey = formOriginId; // 'hotel' or custom ID
+      const walkMinsVal = editWalkMins !== '' ? parseInt(editWalkMins, 10) : null;
+      const transitMinsVal = editTransitMins !== '' ? parseInt(editTransitMins, 10) : null;
+      const hasManualTimes =
+        (walkMinsVal !== null && !isNaN(walkMinsVal)) ||
+        (transitMinsVal !== null && !isNaN(transitMinsVal));
+      const manualEntry = hasManualTimes ? {
+        ...(walkMinsVal !== null && !isNaN(walkMinsVal)
+          ? { walk: { duration: minsToHebDuration(walkMinsVal), seconds: walkMinsVal * 60 } }
+          : {}),
+        ...(transitMinsVal !== null && !isNaN(transitMinsVal)
+          ? { transit: { duration: minsToHebDuration(transitMinsVal), seconds: transitMinsVal * 60 } }
+          : {}),
+        manualOverride: true,
+        fetchedAt: Date.now(),
+      } : null;
+
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
-      await updateDoc(docRef, {
+      updateDoc(docRef, {
         title: title.trim(),
         category,
         description: description.trim(),
         address: address.trim(),
-        rating: Number(rating) || 5,
         price: price.trim() || 'חינם',
-        needsReservation
-      });
+        links: links,
+        distanceOriginId: originId,
+        event: eventData,
+        priority: formPriority || null,
+        needsReservation: formNeedsReservation,
+        ...(locationChanged
+          ? { distances: manualEntry ? { [cacheOriginKey]: manualEntry } : {}, coords: null }
+          : hasManualTimes
+            ? { [`distances.${cacheOriginKey}`]: manualEntry }
+            : {}),
+      }).catch(err => console.error('Planning update error:', err));
+
+      if (locationChanged) {
+        setDistanceCache(prev => {
+          const next = { ...prev };
+          Object.keys(next).forEach(k => { if (k.startsWith(`${editingId}_`)) delete next[k]; });
+          if (manualEntry) next[`${editingId}_${cacheOriginKey}`] = { ...manualEntry, loading: false };
+          return next;
+        });
+        setCoordsCache(prev => {
+          const next = { ...prev };
+          delete next[editingId];
+          return next;
+        });
+        // Editing the address or a link is exactly when the old numbers
+        // stopped being true — queue a recompute instead of waiting for
+        // someone to open the place. Manual overrides are left alone.
+        if (!manualEntry) {
+          setRecomputeIds(prev => (prev.includes(editingId) ? prev : [...prev, editingId]));
+        }
+      } else if (manualEntry) {
+        setDistanceCache(prev => ({
+          ...prev,
+          [`${editingId}_${cacheOriginKey}`]: { ...manualEntry, loading: false },
+        }));
+      }
     } else {
       const id = 'plan-' + Date.now();
       const docRef = doc(db, 'trips', tripId, 'planning', id);
-      await setDoc(docRef, {
+      setDoc(docRef, {
         title: title.trim(),
         category,
         description: description.trim(),
         address: address.trim(),
-        rating: Number(rating) || 5,
         price: price.trim() || 'חינם',
-        needsReservation,
-        visited: false
-      });
+        links: links,
+        visited: false,
+        distanceOriginId: originId,
+        event: eventData,
+        priority: formPriority || null,
+        needsReservation: formNeedsReservation,
+        addedBy: currentUid || null,
+        addedAt: new Date().toISOString(),
+      }).catch(err => console.error('Planning add error:', err));
     }
 
     // Reset Form
     setTitle('');
     setDescription('');
     setAddress('');
-    setRating(5);
     setPrice('');
-    setNeedsReservation(false);
+    setLinks([]);
+    setEditingLinkIdx(null);
+    setEventStartDate('');
+    setEventEndDate('');
+    setEventStartTime('');
+    setEventEndTime('');
+    setEditWalkMins('');
+    setEditTransitMins('');
+    setFormPriority(null);
+    setFormNeedsReservation(false);
     setEditingId(null);
     setShowAddForm(false);
   };
 
-  // Helper to resolve category icons
-  const getCategoryIcon = (cat) => {
-    switch (cat) {
-      case 'אטרקציות ודברים לעשות':
-        return <Compass size={18} />;
-      case 'מסעדות ומקומות אכילה':
-        return <UtensilsCrossed size={18} />;
-      case 'תחבורה ציבורית':
-        return <Train size={18} />;
-      case 'מידע כללי וטיפים':
-        return <Info size={18} />;
-      default:
-        return <MapPin size={18} />;
-    }
+  /* useCallback and not the ref-wrapper below: DayCard calls these while
+     rendering, and a wrapper reading a ref that an effect fills would be
+     undefined on the very first paint. They depend only on the category
+     settings, which change rarely, so the memo still holds nearly always. */
+  const getCategoryColor = useCallback(
+    (cat) => categorySettings[cat]?.color || '#4f46e5', [categorySettings]);
+
+  // Compact Hebrew "when" string for an event: "12.06" / "12.06–14.06 · 20:30-23:00"
+  const formatEventWhen = (ev) => {
+    if (!ev?.startDate) return '';
+    const dm = (s) => { const [, m, d] = s.split('-'); return `${d}.${m}`; };
+    let str = dm(ev.startDate);
+    if (ev.endDate && ev.endDate !== ev.startDate) str += `–${dm(ev.endDate)}`;
+    if (ev.startTime) str += ` · ${ev.startTime}`;
+    if (ev.endTime) str += `-${ev.endTime}`;
+    return str;
   };
 
-  // Filter plans
-  const filteredPlans = plans.filter(plan => {
-    const matchesCategory = selectedFilter === 'הכל' || plan.category === selectedFilter;
-    const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          plan.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          plan.address.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // Convert integer minutes → compact Hebrew string ("45 דק'" / "1 שע' 30 דק'")
+  const minsToHebDuration = (m) => {
+    if (!m || m <= 0) return '';
+    const h = Math.floor(m / 60);
+    const mins = m % 60;
+    if (h === 0) return `${mins} דק'`;
+    if (mins === 0) return `${h} שע'`;
+    return `${h} שע' ${mins} דק'`;
+  };
+
+  const getCategoryIcon = useCallback((cat, size = 18) => {
+    const iconKey = categorySettings[cat]?.iconKey;
+    const Icon = iconKey ? ICON_MAP[iconKey] : null;
+    if (Icon) return <Icon size={size} />;
+    switch (cat) {
+      case 'אטרקציות ודברים לעשות': return <Compass size={size} />;
+      case 'מסעדות ומקומות אכילה': return <UtensilsCrossed size={size} />;
+      case 'תחבורה ציבורית':       return <Train size={size} />;
+      case 'מידע כללי וטיפים':     return <Info size={size} />;
+      case EVENTS_CATEGORY:         return <Calendar size={size} />;
+      default:                      return <MapPin size={size} />;
+    }
+  }, [categorySettings]);
+
+  // Small caption above each link field, so "name" vs "address" is explicit.
+  const linkFieldLabel = {
+    fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+    marginBottom: 0, display: 'block',
+  };
+
+  const getPlanLocations = (plan) => {
+    const locs = [];
+    if (plan.address) {
+      const isUrl = /^https?:\/\//i.test(plan.address);
+      locs.push({
+        label: plan.address,
+        url: isUrl ? plan.address : `https://maps.google.com/?q=${encodeURIComponent(plan.address)}`,
+      });
+    }
+    if (Array.isArray(plan.links)) {
+      plan.links.forEach(link => locs.push({ label: link.label || prettyUrl(link.url), url: link.url }));
+    }
+    return locs;
+  };
+
+  // Cached travel times for a place, if they were already measured. Used for
+  // the one-line card summary and for the details sheet header.
+  const travelSummary = (plan) => {
+    const originId = plan.distanceOriginId || 'hotel';
+    const cache = distanceCache[`${plan.id}_${originId}`];
+    if (!cache || cache.loading || cache.error) return { walk: null, transit: null };
+    return {
+      walk: cache.walk?.duration || null,
+      transit: cache.transit?.duration || null,
+    };
+  };
+
+  // Small caption above a section inside the details sheet.
+  const sheetSectionLabel = {
+    fontSize: 11, fontWeight: 800, color: 'var(--text-muted)',
+    letterSpacing: '0.3px',
+  };
+
+  // Travel time from the hotel / chosen origin, rendered inside the details
+  // sheet. Lives here (rather than inline) so the card stays free of it.
+  const renderDistanceBlock = (plan) => {
+    if (!hasGmapsKey()) return null;
+    if (!hotelDetails && distanceOrigins.length === 0 && !tripDestination) return null;
+
+    const originId = plan.distanceOriginId || 'hotel';
+    const cacheKey = `${plan.id}_${originId}`;
+    const cache = distanceCache[cacheKey];
+    const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+    // Label from what the SHOWN numbers were actually computed from, so a
+    // city-centre result is never labelled "from hotel". Older cached entries
+    // have no originKind — fall back to resolving the current origin.
+    const kind = cache?.originKind || (
+      (customOrigin && hasPreciseOrigin(null, customOrigin))
+        ? 'custom'
+        : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city')
+    );
+    const cityName = (tripDestination || '').split(',')[0].trim();
+    const cityLabel = cityName ? `ממרכז ${cityName}` : 'מהמיקום';
+    const originLabel =
+      kind === 'custom' ? (customOrigin?.name || cityLabel)
+      : kind === 'hotel' ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
+      : cityLabel;
+
+    if (!cache || cache.loading) return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+        <Loader2 size={13} className="spinning" />
+        <span>מחשב מרחק...</span>
+      </div>
+    );
+    if (cache.offline) return (
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+        📡 אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
+      </div>
+    );
+    if (cache.noLocation) return (
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+        📍 לא נמצא מיקום לחישוב זמן הגעה
+      </div>
+    );
+    if (cache.error || (!cache.walk && !cache.transit)) return null;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--p-4)', borderRadius: 12, border: '1px solid var(--p-10)' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
+          {originLabel}:
+        </span>
+        {cache.walk && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+            🚶 {cache.walk.duration}
+          </span>
+        )}
+        {cache.transit && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+            🚌 {cache.transit.duration}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const parseDurationMins = (str) => {
+    if (!str) return Infinity;
+    const h = Number((str.match(/(\d+)\s*שע'/) || [0, 0])[1]);
+    const m = Number((str.match(/(\d+)\s*דק'/) || [0, 0])[1]);
+    return h * 60 + m || Infinity;
+  };
+
+  // Everything that can hide a place from the pool, reset in one call —
+  // the empty state offers it, and there is no other way back from a
+  // combination of filters that leaves nothing on screen.
+  const clearPoolFilters = () => {
+    setSearchQuery('');
+    setSelectedFilter('הכל');
+    setHideVisited(false);
+  };
+
+  // Filter plans + sort
+  const filteredPlans = plans
+    .filter(plan => {
+      const matchesCategory =
+        selectedFilter === 'הכל' ? true :
+        selectedFilter === '__must__' ? plan.priority === 'must' :
+        plan.category === selectedFilter;
+      const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (plan.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (plan.address || '').toLowerCase().includes(searchQuery.toLowerCase());
+      // "Hide visited" never hides the card currently open in the sheet, so
+      // marking a place as visited from there doesn't make it vanish mid-read.
+      const matchesVisibility = !hideVisited || !plan.visited || plan.id === detailPlanId;
+      return matchesCategory && matchesSearch && matchesVisibility;
+    })
+    .sort((a, b) => {
+      // When viewing the events category, order chronologically by date+time.
+      if (selectedFilter === EVENTS_CATEGORY && sortBy === 'default') {
+        const ts = (p) => {
+          if (!p.event?.startDate) return Infinity;
+          return new Date(`${p.event.startDate}T${p.event.startTime || '00:00'}`).getTime();
+        };
+        return ts(a) - ts(b);
+      }
+      if (sortBy !== 'default') {
+        const getTime = (plan, type) => {
+          const originId = plan.distanceOriginId || 'hotel';
+          const cache = distanceCache[`${plan.id}_${originId}`];
+          const leg = type === 'walk' ? cache?.walk : cache?.transit;
+          if (!leg) return Infinity;
+          return typeof leg.seconds === 'number' ? leg.seconds : parseDurationMins(leg.duration) * 60;
+        };
+        if (sortBy === 'walk-asc')     return getTime(a, 'walk')    - getTime(b, 'walk');
+        if (sortBy === 'walk-desc')    return getTime(b, 'walk')    - getTime(a, 'walk');
+        if (sortBy === 'transit-asc')  return getTime(a, 'transit') - getTime(b, 'transit');
+        if (sortBy === 'transit-desc') return getTime(b, 'transit') - getTime(a, 'transit');
+      }
+      // Default: visited items sink to the bottom
+      if (!!a.visited === !!b.visited) return 0;
+      return a.visited ? 1 : -1;
+    });
+
+  // The place shown in the details sheet, read from the live list so the
+  // sheet updates as Firestore pushes changes (visited, priority, edits).
+  const detailPlan = detailPlanId ? plans.find(p => p.id === detailPlanId) || null : null;
+  // Drag-to-dismiss + slide-out for the details sheet.
+  const detailSheet = useSheetDrag(() => setDetailPlanId(null));
+  const locationsSheet = useSheetDrag(() => setLocationsModal(null));
+  const categorySheet = useSheetDrag(() => setShowCategorySettings(false));
+
+  // Active card layout (density + column count).
+  const LO = PLAN_LAYOUTS[planLayout] || PLAN_LAYOUTS.comfortable;
+  // Small enough that two tiles still fit on a ~360px phone; auto-fill adds
+  // more columns on wider screens.
+  const gridMinCol = 148;
+
+  // Proximity-grouping view: flatten filteredPlans into a single render list
+  // interleaved with area-header sentinels ({ __header: true }). Places without
+  // resolved coordinates land in a trailing "ללא מיקום" group.
+  const locatedCount = filteredPlans.filter(p => coordsCache[p.id]).length;
+  let renderItems = filteredPlans;
+  if (groupBy === 'area') {
+    const located = filteredPlans
+      .filter(p => coordsCache[p.id])
+      .map(p => ({ ...p, coords: coordsCache[p.id] }));
+    const unlocated = filteredPlans.filter(p => !coordsCache[p.id]);
+    const clusters = clusterByProximity(located, PROXIMITY_THRESHOLD_M)
+      .sort((a, b) => b.length - a.length);
+    renderItems = [];
+    clusters.forEach((cluster, i) => {
+      const headerId = `__h${i}`;
+      renderItems.push({ __header: true, id: headerId, label: `אזור ${i + 1}`, count: cluster.length });
+      if (!collapsedAreas[headerId]) cluster.forEach(p => renderItems.push(p));
+    });
+    if (unlocated.length) {
+      renderItems.push({ __header: true, id: '__hx', label: 'ללא מיקום', count: unlocated.length });
+      if (!collapsedAreas['__hx']) unlocated.forEach(p => renderItems.push(p));
+    }
+  } else if (groupBy === 'category') {
+    // One collapsible section per category, in the order categories are
+    // configured, so a long mixed list reads as a handful of short lists.
+    const byCat = new Map();
+    filteredPlans.forEach(p => {
+      const cat = p.category || 'ללא קטגוריה';
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(p);
+    });
+    const ordered = [
+      ...categories.filter(c => byCat.has(c)),
+      ...[...byCat.keys()].filter(c => !categories.includes(c)),
+    ];
+    renderItems = [];
+    ordered.forEach(cat => {
+      const items = byCat.get(cat) || [];
+      const headerId = `__cat:${cat}`;
+      renderItems.push({
+        __header: true, id: headerId, label: cat, count: items.length,
+        category: cat,
+      });
+      if (!collapsedAreas[headerId]) items.forEach(p => renderItems.push(p));
+    });
+  }
 
   /* ══════════════════════════════════════════════════════════
      DAILY PLANNER OPERATIONS
      ══════════════════════════════════════════════════════════ */
-  const handleAddDay = async () => {
+  /* Stable handles for everything DayCard is given.
+   *
+   * React.memo compares props by reference, so a plain arrow re-created
+   * each render would make every day re-render anyway and the memo would
+   * be decoration. useCallback would work but needs a correct dependency
+   * list for each of eight functions, and a wrong one is a stale closure
+   * — a bug that shows up as an action quietly using yesterday's state.
+   * This keeps the latest implementations in a ref and hands out wrappers
+   * created once: permanently stable, never stale, no dependency lists.
+   */
+  const latestFns = useRef({});
+  const dayFns = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs -- the wrapper reads the ref
+    // when the handler fires, never while rendering; the two helpers that
+    // *are* called during render are useCallback'd above instead.
+    const call = (name) => (...args) => latestFns.current[name](...args);
+    return {
+      handleSaveDayTitle: call('handleSaveDayTitle'),
+      handleDeleteDay: call('handleDeleteDay'),
+      handleOpenAddActivity: call('handleOpenAddActivity'),
+      handleStartEditActivity: call('handleStartEditActivity'),
+      handleDeleteActivity: call('handleDeleteActivity'),
+      moveActivity: call('moveActivity'),
+    };
+  }, []);
+
+  /* Refreshed after every render, read only when a handler fires — so a
+     wrapper never calls a stale implementation. In an effect rather than
+     during render: writing a ref while rendering is what the rules-of-hooks
+     lint flags, and events can only run after the effect anyway. */
+  useEffect(() => {
+    latestFns.current = {
+      handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
+      handleStartEditActivity, handleDeleteActivity, moveActivity,
+    };
+  });
+
+  const handleAddDay = () => {
     if (!tripId) return;
     const nextDayNum = days.length + 1;
     const dayId = 'day-' + Date.now();
-    const docRef = doc(db, 'trips', tripId, 'days', dayId);
-    
-    await setDoc(docRef, {
+    setDoc(doc(db, 'trips', tripId, 'days', dayId), {
       title: `יום ${nextDayNum}`,
       order: nextDayNum,
       activities: []
-    });
+    }).catch(err => console.error('Add day error:', err));
+    // The write is fire-and-forget so this works offline too: the day
+    // arrives from the local cache and the effect below takes us to it.
+    setArrivedDayId(dayId);
   };
 
-  const handleSaveDayTitle = async (dayId, newTitle) => {
+  // Scroll to the day that was just added, once it has actually rendered.
+  useEffect(() => {
+    if (!arrivedDayId) return undefined;
+    const node = dayNodes.current.get(arrivedDayId);
+    if (!node) return undefined;   // not in the snapshot yet; runs again when it is
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const t = setTimeout(() => setArrivedDayId(null), 2000);   // matches .highlight-pulse
+    return () => clearTimeout(t);
+  }, [arrivedDayId, days]);
+
+  const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
+  /* "ימים מסונכרנים עם הטיסה" is a confirmation, not a status.
+   *
+   * It used to render from the persisted comparison between the flight
+   * dates and `plannerDaysFromFlight`, which is true from the moment you
+   * sync until the dates change — so it sat there permanently, and a
+   * message that never leaves stops being read. It now appears only right
+   * after a sync actually runs, and clears itself. What it was standing
+   * in for is already on the button beside it, which reads "ייצר" before
+   * a sync and "עדכן" after one.
+   */
+  const [justSynced, setJustSynced] = useState(false);
+  const syncedTimer = useRef(null);
+  useEffect(() => () => clearTimeout(syncedTimer.current), []);
+
+  const flashSynced = () => {
+    clearTimeout(syncedTimer.current);
+    setJustSynced(true);
+    syncedTimer.current = setTimeout(() => setJustSynced(false), 4000);
+  };
+
+  const handleInitDaysFromFlight = async () => {
+    if (!tripId || !tripFlightDates.out || !tripFlightDates.ret) return;
+    if (days.length > 0) {
+      const ok = await confirm({
+        title: 'החלפת ימי הטיול',
+        message: 'כבר קיימים ימים מתוכננים. האם למחוק אותם וליצור מחדש לפי תאריכי הטיסה?',
+        confirmText: 'כן, החלף',
+        cancelText: 'ביטול',
+        danger: true,
+      });
+      if (!ok) return;
+      const batch = writeBatch(db);
+      days.forEach(d => batch.delete(doc(db, 'trips', tripId, 'days', d.id)));
+      await batch.commit();
+    }
+    const start = new Date(tripFlightDates.out);
+    const end = new Date(tripFlightDates.ret);
+    const maxDays = 30;
+    const batch = writeBatch(db);
+    let dayNum = 1;
+    const cur = new Date(start);
+    while (cur <= end && dayNum <= maxDays) {
+      const dayName = HE_DAYS[cur.getDay()];
+      const yyyy = cur.getFullYear();
+      const mm = String(cur.getMonth() + 1).padStart(2, '0');
+      const dd = String(cur.getDate()).padStart(2, '0');
+      const isoDate = `${yyyy}-${mm}-${dd}`;
+      const id = 'day-' + Date.now() + '-' + dayNum;
+      batch.set(doc(db, 'trips', tripId, 'days', id), {
+        title: `יום ${dayNum}`,
+        date: isoDate,
+        order: dayNum,
+        activities: [],
+      });
+      cur.setDate(cur.getDate() + 1);
+      dayNum++;
+    }
+    // Record which flight dates were used so we can detect stale state
+    batch.update(doc(db, 'trips', tripId), {
+      plannerDaysFromFlight: { out: tripFlightDates.out, ret: tripFlightDates.ret },
+    });
+    await batch.commit();
+    flashSynced();
+  };
+
+  // When the connection comes back, drop the "offline" markers and bump the
+  // epoch so anything that couldn't be measured is retried automatically.
+  useEffect(() => {
+    const onBackOnline = () => {
+      setOnline(true);
+      setDistanceCache(prev => {
+        const next = {};
+        let changed = false;
+        for (const [k, v] of Object.entries(prev)) {
+          if (v?.offline) { changed = true; continue; }
+          next[k] = v;
+        }
+        return changed ? next : prev;
+      });
+      setNetEpoch(e => e + 1);
+    };
+    const onWentOffline = () => setOnline(false);
+    window.addEventListener('online', onBackOnline);
+    window.addEventListener('offline', onWentOffline);
+    return () => {
+      window.removeEventListener('online', onBackOnline);
+      window.removeEventListener('offline', onWentOffline);
+    };
+  }, []);
+
+  // Recompute the travel times of a place that was just edited. Runs off the
+  // `plans` snapshot so it fires in a fresh render — by then the cleared
+  // caches are visible and the fetch actually re-measures instead of
+  // short-circuiting on the previous result.
+  useEffect(() => {
+    if (recomputeIds.length === 0) return;
+    if (!hasGmapsKey()) { setRecomputeIds([]); return; }
+    const done = [];
+    recomputeIds.forEach(id => {
+      const plan = plans.find(p => p.id === id);
+      if (!plan) return;
+      fetchPlanDistances(plan);
+      done.push(id);
+    });
+    if (done.length) setRecomputeIds(prev => prev.filter(id => !done.includes(id)));
+  }, [plans, recomputeIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lazy-fetch travel times for all day-planner activities that link to a saved place
+  useEffect(() => {
+    if (!hasGmapsKey() || (!hotelDetails && !tripDestination)) return;
+    const allPlaceIds = new Set(
+      days.flatMap(d => (d.activities || []).map(a => a.placeId).filter(Boolean))
+    );
+    allPlaceIds.forEach(placeId => {
+      const plan = plans.find(p => p.id === placeId);
+      // No cache guard here: fetchPlanDistances() cheaply no-ops when the
+      // cached result already matches the current origin, and re-fetches
+      // when the hotel address changed underneath it.
+      if (plan) fetchPlanDistances(plan);
+    });
+  }, [days, plans, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const daySensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
+  const handleDayDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = days.findIndex(d => d.id === active.id);
+    const newIdx = days.findIndex(d => d.id === over.id);
+    const reordered = arrayMove(days, oldIdx, newIdx);
+    // Both title and date are positional anchors — only activities travel.
+    const positionalDates  = days.map(d => d.date  ?? null);
+    const positionalTitles = days.map(d => d.title ?? '');
+    const batch = writeBatch(db);
+    reordered.forEach((day, idx) => {
+      batch.update(doc(db, 'trips', tripId, 'days', day.id), {
+        order:      idx + 1,
+        date:       positionalDates[idx],
+        title:      positionalTitles[idx],
+        activities: day.activities || [],
+      });
+    });
+    await batch.commit();
+  };
+
+  const handleSaveDayTitle = (dayId, newTitle) => {
     if (!tripId || !newTitle.trim()) return;
-    const docRef = doc(db, 'trips', tripId, 'days', dayId);
-    await updateDoc(docRef, { title: newTitle.trim() });
     setEditingDayId(null);
+    updateDoc(doc(db, 'trips', tripId, 'days', dayId), { title: newTitle.trim() })
+      .catch(err => console.error('Save day title error:', err));
   };
 
   const handleDeleteDay = async (dayId) => {
     if (!tripId) return;
-    if (window.confirm('האם למחוק את יום הטיול וכל הפעילויות שבו?')) {
-      const docRef = doc(db, 'trips', tripId, 'days', dayId);
-      await deleteDoc(docRef);
-    }
+    const day = days.find(d => d.id === dayId);
+    const ok = await confirm({
+      title: 'מחיקת יום טיול',
+      message: <>האם למחוק את <strong>{day?.title || 'היום'}</strong> וכל הפעילויות שבו?</>,
+      confirmText: 'מחק יום',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
+    await deleteDoc(doc(db, 'trips', tripId, 'days', dayId));
   };
 
   const handleOpenAddActivity = (dayId) => {
     setSelectedDayId(dayId);
     setEditingActivityId(null);
-    setPlaceId('');
+    setSavedPlaceSelections([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
     setActivityTitle('');
     setActivityTimeLabel('');
     setActivityAddress('');
@@ -387,10 +1653,53 @@ export default function PlanningTab({ tripId }) {
     setShowActivityForm(true);
   };
 
+  const activityFormDirty = () =>
+    !!(activityTitle.trim() || activityTimeLabel.trim() ||
+       activityAddress.trim() || activityDescription.trim() ||
+       savedPlaceSelections.some(s => s.placeId));
+
+  /* The "add activity" sheet is the tallest form in the tab and was the
+     only one you could not swipe away. Declared here and not with the
+     other sheet hooks above: `enabled` calls activityFormDirty, which is
+     a const defined just above — reading it any earlier is a temporal
+     dead zone and takes the whole tab down. */
+  const activitySheet = useSheetDrag(
+    () => { setShowActivityForm(false); setEditingActivityId(null); },
+    { enabled: !activityFormDirty() },
+  );
+
+  const attemptCloseActivityForm = async () => {
+    if (activityFormDirty()) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת נתונים בטופס שלא נשמר. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setShowActivityForm(false);
+    setEditingActivityId(null);
+  };
+
+  /* The tab's layers, innermost last. The two forms go through their
+     unsaved-changes guard, so back asks exactly as the ✕ does. */
+  useBackHandler(!!detailPlanId, () => detailSheet.close());
+  useBackHandler(!!locationsModal, () => locationsSheet.close());
+  useBackHandler(showCategorySettings, () => categorySheet.close());
+  useBackHandler(showAddForm, attemptClosePlanForm);
+  useBackHandler(showActivityForm, attemptCloseActivityForm);
+
   const handleStartEditActivity = (dayId, act) => {
     setSelectedDayId(dayId);
     setEditingActivityId(act.id);
-    setPlaceId(act.placeId || '');
+    if (act.placeId) {
+      const place = plans.find(p => p.id === act.placeId);
+      setSavedPlaceSelections([{ categoryFilter: place?.category || '', placeId: act.placeId, timeLabel: act.timeLabel || '' }]);
+    } else {
+      setSavedPlaceSelections([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
+    }
     setActivityTitle(act.title);
     setActivityTimeLabel(act.timeLabel || '');
     setActivityAddress(act.address || '');
@@ -399,19 +1708,42 @@ export default function PlanningTab({ tripId }) {
     setShowActivityForm(true);
   };
 
+  const addSavedPlaceSelection = () =>
+    setSavedPlaceSelections(prev => [...prev, { categoryFilter: '', placeId: '', timeLabel: '' }]);
+
+  const removeSavedPlaceSelection = (idx) =>
+    setSavedPlaceSelections(prev => prev.filter((_, i) => i !== idx));
+
+  const updateSavedPlaceSelection = (idx, field, value) =>
+    setSavedPlaceSelections(prev => prev.map((sel, i) => {
+      if (i !== idx) return sel;
+      const updated = { ...sel, [field]: value };
+      if (field === 'categoryFilter') updated.placeId = '';
+      return updated;
+    }));
+
   const handleDeleteActivity = async (dayId, activityId) => {
     if (!tripId) return;
-    if (!window.confirm('האם למחוק פעילות זו?')) return;
-
     const day = days.find(d => d.id === dayId);
     if (!day) return;
+    const act = (day.activities || []).find(a => a.id === activityId);
+    const ok = await confirm({
+      title: 'מחיקת פעילות',
+      message: act?.title ? <>האם למחוק את <strong>{act.title}</strong>?</> : 'האם למחוק פעילות זו?',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return;
 
     const updatedActivities = day.activities.filter(act => act.id !== activityId);
     const docRef = doc(db, 'trips', tripId, 'days', dayId);
     await updateDoc(docRef, { activities: updatedActivities });
   };
 
-  const moveActivity = async (dayId, activityId, direction) => {
+  // When activities render grouped by time label, the visual neighbor may not
+  // be the array neighbor — `swapWithId` names the exact activity to swap with.
+  const moveActivity = async (dayId, activityId, direction, swapWithId = null) => {
     if (!tripId) return;
     const day = days.find(d => d.id === dayId);
     if (!day) return;
@@ -420,7 +1752,9 @@ export default function PlanningTab({ tripId }) {
     const idx = list.findIndex(act => act.id === activityId);
     if (idx === -1) return;
 
-    const targetIdx = idx + direction;
+    const targetIdx = swapWithId != null
+      ? list.findIndex(act => act.id === swapWithId)
+      : idx + direction;
     if (targetIdx < 0 || targetIdx >= list.length) return;
 
     // Swap elements
@@ -434,106 +1768,115 @@ export default function PlanningTab({ tripId }) {
 
   const handleActivitySubmit = async (e) => {
     e.preventDefault();
-    if (!activityTitle.trim() || !tripId || !selectedDayId) return;
+    if (!tripId || !selectedDayId) return;
+
+    const hasPlaceSelections = savedPlaceSelections.some(s => s.placeId);
+    const hasManualTitle = activityTitle.trim().length > 0;
+    if (!hasPlaceSelections && !hasManualTitle) return;
 
     const day = days.find(d => d.id === selectedDayId);
     if (!day) return;
 
-    const activityObj = {
-      id: editingActivityId || 'act-' + Date.now(),
-      title: activityTitle.trim(),
-      timeLabel: activityTimeLabel.trim(),
-      placeId: placeId || null,
-      address: activityAddress.trim(),
-      description: activityDescription.trim(),
-      category: activityCategory
-    };
-
     let updatedActivities = [...(day.activities || [])];
+
     if (editingActivityId) {
-      updatedActivities = updatedActivities.map(act => 
+      const firstSel = savedPlaceSelections[0];
+      const place = firstSel?.placeId ? plans.find(p => p.id === firstSel.placeId) : null;
+      const activityObj = {
+        id: editingActivityId,
+        title: place ? place.title : activityTitle.trim(),
+        timeLabel: firstSel?.placeId ? (firstSel.timeLabel || '') : activityTimeLabel.trim(),
+        placeId: firstSel?.placeId || null,
+        address: place ? (place.address || '') : activityAddress.trim(),
+        description: activityDescription.trim(),
+        category: place ? place.category : activityCategory
+      };
+      updatedActivities = updatedActivities.map(act =>
         act.id === editingActivityId ? activityObj : act
       );
     } else {
-      updatedActivities.push(activityObj);
+      for (const sel of savedPlaceSelections) {
+        if (sel.placeId) {
+          const place = plans.find(p => p.id === sel.placeId);
+          if (place) {
+            updatedActivities.push({
+              id: 'act-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+              title: place.title,
+              timeLabel: sel.timeLabel || '',
+              placeId: place.id,
+              address: place.address || '',
+              description: place.description || '',
+              category: place.category
+            });
+          }
+        }
+      }
+      if (hasManualTitle) {
+        updatedActivities.push({
+          id: 'act-' + Date.now(),
+          title: activityTitle.trim(),
+          timeLabel: activityTimeLabel.trim(),
+          placeId: null,
+          address: activityAddress.trim(),
+          description: activityDescription.trim(),
+          category: activityCategory
+        });
+      }
     }
 
-    try {
-      const docRef = doc(db, 'trips', tripId, 'days', selectedDayId);
-      await updateDoc(docRef, { activities: updatedActivities });
-      setShowActivityForm(false);
-      setEditingActivityId(null);
-    } catch (err) {
-      console.error('Error saving activity:', err);
-    }
+    setShowActivityForm(false);
+    setEditingActivityId(null);
+    const docRef = doc(db, 'trips', tripId, 'days', selectedDayId);
+    updateDoc(docRef, { activities: updatedActivities }).catch(err => console.error('Activity save error:', err));
   };
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, height: '100%', padding: '40px 0' }}>
-        <div className="pulsing-dot" style={{ width: '12px', height: '12px' }}></div>
-        <span style={{ marginRight: '10px', color: 'var(--text-muted)', fontSize: '15px' }}>טוען תוכניות טיול...</span>
-      </div>
-    );
+    return <Skeleton rows={6} label="טוען תוכניות טיול" />;
   }
 
   return (
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* Sub-tab Selector */}
-      <div style={{ 
-        display: 'flex', 
-        background: 'rgba(11, 11, 48, 0.05)', 
-        borderRadius: 'var(--radius-md)', 
-        padding: 4, 
-        gap: 4 
-      }}>
-        <button
-          onClick={() => setSubTab('pool')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            border: 'none',
-            borderRadius: 'calc(var(--radius-md) - 2px)',
-            padding: '10px 0',
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: 'pointer',
-            background: subTab === 'pool' ? '#fff' : 'transparent',
-            color: subTab === 'pool' ? 'var(--primary)' : 'var(--text-muted)',
-            boxShadow: subTab === 'pool' ? 'var(--shadow-sm)' : 'none',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Compass size={16} />
-          <span>אטרקציות ומקומות</span>
-        </button>
-        <button
-          onClick={() => setSubTab('daily')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            border: 'none',
-            borderRadius: 'calc(var(--radius-md) - 2px)',
-            padding: '10px 0',
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: 'pointer',
-            background: subTab === 'daily' ? '#fff' : 'transparent',
-            color: subTab === 'daily' ? 'var(--primary)' : 'var(--text-muted)',
-            boxShadow: subTab === 'daily' ? 'var(--shadow-sm)' : 'none',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Calendar size={16} />
-          <span>לוח זמנים יומי</span>
-        </button>
+      {/* Sub-tab switch, with the day-list view control beside it.
+          Labels are short so all three fit one line at 400px: with the
+          long ones the pill lost enough width that "אטרקציות ומקומות"
+          broke onto a second row and the whole control grew a line. The
+          icons carry the rest of the meaning. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="subtab-switch" role="tablist">
+          <span className="subtab-indicator" style={{ '--sub-i': subTab === 'daily' ? 1 : 0 }} aria-hidden="true" />
+          <button
+            role="tab"
+            aria-selected={subTab === 'pool'}
+            className="subtab-btn"
+            onClick={() => setSubTab('pool')}
+          >
+            <Compass size={16} />
+            <span>מקומות</span>
+          </button>
+          <button
+            role="tab"
+            aria-selected={subTab === 'daily'}
+            className="subtab-btn"
+            onClick={() => setSubTab('daily')}
+          >
+            <Calendar size={16} />
+            <span>לוח זמנים</span>
+          </button>
+        </div>
+        {subTab === 'daily' && days.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
+            className="btn-secondary"
+            style={{ padding: 0, width: 42, minWidth: 42, height: 42, minHeight: 42, flexShrink: 0 }}
+            title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+            aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
+            aria-pressed={dayLayout === 'summary'}
+          >
+            {dayLayout === 'summary' ? <LayoutList size={17} /> : <Rows3 size={17} />}
+          </button>
+        )}
       </div>
 
       {/* Render sub-tab content */}
@@ -541,35 +1884,36 @@ export default function PlanningTab({ tripId }) {
         <>
           {/* Search and Toggle Form */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {/* Search fills the row — the add button moved to the floating
+                one, which every tab now shares. */}
             <div style={{ position: 'relative', flex: 1 }}>
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="חיפוש אטרקציות, מסעדות..." 
+              <input
+                type="text"
+                className="form-control"
+                placeholder="חיפוש אטרקציות, מסעדות..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ paddingRight: '40px' }}
               />
               <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             </div>
-            
-            <button 
-              onClick={handleOpenAdd} 
-              className="btn-primary" 
-              style={{ padding: '12px', borderRadius: '50%' }}
-            >
-              <Plus size={20} />
-            </button>
+
           </div>
+
+          {/* Adding a place is a whole-tab action, so it gets the floating
+              button. Adding an activity in the daily sub-tab is not — it
+              belongs to one specific day, and stays on that day's card. */}
+          {canEdit && <Fab label="יעד חדש" onClick={handleOpenAdd} />}
 
           {/* Add/Edit Plan Slide-Up Modal */}
           {showAddForm && (
-            <div className="modal-overlay" onClick={() => { setShowAddForm(false); setEditingId(null); }}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-overlay" data-closing={planFormSheet.closing || undefined} onClick={attemptClosePlanForm}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} {...planFormSheet.handlers} style={planFormSheet.style}>
+                <div className="sheet-grab" />
                 
                 <div className="modal-header">
                   <h2>{editingId ? 'עריכת פריט תכנון' : 'הוספת יעד / אטרקציה חדשה'}</h2>
-                  <button className="btn-close" onClick={() => { setShowAddForm(false); setEditingId(null); }}>✕</button>
+                  <button aria-label="סגור" className="btn-close" onClick={attemptClosePlanForm}>✕</button>
                 </div>
 
                 <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -586,104 +1930,446 @@ export default function PlanningTab({ tripId }) {
                     />
                   </div>
 
+                  <CustomDropdown
+                    label="קטגוריה"
+                    value={category}
+                    onChange={setCategory}
+                    options={categories}
+                    addable
+                    addLabel="הוסף קטגוריה חדשה"
+                    onCommit={(newCat) => {
+                      const updated = { ...categorySettings, [newCat]: {} };
+                      setCategorySettings(updated);
+                      saveCategorySettings(updated);
+                    }}
+                  />
+
+                  {/* Priority selector */}
                   <div className="form-group">
-                    <label>קטגוריה</label>
-                    <select className="form-control" value={category} onChange={(e) => setCategory(e.target.value)}>
-                      {categories.map((cat, idx) => (
-                        <option key={idx} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Star size={13} style={{ color: '#f59e0b' }} />
+                      עדיפות
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[
+                        { value: null,       label: 'לא מוגדר',      icon: null },
+                        { value: 'must',     label: 'חובה',          icon: <Star size={13} fill="#f59e0b" color="#f59e0b" /> },
+                        { value: 'optional', label: 'אם ישאר זמן',   icon: <Clock size={13} /> },
+                      ].map(opt => {
+                        const active = formPriority === opt.value;
+                        return (
+                          <button
+                            key={String(opt.value)}
+                            type="button"
+                            onClick={() => setFormPriority(opt.value)}
+                            style={{
+                              flex: 1,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                              padding: '9px 4px',
+                              borderRadius: 10,
+                              border: active
+                                ? `1.5px solid ${opt.value === 'must' ? '#f59e0b' : opt.value === 'optional' ? 'var(--ink-20)' : 'var(--accent)'}`
+                                : '1.5px solid var(--ink-10)',
+                              background: active
+                                ? opt.value === 'must' ? 'rgba(245,158,11,0.12)' : opt.value === 'optional' ? 'var(--ink-6)' : 'var(--p-8)'
+                                : 'transparent',
+                              color: active
+                                ? opt.value === 'must' ? '#f59e0b' : opt.value === 'optional' ? 'var(--text-muted)' : 'var(--accent)'
+                                : 'var(--text-muted)',
+                              fontFamily: 'var(--font-hebrew)',
+                              fontSize: 12, fontWeight: 800,
+                              cursor: 'pointer', transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {opt.icon}
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  {/* Optional: needs advance reservation toggle */}
+                  {/* Needs advance booking — optional; when on, the card says so */}
                   <button
                     type="button"
-                    onClick={() => setNeedsReservation(!needsReservation)}
-                    aria-pressed={needsReservation}
+                    onClick={() => setFormNeedsReservation(v => !v)}
+                    aria-pressed={formNeedsReservation}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      border: needsReservation ? '1.5px solid #f59e0b' : '1.5px dashed rgba(11, 11, 48, 0.15)',
-                      background: needsReservation ? '#fef3c7' : 'rgba(255,255,255,0.6)',
-                      color: needsReservation ? '#b45309' : 'var(--text-muted)',
-                      cursor: 'pointer',
-                      textAlign: 'right',
-                      fontFamily: 'inherit',
-                      transition: 'all 0.2s ease'
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      width: '100%', padding: '11px 12px', borderRadius: 12,
+                      border: formNeedsReservation ? '1.5px solid var(--c-red)' : '1.5px dashed var(--ink-10)',
+                      background: formNeedsReservation ? 'var(--c-red-10)' : 'transparent',
+                      color: formNeedsReservation ? 'var(--c-red)' : 'var(--text-muted)',
+                      fontFamily: 'var(--font-hebrew)', textAlign: 'right',
+                      cursor: 'pointer', transition: 'all 0.15s ease',
                     }}
                   >
-                    <CalendarCheck size={20} style={{ flexShrink: 0 }} />
-                    <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '800' }}>צריך לסגור / להזמין מקום מראש</span>
-                      <span style={{ fontSize: '12px', fontWeight: '600', opacity: 0.8 }}>
-                        {needsReservation ? 'מסומן – יופיע על כרטיס המקום' : 'אופציונלי – לחץ לסימון'}
+                    <CalendarCheck size={18} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 800 }}>צריך לסגור / להזמין מראש</span>
+                      <span style={{ display: 'block', fontSize: 11, fontWeight: 600, opacity: 0.8, marginTop: 1 }}>
+                        {formNeedsReservation ? 'יסומן על כרטיס המקום' : 'לא חובה – לחצו לסימון'}
                       </span>
                     </span>
                     <span style={{
-                      width: '22px',
-                      height: '22px',
-                      borderRadius: '6px',
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      border: needsReservation ? 'none' : '1.5px solid rgba(11, 11, 48, 0.2)',
-                      background: needsReservation ? '#f59e0b' : '#fff',
+                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: formNeedsReservation ? 'none' : '1.5px solid var(--ink-20)',
+                      background: formNeedsReservation ? 'var(--c-red)' : 'transparent',
                       color: '#fff',
-                      fontSize: '14px',
-                      fontWeight: '900'
                     }}>
-                      {needsReservation ? '✓' : ''}
+                      {formNeedsReservation && <Check size={13} strokeWidth={3} />}
                     </span>
                   </button>
 
-                  <div className="row-2">
-                    <div className="form-group">
-                      <label>דירוג (1-5)</label>
-                      <input 
-                        type="number" 
-                        min="1" 
-                        max="5" 
-                        step="0.1" 
-                        className="form-control" 
-                        value={rating} 
-                        onChange={(e) => setRating(e.target.value)}
-                      />
+                  {/* Event date/time — only for the events category */}
+                  {category === EVENTS_CATEGORY && (
+                    <div style={{
+                      background: 'var(--p-4)',
+                      border: '1.5px solid var(--p-12)',
+                      borderRadius: 12,
+                      padding: 14,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                    }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Calendar size={14} /> מתי האירוע?
+                      </span>
+                      <div className="row-2" style={{ gap: 10 }}>
+                        <CustomDatePicker label="תאריך התחלה" value={eventStartDate} onChange={setEventStartDate} />
+                        <CustomDatePicker label="תאריך סיום (לא חובה)" value={eventEndDate} onChange={setEventEndDate} />
+                      </div>
+                      <div className="row-2" style={{ gap: 10 }}>
+                        <CustomTimePicker label="שעת התחלה" value={eventStartTime} onChange={setEventStartTime} />
+                        <CustomTimePicker label="שעת סיום (לא חובה)" value={eventEndTime} onChange={setEventEndTime} />
+                      </div>
                     </div>
-                    <div className="form-group">
-                      <label>עלות/תקציב</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        placeholder="למשל: 10 €, חינם" 
-                        value={price} 
-                        onChange={(e) => setPrice(e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   <div className="form-group">
                     <label>כתובת / מיקום</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      placeholder="כתובת או קישור למפה" 
-                      value={address} 
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="כתובת או קישור למפה"
+                      value={address}
                       onChange={(e) => setAddress(e.target.value)}
                     />
                   </div>
 
+                  {/* Free-form links — each row is a NAME (optional, shown
+                      on the card) plus the ADDRESS itself. The two fields are
+                      labelled explicitly so it is never ambiguous which is
+                      which, and an empty name is left empty rather than being
+                      filled with the URL. */}
+                  <div className="form-group">
+                    <label>קישורים נוספים</label>
+                    {links.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                        {links.map((link, idx) => (
+                          editingLinkIdx === idx ? (
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--accent)' }}>
+                              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)' }}>עריכת קישור</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  placeholder="למשל: אתר רשמי, פוסט בפייסבוק"
+                                  value={editLinkLabel}
+                                  onChange={(e) => setEditLinkLabel(e.target.value)}
+                                  style={{ fontSize: 13 }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
+                                <input
+                                  type="url"
+                                  className="form-control"
+                                  placeholder="https://..."
+                                  value={editLinkUrl}
+                                  onChange={(e) => setEditLinkUrl(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveEditLink(); } }}
+                                  dir="ltr"
+                                  style={{ fontSize: 13, textAlign: 'left' }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveEditLink}
+                                  disabled={!editLinkUrl.trim()}
+                                  className="btn-primary"
+                                  style={{ flex: 1, minHeight: 34, fontSize: 12, padding: '6px', gap: 5, opacity: editLinkUrl.trim() ? 1 : 0.5 }}
+                                >
+                                  <Check size={13} />
+                                  <span>שמור</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditLink}
+                                  className="btn-secondary"
+                                  style={{ flex: 1, minHeight: 34, fontSize: 12, padding: '6px' }}
+                                >
+                                  ביטול
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-6)', borderRadius: 'var(--radius-md)', border: '1px solid var(--p-12)' }}>
+                              <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: link.label ? 'var(--primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {link.label || 'ללא שם'}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">{prettyUrl(link.url)}</div>
+                              </div>
+                              <button type="button" onClick={() => handleStartEditLink(idx)} title="ערוך קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 4, display: 'flex', flexShrink: 0 }}>
+                                <Pencil size={14} />
+                              </button>
+                              <button type="button" onClick={() => handleRemoveLinkRow(idx)} title="מחק קישור" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.7)', padding: 4, display: 'flex', flexShrink: 0 }}>
+                                <X size={14} />
+                              </button>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
+
+                    {/* New-link row — stacked, each field under its own label */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--ink-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--ink-6)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="למשל: אתר רשמי, פוסט בפייסבוק"
+                          value={newLinkLabel}
+                          onChange={(e) => setNewLinkLabel(e.target.value)}
+                          style={{ fontSize: 13 }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
+                        <input
+                          type="url"
+                          className="form-control"
+                          placeholder="https://..."
+                          value={newLinkUrl}
+                          onChange={(e) => setNewLinkUrl(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLinkRow(); } }}
+                          dir="ltr"
+                          style={{ fontSize: 13, textAlign: 'left' }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddLinkRow}
+                        disabled={!newLinkUrl.trim()}
+                        className="btn-secondary"
+                        style={{ width: '100%', minHeight: 38, fontSize: 13, padding: '8px', opacity: newLinkUrl.trim() ? 1 : 0.5 }}
+                      >
+                        <Plus size={14} />
+                        <span>הוסף קישור</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Distance origin selector */}
+                  <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Hotel size={14} style={{ color: 'var(--accent)' }} />
+                        בדיקת זמנים מ...
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={() => setOriginDropOpen(o => !o)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 14px', borderRadius: 'var(--radius-md)',
+                            border: '1.5px solid rgba(79,70,229,0.25)', background: 'var(--p-4)',
+                            cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                            color: 'var(--primary)',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Hotel size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            {formOriginId === 'hotel'
+                              ? (hotelDetails?.name ? `המלון — ${hotelDetails.name}` : 'המלון')
+                              : (distanceOrigins.find(o => o.id === formOriginId)?.name || 'מיקום לא ידוע')}
+                          </span>
+                          <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: originDropOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                        </button>
+
+                        {originDropOpen && (
+                          <div style={{
+                            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
+                            background: 'var(--surface)', border: '1.5px solid rgba(79,70,229,0.15)', borderRadius: 'var(--radius-md)',
+                            boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+                          }}>
+                            {/* Hotel option */}
+                            <button
+                              type="button"
+                              onClick={() => { setFormOriginId('hotel'); setOriginDropOpen(false); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '11px 14px', border: 'none', background: formOriginId === 'hotel' ? 'var(--p-8)' : 'var(--surface)',
+                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                                color: formOriginId === 'hotel' ? 'var(--accent)' : 'var(--primary)',
+                                borderBottom: '1px solid var(--ink-6)',
+                              }}
+                            >
+                              <Hotel size={15} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1, textAlign: 'right' }}>
+                                {hotelDetails?.name ? `המלון — ${hotelDetails.name}` : 'המלון'}
+                              </span>
+                              {formOriginId === 'hotel' && <Check size={14} />}
+                            </button>
+
+                            {/* Custom origins */}
+                            {distanceOrigins.map(origin => (
+                              <div key={origin.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--ink-4)' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => { setFormOriginId(origin.id); setOriginDropOpen(false); }}
+                                  style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '11px 14px', border: 'none', background: formOriginId === origin.id ? 'var(--p-8)' : 'var(--surface)',
+                                    cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
+                                    color: formOriginId === origin.id ? 'var(--accent)' : 'var(--primary)',
+                                  }}
+                                >
+                                  <MapPin size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                                  <span style={{ flex: 1, textAlign: 'right' }}>{origin.name}</span>
+                                  {formOriginId === origin.id && <Check size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDistanceOrigin(origin.id)}
+                                  style={{ padding: '0 12px 0 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.6)' }}
+                                  title="הסר מיקום"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Add new origin */}
+                            {!showAddOriginForm ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowAddOriginForm(true)}
+                                style={{
+                                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                                  padding: '10px 14px', border: 'none', background: 'var(--surface)',
+                                  cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                  color: 'var(--accent)',
+                                }}
+                              >
+                                <Plus size={14} />
+                                <span>הוסף מיקום...</span>
+                              </button>
+                            ) : (
+                              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--p-3)' }}>
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  placeholder="שם המיקום (למשל: תחנת הרכבת)"
+                                  value={newOriginName}
+                                  onChange={e => setNewOriginName(e.target.value)}
+                                  style={{ fontSize: 13 }}
+                                />
+                                <input
+                                  type="url"
+                                  className="form-control"
+                                  placeholder="קישור לגוגל מפות"
+                                  value={newOriginUrl}
+                                  onChange={e => setNewOriginUrl(e.target.value)}
+                                  dir="ltr"
+                                  style={{ fontSize: 13 }}
+                                />
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <button type="button" onClick={handleSaveDistanceOrigin} className="btn-primary" style={{ flex: 1, minHeight: 36, fontSize: 13 }}>שמור</button>
+                                  <button type="button" onClick={() => { setShowAddOriginForm(false); setNewOriginName(''); setNewOriginUrl(''); }} className="btn-secondary" style={{ minHeight: 36, padding: '0 12px', fontSize: 13 }}>ביטול</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  {/* Manual travel-time overrides — edit mode only, requires Maps key */}
+                  {editingId && hasGmapsKey() && (() => {
+                    const cacheOriginKey = formOriginId;
+                    const cache = distanceCache[`${editingId}_${cacheOriginKey}`];
+                    const computed = cache && !cache.loading && !cache.error && !cache.noLocation;
+                    return (
+                      <div style={{
+                        background: 'var(--p-4)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 12,
+                        padding: 14,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Navigation size={14} /> זמני הגעה (דקות)
+                          </span>
+                          {cache?.manualOverride && (
+                            <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--c-orange)', background: 'var(--c-orange-12)', borderRadius: 999, padding: '2px 8px' }}>
+                              ידני
+                            </span>
+                          )}
+                        </div>
+                        <div className="row-2" style={{ gap: 10 }}>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 12 }}>🚶 הליכה</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              min="0"
+                              max="999"
+                              placeholder={computed && cache.walk?.seconds ? String(Math.round(cache.walk.seconds / 60)) : '—'}
+                              value={editWalkMins}
+                              onChange={e => setEditWalkMins(e.target.value)}
+                              style={{ fontSize: 14 }}
+                            />
+                          </div>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 12 }}>🚌 תחבורה ציבורית</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              min="0"
+                              max="999"
+                              placeholder={computed && cache.transit?.seconds ? String(Math.round(cache.transit.seconds / 60)) : '—'}
+                              value={editTransitMins}
+                              onChange={e => setEditTransitMins(e.target.value)}
+                              style={{ fontSize: 14 }}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {computed && (cache.walk || cache.transit)
+                            ? `ערכים מחושבים: ${cache.walk ? `🚶 ${cache.walk.duration}` : ''}${cache.walk && cache.transit ? ' · ' : ''}${cache.transit ? `🚌 ${cache.transit.duration}` : ''} — השאר ריק לשמור אוטומטי`
+                            : 'הזן דקות לעקיפה ידנית — השאר ריק להשאיר ללא שינוי'}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="form-group">
                     <label>הערות / מידע חשוב</label>
-                    <textarea 
-                      className="form-control" 
-                      rows="4" 
-                      placeholder="פרטים נוספים, שעות פתיחה, טיפים..." 
-                      value={description} 
+                    <textarea
+                      className="form-control"
+                      rows="4"
+                      placeholder="פרטים נוספים, שעות פתיחה, טיפים..."
+                      value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       style={{ resize: 'none', fontFamily: 'inherit' }}
                     />
@@ -691,7 +2377,7 @@ export default function PlanningTab({ tripId }) {
 
                   <div style={{ display: 'flex', gap: '12px', marginTop: '8px', paddingBottom: '20px' }}>
                     <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור שינויים</button>
-                    <button type="button" onClick={() => { setShowAddForm(false); setEditingId(null); }} className="btn-secondary">ביטול</button>
+                    <button type="button" onClick={attemptClosePlanForm} className="btn-secondary">ביטול</button>
                   </div>
 
                 </form>
@@ -699,228 +2385,823 @@ export default function PlanningTab({ tripId }) {
             </div>
           )}
 
-          {/* Category Horizontal Filter Chips */}
-          <div className="horizontal-scroll" style={{ 
-            marginRight: '-10px',
-            marginLeft: '-10px',
-            paddingRight: '10px',
-            paddingLeft: '10px',
+          {/* Filter chips row + sort button — sticky. Frosted and bled out to
+              the content edges so cards scroll *under* it instead of showing
+              through, now that section headers stick beneath it too. */}
+          <div style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 5,
+            marginInline: -16,
+            paddingInline: 16,
+            paddingTop: '8px',
+            paddingBottom: '10px',
+            background: 'var(--header-bg)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
           }}>
-            {['הכל', ...categories].map((filter, idx) => (
-              <button 
-                key={idx}
-                onClick={() => setSelectedFilter(filter)}
-                style={{ 
-                  whiteSpace: 'nowrap',
-                  padding: '8px 16px',
-                  borderRadius: '50px',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  border: filter === selectedFilter ? 'none' : '1px solid rgba(11, 11, 48, 0.08)',
-                  background: filter === selectedFilter ? 'var(--primary-color)' : 'rgba(255,255,255,0.6)',
-                  color: filter === selectedFilter ? '#ffffff' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: filter === selectedFilter ? '0 2px 8px rgba(11,11,48,0.15)' : 'none'
-                }}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
+            {/* Category filter — a single dropdown instead of a pill per
+                category, so the row stays readable however many there are.
+                Fixed positioning (anchored via getBoundingClientRect) because
+                the sticky, backdrop-filtered parent breaks absolute popups. */}
+            {(() => {
+              const usedCategories = categories.filter(cat => plans.some(p => p.category === cat));
+              const mustCount = plans.filter(p => p.priority === 'must').length;
+              const countFor = (cat) => plans.filter(p => p.category === cat).length;
 
-          {/* Planning Cards List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {filteredPlans.length === 0 ? (
-              <div className="glass-card" style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <p style={{ fontSize: '15px', fontWeight: '700' }}>לא נמצאו פריטי תכנון העונים לסינון.</p>
-              </div>
-            ) : (
-              filteredPlans.map((plan) => {
-                const renderChip = (icon, text, isLink = false) => {
-                  if (!text) return null;
-                  const isUrl = text.startsWith('http');
-                  const targetUrl = isUrl ? text : `https://maps.google.com/?q=${encodeURIComponent(text)}`;
-                  
-                  const content = (
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      background: 'rgba(11, 11, 48, 0.04)',
-                      padding: '5px 10px',
-                      borderRadius: '10px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      color: 'var(--text-muted)',
-                      border: '1px solid rgba(11,11,48,0.02)',
-                      maxWidth: '100%',
-                      boxSizing: 'border-box'
-                    }}>
-                      {icon}
-                      <span style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap',
-                        maxWidth: '140px'
-                      }}>
-                        {text}
-                      </span>
-                      {isLink && <ExternalLink size={10} style={{ marginRight: '2px', opacity: 0.7 }} />}
-                    </div>
-                  );
+              const isMust = selectedFilter === '__must__';
+              const isAll = selectedFilter === 'הכל';
+              const activeColor = isMust ? '#f59e0b' : (isAll ? null : getCategoryColor(selectedFilter));
+              const rect = showCategoryMenu ? categoryMenuRect : null;
 
-                  if (isLink) {
-                    return (
-                      <a 
-                        href={targetUrl} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        key={text}
-                        style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
-                      >
-                        {content}
-                      </a>
-                    );
-                  }
-                  return <span key={text}>{content}</span>;
-                };
+              const options = [
+                ...(mustCount > 0 ? [{
+                  key: '__must__', label: 'חובה', color: '#f59e0b', count: mustCount,
+                  icon: <Star size={15} fill="#f59e0b" color="#f59e0b" />,
+                }] : []),
+                { key: 'הכל', label: 'הכל', color: null, count: plans.length, icon: <Layers size={15} /> },
+                ...usedCategories.map(cat => ({
+                  key: cat, label: cat, color: getCategoryColor(cat), count: countFor(cat),
+                  icon: getCategoryIcon(cat, 15),
+                })),
+              ];
+              const current = options.find(o => o.key === selectedFilter) || options.find(o => o.key === 'הכל');
 
-                return (
-                  <div 
-                    key={plan.id} 
-                    className="glass-card" 
-                    style={{ 
-                      padding: '16px', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      gap: '12px',
-                      borderRight: plan.visited
-                        ? '5px solid var(--text-success)'
-                        : plan.needsReservation ? '5px solid #f59e0b' : '1px solid rgba(255,255,255,0.6)',
-                      opacity: plan.visited ? 0.8 : 1,
-                      transition: 'all 0.3s ease'
+              return (
+                <>
+                  <button
+                    ref={categoryBtnRef}
+                    type="button"
+                    onClick={() => {
+                      const r = categoryBtnRef.current?.getBoundingClientRect();
+                      if (r) setCategoryMenuRect({ bottom: r.bottom, right: r.right, width: r.width });
+                      setShowCategoryMenu(v => !v);
+                    }}
+                    title="סינון לפי קטגוריה"
+                    style={{
+                      flex: 1, minWidth: 0,
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '9px 12px',
+                      borderRadius: 12,
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-hebrew)',
+                      fontSize: 13, fontWeight: 800,
+                      textAlign: 'right',
+                      background: activeColor ? `${activeColor}14` : 'var(--surface)',
+                      border: `1.5px solid ${activeColor || 'var(--p-12)'}`,
+                      color: activeColor || 'var(--primary)',
+                      boxShadow: 'var(--shadow-sm)',
                     }}
                   >
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                        <span style={{ 
-                          width: '36px', 
-                          height: '36px', 
-                          borderRadius: '10px', 
-                          background: 'rgba(11, 11, 48, 0.05)', 
-                          color: 'var(--primary-color)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          {getCategoryIcon(plan.category)}
-                        </span>
-                        
-                        <div style={{ minWidth: 0 }}>
-                          <h3 style={{ 
-                            fontSize: '15px', 
-                            fontWeight: '800', 
-                            color: 'var(--primary-color)',
-                            textDecoration: plan.visited ? 'line-through' : 'none',
-                            lineHeight: 1.3,
-                            wordBreak: 'break-word'
-                          }}>
-                            {plan.title}
-                          </h3>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700' }}>{plan.category}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--accent)', flexShrink: 0 }}>
+                      {current?.icon}
+                    </span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {current?.label || 'הכל'}
+                    </span>
+                    <span style={{
+                      flexShrink: 0, fontSize: 11, fontWeight: 800,
+                      background: activeColor ? `${activeColor}22` : 'var(--ink-5)',
+                      color: activeColor || 'var(--text-muted)',
+                      padding: '2px 7px', borderRadius: 999,
+                    }}>
+                      {current?.count ?? 0}
+                    </span>
+                    <ChevronDown
+                      size={15}
+                      style={{
+                        flexShrink: 0, opacity: 0.7,
+                        transform: showCategoryMenu ? 'rotate(180deg)' : 'rotate(0)',
+                        transition: 'transform 0.2s ease',
+                      }}
+                    />
+                  </button>
+
+                  {/* Rendered into <body>: the toolbar above is
+                      backdrop-filtered, and a filtered ancestor becomes the
+                      containing block for position:fixed children — which
+                      would offset this popup by the toolbar's own position. */}
+                  {showCategoryMenu && createPortal(
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowCategoryMenu(false)} />
+                      <div style={{
+                        position: 'fixed',
+                        top: rect ? rect.bottom + 6 : 120,
+                        right: rect ? Math.max(8, window.innerWidth - rect.right) : 8,
+                        width: rect ? Math.max(rect.width, 220) : 240,
+                        maxWidth: 'calc(100vw - 16px)',
+                        maxHeight: '60vh',
+                        overflowY: 'auto',
+                        zIndex: 50,
+                        background: 'var(--surface)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 14,
+                        boxShadow: 'var(--shadow-lg)',
+                        direction: 'rtl',
+                      }}>
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                          position: 'sticky', top: 0,
+                        }}>סינון לפי קטגוריה</div>
+                        {options.map(opt => {
+                          const active = opt.key === selectedFilter;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => { setSelectedFilter(opt.key); setShowCategoryMenu(false); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                                padding: '10px 14px', border: 'none',
+                                background: active ? (opt.color ? `${opt.color}14` : 'var(--p-6)') : 'var(--surface)',
+                                color: active ? (opt.color || 'var(--accent)') : 'var(--primary)',
+                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                                fontSize: 13, fontWeight: 700,
+                                borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
+                              }}
+                            >
+                              <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, color: opt.color || (active ? 'var(--accent)' : 'var(--text-muted)') }}>
+                                {opt.icon}
+                              </span>
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {opt.label}
+                              </span>
+                              <span style={{
+                                fontSize: 11, fontWeight: 800, flexShrink: 0,
+                                background: opt.color ? `${opt.color}1f` : 'var(--ink-5)',
+                                color: opt.color || 'var(--text-muted)',
+                                padding: '2px 7px', borderRadius: 999,
+                              }}>
+                                {opt.count}
+                              </span>
+                              {active && <Check size={14} style={{ flexShrink: 0 }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>,
+                    document.body
+                  )}
+                </>
+              );
+            })()}
+
+            {/* Single options button — no wrapper div (backdrop-filter parent
+                causes positioned wrapper divs to get implicit solid bg).
+                Dropdown uses position:fixed anchored via getBoundingClientRect. */}
+            {(() => {
+              const optionsActive = sortBy !== 'default' || groupBy !== 'none' || hideVisited;
+              const openMenu = () => {
+                setShowSortMenu(s => !s);
+              };
+              const rect = showSortMenu ? optionsBtnRef.current?.getBoundingClientRect() : null;
+              return (
+                <>
+                  <button
+                    ref={optionsBtnRef}
+                    onClick={openMenu}
+                    title="מיון ותצוגה"
+                    className="filter-chip"
+                    style={{
+                      flexShrink: 0, gap: 4,
+                      color: optionsActive ? '#fff' : 'var(--text-muted)',
+                      background: optionsActive ? 'var(--accent)' : 'var(--ink-5)',
+                      borderColor: optionsActive ? 'var(--accent)' : undefined,
+                    }}
+                  >
+                    {bulkCalc ? (
+                      <>
+                        <Loader2 size={14} className="spinning" />
+                        <span style={{ fontSize: 11 }}>{bulkCalc.done}/{bulkCalc.total}</span>
+                      </>
+                    ) : (
+                      <SlidersHorizontal size={14} />
+                    )}
+                  </button>
+
+                  {/* Portalled for the same reason as the category popup. */}
+                  {showSortMenu && createPortal(
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowSortMenu(false)} />
+                      <div style={{
+                        position: 'fixed',
+                        top: rect ? rect.bottom + 6 : 120,
+                        left: rect ? Math.max(8, rect.left) : 8,
+                        zIndex: 50,
+                        background: 'var(--surface)',
+                        border: '1.5px solid var(--p-12)',
+                        borderRadius: 14,
+                        boxShadow: 'var(--shadow-lg)',
+                        overflow: 'hidden auto',
+                        width: 250,
+                        maxWidth: 'calc(100vw - 16px)',
+                        maxHeight: 'min(70vh, calc(100vh - 140px))',
+                        direction: 'rtl',
+                      }}>
+                        {/* — Card layout section — */}
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>תצוגת כרטיסים</div>
+                        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ink-4)' }}>
+                          {Object.entries(PLAN_LAYOUTS).map(([key, cfg]) => {
+                            const Icon = cfg.icon;
+                            const active = key === planLayout;
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setPlanLayout(key)}
+                                title={cfg.label}
+                                style={{
+                                  flex: 1, display: 'flex', flexDirection: 'column',
+                                  alignItems: 'center', gap: 4, padding: '8px 4px',
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-6)'}`,
+                                  background: active ? 'var(--p-8)' : 'var(--surface)',
+                                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                                  cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                                  fontSize: 11, fontWeight: 700,
+                                }}
+                              >
+                                <Icon size={16} />
+                                <span>{cfg.label}</span>
+                              </button>
+                            );
+                          })}
                         </div>
-                      </div>
 
-                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                        {/* Visited Toggle */}
-                        <button 
-                          onClick={() => handleToggleVisited(plan)} 
-                          style={{ 
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: plan.visited ? 'rgba(34, 197, 94, 0.1)' : 'rgba(11, 11, 48, 0.04)',
-                            border: 'none',
-                            color: plan.visited ? 'var(--text-success)' : 'var(--text-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                            boxShadow: plan.visited ? '0 2px 6px rgba(34,197,94,0.15)' : 'none'
+                        {/* — Sort section — */}
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>מיון</div>
+                        {[
+                          { key: 'default',      label: 'ברירת מחדל' },
+                          { key: 'walk-asc',     label: '🚶 הליכה — מהקרוב לרחוק' },
+                          { key: 'walk-desc',    label: '🚶 הליכה — מהרחוק לקרוב' },
+                          { key: 'transit-asc',  label: '🚌 תחבורה — מהקרוב לרחוק' },
+                          { key: 'transit-desc', label: '🚌 תחבורה — מהרחוק לקרוב' },
+                        ].map(opt => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center',
+                              justifyContent: 'space-between', padding: '10px 14px',
+                              border: 'none',
+                              background: sortBy === opt.key ? 'var(--p-6)' : 'var(--surface)',
+                              color: sortBy === opt.key ? 'var(--accent)' : 'var(--primary)',
+                              cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
+                              fontSize: 13, fontWeight: 700,
+                              borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
+                            }}
+                          >
+                            <span>{opt.label}</span>
+                            {sortBy === opt.key && <Check size={13} />}
+                          </button>
+                        ))}
+
+                        {/* — Grouping: how the long list is broken up — */}
+                        <div style={{
+                          padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
+                          color: 'var(--text-muted)', letterSpacing: '0.4px',
+                          background: 'var(--ink-3)',
+                        }}>חלוקה לקבוצות</div>
+                        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ink-4)' }}>
+                          {[
+                            { key: 'none', label: 'רשימה', Icon: LayoutList },
+                            { key: 'category', label: 'קטגוריה', Icon: Tag },
+                            { key: 'area', label: 'איזור', Icon: Layers, needsMaps: true },
+                          ].map(({ key, label, Icon, needsMaps }) => {
+                            const active = groupBy === key;
+                            const disabled = needsMaps && !hasGmapsKey();
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => setGroupBy(key)}
+                                title={disabled ? 'דורש מפתח מפות' : label}
+                                style={{
+                                  flex: 1, display: 'flex', flexDirection: 'column',
+                                  alignItems: 'center', gap: 4, padding: '8px 4px',
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-6)'}`,
+                                  background: active ? 'var(--p-8)' : 'var(--surface)',
+                                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                                  cursor: disabled ? 'default' : 'pointer',
+                                  opacity: disabled ? 0.45 : 1,
+                                  fontFamily: 'var(--font-hebrew)', fontSize: 11, fontWeight: 700,
+                                }}
+                              >
+                                <Icon size={16} />
+                                <span>{label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Hide places already visited — the quickest way to
+                            shorten a list that has grown over the trip. */}
+                        <button
+                          type="button"
+                          onClick={() => setHideVisited(v => !v)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center',
+                            justifyContent: 'space-between', gap: 8,
+                            padding: '10px 14px', border: 'none',
+                            background: 'var(--surface)', cursor: 'pointer',
+                            fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                            color: 'var(--primary)', textAlign: 'right',
+                            borderBottom: '1px solid var(--ink-4)',
                           }}
                         >
-                          <CheckCircle2 size={18} />
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {hideVisited
+                              ? <EyeOff size={14} style={{ color: 'var(--accent)' }} />
+                              : <Eye size={14} style={{ color: 'var(--accent)' }} />}
+                            הסתר מקומות שביקרנו בהם
+                          </span>
+                          <span style={{
+                            width: 36, height: 20, borderRadius: 999, flexShrink: 0,
+                            background: hideVisited ? 'var(--accent)' : 'var(--ink-15)',
+                            position: 'relative', transition: 'background 0.2s ease',
+                          }}>
+                            <span style={{
+                              position: 'absolute', top: 2,
+                              right: hideVisited ? 2 : 18,
+                              width: 16, height: 16, borderRadius: '50%',
+                              background: '#fff', transition: 'right 0.2s ease',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                            }} />
+                          </span>
                         </button>
 
-                        {/* Edit button */}
-                        <button 
-                          onClick={() => handleStartEdit(plan)} 
-                          style={{ 
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: 'rgba(11, 11, 48, 0.04)',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        
-                        {/* Delete button */}
-                        <button 
-                          onClick={() => handleDelete(plan.id)}
-                          style={{ 
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: 'rgba(239, 68, 68, 0.06)',
-                            border: 'none',
-                            color: 'rgb(239, 68, 68)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {/* — View / distance section (needs Maps key) — */}
+                        {hasGmapsKey() && (
+                          <>
+                            <div style={{
+                              padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
+                              color: 'var(--text-muted)', letterSpacing: '0.4px',
+                              background: 'var(--ink-3)',
+                            }}>תצוגה</div>
+
+                            <button
+                              type="button"
+                              onClick={handleCalculateAll}
+                              disabled={!!bulkCalc || !online}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center',
+                                gap: 8, padding: '10px 14px', border: 'none',
+                                background: 'var(--surface)',
+                                cursor: (bulkCalc || !online) ? 'default' : 'pointer',
+                                opacity: !online && !bulkCalc ? 0.5 : 1,
+                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                color: 'var(--accent)', textAlign: 'right',
+                              }}
+                            >
+                              {bulkCalc ? (
+                                <>
+                                  <Loader2 size={14} className="spinning" />
+                                  <span>מחשב… {bulkCalc.done}/{bulkCalc.total}</span>
+                                </>
+                              ) : !online ? (
+                                <>
+                                  <RefreshCw size={14} />
+                                  <span>חשב ושמור מרחקים (דרוש חיבור)</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw size={14} />
+                                  <span>חשב ושמור מרחקים</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+
+                        {/* — Category settings — lives here rather than as its
+                            own toolbar button, keeping the row to one control. */}
+                        {canEdit && (
+                          <>
+                            <div style={{
+                              padding: '9px 14px 6px', fontSize: 11, fontWeight: 800,
+                              color: 'var(--text-muted)', letterSpacing: '0.4px',
+                              background: 'var(--ink-3)',
+                            }}>קטגוריות</div>
+                            <button
+                              type="button"
+                              onClick={() => { setShowSortMenu(false); setShowCategorySettings(true); }}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                                padding: '10px 14px', border: 'none', background: 'var(--surface)',
+                                color: 'var(--primary)', cursor: 'pointer',
+                                fontFamily: 'var(--font-hebrew)', fontSize: 13, fontWeight: 700,
+                                textAlign: 'right',
+                              }}
+                            >
+                              <Settings size={15} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1 }}>הגדרות קטגוריות</span>
+                              <ChevronDown size={14} style={{ flexShrink: 0, transform: 'rotate(-90deg)', opacity: 0.6 }} />
+                            </button>
+                          </>
+                        )}
                       </div>
+                    </>,
+                    document.body
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Active-view summary — one quiet line telling you how much of the
+              list you are actually looking at, with a one-tap way back to
+              everything. Hidden when nothing is filtered out. */}
+          {(() => {
+            const total = plans.length;
+            const shown = filteredPlans.length;
+            const hiddenCount = total - shown;
+            if (hiddenCount <= 0) return null;
+            const bits = [];
+            if (searchQuery.trim()) bits.push(`חיפוש: "${searchQuery.trim()}"`);
+            if (selectedFilter !== 'הכל') bits.push(selectedFilter === '__must__' ? 'חובה בלבד' : selectedFilter);
+            if (hideVisited) bits.push('ללא מקומות שביקרנו בהם');
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                padding: '7px 12px', borderRadius: 12,
+                background: 'var(--ink-3)', border: '1px solid var(--ink-6)',
+                fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+              }}>
+                <span style={{ color: 'var(--primary)' }}>{shown} מתוך {total} מקומות</span>
+                {bits.length > 0 && <span style={{ opacity: 0.75 }}>· {bits.join(' · ')}</span>}
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setSelectedFilter('הכל'); setHideVisited(false); }}
+                  style={{
+                    marginInlineStart: 'auto', flexShrink: 0,
+                    background: 'var(--p-8)', color: 'var(--accent)',
+                    border: 'none', borderRadius: 999, cursor: 'pointer',
+                    padding: '3px 12px', fontFamily: 'var(--font-hebrew)',
+                    fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  הצג הכל
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Hint when grouping is on but some places aren't located yet */}
+          {groupBy === 'area' && locatedCount < filteredPlans.length && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 12px', borderRadius: 12,
+              background: 'var(--p-6)', border: '1px solid var(--p-12)',
+              fontSize: 13, fontWeight: 600, color: 'var(--accent)',
+            }}>
+              <MapPin size={14} style={{ flexShrink: 0 }} />
+              <span>
+                {locatedCount} מתוך {filteredPlans.length} מקומות מוקמו. פתח את
+                <SlidersHorizontal size={12} style={{ verticalAlign: 'middle', margin: '0 4px' }} />
+                ולחץ "חשב ושמור מרחקים" כדי למקם ולקבץ את כולם.
+              </span>
+            </div>
+          )}
+
+          {/* Planning Cards List — density and column count come from the
+              selected layout. Grid falls back to one column on narrow phones,
+              and an expanded card spans the full width so its contents stay
+              readable. Area headers always span all columns. */}
+          <div style={LO.columns > 1 ? {
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinCol}px, 1fr))`,
+            gap: LO.listGap,
+            // Tiles in the same row share a height, so a two-line name next to
+            // a one-line name doesn't leave a ragged edge.
+            alignItems: 'stretch',
+          } : {
+            display: 'flex', flexDirection: 'column', gap: LO.listGap,
+          }}>
+            {filteredPlans.length === 0 ? (
+              /* An empty pool and a filter that matched nothing are two
+                 different problems. The old copy said "nothing matches the
+                 filter" even to someone who had simply not added a place
+                 yet — telling them to loosen a filter they never set. */
+              <div style={{ gridColumn: '1 / -1' }}>
+                {plans.length === 0 ? (
+                  <EmptyState
+                    icon={Compass}
+                    title="עוד אין מקומות ברשימה"
+                    hint="כאן נאספים האטרקציות, המסעדות והדברים לעשות. אפשר להוסיף מקום מהכפתור למטה, או לשתף אותו ישר מגוגל מפות."
+                  />
+                ) : (
+                  <EmptyState
+                    icon={Search}
+                    title="אף מקום לא עונה לסינון"
+                    hint={`${plans.length} מקומות ברשימה, אבל אף אחד מהם לא עובר את הסינון הנוכחי.`}
+                    action={
+                      <button type="button" className="btn-secondary" onClick={clearPoolFilters}>
+                        <span>נקה סינון</span>
+                      </button>
+                    }
+                  />
+                )}
+              </div>
+            ) : (
+              renderItems.map((plan) => {
+                // Section header rows (area clusters / category sections)
+                if (plan.__header) {
+                  const collapsed = !!collapsedAreas[plan.id];
+                  const headerColor = plan.category ? getCategoryColor(plan.category) : 'var(--accent)';
+                  return (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                      style={{
+                        // A floating pill rather than a plain line: it stays
+                        // legible when it sticks under the toolbar, so you
+                        // always know which section you are scrolling through.
+                        // 64px ≈ the height of the sticky toolbar above it,
+                        // so a stuck header lands just below, not behind it.
+                        position: 'sticky', top: 64, zIndex: 4,
+                        display: 'flex', alignItems: 'center', gap: 7,
+                        width: 'fit-content', maxWidth: '100%',
+                        padding: '5px 12px',
+                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 8,
+                        marginBottom: 2,
+                        fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--ink-6)',
+                        borderRadius: 999,
+                        boxShadow: 'var(--shadow-sm)',
+                        cursor: 'pointer',
+                        textAlign: 'right', direction: 'rtl',
+                        gridColumn: '1 / -1',
+                      }}
+                    >
+                      <ChevronDown
+                        size={15}
+                        style={{
+                          color: headerColor, flexShrink: 0,
+                          transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                      <span style={{ color: headerColor, display: 'flex', flexShrink: 0 }}>
+                        {plan.category ? getCategoryIcon(plan.category, 14) : <Layers size={14} />}
+                      </span>
+                      <span style={{ color: 'var(--primary)' }}>{plan.label}</span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, color: headerColor,
+                        background: `${headerColor === 'var(--accent)' ? 'var(--p-8)' : `${headerColor}18`}`,
+                        borderRadius: 8, padding: '1px 8px', flexShrink: 0,
+                      }}>{plan.count}</span>
+                    </button>
+                  );
+                }
+
+                const isTile = LO.columns > 1;
+
+                // Event status (only for the events category)
+                const ev = plan.event;
+                const isEvent = plan.category === EVENTS_CATEGORY && ev?.startDate;
+                const isExpiredEvent = isEvent && (() => {
+                  const end = ev.endDate || ev.startDate;
+                  return todayISO > end;
+                })();
+                const isTodayEvent = isEvent && ev.startDate === todayISO;
+
+                // One quiet meta line under the title: what it is, when it is,
+                // how far it is, how many links it carries. No buttons, no
+                // chips — every action moved into the details sheet.
+                const travel = travelSummary(plan);
+                const linkCount = (Array.isArray(plan.links) ? plan.links.length : 0);
+                const metaParts = [];
+                if (isEvent) metaParts.push(`🗓️ ${formatEventWhen(plan.event)}`);
+                else if (plan.category) metaParts.push(plan.category);
+                if (travel.walk) metaParts.push(`🚶 ${travel.walk}`);
+                else if (travel.transit) metaParts.push(`🚌 ${travel.transit}`);
+                if (linkCount > 0) metaParts.push(`🔗 ${linkCount}`);
+                const metaLine = metaParts.join(' · ');
+
+                // At most one status pill per card, so the eye has a single
+                // thing to catch when scanning: today's event beats "must",
+                // and a finished event is worth flagging over both.
+                const pill =
+                  isTodayEvent && !plan.visited
+                    ? { text: '✨ היום', color: 'var(--c-orange)', bg: 'var(--c-orange-12)' }
+                  : isExpiredEvent && !plan.visited
+                    ? { text: 'נגמר', color: 'var(--text-muted)', bg: 'var(--ink-8)' }
+                  : plan.priority === 'must' && !plan.visited
+                    ? { text: 'חובה', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', star: true }
+                    : null;
+
+                const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
+                const cardRef = (node) => {
+                  if (node) itemRefs.current.set(plan.id, node);
+                  else itemRefs.current.delete(plan.id);
+                };
+                const openOnKey = (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlanDetail(plan.id); }
+                };
+
+                /* ── Grid tile ──────────────────────────────────────────────
+                   A tile is too small to hold controls: no checkbox, no chip
+                   around the icon, no badge. Just the name, one small mark
+                   for what it is (or a check once visited), and at most one
+                   tiny flag for "must" / "happening today". Everything else
+                   is one tap away in the details sheet.                     */
+                if (isTile) {
+                  const flag =
+                    isTodayEvent && !plan.visited ? { emoji: '✨', title: 'היום' }
+                    : plan.priority === 'must' && !plan.visited ? { star: true, title: 'חובה' }
+                    : null;
+                  return (
+                    <div
+                      key={plan.id}
+                      ref={cardRef}
+                      className={cardClass}
+                      onClick={() => openPlanDetail(plan.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={openOnKey}
+                      title={plan.title}
+                      style={{
+                        // .glass-card is a column flexbox — row has to be explicit.
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '11px 12px',
+                        minHeight: 62,
+                        boxSizing: 'border-box',
+                        cursor: 'pointer',
+                        willChange: 'transform',
+                      }}
+                    >
+                      <span style={{
+                        display: 'flex', flexShrink: 0,
+                        color: plan.visited ? 'var(--text-muted)' : getCategoryColor(plan.category),
+                      }}>
+                        {plan.visited
+                          ? <Check size={15} strokeWidth={3} />
+                          : getCategoryIcon(plan.category, 15)}
+                      </span>
+
+                      <h3 style={{
+                        flex: 1, minWidth: 0, margin: 0,
+                        fontSize: 13, fontWeight: 800, lineHeight: 1.3,
+                        // Visited: quieter text, no strike-through. The check
+                        // already says it, and a line through a place's name
+                        // reads as "cancelled", not "we went".
+                        color: plan.visited ? 'var(--text-muted)' : 'var(--primary-color)',
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        wordBreak: 'break-word',
+                      }}>
+                        {plan.title}
+                      </h3>
+
+                      {flag && (
+                        <span title={flag.title} style={{
+                          display: 'flex', alignItems: 'center', flexShrink: 0,
+                          color: '#f59e0b', fontSize: 11, lineHeight: 1,
+                        }}>
+                          {flag.star ? <Star size={12} fill="#f59e0b" /> : flag.emoji}
+                        </span>
+                      )}
+                      {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
+                        <span title={bookedPlaceIds.has(plan.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
+                          display: 'flex', flexShrink: 0,
+                          color: bookedPlaceIds.has(plan.id) ? 'var(--c-green)' : 'var(--c-red)',
+                        }}>
+                          <CalendarCheck size={13} />
+                        </span>
+                      )}
                     </div>
+                  );
+                }
 
-                    {plan.needsReservation && <ReservationBadge />}
-
-                    {/* Description */}
-                    {plan.description && (
-                      <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.4', fontWeight: '500', margin: 0 }}>
-                        {plan.description}
-                      </p>
+                /* ── List row (מרווח / קומפקטי) ───────────────────────────── */
+                return (
+                  <div
+                    key={plan.id}
+                    ref={cardRef}
+                    className={cardClass}
+                    onClick={() => openPlanDetail(plan.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={openOnKey}
+                    style={{
+                      padding: LO.cardPad,
+                      // .glass-card is a column flexbox — the row direction has
+                      // to be set explicitly or the card stacks vertically.
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: LO.headerGap,
+                      cursor: 'pointer',
+                      willChange: 'transform',
+                    }}
+                  >
+                    {/* Visited toggle — the one action that stays on the card,
+                        so places can be ticked off without opening anything. */}
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleToggleVisited(plan); }}
+                        className={`plan-visit-toggle${plan.visited ? ' on' : ''}`}
+                        title={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
+                        aria-pressed={!!plan.visited}
+                      >
+                        {plan.visited && <Check size={18} strokeWidth={3} />}
+                      </button>
+                    ) : (
+                      plan.visited && (
+                        <div className="plan-visit-toggle on" aria-hidden="true">
+                          <Check size={18} strokeWidth={3} />
+                        </div>
+                      )
                     )}
 
-                    {/* Details footer (Rating, Price, Location) */}
-                    <div style={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap', 
-                      gap: '8px', 
-                      alignItems: 'center', 
-                      borderTop: '1px solid rgba(0,0,0,0.04)', 
-                      paddingTop: '10px'
+                    <span style={{
+                      width: LO.iconBox, height: LO.iconBox, borderRadius: 10,
+                      background: `${getCategoryColor(plan.category)}18`,
+                      color: getCategoryColor(plan.category),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
                     }}>
-                      {renderChip(<Star size={12} fill="#eab308" style={{ color: '#eab308' }} />, plan.rating > 0 ? plan.rating.toString() : null)}
-                      {renderChip(<DollarSign size={12} />, plan.price)}
-                      {renderChip(<MapPin size={12} />, plan.address, true)}
+                      {getCategoryIcon(plan.category, LO.iconBox <= 26 ? 15 : undefined)}
+                    </span>
+
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h3 style={{
+                        fontSize: LO.titleSize,
+                        fontWeight: 800,
+                        color: plan.visited ? 'var(--text-muted)' : 'var(--primary-color)',
+                        lineHeight: 1.3,
+                        margin: 0,
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        overflow: 'hidden',
+                      }}>
+                        <span style={{
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{plan.title}</span>
+                        {pill && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 900, flexShrink: 0,
+                            padding: '2px 7px', borderRadius: 999,
+                            background: pill.bg, color: pill.color,
+                            textDecoration: 'none',
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                          }}>
+                            {pill.star && <Star size={9} fill={pill.color} />}
+                            {pill.text}
+                          </span>
+                        )}
+                        {/* Booking is a to-do, not a status, so it gets its own
+                            marker beside the pill instead of competing for it. */}
+                        {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (() => {
+                          const booked = bookedPlaceIds.has(plan.id);
+                          return (
+                            <span title={booked ? 'יש הזמנה בטאב ההזמנות' : 'צריך לסגור / להזמין מראש'} style={{
+                              fontSize: 10, fontWeight: 900, flexShrink: 0,
+                              padding: '2px 7px', borderRadius: 999,
+                              background: booked ? 'var(--c-green-10)' : 'var(--c-red-10)',
+                              color: booked ? 'var(--c-green)' : 'var(--c-red)',
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                            }}>
+                              {booked ? <Check size={10} strokeWidth={3} /> : <CalendarCheck size={10} />}
+                              {booked ? 'הוזמן' : 'להזמין מראש'}
+                            </span>
+                          );
+                        })()}
+                      </h3>
+                      {(LO.showSubtitle && metaLine) && (
+                        <span style={{
+                          fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'block', marginTop: 2,
+                        }}>
+                          {metaLine}
+                        </span>
+                      )}
                     </div>
 
+                    {/* Quiet "opens a panel" affordance (RTL: points inward) */}
+                    <ChevronLeft size={16} style={{ color: 'var(--ink-15)', flexShrink: 0 }} />
                   </div>
                 );
               })
@@ -930,393 +3211,1631 @@ export default function PlanningTab({ tripId }) {
       ) : (
         /* DAILY PLANNER SUB-TAB */
         <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>לוח זמנים לפי ימים</span>
-            <button
-              onClick={handleAddDay}
-              className="btn-primary"
-              style={{ padding: '8px 16px', fontSize: 13, gap: 6 }}
-            >
-              <Plus size={15} />
-              <span>הוסף יום</span>
-            </button>
-          </div>
+          {/* A toolbar only when it has something in it. The title said
+              what the sub-tab button above already says, adding a day
+              moved to the floating button every tab shares, and the view
+              switch moved up beside the sub-tabs — so most of the time
+              this row is not rendered at all and the days start higher. */}
+          {(() => {
+            const syncable = canEdit && tripFlightDates.out && tripFlightDates.ret &&
+              !(tripFlightDates.plannerSync?.out === tripFlightDates.out &&
+                tripFlightDates.plannerSync?.ret === tripFlightDates.ret);
+            if (!syncable && !justSynced) return null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {syncable && (
+                  <button
+                    onClick={handleInitDaysFromFlight}
+                    className="btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
+                    title="צור ימים אוטומטית לפי תאריכי הטיסה"
+                  >
+                    <Calendar size={15} />
+                    <span>{tripFlightDates.plannerSync ? 'עדכן ימים לפי טיסה' : 'ייצר ימים לפי טיסה'}</span>
+                  </button>
+                )}
+                {justSynced && (
+                  <span className="sync-flash" style={{
+                    fontSize: 12, color: 'var(--success, #16a34a)',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <CheckCircle2 size={13} />
+                    ימים מסונכרנים עם הטיסה
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Adding a day is a whole-sub-tab action, so it gets the
+              floating button — same as "יעד חדש" in the pool. Adding an
+              *activity* still belongs to one specific day and stays on
+              that day's card. */}
+          {canEdit && <Fab label="יום חדש" onClick={handleAddDay} />}
 
           {days.length === 0 ? (
-            <div className="glass-card" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <Calendar size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-              <p style={{ fontSize: '15px', fontWeight: '700', margin: 0 }}>אין עדיין ימי טיול מתוכננים.</p>
-              <p style={{ fontSize: '13px', marginTop: 4 }}>לחץ על "הוסף יום" כדי להתחיל לתכנן!</p>
-            </div>
+            <EmptyState
+              icon={Calendar}
+              title="עוד אין ימי טיול"
+              hint={
+                canEdit && tripFlightDates.out && tripFlightDates.ret
+                  ? 'אפשר לייצר את כל ימי הטיול בבת אחת לפי תאריכי הטיסה שכבר הוזנו, ואז לשבץ לכל יום את המקומות מהרשימה.'
+                  : canEdit
+                    ? 'הוסיפו יום, ואז שבצו לתוכו מקומות מרשימת התכנון עם שעות.'
+                    : 'עוד לא נבנה לוח זמנים לטיול הזה.'
+              }
+              action={
+                canEdit && tripFlightDates.out && tripFlightDates.ret ? (
+                  <button onClick={handleInitDaysFromFlight} className="btn-primary">
+                    <Calendar size={16} />
+                    <span>ייצר ימים לפי תאריכי הטיסה</span>
+                  </button>
+                ) : null
+              }
+            />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {days.map((day) => (
-                <div key={day.id} className="glass-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {/* Day Header */}
+            <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
+              <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {days.map((day) => {
+                const isSummary = dayLayout === 'summary' && !openSummaryDays.has(day.id);
+                const isEditing = editingDayId === day.id;
+                return (
+                <DayCard
+                  key={day.id}
+                  day={day}
+                  plans={plans}
+                  bookedPlaceIds={bookedPlaceIds}
+                  canEdit={canEdit}
+                  isSummary={isSummary}
+                  // The chevron reports whether the body is on screen, which
+                  // in summary mode is a different question from "collapsed".
+                  dayBodyShown={!isSummary && !collapsedDays.has(day.id)}
+                  isEditing={isEditing}
+                  // '' for every other card, so typing a title re-renders
+                  // only the card being edited.
+                  editingDayTitle={isEditing ? editingDayTitle : ''}
+                  isArrived={arrivedDayId === day.id}
+                  dayLayout={dayLayout}
+                  collapsedTimeGroups={collapsedTimeGroups}
+                  weatherByDate={weatherByDate}
+                  distanceCache={distanceCache}
+                  dayNodes={dayNodes}
+                  getCategoryColor={getCategoryColor}
+                  getCategoryIcon={getCategoryIcon}
+                  setCollapsedDays={setCollapsedDays}
+                  setOpenSummaryDays={setOpenSummaryDays}
+                  setCollapsedTimeGroups={setCollapsedTimeGroups}
+                  setEditingDayId={setEditingDayId}
+                  setEditingDayTitle={setEditingDayTitle}
+                  setActivityDetail={setActivityDetail}
+                  setHourlyWeatherDate={setHourlyWeatherDate}
+                  handleSaveDayTitle={dayFns.handleSaveDayTitle}
+                  handleDeleteDay={dayFns.handleDeleteDay}
+                  handleOpenAddActivity={dayFns.handleOpenAddActivity}
+                  handleStartEditActivity={dayFns.handleStartEditActivity}
+                  handleDeleteActivity={dayFns.handleDeleteActivity}
+                  moveActivity={dayFns.moveActivity}
+                />
+                );
+              })}
+            </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </div>
+      )}
+
+      {/* Locations Modal — multiple navigation targets for a card */}
+      {/* ── Place details sheet ──────────────────────────────────────────
+          Tapping a card opens this instead of expanding the card in place:
+          the list stays a clean column of titles, and everything you can do
+          with a place (navigate, edit, prioritise, mark, delete) is laid out
+          here in one predictable place. */}
+      {detailPlan && createPortal(
+        <div
+          className="modal-overlay"
+          data-closing={detailSheet.closing || undefined}
+          onClick={detailSheet.close}
+          style={{ alignItems: 'flex-end', padding: 0 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            {...detailSheet.handlers}
+            style={{
+              width: '100%', maxWidth: 560,
+              background: 'var(--modal-bg)',
+              borderRadius: '24px 24px 0 0',
+              boxShadow: 'var(--shadow-lg)',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: 'min(88vh, 100vh - 40px)',
+              overflow: 'hidden',
+              direction: 'rtl',
+              animation: detailSheet.closing ? 'none' : 'slideUp 0.25s ease',
+              ...detailSheet.style,
+            }}
+          >
+            <div className="sheet-grab" />
+
+            {/* Header: icon, title, status pills, close */}
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '8px 16px 12px', borderBottom: '1px solid var(--ink-7)', flexShrink: 0,
+            }}>
+              <span style={{
+                width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                background: `${getCategoryColor(detailPlan.category)}18`,
+                color: getCategoryColor(detailPlan.category),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {getCategoryIcon(detailPlan.category, 19)}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2 style={{
+                  fontSize: 16, fontWeight: 800, margin: 0, lineHeight: 1.3,
+                  color: detailPlan.visited ? 'var(--text-muted)' : 'var(--primary)',
+                  wordBreak: 'break-word',
+                }}>
+                  {detailPlan.title}
+                </h2>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                    background: `${getCategoryColor(detailPlan.category)}14`,
+                    color: getCategoryColor(detailPlan.category),
+                  }}>{detailPlan.category}</span>
+                  {detailPlan.priority === 'must' && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                      background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Star size={10} fill="#f59e0b" />חובה</span>
+                  )}
+                  {detailPlan.priority === 'optional' && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--ink-6)', color: 'var(--text-muted)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Clock size={10} />אם ישאר זמן</span>
+                  )}
+                  {bookedPlaceIds.has(detailPlan.id) ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--c-green-10)', color: 'var(--c-green)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Check size={10} strokeWidth={3} />הוזמן</span>
+                  ) : detailPlan.needsReservation && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--c-red-10)', color: 'var(--c-red)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><CalendarCheck size={10} />צריך לסגור מראש</span>
+                  )}
+                  {detailPlan.visited && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--ink-8)', color: 'var(--text-muted)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}><Check size={10} strokeWidth={3} />ביקרנו</span>
+                  )}
+                  {detailPlan.category === EVENTS_CATEGORY && detailPlan.event?.startDate && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: 'var(--c-orange-12)', color: 'var(--c-orange)',
+                    }}>🗓️ {formatEventWhen(detailPlan.event)}</span>
+                  )}
+                </div>
+              </div>
+              <button
+                className="btn-close"
+                aria-label="סגור"
+                onClick={detailSheet.close}
+                style={{ flexShrink: 0 }}
+              >✕</button>
+            </div>
+
+            {/* Body */}
+            <div data-sheet-scroll style={{ overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {detailPlan.description && (
+                <p style={{ fontSize: 14, color: 'var(--c-slate)', lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
+                  {detailPlan.description}
+                </p>
+              )}
+
+              {renderDistanceBlock(detailPlan)}
+
+              {/* Locations & links */}
+              {(() => {
+                const locs = getPlanLocations(detailPlan);
+                if (locs.length === 0) return null;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={sheetSectionLabel}>מיקומים וקישורים</span>
+                    {locs.map((loc, i) => (
+                      <a
+                        key={i}
+                        href={loc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px',
+                          background: 'var(--p-6)',
+                          borderRadius: 12,
+                          border: '1px solid var(--p-12)',
+                        }}>
+                          <span style={{
+                            width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                            background: 'var(--accent)', color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {i === 0 && detailPlan.address ? <MapPin size={15} /> : <Link2 size={15} />}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {loc.label}
+                            </div>
+                            {/* Only when the link carries a name of its own —
+                                otherwise the title already IS the address. */}
+                            {loc.label !== prettyUrl(loc.url) && (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">
+                                {prettyUrl(loc.url)}
+                              </div>
+                            )}
+                          </div>
+                          <ExternalLink size={14} style={{ color: 'var(--accent)', flexShrink: 0, opacity: 0.7 }} />
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Who added this place */}
+              {(() => {
+                const who = profileFor(detailPlan.addedBy);
+                if (!who) return null;
+                const name = who.displayName || who.email || 'משתמש';
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: '50%', overflow: 'hidden',
+                      flexShrink: 0, background: 'var(--accent)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {who.photoURL
+                        ? <img src={who.photoURL} alt="" referrerPolicy="no-referrer"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{name[0]}</span>}
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                      נוסף על ידי {name}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Actions — fixed footer so they are always in the same spot */}
+            <div style={{
+              flexShrink: 0, borderTop: '1px solid var(--ink-7)',
+              padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
+              display: 'flex', flexDirection: 'column', gap: 10,
+              background: 'var(--modal-bg)',
+            }}>
+              {(() => {
+                const locs = getPlanLocations(detailPlan);
+                const actions = [];
+                if (locs.length > 0) actions.push({
+                  key: 'nav', label: 'ניווט', Icon: Navigation, accent: true,
+                  onClick: () => {
+                    if (locs.length === 1) window.open(locs[0].url, '_blank', 'noreferrer');
+                    else setLocationsModal(detailPlan);
+                  },
+                });
+                if (canEdit) {
+                  actions.push({
+                    key: 'edit', label: 'עריכה', Icon: Pencil,
+                    onClick: () => { detailSheet.close(); handleStartEdit(detailPlan); },
+                  });
+                  actions.push({
+                    key: 'prio',
+                    label: detailPlan.priority === 'must' ? 'אם ישאר זמן'
+                         : detailPlan.priority === 'optional' ? 'ללא עדיפות' : 'סמן כחובה',
+                    Icon: detailPlan.priority === 'must' ? Clock : Star,
+                    onClick: () => cyclePriority(detailPlan),
+                  });
+                  actions.push({
+                    key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
+                    onClick: async () => {
+                      const id = detailPlan.id;
+                      detailSheet.close();
+                      await handleDelete(id);
+                    },
+                  });
+                }
+                if (actions.length === 0) return null;
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(actions.length, 4)}, 1fr)`, gap: 8 }}>
+                    {actions.map(({ key, label, Icon, onClick, accent, danger }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                          padding: '10px 4px', borderRadius: 14, cursor: 'pointer',
+                          border: `1px solid ${danger ? 'var(--c-red2-12, rgba(239,68,68,0.15))' : accent ? 'var(--p-18)' : 'var(--ink-7)'}`,
+                          background: danger ? 'var(--c-red2-6)' : accent ? 'var(--p-8)' : 'var(--ink-3)',
+                          color: danger ? 'var(--c-red2)' : accent ? 'var(--accent)' : 'var(--text-muted)',
+                          fontFamily: 'var(--font-hebrew)', fontSize: 12, fontWeight: 700,
+                        }}
+                      >
+                        <Icon size={17} />
+                        <span style={{ textAlign: 'center', lineHeight: 1.15 }}>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleVisited(detailPlan)}
+                  className={detailPlan.visited ? 'btn-secondary' : 'btn-primary'}
+                  style={{ width: '100%', minHeight: 44, gap: 8, fontSize: 14 }}
+                >
+                  <Check size={17} />
+                  <span>{detailPlan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {locationsModal && (
+        <div className="modal-overlay" data-closing={locationsSheet.closing || undefined} onClick={locationsSheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...locationsSheet.handlers} style={locationsSheet.style}>
+            <div className="sheet-grab" />
+            <div className="modal-header">
+              <h2 style={{ fontSize: 15 }}>{locationsModal.title}</h2>
+              <button aria-label="סגור" className="btn-close" onClick={locationsSheet.close}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 8 }}>
+              {getPlanLocations(locationsModal).map((loc, i) => (
+                <a
+                  key={i}
+                  href={loc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setLocationsModal(null)}
+                  style={{ textDecoration: 'none' }}
+                >
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '13px 14px',
+                    background: 'rgba(79,70,229,0.05)',
+                    borderRadius: 14,
+                    border: '1px solid rgba(79,70,229,0.12)',
+                    transition: 'background 0.15s ease',
+                  }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                      background: 'var(--accent)', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Navigation size={16} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {loc.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="ltr">
+                        {loc.url}
+                      </div>
+                    </div>
+                    <ExternalLink size={14} style={{ color: 'var(--accent)', flexShrink: 0, opacity: 0.7 }} />
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Settings Modal */}
+      {showCategorySettings && (
+        <div className="modal-overlay" data-closing={categorySheet.closing || undefined} onClick={categorySheet.close}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} {...categorySheet.handlers} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column', ...categorySheet.style }}>
+            <div className="sheet-grab" />
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+              <h2>התאמת קטגוריות</h2>
+              <button aria-label="סגור" className="btn-close" onClick={() => setShowCategorySettings(false)}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 16 }}>
+              {categories.map(cat => {
+                const s = categorySettings[cat] || {};
+                const color = s.color || '#4f46e5';
+                const isCustom = !defaultCategoryNames.includes(cat);
+                return (
+                  <div key={cat} style={{ background: 'var(--ink-3)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Category label with live preview + delete if custom */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{
+                        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                        background: `${color}1a`, color,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        {getCategoryIcon(cat, 18)}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary)', flex: 1 }}>{cat}</span>
+                      {isCustom && canEdit && (
+                        <button
+                          type="button"
+                          title="מחק קטגוריה"
+                          onClick={async () => {
+                            const inUse = plans.filter(p => p.category === cat).length;
+                            const ok = await confirm({
+                              title: 'מחיקת קטגוריה',
+                              message: inUse > 0
+                                ? <>הקטגוריה <strong>{cat}</strong> בשימוש ב-{inUse} מקומות. מחיקתה תסיר את ההתאמה האישית (אייקון וצבע), אך המקומות עצמם יישארו. להמשיך?</>
+                                : <>האם למחוק את הקטגוריה <strong>{cat}</strong>?</>,
+                              confirmText: 'מחק',
+                              cancelText: 'בטל',
+                              danger: true,
+                            });
+                            if (!ok) return;
+                            const { [cat]: _, ...rest } = categorySettings;
+                            setCategorySettings(rest);
+                            saveCategorySettings(rest);
+                          }}
+                          style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.5)', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Icon picker */}
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>אייקון</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {ICON_OPTIONS.map(({ key, Icon }) => {
+                          const selected = s.iconKey === key;
+                          return (
+                            <button key={key} type="button"
+                              onClick={() => {
+                                const updated = { ...categorySettings, [cat]: { ...s, iconKey: key } };
+                                setCategorySettings(updated);
+                                saveCategorySettings(updated);
+                              }}
+                              title={key}
+                              style={{
+                                width: 36, height: 36, borderRadius: 10, border: 'none',
+                                background: selected ? color : 'rgba(11,11,48,0.06)',
+                                color: selected ? '#fff' : 'var(--primary)',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                                boxShadow: selected ? `0 2px 8px ${color}60` : 'none',
+                              }}>
+                              <Icon size={16} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Color picker */}
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>צבע</span>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {COLOR_OPTIONS.map(c => (
+                          <button key={c} type="button"
+                            onClick={() => {
+                              const updated = { ...categorySettings, [cat]: { ...s, color: c } };
+                              setCategorySettings(updated);
+                              saveCategorySettings(updated);
+                            }}
+                            style={{
+                              width: 28, height: 28, borderRadius: '50%', padding: 0,
+                              border: color === c ? '3px solid var(--primary)' : '2px solid rgba(255,255,255,0.5)',
+                              background: c, cursor: 'pointer',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                              transform: color === c ? 'scale(1.18)' : 'scale(1)',
+                              transition: 'transform 0.15s ease',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add new category */}
+              {canEdit && (
+                <div style={{ borderTop: '1px solid var(--ink-6)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)' }}>הוסף קטגוריה חדשה</span>
+                  {!addingCatInSettings ? (
+                    <button
+                      type="button"
+                      onClick={() => setAddingCatInSettings(true)}
+                      className="btn-secondary"
+                      style={{ minHeight: 44, fontSize: 14 }}
+                    >
+                      <Plus size={15} />
+                      <span>הוסף קטגוריה</span>
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="שם הקטגוריה החדשה"
+                        value={newCatName}
+                        onChange={e => setNewCatName(e.target.value)}
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const name = newCatName.trim();
+                            if (!name) return;
+                            const updated = { ...categorySettings, [name]: {} };
+                            setCategorySettings(updated);
+                            saveCategorySettings(updated);
+                            setNewCatName('');
+                            setAddingCatInSettings(false);
+                          }
+                          if (e.key === 'Escape') { setAddingCatInSettings(false); setNewCatName(''); }
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const name = newCatName.trim();
+                            if (!name) return;
+                            const updated = { ...categorySettings, [name]: {} };
+                            setCategorySettings(updated);
+                            saveCategorySettings(updated);
+                            setNewCatName('');
+                            setAddingCatInSettings(false);
+                          }}
+                          className="btn-primary"
+                          style={{ flex: 1, minHeight: 40, fontSize: 13 }}
+                        >
+                          הוסף
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAddingCatInSettings(false); setNewCatName(''); }}
+                          className="btn-secondary"
+                          style={{ minHeight: 40, padding: '0 16px', fontSize: 13 }}
+                        >
+                          ביטול
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Activity Slide-Up Bottom Sheet Modal */}
+      {showActivityForm && (() => {
+        const usedPlaceIds = new Set(
+          days.flatMap(day =>
+            (day.activities || [])
+              .filter(a => a.placeId && a.id !== editingActivityId)
+              .map(a => a.placeId)
+          )
+        );
+        return (
+          <div className="modal-overlay" data-closing={activitySheet.closing || undefined} onClick={attemptCloseActivityForm}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} {...activitySheet.handlers}
+              style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column', ...activitySheet.style }}>
+              <div className="sheet-grab" />
+
+              <div className="modal-header" style={{ flexShrink: 0 }}>
+                <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>
+                <button aria-label="סגור" className="btn-close" onClick={attemptCloseActivityForm}>✕</button>
+              </div>
+
+              <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>
+
+                {/* === SECTION 1: Saved Places === */}
+                <div style={{
+                  background: 'rgba(79,70,229,0.03)',
+                  border: '1.5px solid rgba(79,70,229,0.12)',
+                  borderRadius: 12,
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>מקומות שמורים</span>
+
+                  {savedPlaceSelections.map((sel, idx) => {
+                    const placesForSel = sel.categoryFilter
+                      ? plans.filter(p => p.category === sel.categoryFilter)
+                      : plans;
+                    const unusedPlaces = placesForSel.filter(p => !usedPlaceIds.has(p.id));
+                    const usedPlaces = placesForSel.filter(p => usedPlaceIds.has(p.id));
+
+                    return (
+                      <div key={idx} style={{
+                        display: 'flex', flexDirection: 'column', gap: 10,
+                        borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid rgba(79,70,229,0.08)' : 'none',
+                        paddingBottom: idx < savedPlaceSelections.length - 1 ? 12 : 0
+                      }}>
+                        {/* Category row (+ remove button) */}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <CustomDropdown
+                              value={sel.categoryFilter}
+                              onChange={(v) => updateSavedPlaceSelection(idx, 'categoryFilter', v)}
+                              options={[
+                                { value: '', label: 'כל הקטגוריות' },
+                                ...categories.map(cat => ({ value: cat, label: cat }))
+                              ]}
+                              placeholder="בחר קטגוריה"
+                            />
+                          </div>
+                          {savedPlaceSelections.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeSavedPlaceSelection(idx)}
+                              style={{
+                                border: 'none', background: 'rgba(220,38,38,0.08)',
+                                color: 'rgb(220,38,38)', borderRadius: 8,
+                                width: 40, height: 40, cursor: 'pointer', flexShrink: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                        {/* Place selector — full width so name + travel times are readable */}
+                        <CustomDropdown
+                          value={sel.placeId}
+                          onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
+                          options={[
+                            { value: '', label: 'בחר מקום' },
+                            ...[...unusedPlaces].sort((a, b) => {
+                              const order = { must: 0, optional: 1 };
+                              return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+                            }).map(p => {
+                              const originKey = p.distanceOriginId || 'hotel';
+                              const cache = distanceCache[`${p.id}_${originKey}`];
+                              const parts = [];
+                              if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
+                              if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
+                              const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                              const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
+                              return { value: p.id, label: `${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor, visited: p.visited };
+                            }),
+                            ...(usedPlaces.length > 0 ? [
+                              ...[...usedPlaces].sort((a, b) => {
+                                const order = { must: 0, optional: 1 };
+                                return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+                              }).map(p => {
+                                const originKey = p.distanceOriginId || 'hotel';
+                                const cache = distanceCache[`${p.id}_${originKey}`];
+                                const parts = [];
+                                if (cache?.walk?.duration) parts.push(`🚶 ${cache.walk.duration}`);
+                                if (cache?.transit?.duration) parts.push(`🚌 ${cache.transit.duration}`);
+                                const prefix = p.priority === 'must' ? '⭐ ' : p.priority === 'optional' ? '🕐 ' : '';
+                                const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
+                                return { value: p.id, label: `✓ ${prefix}${p.title}`, meta: parts.join('  ') || undefined, labelColor, visited: p.visited, inUse: true };
+                              })
+                            ] : [])
+                          ]}
+                          placeholder="-- בחר מקום --"
+                        />
+                        {/* Time chips per row — when no place selected, they drive activityTimeLabel directly */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => {
+                            const activeLabel = sel.placeId ? sel.timeLabel : activityTimeLabel;
+                            const isActive = activeLabel === label;
+                            return (
+                              <button
+                                key={label}
+                                type="button"
+                                onClick={() => {
+                                  if (sel.placeId) {
+                                    updateSavedPlaceSelection(idx, 'timeLabel', isActive ? '' : label);
+                                  } else {
+                                    setActivityTimeLabel(isActive ? '' : label);
+                                  }
+                                }}
+                                style={{
+                                  border: `1.5px solid ${isActive ? 'var(--accent)' : 'rgba(11,11,48,0.1)'}`,
+                                  background: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
+                                  color: isActive ? '#fff' : 'var(--text-muted)',
+                                  borderRadius: 20,
+                                  padding: '3px 11px',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  boxShadow: isActive ? '0 2px 6px rgba(79,70,229,0.2)' : 'none'
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {!editingActivityId && (
+                    <button
+                      type="button"
+                      onClick={addSavedPlaceSelection}
+                      style={{
+                        border: '1.5px dashed rgba(79,70,229,0.25)', background: 'transparent',
+                        color: 'var(--accent)', borderRadius: 8, padding: '7px 14px',
+                        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start'
+                      }}
+                    >
+                      <Plus size={13} />
+                      הוסף מקום שמור
+                    </button>
+                  )}
+                </div>
+
+                {/* === DIVIDER === */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.1)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>הזנה ידנית</span>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.1)' }} />
+                </div>
+
+                {/* === SECTION 2: Manual Entry === */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>שם הפעילות{savedPlaceSelections.some(s => s.placeId) ? ' (אופציונלי)' : ' *'}</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={activityTitle}
+                    onChange={(e) => setActivityTitle(e.target.value)}
+                    required={!savedPlaceSelections.some(s => s.placeId)}
+                    placeholder="למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון"
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  />
+                </div>
+
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={activityCategory}
+                  onChange={setActivityCategory}
+                  options={categories}
+                  addable
+                  addLabel="הוסף קטגוריה חדשה"
+                  onCommit={(newCat) => {
+                    const updated = { ...categorySettings, [newCat]: {} };
+                    setCategorySettings(updated);
+                    saveCategorySettings(updated);
+                  }}
+                />
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>תיוג זמן (שדה חופשי / בחירה מהירה)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="למשל: בוקר, 10:30, צהריים, 19:00"
+                    value={activityTimeLabel}
+                    onChange={(e) => setActivityTimeLabel(e.target.value)}
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setActivityTimeLabel(label)}
+                        style={{
+                          border: '1px solid rgba(11,11,48,0.1)',
+                          background: activityTimeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.7)',
+                          color: activityTimeLabel === label ? '#fff' : 'var(--text-muted)',
+                          borderRadius: 12, padding: '4px 10px', fontSize: 12,
+                          fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>כתובת / מיקום</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="כתובת או קישור למפה"
+                    value={activityAddress}
+                    onChange={(e) => setActivityAddress(e.target.value)}
+                    style={{ minHeight: 40, fontSize: 14 }}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>הערות לפעילות זו</label>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    placeholder="הערות מיוחדות, מספרי הזמנה, שעות פתיחה..."
+                    value={activityDescription}
+                    onChange={(e) => setActivityDescription(e.target.value)}
+                    style={{ resize: 'none', fontFamily: 'inherit', fontSize: 14 }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 8, flexShrink: 0 }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 44, fontSize: 15 }}>שמור פעילות</button>
+                  <button type="button" onClick={attemptCloseActivityForm} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Hourly weather popup */}
+      {hourlyWeatherDate && createPortal(
+        <div
+          onClick={() => setHourlyWeatherDate(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 420,
+              background: 'var(--modal-bg)',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-lg)',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: '80vh',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '16px 20px 12px', flexShrink: 0,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
+                  {(() => {
+                    const d = new Date(hourlyWeatherDate);
+                    const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][d.getDay()];
+                    return `יום ${dow} ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`;
+                  })()}
+                </span>
+                {weatherByDate[hourlyWeatherDate] && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, background: 'rgba(245,158,11,0.1)',
+                    color: '#b45309', borderRadius: 8, padding: '2px 8px',
+                  }}>
+                    {weatherByDate[hourlyWeatherDate].max}° / {weatherByDate[hourlyWeatherDate].min}°
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setHourlyWeatherDate(null)} style={{
+                background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
+                color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
+              }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{
+              overflowY: 'auto',
+              padding: '0 12px 16px',
+              display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 2,
+            }}>
+              {(weather?.hourlyByDate?.[hourlyWeatherDate] || [])
+                .filter((_, i) => i % 2 === 0)
+                .map(h => (
+                <div key={h.hour} style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  padding: '8px 6px', width: 58,
+                  borderRadius: 12,
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {String(h.hour).padStart(2,'0')}:00
+                  </span>
+                  <span style={{ fontSize: 20, lineHeight: 1 }}>{getWeatherIcon(h.code)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{h.temp}°</span>
+                  {h.rain > 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: h.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
+                      💧{h.rain}%
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Activity detail popup */}
+      {activityDetail && createPortal(
+        <div
+          onClick={() => setActivityDetail(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 420,
+              background: 'var(--modal-bg)',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: '22px 20px',
+              display: 'flex', flexDirection: 'column', gap: 12,
+              maxHeight: '80vh', overflow: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: `${getCategoryColor(activityDetail.category)}18`,
+                  color: getCategoryColor(activityDetail.category),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: `1.5px solid ${getCategoryColor(activityDetail.category)}40`,
+                }}>
+                  {getCategoryIcon(activityDetail.category, 16)}
+                </div>
+                <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0, wordBreak: 'break-word' }}>
+                  {activityDetail.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActivityDetail(null)}
+                style={{
+                  background: 'rgba(11,11,48,0.05)', border: 'none', borderRadius: '50%',
+                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0,
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {activityDetail.timeLabel && (
+              <span style={{
+                fontSize: 12, fontWeight: 800, color: '#fff', alignSelf: 'flex-start',
+                background: 'var(--accent)', padding: '3px 10px', borderRadius: 6,
+              }}>
+                {activityDetail.timeLabel}
+              </span>
+            )}
+
+            {activityDetail.description && (
+              <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, margin: 0, wordBreak: 'break-word' }}>
+                {activityDetail.description}
+              </p>
+            )}
+
+            {activityDetail.address && (
+              <a
+                href={/^https?:\/\//i.test(activityDetail.address) ? activityDetail.address : `https://maps.google.com/?q=${encodeURIComponent(activityDetail.address)}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  fontSize: 13, color: 'var(--accent)', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  textDecoration: 'none',
+                }}
+              >
+                <MapPin size={14} />
+                <span style={{ wordBreak: 'break-all' }}>{/^https?:\/\//i.test(activityDetail.address) ? 'פתח בגוגל מפות' : activityDetail.address}</span>
+              </a>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+    </div>
+  );
+}
+
+/* ── Drag-and-drop helpers for day reordering ─────────────────────────── */
+
+const DragHandleContext = React.createContext(null);
+
+/* One day, memoized.
+ *
+ * Collapsing a day used to re-render every other day with it: the state
+ * lives in PlanningTab, so React walked the whole list and re-applied the
+ * inline style of every element in it. The profiler put `setValueForStyle`
+ * at the top of a toggle — not the component's own logic, but React
+ * writing styles back onto DOM nodes that had not changed. With this
+ * memo the other days bail out and none of that work happens.
+ *
+ * Every prop below therefore has to be reference-stable across renders,
+ * or the memo never holds: the handlers are useCallback'd in the parent
+ * and the setters come from useState, which React keeps stable.
+ */
+const DayCard = React.memo(function DayCard({
+  day, plans, bookedPlaceIds, canEdit,
+  /* Booleans, not the Sets they come from. Passing `collapsedDays` itself
+     meant every card got a brand-new Set on every toggle and the memo
+     never held — which is exactly what the first attempt measured: no
+     change at all. Only the toggled day's booleans move now. */
+  isSummary, dayBodyShown, isEditing, editingDayTitle, isArrived,
+  dayLayout, collapsedTimeGroups,
+  weatherByDate, distanceCache, dayNodes,
+  getCategoryColor, getCategoryIcon,
+  setCollapsedDays, setOpenSummaryDays, setCollapsedTimeGroups,
+  setEditingDayId, setEditingDayTitle, setActivityDetail, setHourlyWeatherDate,
+  handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
+  handleStartEditActivity, handleDeleteActivity, moveActivity,
+}) {
+        return (
+        <SortableDayCard
+          key={day.id}
+          id={day.id}
+          compact={isSummary}
+          className={isArrived ? 'highlight-pulse' : ''}
+          innerRef={(node) => {
+            if (node) dayNodes.current.set(day.id, node);
+            else dayNodes.current.delete(day.id);
+          }}
+        >
+          {/* Day Header — whole row toggles collapse (inner controls stop propagation) */}
+          <div
+            onClick={() => {
+              if (isEditing) return;
+              if (dayLayout === 'summary') {
+                setOpenSummaryDays(prev => {
+                  const next = new Set(prev);
+                  next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                  return next;
+                });
+                return;
+              }
+              setCollapsedDays(prev => {
+                const next = new Set(prev);
+                next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                return next;
+              });
+            }}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              // A summary row is one line; a rule under it would
+              // read as a divider between days, not part of one.
+              borderBottom: isSummary ? 'none' : '1px solid rgba(11,11,48,0.06)',
+              paddingBottom: isSummary ? 0 : 8,
+              minHeight: isSummary ? 28 : 36,
+              cursor: isEditing ? 'default' : 'pointer',
+            }}>
+            {isEditing ? (
+              <form 
+                onSubmit={(e) => { e.preventDefault(); handleSaveDayTitle(day.id, editingDayTitle); }} 
+                style={{ display: 'flex', gap: 6, width: '100%' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input 
+                  className="form-control" 
+                  style={{ padding: '4px 8px', fontSize: 14, minHeight: 32, flex: 1 }} 
+                  value={editingDayTitle} 
+                  onChange={e => setEditingDayTitle(e.target.value)} 
+                  required 
+                />
+                <button type="submit" className="btn-primary" style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>שמור</button>
+                <button type="button" className="btn-secondary" onClick={() => setEditingDayId(null)} style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>ביטול</button>
+              </form>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
+                  {canEdit && <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}><DayDragHandle /></span>}
+                  <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
+                  {day.date && (() => {
+                    const [, mm, dd] = day.date.split('-');
+                    const dowIdx = new Date(day.date).getDay();
+                    const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
+                    const dayW = weatherByDate[day.date];
+                    return (<>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, flexShrink: 0,
+                        background: 'rgba(79,70,229,0.08)',
+                        color: 'var(--accent)',
+                        border: '1px solid rgba(79,70,229,0.15)',
+                        borderRadius: 8, padding: '2px 6px',
+                      }}>
+                        {`${dow} ${dd}.${mm}`}
+                      </span>
+                      {dayW && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setHourlyWeatherDate(day.date); }}
+                          style={{
+                            fontSize: 11, fontWeight: 700, flexShrink: 0,
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.15)',
+                            borderRadius: 8, padding: '2px 7px',
+                            display: 'flex', alignItems: 'center', gap: 3,
+                            color: 'var(--primary)', cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
+                          <span>{dayW.max}°/{dayW.min}°</span>
+                          {dayW.rain > 0 && <span style={{ color: '#2563eb' }}>💧{dayW.rain}%</span>}
+                        </button>
+                      )}
+                    </>);
+                  })()}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {canEdit && !isSummary && (<>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingDayId(day.id); setEditingDayTitle(day.title); }}
+                    style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
+                    title="ערוך כותרת יום"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteDay(day.id); }}
+                    style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
+                    title="מחק יום"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  </>)}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const setter = dayLayout === 'summary' ? setOpenSummaryDays : setCollapsedDays;
+                      setter(prev => {
+                        const next = new Set(prev);
+                        next.has(day.id) ? next.delete(day.id) : next.add(day.id);
+                        return next;
+                      });
+                    }}
+                    aria-label={dayBodyShown ? 'סגור יום' : 'פתח יום'}
+                    style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: dayBodyShown ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                    title={dayBodyShown ? 'סגור יום' : 'פתח יום'}
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Summary layout: the whole day on one muted line —
+              how many activities, and the first couple by time.
+              Enough to answer "what is on Thursday?" without
+              opening anything. */}
+          {isSummary && (() => {
+            const acts = day.activities || [];
+            if (acts.length === 0) {
+              return (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                  אין פעילויות
+                </span>
+              );
+            }
+            const shown = acts.slice(0, 2);
+            const rest = acts.length - shown.length;
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'baseline', gap: 6,
+                fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
+                minWidth: 0,
+              }}>
+                <span style={{ fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
+                  {acts.length} פעילויות
+                </span>
+                <span style={{ color: 'var(--ink-22)', flexShrink: 0 }}>·</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {shown.map(a => [a.timeLabel, a.title].filter(Boolean).join(' ')).join(' · ')}
+                  {rest > 0 && ` +${rest}`}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Day Activities + Add Button (collapsed when toggled) */}
+          {dayBodyShown && <>
+          <div className="day-body" style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
+            {(() => {
+            const dayActs = day.activities || [];
+            const timeGroups = groupActivitiesByTime(dayActs);
+            const showTimeHeaders = dayActs.some(a => (a.timeLabel || '').trim());
+
+            const renderActivityRow = (act, actIdx, groupList) => {
+              const isFirst = actIdx === 0;
+              const isLast = actIdx === groupList.length - 1;
+              const prevActId = groupList[actIdx - 1]?.id ?? null;
+              const nextActId = groupList[actIdx + 1]?.id ?? null;
+              const linkedPlan = plans.find(p => act.placeId ? p.id === act.placeId : p.title === act.title);
+              const isVisited = linkedPlan?.visited === true;
+
+              return (
+                <div key={act.id} style={{
+                  display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
+                  paddingTop: isFirst ? 0 : 14,
+                  paddingBottom: isLast ? 0 : 14,
+                  borderTop: isFirst ? 'none' : '2px solid rgba(79,70,229,0.4)',
+                }}>
+                  {/* Timeline vertical node and line */}
                   <div style={{ 
                     display: 'flex', 
-                    justifyContent: 'space-between', 
+                    flexDirection: 'column', 
                     alignItems: 'center', 
-                    borderBottom: '1px solid rgba(11,11,48,0.06)', 
-                    paddingBottom: 8,
-                    minHeight: 36
+                    flexShrink: 0, 
+                    position: 'relative', 
+                    height: '100%', 
+                    alignSelf: 'stretch'
                   }}>
-                    {editingDayId === day.id ? (
-                      <form 
-                        onSubmit={(e) => { e.preventDefault(); handleSaveDayTitle(day.id, editingDayTitle); }} 
-                        style={{ display: 'flex', gap: 6, width: '100%' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input 
-                          className="form-control" 
-                          style={{ padding: '4px 8px', fontSize: 14, minHeight: 32, flex: 1 }} 
-                          value={editingDayTitle} 
-                          onChange={e => setEditingDayTitle(e.target.value)} 
-                          required 
-                        />
-                        <button type="submit" className="btn-primary" style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>שמור</button>
-                        <button type="button" className="btn-secondary" onClick={() => setEditingDayId(null)} style={{ padding: '4px 10px', fontSize: 12, minHeight: 32 }}>ביטול</button>
-                      </form>
-                    ) : (
-                      <>
-                        <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{day.title}</h3>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button 
-                            onClick={() => { setEditingDayId(day.id); setEditingDayTitle(day.title); }} 
-                            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                            title="ערוך כותרת יום"
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteDay(day.id)} 
-                            style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
-                            title="מחק יום"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%',
+                      background: `${getCategoryColor(act.category)}18`,
+                      color: getCategoryColor(act.category),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      zIndex: 2,
+                      border: `1.5px solid ${getCategoryColor(act.category)}40`
+                    }}>
+                      {getCategoryIcon(act.category, 15)}
+                    </div>
+                    {!isLast && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 28,
+                        bottom: -24,
+                        width: 2,
+                        background: 'var(--ink-6)',
+                        zIndex: 1
+                      }} />
                     )}
                   </div>
 
-                  {/* Day Activities Timeline */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-                    {(day.activities || []).map((act, actIdx) => {
-                      const isFirst = actIdx === 0;
-                      const isLast = actIdx === (day.activities || []).length - 1;
-                      const linkedPlace = act.placeId ? plans.find(p => p.id === act.placeId) : null;
-
+                  {/* Activity Card */}
+                  <div className="glass-card" style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    opacity: isVisited ? 0.6 : 1,
+                  }}>
+                    {(() => {
+                      // Compute travel-time chips once — reused below the title.
+                      let chips = null;
+                      if (act.placeId && hasGmapsKey()) {
+                        const linkedPlan = plans.find(p => p.id === act.placeId);
+                        const originKey = linkedPlan?.distanceOriginId || 'hotel';
+                        const cache = distanceCache[`${act.placeId}_${originKey}`];
+                        if (cache && !cache.loading && !cache.error && !cache.noLocation && (cache.walk || cache.transit)) {
+                          chips = (
+                            <>
+                              {cache.walk && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                  🚶 {cache.walk.duration}
+                                </span>
+                              )}
+                              {cache.transit && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                  🚌 {cache.transit.duration}
+                                </span>
+                              )}
+                            </>
+                          );
+                        }
+                      }
+                      const linkedPlace = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
+                      const titleColor =
+                        linkedPlace?.priority === 'must' ? '#f59e0b' :
+                        linkedPlace?.priority === 'optional' ? 'var(--text-muted)' :
+                        'var(--primary)';
                       return (
-                        <div key={act.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative' }}>
-                          {/* Timeline vertical node and line */}
-                          <div style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center', 
-                            flexShrink: 0, 
-                            position: 'relative', 
-                            height: '100%', 
-                            alignSelf: 'stretch'
-                          }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: '50%',
-                              background: 'rgba(79,70,229,0.08)', color: 'var(--accent)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              zIndex: 2,
-                              border: '1.5px solid rgba(79,70,229,0.15)'
-                            }}>
-                              {getCategoryIcon(act.category)}
-                            </div>
-                            {!isLast && (
-                              <div style={{
-                                position: 'absolute', 
-                                top: 28, 
-                                bottom: -12, 
-                                width: 2,
-                                background: 'rgba(11,11,48,0.06)', 
-                                zIndex: 1
-                              }} />
-                            )}
-                          </div>
-
-                          {/* Activity Card */}
-                          <div className="glass-card" style={{ 
-                            flex: 1, 
-                            padding: '12px 14px', 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: 6, 
-                            background: 'rgba(255,255,255,0.7)', 
-                            border: '1px solid rgba(11,11,48,0.05)' 
-                          }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                              <div style={{ minWidth: 0 }}>
-                                {act.timeLabel && (
-                                  <span style={{ 
-                                    fontSize: 10, 
-                                    fontWeight: 900, 
-                                    color: '#fff', 
-                                    background: 'var(--accent)', 
-                                    padding: '2px 6px', 
-                                    borderRadius: 4, 
-                                    marginLeft: 6,
-                                    verticalAlign: 'middle',
-                                    display: 'inline-block'
-                                  }}>
-                                    {act.timeLabel}
-                                  </span>
-                                )}
-                                <h4 style={{ 
-                                  fontSize: 14, 
-                                  fontWeight: 800, 
-                                  color: 'var(--primary)', 
-                                  margin: 0,
-                                  verticalAlign: 'middle',
-                                  display: 'inline-block',
-                                  wordBreak: 'break-word'
+                        <>
+                          {/* Row 1: time badge + title (single line, ellipsis) + controls */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                            <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {isVisited && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 900, color: 'var(--text-muted)',
+                                  background: 'var(--ink-8)', padding: '2px 6px',
+                                  borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
                                 }}>
-                                  {act.title}
-                                </h4>
-                              </div>
+                                  ✓ בוצע
+                                </span>
+                              )}
+                              {!isVisited && act.timeLabel && !showTimeHeaders && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 900, color: '#fff',
+                                  background: 'var(--accent)', padding: '2px 6px',
+                                  borderRadius: 4, flexShrink: 0,
+                                }}>
+                                  {act.timeLabel}
+                                </span>
+                              )}
+                              {isVisited && act.timeLabel && !showTimeHeaders && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                  flexShrink: 0,
+                                }}>
+                                  {act.timeLabel}
+                                </span>
+                              )}
+                              <h4
+                                onClick={() => setActivityDetail(act)}
+                                style={{
+                                  fontSize: 14, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  minWidth: 0, cursor: 'pointer',
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                {act.title}
+                              </h4>
+                              {linkedPlace && !isVisited && (bookedPlaceIds.has(linkedPlace.id) || linkedPlace.needsReservation) && (
+                                <span title={bookedPlaceIds.has(linkedPlace.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
+                                  display: 'flex', flexShrink: 0,
+                                  color: bookedPlaceIds.has(linkedPlace.id) ? 'var(--c-green)' : 'var(--c-red)',
+                                }}>
+                                  <CalendarCheck size={13} />
+                                </span>
+                              )}
+                            </div>
 
-                              {/* Controls */}
+                            {canEdit && (
                               <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                                <button 
-                                  onClick={() => moveActivity(day.id, act.id, -1)} 
-                                  disabled={isFirst} 
+                                <button
+                                  onClick={() => moveActivity(day.id, act.id, -1, prevActId)}
+                                  disabled={isFirst}
                                   style={{ border: 'none', background: 'transparent', color: isFirst ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <ArrowUp size={14} />
                                 </button>
-                                <button 
-                                  onClick={() => moveActivity(day.id, act.id, 1)} 
-                                  disabled={isLast} 
+                                <button
+                                  onClick={() => moveActivity(day.id, act.id, 1, nextActId)}
+                                  disabled={isLast}
                                   style={{ border: 'none', background: 'transparent', color: isLast ? '#cbd5e1' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <ArrowDown size={14} />
                                 </button>
-                                <button 
-                                  onClick={() => handleStartEditActivity(day.id, act)} 
+                                <button
+                                  onClick={() => handleStartEditActivity(day.id, act)}
                                   style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <Pencil size={13} />
                                 </button>
-                                <button 
-                                  onClick={() => handleDeleteActivity(day.id, act.id)} 
+                                <button
+                                  onClick={() => handleDeleteActivity(day.id, act.id)}
                                   style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
                                 >
                                   <Trash2 size={13} />
                                 </button>
                               </div>
-                            </div>
-
-                            {linkedPlace?.needsReservation && <ReservationBadge compact />}
-
-                            {act.description && (
-                              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.3 }}>
-                                {act.description}
-                              </p>
-                            )}
-
-                            {act.address && (
-                              <a 
-                                href={`https://maps.google.com/?q=${encodeURIComponent(act.address)}`} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                style={{ 
-                                  fontSize: 11, 
-                                  color: 'var(--accent)', 
-                                  fontWeight: 700, 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 3, 
-                                  textDecoration: 'none',
-                                  marginTop: 2
-                                }}
-                              >
-                                <MapPin size={11} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{act.address}</span>
-                                <ExternalLink size={10} />
-                              </a>
                             )}
                           </div>
-                        </div>
+
+                          {act.description && (
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 3 }}>
+                              <MessageSquare size={11} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.35, wordBreak: 'break-word' }}>
+                                {act.description}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Row 2: address link + travel-time chips */}
+                          {(act.address || chips) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                              {act.address && (
+                                <a
+                                  href={/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    fontSize: 11, color: 'var(--accent)', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', gap: 3,
+                                    textDecoration: 'none', minWidth: 0,
+                                  }}
+                                >
+                                  <MapPin size={11} />
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
+                                  <ExternalLink size={10} />
+                                </a>
+                              )}
+                              {chips}
+                            </div>
+                          )}
+                        </>
                       );
-                    })}
-
-                    {(day.activities || []).length === 0 && (
-                      <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0', margin: 0 }}>
-                        אין עדיין פעילויות ליום זה.
-                      </p>
-                    )}
+                    })()}
                   </div>
+                </div>
+              );
+            };
 
-                  {/* Add Activity Button */}
+            // No time labels at all — keep the flat timeline as before
+            if (!showTimeHeaders) {
+              return dayActs.map((act, i) => renderActivityRow(act, i, dayActs));
+            }
+
+            // Grouped by time of day, each group collapsible as one unit
+            return timeGroups.map(g => {
+              const gKey = `${day.id}|${g.label}`;
+              const isGroupCollapsed = collapsedTimeGroups.has(gKey);
+              return (
+                <div key={gKey} style={{ marginBottom: 8 }}>
                   <button
-                    onClick={() => handleOpenAddActivity(day.id)}
-                    className="btn-secondary"
-                    style={{ 
-                      width: '100%', 
-                      padding: 10, 
-                      fontSize: 13, 
-                      fontWeight: 700, 
-                      border: '1.5px dashed rgba(79,70,229,0.18)', 
-                      background: 'rgba(79,70,229,0.03)',
-                      color: 'var(--accent)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer'
+                    type="button"
+                    onClick={() => setCollapsedTimeGroups(prev => {
+                      const next = new Set(prev);
+                      next.has(gKey) ? next.delete(gKey) : next.add(gKey);
+                      return next;
+                    })}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '7px 10px', marginBottom: isGroupCollapsed ? 0 : 10,
+                      borderRadius: 10, border: 'none', cursor: 'pointer',
+                      background: 'var(--p-8)', fontFamily: 'inherit',
                     }}
                   >
-                    <Plus size={14} />
-                    <span>הוסף פעילות</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Add/Edit Activity Slide-Up Bottom Sheet Modal */}
-      {showActivityForm && (
-        <div className="modal-overlay" onClick={() => setShowActivityForm(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-            
-            <div className="modal-header" style={{ flexShrink: 0 }}>
-              <h2>{editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}</h2>
-              <button className="btn-close" onClick={() => setShowActivityForm(false)}>✕</button>
-            </div>
-
-            <form onSubmit={handleActivitySubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4, paddingBottom: 16 }}>
-              
-              {/* Linked Places Selector */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>בחר מקום שמור מתוך האטרקציות (אופציונלי)</label>
-                <select
-                  className="form-control"
-                  value={placeId}
-                  onChange={(e) => {
-                    const pid = e.target.value;
-                    setPlaceId(pid);
-                    if (pid) {
-                      const found = plans.find(p => p.id === pid);
-                      if (found) {
-                        setActivityTitle(found.title);
-                        setActivityAddress(found.address || '');
-                        setActivityDescription(found.description || '');
-                        setActivityCategory(found.category || 'אטרקציות ודברים לעשות');
-                      }
-                    }
-                  }}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                >
-                  <option value="">-- הזנה ידנית (לא מקושר למקום שמור) --</option>
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>שם הפעילות *</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={activityTitle} 
-                  onChange={(e) => setActivityTitle(e.target.value)} 
-                  required 
-                  placeholder="למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון"
-                  style={{ minHeight: 40, fontSize: 14 }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>קטגוריה</label>
-                <select 
-                  className="form-control" 
-                  value={activityCategory} 
-                  onChange={(e) => setActivityCategory(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                >
-                  {categories.map((cat, idx) => (
-                    <option key={idx} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Time Label Tagging */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>תיוג זמן (שדה חופשי / בחירה מהירה)</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="למשל: בוקר, 10:30, צהריים, 19:00" 
-                  value={activityTimeLabel} 
-                  onChange={(e) => setActivityTimeLabel(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                />
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => setActivityTimeLabel(label)}
+                    <span style={{ fontSize: 14, lineHeight: 1 }}>
+                      {TIME_GROUP_ICONS[g.label] || (g.label ? '🕐' : '📌')}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>
+                      {g.label || 'ללא תיוג זמן'}
+                    </span>
+                    {/* Pushed to the row's end so counts align across groups */}
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, color: 'var(--accent)',
+                      background: 'rgba(79,70,229,0.12)', padding: '2px 0',
+                      borderRadius: 999, lineHeight: 1.4,
+                      marginInlineStart: 'auto', flexShrink: 0,
+                      width: 26, textAlign: 'center',
+                    }}>
+                      {g.acts.length}
+                    </span>
+                    <ChevronDown
+                      size={16}
                       style={{
-                        border: '1px solid rgba(11,11,48,0.1)',
-                        background: activityTimeLabel === label ? 'var(--accent)' : 'rgba(255,255,255,0.7)',
-                        color: activityTimeLabel === label ? '#fff' : 'var(--text-muted)',
-                        borderRadius: 12,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
+                        color: 'var(--text-muted)', flexShrink: 0,
+                        transition: 'transform 0.2s',
+                        transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
                       }}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                    />
+                  </button>
+                  {!isGroupCollapsed && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {g.acts.map((act, i) => renderActivityRow(act, i, g.acts))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              );
+            });
+            })()}
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>כתובת / מיקום</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="כתובת או קישור למפה" 
-                  value={activityAddress} 
-                  onChange={(e) => setActivityAddress(e.target.value)}
-                  style={{ minHeight: 40, fontSize: 14 }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>הערות לפעילות זו</label>
-                <textarea 
-                  className="form-control" 
-                  rows="3" 
-                  placeholder="הערות מיוחדות, מספרי הזמנה, שעות פתיחה..." 
-                  value={activityDescription} 
-                  onChange={(e) => setActivityDescription(e.target.value)}
-                  style={{ resize: 'none', fontFamily: 'inherit', fontSize: 14 }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, marginTop: 8, flexShrink: 0 }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1, minHeight: 44, fontSize: 15 }}>שמור פעילות</button>
-                <button type="button" onClick={() => setShowActivityForm(false)} className="btn-secondary" style={{ minHeight: 44, fontSize: 15 }}>ביטול</button>
-              </div>
-
-            </form>
+            {(day.activities || []).length === 0 && (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0', margin: 0 }}>
+                אין עדיין פעילויות ליום זה.
+              </p>
+            )}
           </div>
-        </div>
-      )}
 
-    </div>
+          {/* Add Activity Button */}
+          {canEdit && (
+          <button
+            onClick={() => handleOpenAddActivity(day.id)}
+            className="btn-secondary"
+            style={{
+              width: '100%',
+              padding: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              border: '1.5px dashed rgba(79,70,229,0.18)',
+              background: 'rgba(79,70,229,0.03)',
+              color: 'var(--accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              cursor: 'pointer'
+            }}
+          >
+            <Plus size={14} />
+            <span>הוסף פעילות</span>
+          </button>
+          )}
+          </>}
+        </SortableDayCard>
+
+  );
+});
+
+function SortableDayCard({ id, children, innerRef, className = '', compact = false }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // dnd-kit owns one ref and the scroll-to-new-day needs another.
+  const setRefs = (node) => {
+    setNodeRef(node);
+    innerRef?.(node);
+  };
+  return (
+    <DragHandleContext.Provider value={listeners}>
+      <div
+        ref={setRefs}
+        {...attributes}
+        className={`glass-card${className ? ' ' + className : ''}`}
+        style={{
+          padding: compact ? '10px 12px' : 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: compact ? 6 : 14,
+          transform: CSS.Transform.toString(transform),
+          transition,
+          opacity: isDragging ? 0.45 : 1,
+          boxShadow: isDragging ? '0 8px 32px rgba(11,11,48,0.18)' : undefined,
+          zIndex: isDragging ? 10 : undefined,
+          position: 'relative',
+        }}
+      >
+        {children}
+      </div>
+    </DragHandleContext.Provider>
+  );
+}
+
+function DayDragHandle() {
+  const listeners = React.useContext(DragHandleContext);
+  return (
+    <button
+      type="button"
+      {...listeners}
+      style={{
+        border: 'none',
+        background: 'transparent',
+        color: 'var(--text-muted)',
+        cursor: 'grab',
+        padding: '4px 2px',
+        display: 'flex',
+        alignItems: 'center',
+        touchAction: 'none',
+        flexShrink: 0,
+        opacity: 0.5,
+      }}
+      title="גרור לשינוי סדר"
+    >
+      <GripVertical size={16} />
+    </button>
   );
 }
