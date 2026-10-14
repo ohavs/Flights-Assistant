@@ -977,6 +977,29 @@ input[type="datetime-local"].form-control {
   cursor: default;
 }
 
+/* Google's sign-in button follows Google's colours, not the app's: white
+   with dark text, near-black with light text in dark mode. */
+.google-btn {
+  width: 100%; max-width: 320px; min-height: 52px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 12px 24px; border-radius: var(--radius-md);
+  background: #fff; color: #1F1F1F; border: 1px solid #747775;
+  font-family: var(--font-hebrew); font-size: 16px; font-weight: 700;
+  cursor: pointer; box-shadow: var(--shadow-md);
+  transition: transform 0.1s ease;
+}
+.google-btn:active { transform: scale(0.98); }
+.google-btn:disabled { opacity: 0.6; cursor: default; }
+[data-theme="dark"] .google-btn { background: #131314; color: #E3E3E3; border-color: #8E918F; }
+.login-error {
+  max-width: 320px; margin: -16px 0 0; text-align: center;
+  font-size: 14px; font-weight: 700; line-height: 1.5; color: var(--c-red);
+}
+.login-error span {
+  display: block; margin-top: 4px; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); overflow-wrap: anywhere;
+}
+
 .btn-secondary {
   min-height: 50px;
   background: var(--ink-5);

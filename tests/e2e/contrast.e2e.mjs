@@ -1,5 +1,6 @@
-// Text that has to be read stays readable in both themes: the confirm
-// dialog's button and the date picker's selected day. Also: back closes
+// Text that has to be read stays readable in both themes: the Google
+// sign-in button, the confirm dialog's button and the date picker's
+// selected day. Also: back closes
 // the picker and leaves the sheet under it open.
 //   bash scripts/run-e2e.sh tests/e2e/contrast.e2e.mjs
 import { chromium } from 'playwright';
@@ -39,6 +40,22 @@ const expectReadable = async (loc, what) => {
   if (c < 3) throw new Error(`${what}: contrast ${c.toFixed(2)} < 3`);
   return c;
 };
+
+// The sign-in button: white with light text in dark mode (8.23.0) left
+// "התחבר עם Google" invisible.
+for (const theme of ['light', 'dark']) {
+  await step(`sign-in button readable (${theme})`, async () => {
+    await page.goto('http://localhost:5173/');
+    await page.evaluate((t) => localStorage.setItem('theme', t), theme);
+    await page.reload();
+    const btn = page.locator('button.google-btn');
+    await btn.waitFor();
+    const c = await expectReadable(btn, 'sign-in button');
+    if (c < 4.5) throw new Error(`sign-in button: contrast ${c.toFixed(2)} < 4.5`);
+    await page.screenshot({ path: `.e2e/contrast-login-${theme}.png` });
+  });
+}
+await page.evaluate(() => localStorage.removeItem('theme'));
 
 await page.goto('http://localhost:5173/');
 await page.getByText('התחבר עם Google').waitFor();
