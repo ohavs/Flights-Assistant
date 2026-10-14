@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { useConfirm } from '../ConfirmContext';
 import useSheetDrag from '../hooks/useSheetDrag';
 import useBackHandler from '../hooks/useBackHandler';
 
@@ -15,11 +16,13 @@ import useBackHandler from '../hooks/useBackHandler';
 
    Render it only while open. `onClose` runs after the exit animation.
    Children may be a function, to close with the animation from inside;
-   so may `header`, which replaces the standard title row.
+   so may `header`, which replaces the standard title row. They get
+   `close`, which just closes (after a save), and `cancel`, which asks
+   first when there are unsaved changes (the form's "ביטול").
 
-   `onAttemptClose` is for forms with unsaved changes: the backdrop, the
-   close button and back call it instead of closing, and the drag is off
-   while `dragEnabled` is false.
+   `dirty` is for forms: while true, the backdrop, ✕, back and `cancel`
+   all ask "צא בלי לשמור?" before closing, and the drag is off. Put the
+   save buttons in a `.sheet-footer` so they stay in reach.
 
    It is portalled into the app frame, so a sheet opened from inside a
    sticky toolbar or a transformed card is never clipped or stacked
@@ -29,14 +32,29 @@ export default function Sheet({
   title,
   label,
   header,
-  onAttemptClose,
-  dragEnabled = true,
+  dirty = false,
   style,
   children,
 }) {
-  const sheet = useSheetDrag(onClose, { enabled: dragEnabled });
-  const requestClose = onAttemptClose || sheet.close;
+  const confirm = useConfirm();
+  const sheet = useSheetDrag(onClose, { enabled: !dirty });
+  // While it asks, the confirm dialog sits over the sheet and takes the
+  // taps and the back press, so it cannot ask twice.
+  const requestClose = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'יש שינויים שלא נשמרו',
+        message: 'הזנת פרטים שלא נשמרו. האם לצאת בלי לשמור?',
+        confirmText: 'צא בלי לשמור',
+        cancelText: 'המשך עריכה',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    sheet.close();
+  };
   useBackHandler(true, requestClose);
+  const api = { close: sheet.close, cancel: requestClose };
 
   const host = document.querySelector('.app-container') || document.body;
   return createPortal(
@@ -51,13 +69,13 @@ export default function Sheet({
         style={{ ...style, ...sheet.style }}
       >
         <div className="sheet-grab" />
-        {typeof header === 'function' ? header({ close: requestClose }) : header ?? (title != null && (
+        {typeof header === 'function' ? header(api) : header ?? (title != null && (
           <div className="modal-header">
             <h2>{title}</h2>
             <button type="button" aria-label="סגור" className="btn-close" onClick={requestClose}>✕</button>
           </div>
         ))}
-        {typeof children === 'function' ? children({ close: sheet.close }) : children}
+        {typeof children === 'function' ? children(api) : children}
       </div>
     </div>,
     host

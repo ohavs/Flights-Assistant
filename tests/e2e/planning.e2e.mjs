@@ -76,7 +76,7 @@ async function addPlace({ title, category, must, booking, address }) {
   if (booking) await modal().getByText('צריך לסגור / להזמין', { exact: false }).first().click();
   if (address) await modal().getByPlaceholder('כתובת או קישור למפה').first().fill(address);
   if (n === 1) await shot('place-form');
-  await modal().getByText('שמור שינויים').click();
+  await modal().locator('.sheet-footer button[type="submit"]').click();
   await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
   await page.getByText(title).first().waitFor();
 }
@@ -199,7 +199,7 @@ await step('daily plan: add activities', async () => {
     await modal().waitFor();
     if (what === 'ארוחת בוקר במלון') await shot('activity-form');
     await modal().getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill(what);
-    await modal().getByText('שמור פעילות').click();
+    await modal().locator('.sheet-footer button[type="submit"]').click();
     await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
     await page.getByText(what).first().waitFor();
   }

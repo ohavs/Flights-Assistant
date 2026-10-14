@@ -49,7 +49,7 @@ await tab('תכנון טיול');
 for (const place of ['הקולוסיאום', 'מזרקת טרווי', 'גלידה ב-Giolitti']) {
   await fab('יעד חדש');
   await page.getByPlaceholder('למשל: תצפית שקיעה בגבעה').fill(place);
-  await page.getByText('שמור שינויים').click();
+  await page.locator('.sheet-footer button[type="submit"]').click();
   await page.getByText(place).first().waitFor();
 }
 

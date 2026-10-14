@@ -3,11 +3,9 @@ import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
-import useSheetDrag from '../hooks/useSheetDrag';
-import useBackHandler from '../hooks/useBackHandler';
+import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { WeatherChip } from './TripHeaderInfo';
-import { useConfirm } from '../ConfirmContext';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
@@ -256,7 +254,6 @@ function LocalClock({ timezone }) {
 
 export default function FlightTab({ tripId }) {
   const { canEdit, ownerProfile } = useTrip();
-  const confirm = useConfirm();
   const [tripData, setTripData] = useState(null);
   // Snapshot of the form state when the modal opened, used to detect
   // unsaved changes when the user tries to close it.
@@ -628,29 +625,8 @@ export default function FlightTab({ tripId }) {
     formHotelCheckIn, formHotelCheckOut, formHotelRoom, formHotelNotes,
   });
 
-  // The flight/hotel form guards unsaved changes on the ✕, so the drag is
-  // enabled only when nothing has been edited yet.
-  const editSheet = useSheetDrag(() => setShowEditModal(false), {
-    enabled: !initialFormSnapshot.current || currentFormSerialized() === initialFormSnapshot.current,
-  });
-
-  const attemptCloseEdit = async () => {
-    if (initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current) {
-      const ok = await confirm({
-        title: 'יש שינויים שלא נשמרו',
-        message: 'ערכת נתונים שלא נשמרו עדיין. אם תצא עכשיו השינויים יאבדו.',
-        confirmText: 'צא בלי לשמור',
-        cancelText: 'המשך עריכה',
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    setShowEditModal(false);
-  };
-
-  /* Back goes through the same guard as the ✕ — an unsaved form asks
-     before it disappears, however it was dismissed. */
-  useBackHandler(showEditModal, attemptCloseEdit);
+  // Nothing to lose until the form differs from what it opened with.
+  const editDirty = !!initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current;
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -1087,21 +1063,18 @@ export default function FlightTab({ tripId }) {
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div className="modal-overlay" data-closing={editSheet.closing || undefined} onClick={attemptCloseEdit}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} {...editSheet.handlers} style={editSheet.style}>
-            <div className="sheet-grab" />
-
-            <div className="modal-header">
-              <h2>{
-                editScope === 'outbound' ? 'עריכת טיסת הלוך' :
-                editScope === 'return' ? 'עריכת טיסת חזור' :
-                editScope === 'hotel' ? 'עריכת פרטי המלון' :
-                editScope === 'trip' ? 'עריכת פרטי הטיול' :
-                'עריכת כל פרטי הנסיעה'
-              }</h2>
-              <button aria-label="סגור" className="btn-close" onClick={attemptCloseEdit}>✕</button>
-            </div>
-
+        <Sheet
+          title={
+            editScope === 'outbound' ? 'עריכת טיסת הלוך' :
+            editScope === 'return' ? 'עריכת טיסת חזור' :
+            editScope === 'hotel' ? 'עריכת פרטי המלון' :
+            editScope === 'trip' ? 'עריכת פרטי הטיול' :
+            'עריכת כל פרטי הנסיעה'
+          }
+          onClose={() => setShowEditModal(false)}
+          dirty={editDirty}
+        >
+          {({ cancel }) => (
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
               {/* === TRIP HEADER: name + 2 decisive date pickers === */}
@@ -1335,14 +1308,14 @@ export default function FlightTab({ tripId }) {
               </div>
               )}
 
-              <div style={{ display: 'flex', gap: '12px', paddingBottom: '20px' }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
-                <button type="button" onClick={attemptCloseEdit} className="btn-secondary">ביטול</button>
+              <div className="sheet-footer">
+                <button type="submit" className="btn-primary">שמור</button>
+                <button type="button" onClick={cancel} className="btn-secondary">ביטול</button>
               </div>
 
             </form>
-          </div>
-        </div>
+          )}
+        </Sheet>
       )}
 
     </div>

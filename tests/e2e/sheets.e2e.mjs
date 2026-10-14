@@ -75,6 +75,52 @@ async function dragClose(name, open) {
   await page.waitForTimeout(400);
 }
 
+// A form with unsaved changes: the save bar sits at the bottom of the
+// screen, the drag is off, and ✕, back and "ביטול" each ask before closing.
+async function guardsUnsaved(name, open, fill) {
+  const open_ = () => page.locator('.modal-overlay').count();
+  const asks = async (how) => {
+    await page.getByRole('button', { name: 'צא בלי לשמור' }).waitFor({ timeout: 3000 });
+    if (how === 'stay') {
+      await page.getByRole('button', { name: 'המשך עריכה' }).click();
+      await page.waitForTimeout(400);
+    }
+  };
+  const problems = [];
+  try {
+    await open();
+    await page.waitForTimeout(500);
+    const save = await page.locator('.sheet-footer button[type="submit"]').boundingBox();
+    if (!save || save.y + save.height > 700 || save.y + save.height < 600) problems.push(`save bar at ${save && Math.round(save.y)}`);
+    await fill();
+
+    const grab = await page.locator('.sheet-grab').last().boundingBox();
+    await swipe(grab.x + grab.width / 2, grab.y + grab.height / 2, grab.y + 320);
+    await page.waitForTimeout(300);
+    if (!(await open_())) problems.push('swiped away with changes');
+
+    await page.locator('.modal-header button[aria-label="סגור"]').last().click();
+    await asks('stay');
+    if (!(await open_())) problems.push('✕ closed it');
+
+    await page.evaluate(() => history.back());
+    await asks('stay');
+    if (!(await open_())) problems.push('back closed it');
+
+    await page.locator('.sheet-footer').getByRole('button', { name: 'ביטול' }).click();
+    await asks('leave');
+    await page.getByRole('button', { name: 'צא בלי לשמור' }).click();
+    await page.waitForTimeout(500);
+    if (await open_()) problems.push('still open after leaving');
+  } catch (e) {
+    problems.push(e.message.split('\n')[0]);
+  }
+  console.log(`  ${problems.length ? 'FAIL ' : 'ok   '} ${name} guards unsaved changes${problems.length ? ': ' + problems.join('; ') : ''}`);
+  if (problems.length) { failed++; await page.screenshot({ path: `.e2e/sheet-dirty-${name.replace(/\W+/g, '_')}.png` }); }
+  await closeAll().catch(() => {});
+  await page.waitForTimeout(400);
+}
+
 const closeAll = async () => {
   for (let i = 0; i < 4; i++) {
     const leave = page.getByRole('button', { name: 'צא בלי לשמור' });
@@ -103,6 +149,8 @@ const openTripEdit = async () => {
 };
 await check('trip edit form', openTripEdit, closeAll);
 await dragClose('trip edit form', openTripEdit);
+await guardsUnsaved('trip edit form', openTripEdit,
+  () => page.locator('.modal-content input.form-control').first().fill('שינוי'));
 
 await check('info sheet', async () => {
   await page.locator('header button[aria-label="מידע חשוב"]').click();
@@ -121,12 +169,14 @@ const openPlaceForm = async () => {
 };
 await check('place form', openPlaceForm, closeAll);
 await dragClose('place form', openPlaceForm);
+await guardsUnsaved('place form', openPlaceForm,
+  () => page.getByPlaceholder('למשל: תצפית שקיעה בגבעה').fill('לא נשמר'));
 
 // a place, for the details sheet
 await page.locator('button.fab', { hasText: 'יעד חדש' }).click();
 await page.getByPlaceholder('למשל: תצפית שקיעה בגבעה').fill('מקום עם הרבה קישורים');
 await page.getByPlaceholder('כתובת או קישור למפה').first().fill('Piazza Navona, Roma');
-await page.getByText('שמור שינויים').click();
+await page.locator('.sheet-footer button[type="submit"]').click();
 await page.getByText('מקום עם הרבה קישורים').first().waitFor();
 
 const openOptions = async () => {
@@ -154,15 +204,17 @@ await page.locator('button.fab', { hasText: 'יום חדש' }).click();
 await page.getByText('הוסף פעילות').first().waitFor();
 const openActivityForm = async () => {
   await page.getByText('הוסף פעילות').first().click();
-  await page.getByText('שמור פעילות').waitFor();
+  await page.getByText('הוספת פעילות ליום').waitFor();
 };
 await check('activity form', openActivityForm, closeAll);
 await dragClose('activity form', openActivityForm);
+await guardsUnsaved('activity form', openActivityForm,
+  () => page.getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill('לא נשמר'));
 
 // an activity, for its details and actions sheets
 await openActivityForm();
 await page.getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill('קפה בבוקר');
-await page.getByText('שמור פעילות').click();
+await page.locator('.sheet-footer button[type="submit"]').click();
 await page.getByText('קפה בבוקר').first().waitFor();
 await page.waitForTimeout(400);
 await dragClose('activity details', async () => {
