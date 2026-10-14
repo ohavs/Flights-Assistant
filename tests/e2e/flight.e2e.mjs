@@ -121,5 +121,21 @@ await step('no currency converter anywhere on the tab', async () => {
   if (/המרת מטבעות|ממיר/.test(text)) throw new Error('converter still on the tab');
 });
 
+// Offline (no reception at the airport), "שמור" still closes the form;
+// the write waits in the local cache and the card shows it at once.
+await step('saving hotel details offline closes the form', async () => {
+  await page.context().setOffline(true);
+  try {
+    await page.locator('button[title="ערוך פרטי מלון"]').click();
+    await page.getByText('עריכת פרטי המלון').waitFor();
+    await page.locator('.modal-content input.form-control').first().fill('מלון אופליין');
+    await page.locator('.sheet-footer button[type="submit"]').click();
+    await page.getByText('עריכת פרטי המלון').waitFor({ state: 'detached', timeout: 3000 });
+    await page.locator('.app-content').getByText('מלון אופליין').first().waitFor({ timeout: 3000 });
+  } finally {
+    await page.context().setOffline(false);
+  }
+});
+
 await browser.close();
 process.exit(failed ? 1 : 0);
