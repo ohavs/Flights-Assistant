@@ -16,7 +16,7 @@ import ListCard from '../ui/ListCard';
 import { CheckCircle } from '../ui/kit';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
-import Sheet from '../ui/Sheet';
+import Sheet, { Segmented } from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -409,30 +409,12 @@ function RemindersCard({ tripId, canEdit }) {
         >
           {/* Filter — a visible state, not a hidden mode */}
           {reminders.length > 0 && (
-            <div style={{
-              display: 'flex', gap: 4, padding: 4,
-              background: 'var(--ink-3)', borderRadius: 14, flexShrink: 0,
-            }}>
-              {TABS.map(t => {
-                const active = filter === t.key;
-                return (
-                  <button
-                    key={t.key} type="button" onClick={() => setFilter(t.key)}
-                    style={{
-                      flex: 1, border: 'none', cursor: 'pointer', borderRadius: 11,
-                      padding: '9px 4px', fontFamily: 'var(--font-hebrew)',
-                      fontSize: 13, fontWeight: 800,
-                      background: active ? 'var(--surface)' : 'transparent',
-                      color: active ? 'var(--accent)' : 'var(--text-muted)',
-                      boxShadow: active ? 'var(--shadow-sm)' : 'none',
-                      transition: 'background 0.18s, color 0.18s',
-                    }}
-                  >
-                    {t.label} {t.n > 0 && <span style={{ opacity: 0.65 }}>{t.n}</span>}
-                  </button>
-                );
-              })}
-            </div>
+            <Segmented
+              label="סינון תזכורות"
+              value={filter}
+              onChange={setFilter}
+              options={TABS.map(t => ({ key: t.key, label: t.n > 0 ? `${t.label} ${t.n}` : t.label }))}
+            />
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1217,39 +1199,29 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
           const a = Array.isArray(it.assignedTo) ? it.assignedTo : (it.assignedTo ? [it.assignedTo] : []);
           return a.includes(uid);
         }).length;
-        const chipStyle = (active) => ({
-          display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-          padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
-          fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-hebrew)',
-          background: active ? 'var(--accent)' : 'var(--ink-6)',
-          color: active ? '#fff' : 'var(--text-muted)',
-          transition: 'all 0.15s',
-        });
-        const countStyle = (active) => ({
-          fontSize: 11, fontWeight: 800, borderRadius: 20, padding: '0 6px',
-          background: active ? 'rgba(255,255,255,0.25)' : 'var(--ink-8)',
-          color: active ? '#fff' : 'var(--text-muted)',
-        });
+        // The count rides in the chip as a small pill of its own.
+        const countStyle = { fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '1px 7px', background: 'var(--ink-8)' };
         return (
           <div className="horizontal-scroll" style={{ direction: 'rtl', gap: 6 }}>
-            <button type="button" onClick={() => setFilterAssignee(null)} style={chipStyle(filterAssignee === null)}>
+            <button type="button" onClick={() => setFilterAssignee(null)} className="chip" aria-pressed={filterAssignee === null} style={{ flexShrink: 0 }}>
               הכל
-              <span style={countStyle(filterAssignee === null)}>{items.length}</span>
+              <span style={countStyle}>{items.length}</span>
             </button>
             {allMembers.map(m => {
               const active = filterAssignee === m.uid;
               return (
                 <button type="button" key={m.uid}
                   onClick={() => setFilterAssignee(prev => prev === m.uid ? null : m.uid)}
-                  className={m.former ? 'person-former' : undefined}
+                  className={`chip${m.former ? ' person-former' : ''}`}
                   title={m.former ? `${m.displayName} — כבר לא בטיול` : undefined}
-                  style={chipStyle(active)}>
+                  aria-pressed={active}
+                  style={{ flexShrink: 0 }}>
                   {m.photoURL
                     ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0 }} referrerPolicy="no-referrer" />
-                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: active ? 'rgba(255,255,255,0.25)' : 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: active ? '#fff' : 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                   }
                   <span style={{ whiteSpace: 'nowrap' }}>{m.displayName}</span>
-                  <span style={countStyle(active)}>{countFor(m.uid)}</span>
+                  <span style={countStyle}>{countFor(m.uid)}</span>
                 </button>
               );
             })}

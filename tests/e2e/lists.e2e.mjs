@@ -51,9 +51,18 @@ await step('bookings: a new booking is a ListCard', async () => {
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/lists-bookings.png' });
 });
+// On a phone no field may be under 16px: iOS zooms in on it.
+const smallestField = () => page.evaluate(() => Math.min(...[...document.querySelectorAll('.modal-overlay input, .modal-overlay textarea, .modal-overlay select')]
+  .filter(el => !['checkbox', 'radio', 'range', 'hidden'].includes(el.type) && el.offsetParent)
+  .map(el => parseFloat(getComputedStyle(el).fontSize))));
 await step('bookings: tapping the card opens its form', async () => {
   await card('ארוחה בלה מארה').locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
+  // The form's parts are the shared ones: type chips, a segmented status.
+  await page.locator('.modal-overlay .chip[aria-pressed="true"]').first().waitFor();
+  await page.locator('.modal-overlay .segmented[aria-label="סטטוס"]').waitFor();
+  const min = await smallestField();
+  if (min < 16) throw new Error(`a field is ${min}px`);
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
 });
@@ -81,6 +90,10 @@ await step('expenses: a new expense is a ListCard with its category icon', async
 await step('expenses: tap opens the form; ⋯ deletes', async () => {
   await card('קפה וקרואסון').locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
+  await page.locator('.modal-overlay .chip[aria-pressed="true"]').first().waitFor();   // currency, category
+  await page.locator('.modal-overlay .chip.add').first().tap();                       // "+ מטבע" opens its search
+  const min = await smallestField();
+  if (min < 16) throw new Error(`a field is ${min}px`);
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   const more = await moreIsVisible('קפה וקרואסון');
