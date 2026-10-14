@@ -1,3 +1,5 @@
+import { Check } from 'lucide-react';
+
 /* Small building blocks of the Payments-2026 design language. */
 
 // Pastel background + text colour per tone. Pastels come from index.css
@@ -43,5 +45,31 @@ export function CategoryDisc({ color, size = 42, radius, children, muted }) {
     }}>
       {children}
     </span>
+  );
+}
+
+/* "Done" — one circle for every list: a place visited, a checklist item,
+   a reminder. Empty ring; ticked, a check on a quiet disc that recedes
+   with its card (no strike-through anywhere). Without `onToggle` it only
+   shows the state. */
+export function CheckCircle({ checked, onToggle, label }) {
+  if (!onToggle) {
+    return (
+      <span className={`check-circle${checked ? ' on' : ''}`} aria-hidden="true">
+        {checked && <Check size={18} strokeWidth={3} />}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`check-circle${checked ? ' on' : ''}`}
+      aria-pressed={!!checked}
+      aria-label={label}
+      title={label}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+    >
+      {checked && <Check size={18} strokeWidth={3} />}
+    </button>
   );
 }
