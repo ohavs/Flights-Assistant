@@ -363,6 +363,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [subTab, setSubTab] = useState('pool'); // 'pool' | 'daily'
   
   const [searchQuery, setSearchQuery] = useState('');
+  // The search is a round button until tapped; then it opens into a field
+  // across the row. It stays open while there is a query.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('הכל');
   const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -2420,30 +2423,34 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             paddingBottom: '10px',
             background: 'var(--body-bg)',
           }}>
-          {/* One block (the owner's ask): search, category filter and the
-              options button side by side in a single white bar. */}
+          {/* The owner's ask: the category filter as a pill on its own, and
+              search and options as two round white buttons. Search opens
+              into a field across the whole row. */}
           <div className="plan-toolbar">
-            <div className="plan-toolbar-search">
+          {(searchOpen || searchQuery) ? (
+            <div className="plan-search-field">
               <Search size={18} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
               <input
-                type="text"
+                type="search"
+                enterKeyHint="search"
                 placeholder="חיפוש מקומות"
                 aria-label="חיפוש מקומות"
                 value={searchQuery}
+                autoFocus
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') { setSearchQuery(''); setSearchOpen(false); } }}
               />
-              {searchQuery && (
-                <button
-                  type="button"
-                  aria-label="נקה חיפוש"
-                  onClick={() => setSearchQuery('')}
-                  className="round-btn"
-                  style={{ width: 28, height: 28, minWidth: 28, background: 'var(--surface-3)' }}
-                >
-                  <X size={14} />
-                </button>
-              )}
+              <button
+                type="button"
+                aria-label="סגור חיפוש"
+                onClick={() => { setSearchQuery(''); setSearchOpen(false); }}
+                className="round-btn"
+                style={{ width: 32, height: 32, minWidth: 32, background: 'var(--surface-2)' }}
+              >
+                <X size={16} />
+              </button>
             </div>
+          ) : (<>
             {/* Category filter — a single dropdown instead of a pill per
                 category, so the row stays readable however many there are.
                 Fixed positioning (anchored via getBoundingClientRect) because
@@ -2482,21 +2489,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       setShowCategoryMenu(v => !v);
                     }}
                     title="סינון לפי קטגוריה"
-                    style={{
-                      flex: '0 1 auto', minWidth: 0, maxWidth: '44%',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      minHeight: 40,
-                      padding: '6px 10px',
-                      borderRadius: 14,
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-hebrew)',
-                      fontSize: 13.5, fontWeight: 800,
-                      textAlign: 'right',
-                      // A filter in effect tints the control in its colour.
-                      background: activeColor ? `${activeColor}1F` : 'var(--surface-2)',
-                      border: 'none',
-                      color: 'var(--text)',
-                    }}
+                    aria-expanded={showCategoryMenu}
+                    className="plan-filter-pill"
+                    // A filter in effect tints the pill in its colour.
+                    style={activeColor ? { background: `color-mix(in srgb, ${activeColor} 14%, var(--card-bg-solid))` } : undefined}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--text-muted)', flexShrink: 0 }}>
                       {current?.icon}
@@ -2606,8 +2602,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     onClick={openMenu}
                     title="מיון ותצוגה"
                     aria-label="מיון ותצוגה"
-                    className={`round-btn ${optionsActive ? 'on' : ''}`}
-                    style={{ width: 40, height: 40, minWidth: 40, gap: 4 }}
+                    className={`round-btn ${optionsActive ? 'on' : 'raised'}`}
+                    style={{ width: 42, height: 42, minWidth: 42, gap: 4, marginInlineStart: 'auto' }}
                   >
                     {bulkCalc ? (
                       <>
@@ -2615,8 +2611,18 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         <span style={{ fontSize: 11 }}>{bulkCalc.done}/{bulkCalc.total}</span>
                       </>
                     ) : (
-                      <SlidersHorizontal size={14} />
+                      <SlidersHorizontal size={17} />
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSearchOpen(true)}
+                    title="חיפוש"
+                    aria-label="חיפוש"
+                    className="round-btn raised"
+                    style={{ width: 42, height: 42, minWidth: 42 }}
+                  >
+                    <Search size={18} />
                   </button>
 
                   {showSortMenu && (
@@ -2701,6 +2707,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 </>
               );
             })()}
+          </>)}
           </div>
           </div>
 

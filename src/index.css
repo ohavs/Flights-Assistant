@@ -2434,26 +2434,61 @@ body[data-fab] .app-content {
 .hide-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .hide-scroll::-webkit-scrollbar { display: none; }
 
-/* Planning toolbar: search, category filter and options in one white bar. */
+/* Planning toolbar: the category filter as a pill, and two round white
+   buttons (options, search). Search opens into a field across the row,
+   growing out of the button it came from. */
 .plan-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 52px;
-  padding: 6px 6px 6px 6px;
-  border-radius: 22px;
+  gap: 8px;
+  min-height: 44px;
+}
+.plan-filter-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 62%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px 0 10px;
+  border: none;
+  border-radius: 999px;
   background: var(--card-bg-solid);
   box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-family: var(--font-hebrew);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: start;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
-.plan-toolbar-search {
-  flex: 1 1 0;      /* the search gives way first; the filter keeps its label */
+.plan-filter-pill:active { transform: scale(0.97); }
+.plan-search-field {
+  flex: 1;
   min-width: 0;
+  height: 44px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-inline: 10px 4px;
+  padding-inline: 14px 6px;
+  border-radius: 999px;
+  background: var(--card-bg-solid);
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
+  animation: plan-search-open var(--dur-base) var(--ease-out);
 }
-.plan-toolbar-search input {
+@keyframes plan-search-open {
+  from { clip-path: inset(0 calc(100% - 44px) 0 0 round 999px); }
+  to   { clip-path: inset(0 0 0 0 round 999px); }
+}
+[dir="ltr"] .plan-search-field { animation-name: plan-search-open-ltr; }
+@keyframes plan-search-open-ltr {
+  from { clip-path: inset(0 0 0 calc(100% - 44px) round 999px); }
+  to   { clip-path: inset(0 0 0 0 round 999px); }
+}
+@media (prefers-reduced-motion: reduce) { .plan-search-field { animation: none; } }
+.plan-search-field input {
   flex: 1;
   min-width: 0;
   height: 40px;
@@ -2464,6 +2499,8 @@ body[data-fab] .app-content {
   font-family: var(--font-hebrew);
   font-size: 16px;   /* >= 16px: no iOS zoom on focus */
   font-weight: 600;
+  -webkit-appearance: none;
+  appearance: none;
 }
-.plan-toolbar-search input::placeholder { color: var(--text-muted); opacity: 0.7; font-weight: 500; }
-.plan-toolbar:focus-within { box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm); }
+.plan-search-field input::-webkit-search-cancel-button { display: none; }
+.plan-search-field input::placeholder { color: var(--text-muted); opacity: 0.7; font-weight: 500; }

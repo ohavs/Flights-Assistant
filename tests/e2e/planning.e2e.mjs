@@ -90,10 +90,14 @@ await step('add places of several kinds', async () => {
   await shot('pool-list');
 });
 
-await step('search', async () => {
+await step('search opens from its round button and closes with X', async () => {
+  await page.getByRole('button', { name: 'חיפוש', exact: true }).click();
   await page.getByPlaceholder('חיפוש מקומות').fill('גשר');
+  await page.getByText('מבצר הדייגים').first().waitFor({ state: 'detached' });
   await shot('pool-search');
-  await page.getByPlaceholder('חיפוש מקומות').fill('');
+  await page.getByRole('button', { name: 'סגור חיפוש' }).click();
+  await page.getByPlaceholder('חיפוש מקומות').waitFor({ state: 'detached' });
+  await page.getByText('מבצר הדייגים').first().waitFor();
 });
 
 await step('category filter', async () => {
