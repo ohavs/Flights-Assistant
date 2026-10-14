@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import {
-  getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayRemove,
+  getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayRemove, onSnapshot,
 } from 'firebase/firestore';
 
 const apps = [];
@@ -110,7 +110,30 @@ test('profiles: readable by signed-in users, writable only by their owner', asyn
   await assert.rejects(updateDoc(doc(stranger.db, 'users', owner.uid), { tripIds: ['x'] }), denied);
 });
 
-// KNOWN BUG: the read rule evaluates resource.data on a missing document, so
-// reading a trip that does not exist (yet, or any more) is permission-denied
-// instead of "does not exist" — and the SDK can crash on that listener error.
-test.todo('reading a trip that does not exist yet (just created) or any more (deleted) returns "does not exist"');
+test('reading a trip that does not exist yet, or any more, returns "does not exist"', async () => {
+  assert.equal((await getDoc(doc(owner.db, 'trips', 'trip_never_created'))).exists(), false);
+  // Harmless for outsiders too: a missing document has nothing to reveal
+  assert.equal((await getDoc(doc(stranger.db, 'trips', 'trip_never_created'))).exists(), false);
+
+  const tripId = await createTrip();
+  await deleteDoc(trip(owner, tripId));
+  assert.equal((await getDoc(trip(owner, tripId))).exists(), false);
+  assert.equal((await getDoc(trip(editor, tripId))).exists(), false);
+});
+
+test('a trip opened before the server has it arrives once it is created (no permission error)', async () => {
+  // The same user on a second device creates the trip after this listener started
+  const ownerOtherDevice = await client('owner@example.com');
+  const tripId = `trip_race_${Date.now()}`;
+  const seen = [];
+  await new Promise((resolve, reject) => {
+    const unsub = onSnapshot(trip(owner, tripId), (snap) => {
+      seen.push(snap.exists());
+      if (snap.exists()) { unsub(); resolve(); }
+    }, reject);
+    setTimeout(() => setDoc(trip(ownerOtherDevice, tripId), {
+      name: 'Trip', members: { [owner.uid]: 'owner' }, memberIds: [owner.uid],
+    }).catch(reject), 300);
+  });
+  assert.deepEqual(seen, [false, true]);
+});

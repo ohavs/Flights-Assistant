@@ -128,13 +128,6 @@ real project. CI (`.github/workflows/ci.yml`) runs them on every PR and push.
    never commit secrets, never use `pull_request_target`.
 
 ### Known risks (audit of the live code, 2026-10-14 — not fixed yet)
-- **Confirmed bug — reading a trip that does not exist on the server is
-  `permission-denied`** (the read rule evaluates `resource.data` on a missing
-  document). It happens when a trip is opened before the server has committed
-  its creation (slow network, offline), or while someone else deletes it. The
-  listener is rejected, and the Firestore SDK (10.14) can then crash with
-  `INTERNAL ASSERTION FAILED: Unexpected state`, which stops syncing until a
-  reload. Seen in the e2e test. Fix: a null-safe read rule (next PR).
 - `days.activities` is rewritten as a whole array from local state
   (`PlanningTab.jsx`, add/edit/move/delete activity). Concurrent edits, or an
   offline edit synced later, can overwrite each other.
