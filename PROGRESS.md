@@ -3,12 +3,12 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.23.0 (`changelog.md`)
+- גרסת ווב: 8.23.1 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
-  - לבדוק שה־PR של 8.23.0 (אנדרואיד 2ג) מוזג, וש־`android.yml` על master פרסם Release ראשון (`v1.0.N`) עם `flights-assistant.apk`.
-  - לשלוח לבעלים לינק להורדה ולבדוק איתו כניסה עם Google באפליקציה. הטביעות החדשות כבר ב־Firebase.
-  - אחר כך C10.
+  - Release ראשון `v1.0.4`: הכניסה נתקעה (תוקן ב־8.23.1). לבדוק שה־Release של 8.23.1 פורסם, ושהבעלים התקין אותו ידנית מהלינק (גרסה 1.0.4 לא יכולה להתעדכן לבד, כי הכפתור נמצא אחרי הכניסה).
+  - אם הכניסה מציגה שגיאה (למשל קוד 10): לבדוק שטביעת ה־SHA1 החדשה רשומה ב־Firebase.
+  - אחר כך C10. התחלתי לסקור: ✕ ידני ב־CustomDatePicker ×3, ShareTargetScreen ו־App (מחיקת טיול). כפתורי X קטנים בתוך טפסים צריכים מחלקה אחת. האימוג'י בתכנון ובבאנרים של הטיסה מתחלפים באייקונים.
 - הרצת e2e מקומית: `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome bash scripts/run-e2e.sh tests/e2e/<name>.e2e.mjs`. בלי ארגומנטים רצות כל הבדיקות של CI: smoke, layout, planning, flight, sheets, contrast.
 
 ## כללים קריטיים — לקרוא לפני כל שינוי
@@ -91,6 +91,12 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
   - `android.yml`: APK חתום, בדיקת חתימה מול `CERT_SHA256` ואמולטור. Release במיזוג ל־master, רק כשמשהו באפליקציה השתנה.
   - "בדוק עדכונים": `ApkUpdaterPlugin`, `src/lib/updater.js`, `AppSettingsSheet` על `Sheet`.
   - באנר עדכון במסך הבית.
+- [x] 8.23.1: תיקון הכניסה באנדרואיד ואייקון משלה.
+  - הכניסה נתקעה על "מתחבר...". הסיבה: `nativeAuth()` החזיר Promise של תוסף Capacitor. התוסף הוא proxy שעונה גם ל־`then`, ולכן ההמתנה לא נגמרת.
+  - **כלל: אסור להחזיר תוסף Capacitor מ־Promise או מפונקציית async.** מחזירים את המודול וקוראים לתוסף ממנו.
+  - `android-smoke.sh` לוחץ "התחבר עם Google" ודורש חלונית של Google או הודעת שגיאה.
+  - כפתור Google בצבעי Google (`.google-btn`), עם הודעת שגיאה במסך. באנר עדכון גם במסך הכניסה.
+  - אייקון: מטוס כהה על `#22A45D` (`scripts/android-icon.py`). ה־PWA נשאר כחול־כהה.
 
 ## הבא
 לפי `docs/PLAN.md`:

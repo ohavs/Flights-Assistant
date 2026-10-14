@@ -132,6 +132,7 @@ jobs:
           name: android-smoke
           path: |
             android-smoke.png
+            android-signin.png
             ui.xml
 
   # Publish only after the APK booted on the emulator, and only from master.

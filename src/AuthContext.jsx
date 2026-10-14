@@ -5,7 +5,11 @@ import { isNative } from './lib/platform';
 
 // Android app: popups don't work in a WebView, so Google sign-in runs natively
 // and hands its ID token to the Firebase JS SDK. Loaded only in the app.
-const nativeAuth = () => import('@capacitor-firebase/authentication').then(m => m.FirebaseAuthentication);
+// Resolves to the module, never to the plugin: a Capacitor plugin is a
+// proxy that answers every property, `then` included, so a promise (or an
+// async function) that resolves to it waits forever. In 8.23.0 that held
+// the sign-in on "מתחבר..." and Google's account sheet never opened.
+const nativeAuth = () => import('@capacitor-firebase/authentication');
 
 const AuthContext = createContext(null);
 
@@ -49,7 +53,8 @@ export function AuthProvider({ children }) {
   const signInWithGoogle = async () => {
     try {
       if (isNative) {
-        const res = await (await nativeAuth()).signInWithGoogle();
+        const { FirebaseAuthentication } = await nativeAuth();
+        const res = await FirebaseAuthentication.signInWithGoogle();
         await signInWithCredential(auth, GoogleAuthProvider.credential(res.credential?.idToken));
         return;
       }
@@ -63,7 +68,7 @@ export function AuthProvider({ children }) {
   const signOut = async () => {
     try {
       // Also forget the Android account choice so the picker shows next time.
-      if (isNative) await (await nativeAuth()).signOut().catch(() => {});
+      if (isNative) await (await nativeAuth()).FirebaseAuthentication.signOut().catch(() => {});
       await firebaseSignOut(auth);
     } catch (error) {
       console.error('Sign out error:', error);

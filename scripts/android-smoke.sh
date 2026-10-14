@@ -25,6 +25,43 @@ if [ -z "${booted:-}" ]; then
   exit 1
 fi
 
+# Tapping "sign in" reaches Google: its account sheet opens, or (the CI
+# emulator has no Google account) the attempt ends with a message. It must
+# never sit on "מתחבר..." with nothing on screen, as 8.23.0 did.
+read -r X Y < <(python3 - <<'PY'
+import re
+s = open('ui.xml', encoding='utf8').read()
+m = re.search(r'text="[^"]*התחבר עם Google[^"]*"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', s)
+x1, y1, x2, y2 = map(int, m.groups())
+print((x1 + x2) // 2, (y1 + y2) // 2)
+PY
+)
+adb shell input tap "$X" "$Y"
+for i in $(seq 1 15); do
+  sleep 2
+  focus=$(adb shell dumpsys window | grep -m1 mCurrentFocus || true)
+  if echo "$focus" | grep -qE "com.google.android.gms|credentialmanager"; then
+    echo "Google's account sheet opened after $((i * 2))s: $focus"
+    adb exec-out screencap -p > android-signin.png
+    adb shell input keyevent KEYCODE_BACK; sleep 2
+    reached=1; break
+  fi
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
+  adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
+  if grep -qE "נכשלה|אין חשבון Google" ui.xml; then
+    echo "sign-in ended with a message after $((i * 2))s:"
+    grep -oE 'text="[^"]*(נכשלה|אין חשבון Google)[^"]*"' ui.xml | head -2
+    adb exec-out screencap -p > android-signin.png
+    reached=1; break
+  fi
+done
+if [ -z "${reached:-}" ]; then
+  echo "tapping sign in did nothing for 30s (focus: ${focus:-?})"
+  adb exec-out screencap -p > android-signin.png || true
+  adb logcat -d | grep -iE "chromium|console|capacitor|FirebaseAuth|credential" | tail -80
+  exit 1
+fi
+
 # The hardware back button on the first screen leaves the app (nothing open).
 adb shell input keyevent KEYCODE_BACK
 sleep 3

@@ -55,24 +55,53 @@ import './index.css';
    ══════════════════════════════════════════════════════════ */
 function LoginScreen({ onSignIn }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // A version that cannot sign in must still reach the next one: the app
+  // looks for an update here too, before sign-in.
+  const [update, setUpdate] = useState(null);
+  const [showUpdate, setShowUpdate] = useState(false);
+  useEffect(() => {
+    if (!isNative) return;
+    import('./lib/updater').then(m => m.checkForUpdate())
+      .then(r => { if (r?.available) setUpdate(r); })
+      .catch(() => {});
+  }, []);
 
   const handleSignIn = async () => {
     setBusy(true);
+    setError('');
     try { await onSignIn(); }
-    catch { /* handled in AuthContext */ }
+    catch (e) {
+      const msg = String(e?.message || e || '');
+      // Closing Google's account sheet is a choice, not a failure.
+      if (!/cancel|popup-closed/i.test(msg)) setError(msg || 'unknown');
+    }
     finally { setBusy(false); }
   };
 
   return (
     <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', gap: 32, padding: 32 }}>
+      {update && !showUpdate && (
+        <button type="button" className="update-banner" onClick={() => setShowUpdate(true)}
+          style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', insetInline: 0 }}>
+          <Download size={16} />
+          <span>גרסה {update.latest.versionName} זמינה · הקישו לעדכון</span>
+        </button>
+      )}
+      {showUpdate && (
+        <Suspense fallback={null}>
+          <AppSettingsSheet initial={update} onClose={() => { setShowUpdate(false); setUpdate(null); }} />
+        </Suspense>
+      )}
       <div style={{ textAlign: 'center' }}>
         <div style={{
           width: 80, height: 80, borderRadius: 20,
-          background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+          background: 'var(--brand)', color: 'var(--brand-fg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 20px', boxShadow: '0 8px 32px rgba(79,70,229,0.3)'
+          margin: '0 auto 20px', boxShadow: 'var(--shadow-md)'
         }}>
-          <Plane size={36} color="#fff" style={{ transform: 'rotate(-45deg)' }} />
+          <Plane size={36} style={{ transform: 'rotate(-45deg)' }} />
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--primary)', marginBottom: 8 }}>
           עוזר טיסות
@@ -82,24 +111,7 @@ function LoginScreen({ onSignIn }) {
         </p>
       </div>
 
-      <button
-        onClick={handleSignIn}
-        disabled={busy}
-        style={{
-          width: '100%', maxWidth: 320, minHeight: 52,
-          background: '#fff', color: 'var(--primary)',
-          border: '1.5px solid rgba(11,11,48,0.12)',
-          borderRadius: 'var(--radius-md)',
-          padding: '12px 24px',
-          fontSize: 16, fontWeight: 700,
-          fontFamily: 'var(--font-hebrew)',
-          cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-          boxShadow: 'var(--shadow-md)',
-          opacity: busy ? 0.6 : 1,
-          transition: 'transform 0.1s ease'
-        }}
-      >
+      <button type="button" className="google-btn" onClick={handleSignIn} disabled={busy}>
         <svg width="20" height="20" viewBox="0 0 48 48">
           <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
           <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -108,6 +120,14 @@ function LoginScreen({ onSignIn }) {
         </svg>
         {busy ? 'מתחבר...' : 'התחבר עם Google'}
       </button>
+      {error && (
+        <p role="alert" className="login-error">
+          {/no credential/i.test(error)
+            ? 'אין חשבון Google בטלפון. הוסיפו חשבון בהגדרות הטלפון ונסו שוב.'
+            : 'הכניסה עם Google נכשלה. נסו שוב.'}
+          <span dir="ltr">{error}</span>
+        </p>
+      )}
     </div>
   );
 }
