@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import {
@@ -8,8 +7,7 @@ import {
   CalendarCheck, ChevronDown,
 } from 'lucide-react';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
-import useSheetDrag from '../hooks/useSheetDrag';
-import useBackHandler from '../hooks/useBackHandler';
+import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import Skeleton from './Skeleton';
@@ -154,21 +152,6 @@ export default function BookingsTab({ tripId }) {
   };
 
   const formDirty = () => JSON.stringify(form) !== JSON.stringify(initialForm);
-  const formSheet = useSheetDrag(() => setShowForm(false), { enabled: !formDirty() });
-
-  const attemptCloseForm = async () => {
-    if (formDirty()) {
-      const ok = await confirm({
-        title: 'יש שינויים שלא נשמרו',
-        message: 'הזנת פרטים שלא נשמרו. האם לצאת בלי לשמור?',
-        confirmText: 'צא בלי לשמור', cancelText: 'המשך עריכה', danger: true,
-      });
-      if (!ok) return;
-    }
-    formSheet.close();
-  };
-  // Back goes through the same unsaved-changes guard as the ✕.
-  useBackHandler(showForm, attemptCloseForm);
 
   // Linking a place fills in what the place already knows, without
   // overwriting anything typed by hand.
@@ -397,18 +380,15 @@ export default function BookingsTab({ tripId }) {
 
       {canEdit && <Fab label="הזמנה חדשה" onClick={openAdd} />}
 
-      {showForm && canEdit && createPortal(
-        <div className="modal-overlay" data-closing={formSheet.closing || undefined} onClick={attemptCloseForm}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} {...formSheet.handlers}
-            style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...formSheet.style }}>
-            <div className="sheet-grab" />
-            <div className="modal-header" style={{ flexShrink: 0 }}>
-              <h2>{editingId ? 'עריכת הזמנה' : 'הזמנה חדשה'}</h2>
-              <button aria-label="סגור" className="btn-close" onClick={attemptCloseForm}>✕</button>
-            </div>
-
-            <form onSubmit={handleSubmit} data-sheet-scroll
-              style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4 }}>
+      {showForm && canEdit && (
+        <Sheet
+          title={editingId ? 'עריכת הזמנה' : 'הזמנה חדשה'}
+          onClose={() => setShowForm(false)}
+          dirty={formDirty()}
+          style={{ maxHeight: '92vh' }}
+        >
+          {({ cancel }) => (
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>סוג</label>
@@ -517,14 +497,13 @@ export default function BookingsTab({ tripId }) {
                   placeholder="קוד לבוש, להגיע 15 דקות לפני, מה כלול..." style={{ resize: 'none', fontFamily: 'inherit' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
-                <button type="button" className="btn-secondary" onClick={attemptCloseForm}>ביטול</button>
+              <div className="sheet-footer">
+                <button type="submit" className="btn-primary">שמור</button>
+                <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
               </div>
             </form>
-          </div>
-        </div>,
-        document.querySelector('.app-container') || document.body
+          )}
+        </Sheet>
       )}
     </>
   );

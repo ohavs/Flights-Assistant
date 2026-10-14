@@ -58,7 +58,7 @@ for (const [amount, what] of [['42', 'ארוחת ערב'], ['18', 'כרטיסי 
   await fab('הוצאה חדשה');
   await page.getByPlaceholder('0.00').fill(amount);
   await page.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill(what);
-  await page.getByText('שמור הוצאה').click();
+  await page.locator('.sheet-footer button[type="submit"]').click();
   await page.getByText(what).first().waitFor();
 }
 
