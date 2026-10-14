@@ -55,6 +55,26 @@ async function check(name, open, close) {
   await close().catch(() => {});
   await page.waitForTimeout(400);
 }
+// A swipe down from the grab handle closes the sheet (every sheet).
+async function dragClose(name, open) {
+  try {
+    await open();
+    await page.waitForTimeout(500);
+    const grab = await page.locator('.sheet-grab').last().boundingBox();
+    if (!grab) throw new Error('no grab handle');
+    await swipe(grab.x + grab.width / 2, grab.y + grab.height / 2, grab.y + 320);
+    await page.waitForTimeout(300);
+    const left = await page.locator('.modal-overlay, [role="dialog"]').count();
+    console.log(`  ${left ? 'FAIL ' : 'ok   '} ${name} closes with a swipe down${left ? ' (still open)' : ''}`);
+    if (left) { failed++; await page.screenshot({ path: `.e2e/sheet-drag-${name.replace(/\W+/g, '_')}.png` }); }
+  } catch (e) {
+    failed++; console.log(`  FAIL  ${name} swipe to close: ${e.message.split('\n')[0]}`);
+  }
+  await closeAll().catch(() => {});
+  await page.mouse.click(5, 5).catch(() => {});
+  await page.waitForTimeout(400);
+}
+
 const closeAll = async () => {
   for (let i = 0; i < 4; i++) {
     const leave = page.getByRole('button', { name: 'צא בלי לשמור' });
@@ -77,22 +97,30 @@ await page.locator('.trip-card').getByText('פתח טיול').click();
 await page.getByText('טיסת הלוך').first().waitFor();
 const tab = (label) => page.locator(`nav button.nav-item[aria-label="${label}"]`).click();
 
-await check('trip edit form', async () => {
+const openTripEdit = async () => {
   await page.locator('button[title="ערוך פרטי טיסה ומלון"]').click();
   await page.getByText('עריכת כל פרטי הנסיעה').waitFor();
-}, closeAll);
+};
+await check('trip edit form', openTripEdit, closeAll);
+await dragClose('trip edit form', openTripEdit);
 
 await check('info sheet', async () => {
   await page.locator('.quick-tile', { hasText: 'מידע חשוב' }).click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
   await page.locator('.modal-overlay').getByText('מספרי חירום').click();   // expand: long enough to scroll
 }, closeAll);
+await dragClose('info sheet', async () => {
+  await page.locator('.quick-tile', { hasText: 'מידע חשוב' }).click();
+  await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
+});
 
 await tab('תכנון טיול');
-await check('place form', async () => {
+const openPlaceForm = async () => {
   await page.locator('button.fab', { hasText: 'יעד חדש' }).click();
   await page.getByText('הוספת יעד / אטרקציה חדשה').waitFor();
-}, closeAll);
+};
+await check('place form', openPlaceForm, closeAll);
+await dragClose('place form', openPlaceForm);
 
 // a place, for the details sheet
 await page.locator('button.fab', { hasText: 'יעד חדש' }).click();
@@ -101,36 +129,66 @@ await page.getByPlaceholder('כתובת או קישור למפה').first().fill(
 await page.getByText('שמור שינויים').click();
 await page.getByText('מקום עם הרבה קישורים').first().waitFor();
 
-await check('options sheet', async () => {
+const openOptions = async () => {
   await page.locator('[title="מיון ותצוגה"]').click();
   await page.getByRole('heading', { name: 'מיון ותצוגה' }).waitFor();
-}, async () => { await page.mouse.click(5, 5); });
+};
+await check('options sheet', openOptions, closeAll);
+await dragClose('options sheet', openOptions);
 
-await check('category settings', async () => {
-  await page.locator('[title="מיון ותצוגה"]').click();
+const openCategorySettings = async () => {
+  await openOptions();
   await page.getByText('הגדרות קטגוריות').click();
   await page.getByText('התאמת קטגוריות').waitFor();
-}, closeAll);
+};
+await check('category settings', openCategorySettings, closeAll);
+await dragClose('category settings', openCategorySettings);
+
+await dragClose('place details', async () => {
+  await page.getByText('מקום עם הרבה קישורים').first().click();
+  await page.locator('.modal-overlay').getByText('סמן שביקרנו').waitFor();
+});
 
 await page.locator('[role="tab"]', { hasText: 'לוח זמנים' }).click();
 await page.locator('button.fab', { hasText: 'יום חדש' }).click();
 await page.getByText('הוסף פעילות').first().waitFor();
-await check('activity form', async () => {
+const openActivityForm = async () => {
   await page.getByText('הוסף פעילות').first().click();
   await page.getByText('שמור פעילות').waitFor();
-}, closeAll);
+};
+await check('activity form', openActivityForm, closeAll);
+await dragClose('activity form', openActivityForm);
+
+// an activity, for its details and actions sheets
+await openActivityForm();
+await page.getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill('קפה בבוקר');
+await page.getByText('שמור פעילות').click();
+await page.getByText('קפה בבוקר').first().waitFor();
+await page.waitForTimeout(400);
+await dragClose('activity details', async () => {
+  await page.getByText('קפה בבוקר').first().click();
+  await page.getByRole('dialog', { name: 'קפה בבוקר' }).waitFor();
+});
+await dragClose('activity actions', async () => {
+  await page.locator('button[aria-label="פעולות: קפה בבוקר"]').click();
+  await page.getByRole('dialog', { name: 'קפה בבוקר' }).waitFor();
+});
 
 await tab('הוצאות');
-await check('expense form', async () => {
+const openExpense = async () => {
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
   await page.getByText('שמור הוצאה').waitFor();
-}, closeAll);
+};
+await check('expense form', openExpense, closeAll);
+await dragClose('expense form', openExpense);
 
 await tab('הזמנות');
-await check('booking form', async () => {
+const openBooking = async () => {
   await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();
   await page.locator('.modal-overlay').waitFor();
-}, closeAll);
+};
+await check('booking form', openBooking, closeAll);
+await dragClose('booking form', openBooking);
 
 await browser.close();
 process.exit(failed ? 1 : 0);
