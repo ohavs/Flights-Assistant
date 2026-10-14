@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthProvider } from './AuthContext.jsx'
 import { ConfirmProvider } from './ConfirmContext.jsx'
+// Rubik ships with the app (works offline and inside the APK).
+import '@fontsource-variable/rubik'
 import './index.css'
 import App from './App.jsx'
 import { db, enableNetwork, disableNetwork } from './firebase.js'

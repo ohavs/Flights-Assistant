@@ -4,31 +4,31 @@
 
 :root {
   /* ── Core palette ── */
-  --primary: #0b0b30;
-  --primary-hover: #171754;
-  --accent: #4f46e5;
-  --accent-rgb: 79, 70, 229;          /* drives every --p-* tint below */
+  --primary: #141414;
+  --primary-hover: #2B2B2E;
+  --accent: #16874A;
+  --accent-rgb: 22, 135, 74;          /* drives every --p-* tint below */
   --accent-light: rgba(var(--accent-rgb), 0.08);
-  --accent-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
-  --bg-gradient: linear-gradient(135deg, #e0e7ff 0%, #f5f3ff 50%, #fae8ff 100%);
-  --card-bg: rgba(255, 255, 255, 0.86);   /* see .glass-card — no blur behind it */
-  --card-bg-solid: #ffffff;
-  --card-border: 1px solid rgba(255, 255, 255, 0.7);
-  --text: #0b0b26;
-  --text-muted: #475569;
+  --accent-gradient: linear-gradient(135deg, #22A45D, #16874A);
+  --bg-gradient: #F6F6F3;
+  --card-bg: #FFFFFF;   /* see .glass-card — no blur behind it */
+  --card-bg-solid: #FFFFFF;
+  --card-border: 1px solid rgba(20, 20, 20, 0.06);
+  --text: #141414;
+  --text-muted: #5F5F66;
   --text-success: #059669;
   --success-bg: rgba(5, 150, 105, 0.1);
 
   /* ── Layout ── */
-  --radius-xl: 24px;
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --shadow-sm: 0 2px 8px rgba(11, 11, 48, 0.04);
-  --shadow-md: 0 8px 30px rgba(11, 11, 48, 0.06);
-  --shadow-lg: 0 16px 40px rgba(11, 11, 48, 0.09);
-  --font-hebrew: 'Assistant', 'Inter', sans-serif;
-  --font-en: 'Inter', sans-serif;
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --shadow-sm: 0 1px 2px rgba(20, 20, 20, 0.04), 0 8px 24px rgba(20, 20, 20, 0.05);
+  --shadow-md: 0 12px 32px -10px rgba(20, 20, 20, 0.22);
+  --shadow-lg: 0 16px 40px rgba(20, 20, 20, 0.12);
+  --font-hebrew: 'Rubik Variable', 'Rubik', system-ui, -apple-system, sans-serif;
+  --font-en: 'Rubik Variable', 'Rubik', system-ui, -apple-system, sans-serif;
   --header-height: 60px;
 
   /* ── Type ladder ──
@@ -68,37 +68,37 @@
   --dur-fast: 140ms;
   --dur-base: 220ms;
   --dur-slow: 380ms;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
-  --ease-spring: cubic-bezier(0.34, 1.32, 0.5, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* ── UI surfaces ── */
-  --body-bg: #f1f5f9;
-  --surface: #ffffff;
-  --header-bg: rgba(255, 255, 255, 0.5);
-  --nav-bg: rgba(255, 255, 255, 0.92);
+  --body-bg: #F6F6F3;
+  --surface: #FFFFFF;
+  --header-bg: rgba(246, 246, 243, 0.88);
+  --nav-bg: #FFFFFF;
   --modal-bg: #ffffff;
   --modal-header-bg: #ffffff;
-  --input-bg: #ffffff;
+  --input-bg: #F0F0EC;
   --dropdown-bg: #ffffff;
-  --scrollbar: rgba(11, 11, 48, 0.10);
+  --scrollbar: rgba(20, 20, 20, 0.10);
 
   /* ── Ink (dark-on-light borders & tints) ── */
-  --ink-2:  rgba(11,11,48,0.02);
-  --ink-3:  rgba(11,11,48,0.03);
-  --ink-4:  rgba(11,11,48,0.04);
-  --ink-5:  rgba(11,11,48,0.05);
-  --ink-6:  rgba(11,11,48,0.06);
-  --ink-7:  rgba(11,11,48,0.07);
-  --ink-8:  rgba(11,11,48,0.08);
-  --ink-10: rgba(11,11,48,0.10);
-  --ink-12: rgba(11,11,48,0.12);
-  --ink-15: rgba(11,11,48,0.15);
-  --ink-18: rgba(11,11,48,0.18);
-  --ink-20: rgba(11,11,48,0.20);
-  --ink-22: rgba(11,11,48,0.22);
-  --ink-35: rgba(11,11,48,0.35);
-  --ink-40: rgba(11,11,48,0.40);
-  --ink-50: rgba(11,11,48,0.50);
+  --ink-2:  rgba(20,20,20,0.02);
+  --ink-3:  rgba(20,20,20,0.03);
+  --ink-4:  rgba(20,20,20,0.04);
+  --ink-5:  rgba(20,20,20,0.05);
+  --ink-6:  rgba(20,20,20,0.06);
+  --ink-7:  rgba(20,20,20,0.07);
+  --ink-8:  rgba(20,20,20,0.08);
+  --ink-10: rgba(20,20,20,0.10);
+  --ink-12: rgba(20,20,20,0.12);
+  --ink-15: rgba(20,20,20,0.15);
+  --ink-18: rgba(20,20,20,0.18);
+  --ink-20: rgba(20,20,20,0.20);
+  --ink-22: rgba(20,20,20,0.22);
+  --ink-35: rgba(20,20,20,0.35);
+  --ink-40: rgba(20,20,20,0.40);
+  --ink-50: rgba(20,20,20,0.50);
 
   /* ── Accent tints (all derived from --accent-rgb so palettes recolour them) ── */
   --p-3:  rgba(var(--accent-rgb),0.03);
@@ -145,6 +145,19 @@
   --c-teal-12:  rgba(5,150,105,0.12);
   --c-slate:    #334155;
 
+  /* ── Payments-2026 design language ──
+     --brand fills primary actions (sticker buttons, the FAB); --brand-fg is
+     the text on it. --stroke is the thick "sticker" outline. Pastels back
+     special cards and icon circles. */
+  --brand: #22A45D;
+  --brand-fg: #141414;
+  --stroke: #141414;
+  --lavender: #EEEDFE;
+  --mint: #E6F4EC;
+  --peach: #FFF1E6;
+  --sky: #E7F0FF;
+  --butter: #FFF7D6;
+
   /* ── Aliases (keep old names working) ── */
   --primary-color: var(--primary);
   --secondary-color: var(--accent);
@@ -161,32 +174,32 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --primary: #c7d2fe;
-  --primary-hover: #e0e7ff;
-  --accent: #818cf8;
-  --accent-rgb: 129, 140, 248;
+  --primary: #F4F4F2;
+  --primary-hover: #FFFFFF;
+  --accent: #2DBE6C;
+  --accent-rgb: 45, 190, 108;
   --accent-light: rgba(var(--accent-rgb),0.10);
-  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
-  --bg-gradient: linear-gradient(135deg, #0d0d2b 0%, #160d2e 50%, #0e1825 100%);
-  --card-bg: rgba(255,255,255,0.07);
-  --card-bg-solid: #1c1a38;
-  --card-border: 1px solid rgba(255,255,255,0.07);
-  --text: #e2e8f0;
-  --text-muted: #8b98b8;
+  --accent-gradient: linear-gradient(135deg, #2DBE6C, #22A45D);
+  --bg-gradient: #0F0F11;
+  --card-bg: #1A1A1E;
+  --card-bg-solid: #1A1A1E;
+  --card-border: 1px solid rgba(255, 255, 255, 0.06);
+  --text: #F4F4F2;
+  --text-muted: #A3A3AC;
   --text-success: #34d399;
   --success-bg: rgba(52,211,153,0.08);
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.30);
-  --shadow-md: 0 8px 30px rgba(0,0,0,0.40);
-  --shadow-lg: 0 16px 40px rgba(0,0,0,0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 12px 32px -10px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
 
-  --body-bg: #0a0a20;
-  --surface: #1c1a38;
-  --header-bg: rgba(13,12,38,0.88);
-  --nav-bg: rgba(13,12,38,0.96);
-  --modal-bg: #1c1a38;
-  --modal-header-bg: #1c1a38;
-  --input-bg: rgba(255,255,255,0.06);
-  --dropdown-bg: #252448;
+  --body-bg: #0F0F11;
+  --surface: #1A1A1E;
+  --header-bg: rgba(15, 15, 17, 0.88);
+  --nav-bg: #1A1A1E;
+  --modal-bg: #1A1A1E;
+  --modal-header-bg: #1A1A1E;
+  --input-bg: #25252A;
+  --dropdown-bg: #25252A;
   --scrollbar: rgba(255,255,255,0.08);
 
   /* Ink → white tints in dark mode */
@@ -204,8 +217,8 @@
   --ink-20: rgba(255,255,255,0.17);
   --ink-22: rgba(255,255,255,0.18);
   --ink-35: rgba(255,255,255,0.22);
-  --ink-40: rgba(0,0,20,0.72);   /* overlays stay dark */
-  --ink-50: rgba(0,0,20,0.78);
+  --ink-40: rgba(0, 0, 0, 0.62);   /* overlays stay dark */
+  --ink-50: rgba(0, 0, 0, 0.70);
 
   /* Accent tints → brighter alphas for dark surfaces, derived from --accent-rgb */
   --p-3:  rgba(var(--accent-rgb),0.04);
@@ -227,7 +240,7 @@
   --w-7:  rgba(255,255,255,0.06);
   --w-78: rgba(255,255,255,0.05);
   --w-85: rgba(255,255,255,0.07);
-  --w-92: rgba(13,12,38,0.96);
+  --w-92: rgba(15, 15, 17, 0.96);
   --w-95: rgba(255,255,255,0.07);
 
   /* Status in dark mode */
@@ -251,6 +264,14 @@
   --c-teal-10:  rgba(52,211,153,0.10);
   --c-teal-12:  rgba(52,211,153,0.12);
   --c-slate:    #94a3b8;
+  --brand: #2DBE6C;
+  --brand-fg: #0B0B0C;
+  --stroke: #0B0B0C;
+  --lavender: rgba(124, 108, 255, 0.16);
+  --mint: rgba(45, 190, 108, 0.14);
+  --peach: rgba(255, 138, 61, 0.15);
+  --sky: rgba(92, 155, 255, 0.15);
+  --butter: rgba(242, 183, 5, 0.14);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -259,91 +280,71 @@
    --p-* tint, accent-light, chip, badge, etc. derives from
    --accent-rgb automatically, so a swap recolours the whole app
    identically in light AND dark mode.
-   Default (indigo) lives in :root / [data-theme="dark"] above.
+   Default (green, the Payments-2026 brand) lives in :root / [data-theme="dark"] above.
    ══════════════════════════════════════════════════════════ */
 
 /* ── Violet ── */
+[data-accent="indigo"] {
+  --accent: #4f46e5; --accent-rgb: 79, 70, 229;
+  --brand: #6366F1; --brand-fg: #FFFFFF;
+}
+[data-theme="dark"][data-accent="indigo"] {
+  --accent: #818cf8; --accent-rgb: 129, 140, 248;
+  --brand: #818CF8; --brand-fg: #FFFFFF;
+}
+
 [data-accent="violet"] {
   --accent: #7c3aed; --accent-rgb: 124, 58, 237;
-  --primary: #2c0e57; --primary-hover: #42168a;
-  --accent-gradient: linear-gradient(135deg, #8b5cf6, #a855f7);
-  --bg-gradient: linear-gradient(135deg, #ede4ff 0%, #f3ecff 50%, #f7e8ff 100%);
+  --brand: #8B5CF6; --brand-fg: #FFFFFF;
 }
 [data-theme="dark"][data-accent="violet"] {
   --accent: #a78bfa; --accent-rgb: 167, 139, 250;
-  --primary: #ddd6fe; --primary-hover: #ede9fe;
-  --accent-gradient: linear-gradient(135deg, #7c3aed, #9333ea);
-  --bg-gradient: linear-gradient(135deg, #190b2e 0%, #1f0d33 50%, #1a0b2b 100%);
+  --brand: #A78BFA; --brand-fg: #FFFFFF;
 }
 
-/* ── Sky ── */
 [data-accent="sky"] {
   --accent: #2563eb; --accent-rgb: 37, 99, 235;
-  --primary: #0c1f4d; --primary-hover: #163172;
-  --accent-gradient: linear-gradient(135deg, #3b82f6, #06b6d4);
-  --bg-gradient: linear-gradient(135deg, #dbe8ff 0%, #e8f1ff 50%, #def4ff 100%);
+  --brand: #3B82F6; --brand-fg: #FFFFFF;
 }
 [data-theme="dark"][data-accent="sky"] {
   --accent: #60a5fa; --accent-rgb: 96, 165, 250;
-  --primary: #bfdbfe; --primary-hover: #dbeafe;
-  --accent-gradient: linear-gradient(135deg, #2563eb, #0891b2);
-  --bg-gradient: linear-gradient(135deg, #0a142e 0%, #0c1a33 50%, #08182b 100%);
+  --brand: #60A5FA; --brand-fg: #FFFFFF;
 }
 
-/* ── Teal ── */
 [data-accent="teal"] {
-  --accent: #0d9488; --accent-rgb: 13, 148, 136;
-  --primary: #0f3d38; --primary-hover: #155e56;
-  --accent-gradient: linear-gradient(135deg, #14b8a6, #0891b2);
-  --bg-gradient: linear-gradient(135deg, #d3f6f0 0%, #e0f7fa 50%, #dbf4ff 100%);
+  --accent: #0f766e; --accent-rgb: 15, 118, 110;
+  --brand: #14B8A6; --brand-fg: #141414;
 }
 [data-theme="dark"][data-accent="teal"] {
   --accent: #2dd4bf; --accent-rgb: 45, 212, 191;
-  --primary: #99f6e4; --primary-hover: #ccfbf1;
-  --accent-gradient: linear-gradient(135deg, #0d9488, #0891b2);
-  --bg-gradient: linear-gradient(135deg, #06201f 0%, #082a2e 50%, #07212b 100%);
+  --brand: #2DD4BF; --brand-fg: #0B0B0C;
 }
 
-/* ── Emerald ── */
 [data-accent="emerald"] {
-  --accent: #059669; --accent-rgb: 5, 150, 105;
-  --primary: #0a2e22; --primary-hover: #0f4733;
-  --accent-gradient: linear-gradient(135deg, #10b981, #059669);
-  --bg-gradient: linear-gradient(135deg, #d6f5e3 0%, #e7f9ef 50%, #def7ea 100%);
+  --accent: #047857; --accent-rgb: 4, 120, 87;
+  --brand: #10B981; --brand-fg: #141414;
 }
 [data-theme="dark"][data-accent="emerald"] {
   --accent: #34d399; --accent-rgb: 52, 211, 153;
-  --primary: #a7f3d0; --primary-hover: #d1fae5;
-  --accent-gradient: linear-gradient(135deg, #059669, #0d9488);
-  --bg-gradient: linear-gradient(135deg, #06231a 0%, #082a20 50%, #072420 100%);
+  --brand: #34D399; --brand-fg: #0B0B0C;
 }
 
-/* ── Amber / Sunset ── */
 [data-accent="amber"] {
-  --accent: #ea580c; --accent-rgb: 234, 88, 12;
-  --primary: #451a06; --primary-hover: #6b2810;
-  --accent-gradient: linear-gradient(135deg, #f97316, #f59e0b);
-  --bg-gradient: linear-gradient(135deg, #ffe9d6 0%, #fff3e0 50%, #fff0d9 100%);
+  --accent: #c2410c; --accent-rgb: 194, 65, 12;
+  --brand: #F59E0B; --brand-fg: #141414;
 }
 [data-theme="dark"][data-accent="amber"] {
   --accent: #fb923c; --accent-rgb: 251, 146, 60;
-  --primary: #fed7aa; --primary-hover: #ffedd5;
-  --accent-gradient: linear-gradient(135deg, #ea580c, #d97706);
-  --bg-gradient: linear-gradient(135deg, #2b1408 0%, #2e1a08 50%, #281206 100%);
+  --brand: #FB923C; --brand-fg: #0B0B0C;
 }
 
-/* ── Rose ── */
 [data-accent="rose"] {
   --accent: #e11d48; --accent-rgb: 225, 29, 72;
-  --primary: #4c0f21; --primary-hover: #6d1530;
-  --accent-gradient: linear-gradient(135deg, #f43f5e, #ec4899);
-  --bg-gradient: linear-gradient(135deg, #ffe4e9 0%, #fff0f3 50%, #ffe9f3 100%);
+  --brand: #F43F5E; --brand-fg: #FFFFFF;
 }
 [data-theme="dark"][data-accent="rose"] {
   --accent: #fb7185; --accent-rgb: 251, 113, 133;
-  --primary: #fecdd3; --primary-hover: #ffe4e9;
-  --accent-gradient: linear-gradient(135deg, #e11d48, #db2777);
-  --bg-gradient: linear-gradient(135deg, #2b0a13 0%, #2e0d1a 50%, #250a17 100%);
+  --brand: #FB7185; --brand-fg: #FFFFFF;
 }
 
 /* ── Reset ── */
@@ -988,25 +989,35 @@ input[type="datetime-local"].form-control {
 /* ── Buttons ── */
 .btn-primary {
   min-height: 50px;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 14px;
+  background: var(--brand);
+  color: var(--brand-fg);
+  border: 2.5px solid var(--stroke);
+  border-radius: 18px;
   padding: 12px 24px;
   font-family: var(--font-hebrew);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: transform 0.1s ease;
-  box-shadow: 0 4px 14px rgba(11,11,48,0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 0 var(--stroke);
 }
 
 .btn-primary:active {
-  transform: scale(0.97);
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--stroke);
+}
+
+.btn-primary:disabled {
+  background: var(--ink-6);
+  color: var(--text-muted);
+  border-color: var(--ink-10);
+  box-shadow: none;
+  transform: none;
+  cursor: default;
 }
 
 .btn-secondary {
@@ -2187,10 +2198,6 @@ body[data-fab] .app-content {
    In dark mode --primary is a LIGHT colour (#c7d2fe) — fine for text, but
    too bright when used as a button background. Swap to --accent (#818cf8)
    for all button backgrounds that normally derive from --primary.           */
-[data-theme="dark"] .btn-primary {
-  background: var(--accent);
-  box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
-}
 [data-theme="dark"] .btn-add-circle {
   background: var(--accent);
   box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
