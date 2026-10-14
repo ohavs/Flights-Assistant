@@ -378,6 +378,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
    SHARE MODAL — Invite + manage trip members
    ══════════════════════════════════════════════════════════ */
 function ShareModal({ tripId, currentUid, onClose }) {
+  const confirm = useConfirm();
   const [trip, setTrip] = useState(null);
   const [members, setMembers] = useState([]); // [{ uid, role, profile? }]
   const [email, setEmail] = useState('');
@@ -466,6 +467,14 @@ function ShareModal({ tripId, currentUid, onClose }) {
   };
 
   const removeMember = async (uid) => {
+    const who = members.find(m => m.uid === uid);
+    const name = who?.profile?.displayName || who?.profile?.email || 'החבר';
+    const ok = await confirm({
+      title: 'הסרה מהטיול',
+      message: `להסיר את ${name} מהטיול? מה שהוסיף נשאר בטיול.`,
+      confirmText: 'הסר', cancelText: 'בטל', danger: true,
+    });
+    if (!ok) return;
     try {
       // Build the new members map without that uid
       const newMembers = { ...(trip?.members || {}) };
@@ -527,7 +536,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
                 dir="ltr"
               />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'rgba(11,11,48,0.04)', padding: 4, borderRadius: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, background: 'var(--surface-2)', padding: 4, borderRadius: 16 }}>
                 {[
                   { val: 'viewer', label: 'צפייה בלבד', desc: 'יראה את הטיול אבל לא יוכל לערוך' },
                   { val: 'editor', label: 'עריכה', desc: 'יוכל לערוך טיסות, מלון, תכנון וצ\'קליסט' },
@@ -537,11 +546,11 @@ function ShareModal({ tripId, currentUid, onClose }) {
                     type="button"
                     onClick={() => setNewRole(opt.val)}
                     style={{
-                      border: 'none', borderRadius: 8, padding: '10px 12px',
+                      border: 'none', borderRadius: 12, padding: '10px 12px',
                       fontFamily: 'var(--font-hebrew)',
-                      background: newRole === opt.val ? '#fff' : 'transparent',
-                      color: newRole === opt.val ? 'var(--primary)' : 'var(--text-muted)',
-                      boxShadow: newRole === opt.val ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                      background: newRole === opt.val ? 'var(--card-bg-solid)' : 'transparent',
+                      color: newRole === opt.val ? 'var(--text)' : 'var(--text-muted)',
+                      boxShadow: newRole === opt.val ? 'var(--shadow-sm)' : 'none',
                       cursor: 'pointer', textAlign: 'right'
                     }}
                   >

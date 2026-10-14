@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import useBackHandler from '../hooks/useBackHandler';
 import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, X, Check } from 'lucide-react';
 
 const MONTHS_HE = [
@@ -146,18 +147,21 @@ function CalendarBody({ selectedDateStr, onSelect }) {
             <button
               key={`day-${item.dayNum}`}
               type="button"
+              className="cal-day"
+              aria-pressed={isSelected}
+              aria-current={isToday ? 'date' : undefined}
               onClick={() => onSelect(thisDateStr)}
               style={{
                 aspectRatio: '1/1',
                 borderRadius: '8px',
                 border: isToday ? '1.5px solid var(--accent)' : 'none',
                 background: isSelected 
-                  ? 'var(--primary)' 
+                  ? 'var(--brand)' 
                   : isToday 
-                    ? 'rgba(79,70,229,0.05)' 
+                    ? 'var(--p-6)' 
                     : 'var(--ink-2)',
                 color: isSelected 
-                  ? '#fff' 
+                  ? 'var(--brand-fg)' 
                   : isToday 
                     ? 'var(--accent)' 
                     : 'var(--primary)',
@@ -227,7 +231,7 @@ function TimeBody({ hour, minute, onChangeTime }) {
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            border: '1px solid rgba(11,11,48,0.08)',
+            border: '1px solid var(--ink-8)',
             borderRadius: '12px',
             background: 'var(--ink-2)',
             padding: '6px',
@@ -248,8 +252,8 @@ function TimeBody({ hour, minute, onChangeTime }) {
                   padding: '8px 0',
                   border: 'none',
                   borderRadius: '8px',
-                  background: isActive ? 'var(--primary)' : 'transparent',
-                  color: isActive ? '#fff' : 'var(--primary)',
+                  background: isActive ? 'var(--brand)' : 'transparent',
+                  color: isActive ? 'var(--brand-fg)' : 'var(--text)',
                   fontWeight: isActive ? '800' : '600',
                   fontSize: '15px',
                   cursor: 'pointer',
@@ -272,7 +276,7 @@ function TimeBody({ hour, minute, onChangeTime }) {
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            border: '1px solid rgba(11,11,48,0.08)',
+            border: '1px solid var(--ink-8)',
             borderRadius: '12px',
             background: 'var(--ink-2)',
             padding: '6px',
@@ -293,8 +297,8 @@ function TimeBody({ hour, minute, onChangeTime }) {
                   padding: '8px 0',
                   border: 'none',
                   borderRadius: '8px',
-                  background: isActive ? 'var(--primary)' : 'transparent',
-                  color: isActive ? '#fff' : 'var(--primary)',
+                  background: isActive ? 'var(--brand)' : 'transparent',
+                  color: isActive ? 'var(--brand-fg)' : 'var(--text)',
                   fontWeight: isActive ? '800' : '600',
                   fontSize: '15px',
                   cursor: 'pointer',
@@ -316,6 +320,8 @@ function TimeBody({ hour, minute, onChangeTime }) {
    ══════════════════════════════════════════════════════════ */
 export function CustomDatePicker({ value, onChange, label, required, variant }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Back closes the picker, not the sheet underneath it.
+  useBackHandler(isOpen, () => setIsOpen(false));
   const [tempDateStr, setTempDateStr] = useState(value || formatDateISO(new Date()));
 
   // Sync state with prop value
@@ -419,8 +425,8 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
               maxWidth: '360px',
               background: 'var(--surface)',
               borderRadius: '24px',
-              boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)',
-              border: '1px solid rgba(11, 11, 48, 0.08)',
+              boxShadow: 'var(--shadow-lg)',
+              border: '1px solid var(--ink-8)',
               padding: '20px',
               display: 'flex',
               flexDirection: 'column',
@@ -446,7 +452,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
             <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
 
             {/* Selected Value Preview */}
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'var(--p-6)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
               {formatHebrewDate(tempDateStr)}
             </div>
 
@@ -503,6 +509,8 @@ export function formatHebrewTime(timeStr) {
 
 export function CustomTimePicker({ value, onChange, label, required }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Back closes the picker, not the sheet underneath it.
+  useBackHandler(isOpen, () => setIsOpen(false));
   const parsed = parseTime(value);
   const [tempH, setTempH] = useState(parsed.hh);
   const [tempM, setTempM] = useState(parsed.mm);
@@ -561,7 +569,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '360px', background: 'var(--surface)', borderRadius: '24px', boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)', border: '1px solid rgba(11, 11, 48, 0.08)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
+            style={{ width: '100%', maxWidth: '360px', background: 'var(--surface)', borderRadius: '24px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--ink-8)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
@@ -576,7 +584,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'ltr' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
-                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ink-8)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {hours24.map(h => {
                     const isActive = h === tempH;
                     return (
@@ -584,7 +592,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
                         key={h} type="button"
                         className={isActive ? 'active-h' : ''}
                         onClick={() => setTempH(h)}
-                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? '0 2px 8px rgba(11,11,48,0.25)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--brand)' : 'transparent', color: isActive ? 'var(--brand-fg)' : 'var(--text)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? 'var(--shadow-sm)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
                       >{h}</button>
                     );
                   })}
@@ -593,7 +601,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
-                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid rgba(11,11,48,0.08)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ink-8)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {minutes.map(m => {
                     const isActive = m === tempM;
                     return (
@@ -601,7 +609,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
                         key={m} type="button"
                         className={isActive ? 'active-m' : ''}
                         onClick={() => setTempM(m)}
-                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--primary)' : 'transparent', color: isActive ? '#fff' : 'var(--primary)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? '0 2px 8px rgba(11,11,48,0.25)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
+                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--brand)' : 'transparent', color: isActive ? 'var(--brand-fg)' : 'var(--text)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? 'var(--shadow-sm)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
                       >{m}</button>
                     );
                   })}
@@ -613,7 +621,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
                 anywhere, this always says what is actually selected, and it
                 changes the instant a number is tapped. Tabular figures so
                 the digits don't jitter as it counts. */}
-            <div style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.14)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', direction: 'ltr', fontSize: 24, fontWeight: 900, letterSpacing: 1, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ background: 'var(--p-6)', border: '1px solid var(--p-15)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', direction: 'ltr', fontSize: 24, fontWeight: 900, letterSpacing: 1, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
               {tempH}:{tempM}
             </div>
 
@@ -634,6 +642,8 @@ export function CustomTimePicker({ value, onChange, label, required }) {
    ══════════════════════════════════════════════════════════ */
 export function CustomDateTimePicker({ value, onChange, label }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Back closes the picker, not the sheet underneath it.
+  useBackHandler(isOpen, () => setIsOpen(false));
   const [activeTab, setActiveTab] = useState('date'); // 'date' | 'time'
 
   // Default values setup
@@ -732,8 +742,8 @@ export function CustomDateTimePicker({ value, onChange, label }) {
               maxWidth: '360px',
               background: 'var(--surface)',
               borderRadius: '24px',
-              boxShadow: '0 20px 50px rgba(11, 11, 48, 0.25)',
-              border: '1px solid rgba(11, 11, 48, 0.08)',
+              boxShadow: 'var(--shadow-lg)',
+              border: '1px solid var(--ink-8)',
               padding: '20px',
               display: 'flex',
               flexDirection: 'column',
@@ -767,7 +777,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
                   fontSize: '13px',
                   fontWeight: '800',
                   cursor: 'pointer',
-                  background: activeTab === 'date' ? '#fff' : 'transparent',
+                  background: activeTab === 'date' ? 'var(--card-bg-solid)' : 'transparent',
                   color: activeTab === 'date' ? 'var(--primary)' : 'var(--text-muted)',
                   boxShadow: activeTab === 'date' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
                   transition: 'all 0.15s ease'
@@ -785,7 +795,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
                   fontSize: '13px',
                   fontWeight: '800',
                   cursor: 'pointer',
-                  background: activeTab === 'time' ? '#fff' : 'transparent',
+                  background: activeTab === 'time' ? 'var(--card-bg-solid)' : 'transparent',
                   color: activeTab === 'time' ? 'var(--primary)' : 'var(--text-muted)',
                   boxShadow: activeTab === 'time' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
                   transition: 'all 0.15s ease'
@@ -805,7 +815,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             </div>
 
             {/* Selected Value Preview */}
-            <div style={{ background: 'rgba(79,70,229,0.05)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
+            <div style={{ background: 'var(--p-6)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
               {formatHebrewDate(tempDateStr)} בשעה {tempHour}:{tempMinute}
             </div>
 
@@ -841,6 +851,8 @@ export function CustomDateTimePicker({ value, onChange, label }) {
    ══════════════════════════════════════════════════════════ */
 export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש', onCommit }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Back closes the picker, not the sheet underneath it.
+  useBackHandler(isOpen, () => setIsOpen(false));
   const [popupRect, setPopupRect] = useState(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
@@ -987,7 +999,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
                 className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
                 style={{
                   ...((!isFirst) ? { borderTop: '1px solid var(--ink-8)' } : {}),
-                  ...(opt.inUse ? { background: 'rgba(79,70,229,0.07)', opacity: 0.75 } : {}),
+                  ...(opt.inUse ? { background: 'var(--p-8)', opacity: 0.75 } : {}),
                 }}
               >
                 {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
