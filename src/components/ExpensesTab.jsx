@@ -3,7 +3,8 @@ import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import {
   Plus, Trash2, Search, X, TrendingUp,
-  Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin
+  Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin,
+  Utensils, Bus, BedDouble, Ticket, ShoppingBag,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
 import { useConfirm } from '../ConfirmContext';
@@ -12,7 +13,8 @@ import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
-import SwipeRow from './SwipeRow';
+import ListCard from '../ui/ListCard';
+import { Pill, CategoryDisc } from '../ui/kit';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
@@ -26,6 +28,17 @@ const DEFAULT_EXPENSE_CATEGORIES = [
   'קניות',
   'כללי',
 ];
+
+// An icon and a colour per category, so a row reads at a glance like a
+// place in the planning tab. A category the trip added gets the receipt.
+const EXPENSE_CATEGORY_STYLE = {
+  'אוכל ושתייה': { Icon: Utensils, color: '#F97316' },
+  'תחבורה': { Icon: Bus, color: '#3B82F6' },
+  'לינה': { Icon: BedDouble, color: '#8B5CF6' },
+  'בידור ותיירות': { Icon: Ticket, color: '#EC4899' },
+  'קניות': { Icon: ShoppingBag, color: '#14B8A6' },
+};
+const expenseCategoryStyle = (cat) => EXPENSE_CATEGORY_STYLE[cat] || { Icon: Receipt, color: '#64748B' };
 
 const getCurrencyInfo = (code) => {
   const meta = CURRENCY_META[code];
@@ -94,7 +107,7 @@ export default function ExpensesTab({ tripId }) {
   const [rates, setRates] = useState(null);
 
   const confirm = useConfirm();
-  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers } = useTrip();
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canEdit } = useTrip();
 
   // Payer state
   const [paidBy, setPaidBy] = useState('');
@@ -583,84 +596,49 @@ export default function ExpensesTab({ tripId }) {
                       const curr = getCurrencyInfo(expense.currency);
                       const linked = plans.find(p => p.id === expense.linkedPlanId);
                       const placeLabel = linked?.title || expense.customPlace || null;
+                      const style = expenseCategoryStyle(expense.category || cat);
+                      const ils = expense.currency !== 'ILS'
+                        ? (expense.ilsSnapshot != null
+                            ? expense.ilsSnapshot
+                            : (rates ? convert(expense.amount, expense.currency, 'ILS', rates) : null))
+                        : null;
+                      const payer = expense.paidBy ? getPayerProfile(expense.paidBy) : null;
+                      const payerName = payer?.displayName || payer?.email || '';
                       return (
-                        <SwipeRow
+                        <ListCard
                           key={expense.id}
-                          actions={[
-                            { key: 'edit', label: 'ערוך', Icon: Pencil, onAction: () => openForm(expense) },
-                            { key: 'del', label: 'מחק', Icon: Trash2, tone: 'danger', onAction: () => handleDelete(expense.id) },
-                          ]}
-                          className="glass-card"
-                          /* On touch the inline buttons below are hidden and the
-                             swipe is the only way in — a gesture with nothing on
-                             screen to announce it. Tapping the row opens the same
-                             edit form, so there is always a visible way to fix an
-                             expense. */
-                          onClick={() => openForm(expense)}
-                          style={{ padding: '10px 12px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                          {/* Icon badge */}
-                          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--p-8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <Receipt size={15} style={{ color: 'var(--accent)' }} />
-                          </div>
-
-                          {/* Content */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--primary)' }}>
+                          icon={<CategoryDisc color={style.color} size={42}><style.Icon size={19} /></CategoryDisc>}
+                          title={
+                            <>
+                              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
                                 {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
                               </span>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
-                                {expense.currency !== 'ILS' ? curr.name : 'ש"ח'}
+                              {ils != null && (
+                                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', marginInlineStart: 6 }}>
+                                  ≈ ₪{ils.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
+                                </span>
+                              )}
+                            </>
+                          }
+                          menuTitle={expense.description || `${curr.symbol}${expense.amount}`}
+                          meta={expense.description || null}
+                          tags={[
+                            placeLabel && (
+                              <Pill key="place" size="sm" tone="lavender" icon={<Link2 size={11} />}>{placeLabel}</Pill>
+                            ),
+                            payer && (
+                              <span key="payer" className={payer.former ? 'person-former' : undefined}
+                                title={payer.former ? `${payerName} — כבר לא בטיול` : undefined}>
+                                <Pill size="sm" icon={<MemberAvatar profile={payer} size={14} />}>{payerName || 'שילם'}</Pill>
                               </span>
-                              {expense.currency !== 'ILS' && (() => {
-                                const ils = expense.ilsSnapshot != null
-                                  ? expense.ilsSnapshot
-                                  : (rates ? convert(expense.amount, expense.currency, 'ILS', rates) : null);
-                                if (ils == null) return null;
-                                return (
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', opacity: 0.7 }}>
-                                    ≈ ₪{ils.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                            {expense.description ? (
-                              <div style={{ fontSize: 12, color: 'var(--c-slate)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {expense.description}
-                              </div>
-                            ) : null}
-                            {placeLabel ? (
-                              <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                <Link2 size={9} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLabel}</span>
-                              </div>
-                            ) : null}
-                            {expense.paidBy && (() => {
-                              const profile = getPayerProfile(expense.paidBy);
-                              const name = profile?.displayName || profile?.email || '';
-                              return (
-                                <div
-                                  className={profile?.former ? 'person-former' : undefined}
-                                  title={profile?.former ? `${name} — כבר לא בטיול` : undefined}
-                                  style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                                  <MemberAvatar profile={profile} size={14} />
-                                  {name && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>}
-                                </div>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Action buttons — LEFT side in RTL. Hidden on
-                              touch, where the same two come from the swipe. */}
-                          <div className="row-inline-actions" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                            <button onClick={() => openForm(expense)} aria-label="ערוך הוצאה" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--ink-4)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => handleDelete(expense.id)} aria-label="מחק הוצאה" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--c-red2-6)', color: 'var(--c-red2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </SwipeRow>
+                            ),
+                          ]}
+                          onOpen={canEdit ? () => openForm(expense) : undefined}
+                          actions={canEdit ? [
+                            { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => openForm(expense), swipe: true },
+                            { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(expense.id), danger: true, swipe: true },
+                          ] : []}
+                        />
                       );
                     })}
                   </div>
@@ -1042,7 +1020,7 @@ export default function ExpensesTab({ tripId }) {
       )}
 
       {/* Adding lives in the app-wide floating button, same as every tab. */}
-      <Fab label="הוצאה חדשה" onClick={() => openForm()} />
+      {canEdit && <Fab label="הוצאה חדשה" onClick={() => openForm()} />}
 
     </div>
   );

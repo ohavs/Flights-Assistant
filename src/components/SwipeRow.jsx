@@ -33,6 +33,7 @@ export default function SwipeRow({
   style,
   onClick,
   children,
+  ...rest   // role, tabIndex, onKeyDown… for the row itself
 }) {
   const [node, setNode] = useState(null);
   const [dx, setDx] = useState(0);
@@ -134,7 +135,7 @@ export default function SwipeRow({
 
   if (!active) {
     return (
-      <div className={className} style={style} onClick={onClick}>
+      <div className={className} style={style} onClick={onClick} {...rest}>
         {children}
       </div>
     );
@@ -169,6 +170,7 @@ export default function SwipeRow({
         ref={setNode}
         className={className}
         onClick={handleClick}
+        {...rest}
         style={{
           ...style,
           // Logical property: in RTL this frees space on the left, where the
