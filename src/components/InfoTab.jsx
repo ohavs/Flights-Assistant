@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
@@ -7,8 +6,7 @@ import {
   ChevronDown, ExternalLink, RotateCcw, Globe, X, GripVertical
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
-import useSheetDrag from '../hooks/useSheetDrag';
-import useBackHandler from '../hooks/useBackHandler';
+import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -74,6 +72,9 @@ export default function InfoTab({ tripId, embedded = false }) {
   const [fType, setFType] = useState('phone');
   const [fCategory, setFCategory] = useState('מספרי חירום');
   const [fExtraFields, setFExtraFields] = useState([]);
+  // What the form held when it opened: closing it unchanged is free.
+  const [formBaseline, setFormBaseline] = useState(null);
+  const formKey = (title, value, type, category, extra) => JSON.stringify([title, value, type, category, extra]);
 
   useEffect(() => {
     if (!tripId) return;
@@ -130,6 +131,7 @@ export default function InfoTab({ tripId, embedded = false }) {
     setFType('phone');
     setFCategory(preCategory);
     setFExtraFields([]);
+    setFormBaseline(formKey('', '', 'phone', preCategory, []));
     setShowForm(true);
   };
 
@@ -140,29 +142,11 @@ export default function InfoTab({ tripId, embedded = false }) {
     setFType(item.type || 'phone');
     setFCategory(item.category || 'מותאם אישית');
     setFExtraFields(item.extraFields || []);
+    setFormBaseline(formKey(item.title || '', item.value || '', item.type || 'phone', item.category || 'מותאם אישית', item.extraFields || []));
     setShowForm(true);
   };
 
-  const formDirty = () => fTitle.trim() || fValue.trim() || fExtraFields.some(f => f.label.trim() || f.value.trim());
-  // Dragging the sheet away is offered only while the form is untouched;
-  // a filled-in form still asks before it closes.
-  const formSheet = useSheetDrag(() => setShowForm(false), { enabled: !formDirty() });
-
-  // Back closes the sheet before it leaves the trip.
-  useBackHandler(showForm, () => formSheet.close());
-
-  const attemptCloseForm = async () => {
-    if (formDirty()) {
-      const ok = await confirm({
-        title: 'יש שינויים שלא נשמרו',
-        message: 'הזנת פרטים שלא נשמרו. האם לצאת בלי לשמור?',
-        confirmText: 'צא בלי לשמור', cancelText: 'המשך עריכה', danger: true,
-      });
-      if (!ok) return;
-    }
-    setShowForm(false);
-    setEditingId(null);
-  };
+  const formDirty = () => formKey(fTitle, fValue, fType, fCategory, fExtraFields) !== formBaseline;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -227,16 +211,15 @@ export default function InfoTab({ tripId, embedded = false }) {
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Add/edit form (modal-style inline) */}
-      {showForm && canEdit && createPortal(
-        <div className="modal-overlay" data-closing={formSheet.closing || undefined} onClick={attemptCloseForm}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} {...formSheet.handlers} style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column', ...formSheet.style }}>
-            <div className="sheet-grab" />
-            <div className="modal-header" style={{ flexShrink: 0 }}>
-              <h2>{editingId ? 'עריכת פריט' : 'הוספת פריט חדש'}</h2>
-              <button aria-label="סגור" className="btn-close" onClick={attemptCloseForm}>✕</button>
-            </div>
-
-            <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4 }}>
+      {showForm && canEdit && (
+        <Sheet
+          title={editingId ? 'עריכת פריט' : 'הוספת פריט חדש'}
+          onClose={() => { setShowForm(false); setEditingId(null); }}
+          dirty={formDirty()}
+          style={{ maxHeight: '92vh' }}
+        >
+          {({ cancel }) => (
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>כותרת</label>
                 <input
@@ -342,14 +325,13 @@ export default function InfoTab({ tripId, embedded = false }) {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>שמור</button>
-                <button type="button" className="btn-secondary" onClick={attemptCloseForm}>ביטול</button>
+              <div className="sheet-footer">
+                <button type="submit" className="btn-primary">שמור</button>
+                <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
               </div>
             </form>
-          </div>
-        </div>,
-        document.querySelector('.app-container') || document.body
+          )}
+        </Sheet>
       )}
 
       {embedded && canEdit && (

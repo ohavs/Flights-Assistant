@@ -107,7 +107,7 @@ await step(owner, 'add an expense', async () => {
   await fab(owner, 'הוצאה חדשה');
   await owner.getByPlaceholder('0.00').fill('42');
   await owner.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill('הוצאת בדיקה');
-  await owner.getByText('שמור הוצאה').click();
+  await owner.locator('.sheet-footer button[type="submit"]').click();
   await owner.getByText('הוצאת בדיקה').first().waitFor();
 });
 

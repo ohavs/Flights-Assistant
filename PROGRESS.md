@@ -3,11 +3,11 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.20.0 (`changelog.md`)
+- גרסת ווב: 8.20.1 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
-  - לבדוק ש־PR של C5א (8.20.0) מוזג ונפרס, וש־`deploy.yml` האחרון ירוק.
-  - אחר כך C5ב.
+  - לבדוק ש־PR של C5ב (8.20.1) מוזג ונפרס, וש־`deploy.yml` האחרון ירוק.
+  - אחר כך C5ג.
 - הרצת e2e מקומית: `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome bash scripts/run-e2e.sh tests/e2e/<name>.e2e.mjs`. בלי ארגומנטים רצות כל הבדיקות של CI: smoke, layout, planning, flight, sheets, contrast.
 
 ## כללים קריטיים — לקרוא לפני כל שינוי
@@ -79,6 +79,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [x] 8.19.2 (C4): חלון אישור (טקסט שקוף), חזור בבוררים, אישור הסרת חבר, מצב כהה בצ'קליסט ובשיתוף. `contrast.e2e.mjs` ב־CI.
 - [x] 8.19.3: מזג האוויר עבר מהכותרת לכרטיסי הטיסה, ליד עיר היעד (בקשת הבעלים). "מידע חשוב" בכותרת עם סימן קריאה בעיגול (`CircleAlert`).
 - [x] 8.20.0 (C5א): `Sheet` קיבל `dirty` (שאלה אחידה "צא בלי לשמור" ב־✕, רקע, חזור ו"ביטול"; גרירה כבויה) ו־`.sheet-footer`. כל חלוניות התכנון וטופס הטיסה עברו אליו. `sheets.e2e` בודק את השמירה מפני יציאה בשלושה טפסים.
+- [x] 8.20.1 (C5ב): הזמנות, פריט מידע והוצאה עברו ל־`Sheet`. בהוצאות נוספה בדיקת שינויים; במידע ובהוצאות היא משווה למה שהטופס נפתח איתו. `sheets.e2e` בודק שישה טפסים.
 - [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
 
 ## הבא
@@ -98,8 +99,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
     - מידע חשוב: כפתור בכותרת, בכל הטאבים.
     - בתכנון: גלולת קטגוריה ושני כפתורים עגולים לבנים (הגדרות, חיפוש).
     - מצב כהה: אפור פחם (`#212329`).
-  - **הבא: C5ב, ואחריו C5ג.** החלוניות שנשארו עוברות ל־`src/ui/Sheet.jsx`:
-    - C5ב: הזמנות, מידע, הוצאות (בהוצאות אין היום בדיקת שינויים).
+  - **הבא: C5ג.** החלוניות שנשארו עוברות ל־`src/ui/Sheet.jsx`:
     - C5ג: צ'קליסט (מעטפת `Sheet` משלו בשורה 54, תזכורות, הוספת פריט, בוחר שיוך ממורכז) ו־App (שיתוף, צ'קליסט כללי).
   - איך עוברים: `<Sheet title onClose dirty={formDirty()}>{({ close, cancel }) => <form>… <div className="sheet-footer"><button type="submit" className="btn-primary">שמור</button><button type="button" onClick={cancel} className="btn-secondary">ביטול</button></div></form>}</Sheet>`. מוחקים את `useSheetDrag`, `useBackHandler` ו־`attemptClose` של הטופס. בבדיקות, כפתור השמירה: `.sheet-footer button[type="submit"]`.
   - אחרי C5: C6 (`ListCard` ופעולות ⋯), C7 (`CheckCircle`), C8 (שדות), C9 (`SectionHeader`, `Pill`), C10 (כפתורים ואייקונים), C11 (צבעים קשיחים).

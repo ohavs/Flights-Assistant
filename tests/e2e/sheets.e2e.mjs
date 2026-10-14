@@ -87,7 +87,9 @@ async function guardsUnsaved(name, open, fill) {
     }
   };
   const problems = [];
+  let base = 0;   // sheets already open underneath (a form opened from a sheet)
   try {
+    base = await open_();
     await open();
     await page.waitForTimeout(500);
     const save = await page.locator('.sheet-footer button[type="submit"]').boundingBox();
@@ -97,21 +99,21 @@ async function guardsUnsaved(name, open, fill) {
     const grab = await page.locator('.sheet-grab').last().boundingBox();
     await swipe(grab.x + grab.width / 2, grab.y + grab.height / 2, grab.y + 320);
     await page.waitForTimeout(300);
-    if (!(await open_())) problems.push('swiped away with changes');
+    if ((await open_()) <= base) problems.push('swiped away with changes');
 
     await page.locator('.modal-header button[aria-label="סגור"]').last().click();
     await asks('stay');
-    if (!(await open_())) problems.push('✕ closed it');
+    if ((await open_()) <= base) problems.push('✕ closed it');
 
     await page.evaluate(() => history.back());
     await asks('stay');
-    if (!(await open_())) problems.push('back closed it');
+    if ((await open_()) <= base) problems.push('back closed it');
 
     await page.locator('.sheet-footer').getByRole('button', { name: 'ביטול' }).click();
     await asks('leave');
     await page.getByRole('button', { name: 'צא בלי לשמור' }).click();
     await page.waitForTimeout(500);
-    if (await open_()) problems.push('still open after leaving');
+    if ((await open_()) > base) problems.push('still open after leaving');
   } catch (e) {
     problems.push(e.message.split('\n')[0]);
   }
@@ -161,6 +163,12 @@ await dragClose('info sheet', async () => {
   await page.locator('header button[aria-label="מידע חשוב"]').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
 });
+await page.locator('header button[aria-label="מידע חשוב"]').click();
+await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
+await guardsUnsaved('info item form', async () => {
+  await page.locator('.modal-overlay').getByRole('button', { name: 'פריט חדש' }).click();
+  await page.getByRole('heading', { name: 'הוספת פריט חדש' }).waitFor();
+}, () => page.getByPlaceholder('למשל: שגרירות ישראל בפראג').fill('לא נשמר'));
 
 await tab('תכנון טיול');
 const openPlaceForm = async () => {
@@ -229,10 +237,11 @@ await dragClose('activity actions', async () => {
 await tab('הוצאות');
 const openExpense = async () => {
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
-  await page.getByText('שמור הוצאה').waitFor();
+  await page.getByRole('heading', { name: 'הוצאה חדשה' }).waitFor();
 };
 await check('expense form', openExpense, closeAll);
 await dragClose('expense form', openExpense);
+await guardsUnsaved('expense form', openExpense, () => page.getByPlaceholder('0.00').fill('12'));
 
 await tab('הזמנות');
 const openBooking = async () => {
@@ -241,6 +250,8 @@ const openBooking = async () => {
 };
 await check('booking form', openBooking, closeAll);
 await dragClose('booking form', openBooking);
+await guardsUnsaved('booking form', openBooking,
+  () => page.locator('.modal-content input.form-control').first().fill('לא נשמר'));
 
 await browser.close();
 process.exit(failed ? 1 : 0);
