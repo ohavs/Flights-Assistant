@@ -1050,9 +1050,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                           onChange={e => setQuickAddText(e.target.value)}
                           style={{ flex: 1, minHeight: 38, fontSize: 13 }}
                         />
-                        <button type="submit" className="btn-primary"
-                          style={{ padding: '6px 12px', fontSize: 13, flexShrink: 0 }}>
-                          <Plus size={14} />
+                        <button type="submit" className="round-btn on" aria-label="הוסף" title="הוסף">
+                          <Plus size={16} />
                         </button>
                         <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setQuickAddCat(null); setQuickAddText(''); }}>
                           <X size={16} />
