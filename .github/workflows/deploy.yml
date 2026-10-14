@@ -1,13 +1,13 @@
 name: Deploy to Firebase Hosting
 
-# Builds this branch with the API keys from the repository secrets and
+# Builds master with the API keys from the repository secrets and
 # deploys it to https://listify-84018.web.app.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   VITE_GOOGLE_MAPS_KEY, VITE_AERODATABOX_KEY, FIREBASE_TOKEN
 on:
   push:
-    branches: [claude/place-closure-button-qj61y5]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
