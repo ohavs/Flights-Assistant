@@ -151,6 +151,9 @@
      --brand fills primary actions (sticker buttons, the FAB); --brand-fg is
      the text on it. --stroke is the thick "sticker" outline. Pastels back
      special cards and icon circles. */
+  --icon-ink: #141414;         /* sticker icon outlines (light in dark mode) */
+  --surface-2: #F0F0EC;        /* pills, quiet buttons */
+  --surface-3: #E5E5E0;
   --brand: #22A45D;
   --brand-fg: #141414;
   --stroke: #141414;
@@ -268,6 +271,9 @@
   --c-slate:    #94a3b8;
   --nav-off-fill: #34343A;
   --nav-off-stroke: #74747E;
+  --icon-ink: #E8E8EA;
+  --surface-2: #25252A;
+  --surface-3: #303036;
   --brand: #2DBE6C;
   --brand-fg: #0B0B0C;
   --stroke: #0B0B0C;
@@ -433,7 +439,7 @@ button:not(:disabled):active,
   background: var(--header-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--ink-8);
+  border-bottom: 1px solid transparent;
   z-index: 100;
   flex-shrink: 0;
 }
@@ -448,8 +454,8 @@ button:not(:disabled):active,
 .app-header h1 {
   font-size: 20px;
   font-weight: 800;
-  color: var(--primary);
-  letter-spacing: -0.3px;
+  color: var(--text);
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
@@ -460,14 +466,14 @@ button:not(:disabled):active,
    the header's own surface — the tap target stays a full 34px, and
    weight appears only under a finger or a focus ring. */
 .icon-btn {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -484,8 +490,9 @@ button:not(:disabled):active,
 /* Navigation keeps its surface: going back is the one thing in the bar
    you aim at rather than notice. */
 .icon-btn.filled {
-  background: var(--ink-5);
-  color: var(--primary);
+  background: var(--card-bg-solid);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Controls that carry the accent's meaning (the palette, a tab's own
@@ -610,10 +617,11 @@ button:not(:disabled):active,
 }
 
 .homepage-greeting h1 {
-  font-size: 26px;
-  font-weight: 900;
-  color: var(--primary);
-  line-height: 1.3;
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
 .homepage-greeting p {
@@ -624,28 +632,29 @@ button:not(:disabled):active,
 }
 
 .homepage-section-title {
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 800;
-  color: var(--text-muted);
+  color: var(--text);
+  letter-spacing: -0.02em;
   margin-top: 32px;
   margin-bottom: 14px;
 }
 
 .trip-card {
   background: var(--card-bg-solid);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--p-8);
+  border-radius: 26px;
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  border: none;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.22s var(--ease-spring);
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .trip-card:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .trip-card-header {
@@ -654,28 +663,29 @@ button:not(:disabled):active,
   gap: 14px;
 }
 
+/* A sticker plane on a pastel disc. */
 .trip-card-icon {
-  width: 52px; height: 52px;
-  border-radius: var(--radius-md);
-  background: var(--accent-gradient);
+  width: 54px; height: 54px;
+  border-radius: 18px;
+  background: var(--sky);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   flex-shrink: 0;
 }
 
 .trip-card-info h3 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 800;
-  color: var(--primary);
-  line-height: 1.3;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 .trip-card-info p {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 500;
   margin-top: 2px;
 }
 
@@ -688,13 +698,13 @@ button:not(:disabled):active,
 .trip-card-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
-  border-radius: 50px;
-  font-size: 12px;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 700;
-  background: var(--ink-4);
-  color: var(--text-muted);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .trip-card-badge svg {
@@ -706,8 +716,8 @@ button:not(:disabled):active,
   align-items: center;
   justify-content: flex-end;
   color: var(--accent);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
   gap: 4px;
   margin-top: 4px;
 }
@@ -2318,3 +2328,33 @@ body[data-fab] .app-content {
 /* RTL: the start edge is the right, so "on" travels left. */
 .theme-toggle[aria-checked="true"] .theme-toggle-knob { transform: translateX(-22px); }
 [dir="ltr"] .theme-toggle[aria-checked="true"] .theme-toggle-knob { transform: translateX(22px); }
+
+/* ── Round action buttons (Payments-2026) ──
+   One size and shape for the small actions on a card; the colour says
+   what kind of action it is. */
+.round-btn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 50%;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface-2);
+  transition: transform 0.22s var(--ease-spring);
+}
+.round-btn:active { transform: scale(0.9); }
+.round-btn:disabled { cursor: default; opacity: 0.6; }
+.round-btn.raised { background: var(--card-bg-solid); box-shadow: var(--shadow-sm); }
+.round-btn.mint { background: var(--mint); }
+.round-btn.lavender { background: var(--lavender); }
+.round-btn.butter { background: var(--butter); }
+.round-btn.danger { background: var(--c-red-8); color: var(--c-red); }
+.round-btn.on { background: var(--brand); color: var(--brand-fg); }
+
+/* A tappable card that squeezes on press (spring). */
+.press-card { transition: transform 0.22s var(--ease-spring); }
+.press-card:active { transform: scale(0.97); }

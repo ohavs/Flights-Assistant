@@ -1,8 +1,10 @@
 /* Sticker-style icons (the Payments-2026 language): flat colour fills with
    an ink outline. Nav icons take an `active` flag; inactive ones go grey
-   (--nav-off-fill / --nav-off-stroke). 24×24 grid, 2px outline. */
+   (--nav-off-fill / --nav-off-stroke). 24×24 grid, 2px outline. In dark
+   mode the outline turns light (--icon-ink), as the Payments plan says. */
 
-const INK = '#141414';
+// Outline colour: ink on light, light on dark (--icon-ink).
+const INK = 'var(--icon-ink, #141414)';
 const sw = { strokeWidth: 2, strokeLinejoin: 'round', strokeLinecap: 'round' };
 
 function Svg({ size, children }) {
