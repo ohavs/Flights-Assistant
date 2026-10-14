@@ -2387,3 +2387,7 @@ body[data-fab] .app-content {
 .switch.on.danger { background: var(--c-red); }
 .switch.on i { transform: translateX(-18px); }
 [dir="ltr"] .switch.on i { transform: translateX(18px); }
+
+/* Horizontal strips that scroll by swipe, without a scrollbar. */
+.hide-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.hide-scroll::-webkit-scrollbar { display: none; }

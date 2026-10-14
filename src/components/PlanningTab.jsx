@@ -517,6 +517,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     } catch { /* ignore */ }
   }, [collapsedTimeGroups, tripId]);
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
+  useBackHandler(!!hourlyWeatherDate, () => setHourlyWeatherDate(null));
   const [activityDetail, setActivityDetail] = useState(null);
   useBackHandler(!!activityDetail, () => setActivityDetail(null));
   const [editingDayTitle, setEditingDayTitle] = useState('');
@@ -4120,29 +4121,36 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           onClick={() => setHourlyWeatherDate(null)}
           style={{
             position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(11,11,48,0.50)', backdropFilter: 'blur(5px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
+            background: 'var(--ink-35)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            animation: 'overlayIn var(--dur-base) var(--ease-out)',
           }}
         >
+          {/* A bottom sheet like the others; the hours are one swipeable strip. */}
           <div
+            role="dialog"
+            aria-label="מזג אוויר לפי שעה"
             onClick={e => e.stopPropagation()}
             style={{
-              width: '100%', maxWidth: 420,
+              width: '100%', maxWidth: 520,
               background: 'var(--modal-bg)',
-              borderRadius: 'var(--radius-xl)',
+              borderRadius: '24px 24px 0 0',
               boxShadow: 'var(--shadow-lg)',
               display: 'flex', flexDirection: 'column',
               maxHeight: '80vh',
               overflow: 'hidden',
+              direction: 'rtl',
+              paddingBottom: 'calc(14px + env(safe-area-inset-bottom))',
+              animation: 'slideUp 0.25s ease',
             }}
           >
+            <div className="sheet-grab" />
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '16px 20px 12px', flexShrink: 0,
+              padding: '0 18px 12px', flexShrink: 0,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>
+                <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)' }}>
                   {(() => {
                     const d = new Date(hourlyWeatherDate);
                     const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][d.getDay()];
@@ -4150,39 +4158,33 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   })()}
                 </span>
                 {weatherByDate[hourlyWeatherDate] && (
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, background: 'rgba(245,158,11,0.1)',
-                    color: '#b45309', borderRadius: 8, padding: '2px 8px',
-                  }}>
+                  <Pill size="sm" tone="butter">
                     {weatherByDate[hourlyWeatherDate].max}° / {weatherByDate[hourlyWeatherDate].min}°
-                  </span>
+                  </Pill>
                 )}
               </div>
-              <button onClick={() => setHourlyWeatherDate(null)} style={{
-                background: 'var(--ink-6)', border: 'none', cursor: 'pointer',
-                color: 'var(--text-muted)', padding: 7, display: 'flex', borderRadius: 10,
-              }}>
-                <X size={16} />
-              </button>
+              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setHourlyWeatherDate(null)}>✕</button>
             </div>
-            <div style={{
-              overflowY: 'auto',
-              padding: '0 12px 16px',
-              display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 2,
+            <div className="hide-scroll" style={{
+              overflowX: 'auto',
+              padding: '0 14px 4px',
+              display: 'flex', gap: 8,
+              scrollSnapType: 'x proximity',
             }}>
               {(weather?.hourlyByDate?.[hourlyWeatherDate] || [])
                 .filter((_, i) => i % 2 === 0)
                 .map(h => (
                 <div key={h.hour} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                  padding: '8px 6px', width: 58,
-                  borderRadius: 12,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  padding: '10px 6px', minWidth: 62, flexShrink: 0,
+                  borderRadius: 18, background: 'var(--surface-2)',
+                  scrollSnapAlign: 'start',
                 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
                     {String(h.hour).padStart(2,'0')}:00
                   </span>
                   <span style={{ fontSize: 20, lineHeight: 1 }}>{getWeatherIcon(h.code)}</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{h.temp}°</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{h.temp}°</span>
                   {h.rain > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 700, color: h.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
                       💧{h.rain}%
