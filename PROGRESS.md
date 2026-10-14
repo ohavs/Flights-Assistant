@@ -75,7 +75,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [ ] שלב 5: push (FCM ו־Functions). דורש Blaze.
 
 - [ ] בהמשך, לא דחוף (בקשת הבעלים): ערכות צבע מוכנות מראש שמשנות את כל האפליקציה, לא רק את צבע ההדגשה. לתכנן בזהירות לפני שבונים.
-- [ ] טאב תכנון: תוכנית עיצוב מקיפה לכל הרכיבים (בקשת הבעלים). `tests/e2e/planning.e2e.mjs` עובר על כל המצבים.
+- [ ] טאב תכנון: `docs/PLAN-planning.md` (P0–P8). P0 נעשה: התוכנית ו־`planning.e2e.mjs`, 23 מצבים בבהיר ובכהה, רץ ב־CI.
 
 ## החלטות
 - אנדרואיד עם Capacitor. הפצה ב־GitHub Releases עם עדכון מתוך האפליקציה ("בדוק עדכונים" בהגדרות). בלי Play.
@@ -158,7 +158,7 @@ curl -X POST "https://routes.googleapis.com/directions/v2:computeRoutes" \
 הכל מול emulators (`demo-flights`).
 - `npm run test:data`: בדיקות חוקים (`tests/*.test.mjs`). צריך Java 11+.
 - `npm run test:e2e`:
-  - בונה במצב emulators (`VITE_USE_FIREBASE_EMULATORS=true`) ומריץ את `tests/e2e/smoke.e2e.mjs` ואת `layout.e2e.mjs` (בלי גלילה הצידה ב־360/390/412px).
+  - בונה במצב emulators (`VITE_USE_FIREBASE_EMULATORS=true`) ומריץ את `smoke.e2e.mjs`, `layout.e2e.mjs` (בלי גלילה הצידה ב־360/390/412px) ו־`planning.e2e.mjs` (כל זרימות טאב התכנון, עם צילומים ב־`.e2e/planning/`).
   - בקונטיינר הענן של Claude, להוסיף לפני הפקודה `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
   - צילומי המסך נשמרים ב־`.e2e/`.
 - הדפדפן בבדיקות חוסם service workers: בביקור ראשון ה־PWA נטען מחדש וקוטע את הבדיקה באמצע.
