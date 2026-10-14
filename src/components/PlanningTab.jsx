@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
+import { Pill, CategoryDisc } from '../ui/kit';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import { createPortal } from 'react-dom';
 import {
@@ -117,6 +118,18 @@ const COLOR_OPTIONS = [
   '#0891b2', '#1d4ed8', '#64748b', '#334155',
 ];
 
+// Colours of the built-in categories until the user picks one in category
+// settings (a saved colour always wins). From the Payments-2026 palette, so
+// a list of places is not one shade of indigo.
+const DEFAULT_CATEGORY_COLORS = {
+  'אטרקציות ודברים לעשות': '#F2701D',
+  'מסעדות ומקומות אכילה': '#E5484D',
+  'מקומות לבקר': '#16874A',
+  'תחבורה ציבורית': '#2563EB',
+  'מידע כללי וטיפים': '#6E56CF',
+  'אירועים': '#C2410C',
+};
+
 // Dedicated category whose items carry a date + time (concerts, reservations,
 // guided tours…). Items in this category render date/time inputs in the form
 // and are shown as a chronological agenda.
@@ -233,10 +246,10 @@ const PLAN_LAYOUTS = {
     label: 'מרווח',
     icon: LayoutList,
     listGap: 14,
-    cardPad: '12px 14px',
-    iconBox: 32,
-    titleSize: 14,
-    headerGap: 10,
+    cardPad: '14px 14px',
+    iconBox: 42,
+    titleSize: 16,
+    headerGap: 12,
     showSubtitle: true,
     columns: 1,
   },
@@ -244,10 +257,10 @@ const PLAN_LAYOUTS = {
     label: 'קומפקטי',
     icon: Rows3,
     listGap: 8,
-    cardPad: '8px 10px',
-    iconBox: 26,
-    titleSize: 13,
-    headerGap: 8,
+    cardPad: '10px 12px',
+    iconBox: 32,
+    titleSize: 14,
+    headerGap: 10,
     showSubtitle: true,
     columns: 1,
   },
@@ -1176,7 +1189,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
      undefined on the very first paint. They depend only on the category
      settings, which change rarely, so the memo still holds nearly always. */
   const getCategoryColor = useCallback(
-    (cat) => categorySettings[cat]?.color || '#4f46e5', [categorySettings]);
+    (cat) => categorySettings[cat]?.color || DEFAULT_CATEGORY_COLORS[cat] || '#4F46E5', [categorySettings]);
 
   // Compact Hebrew "when" string for an event: "12.06" / "12.06–14.06 · 20:30-23:00"
   const formatEventWhen = (ev) => {
@@ -2961,17 +2974,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         // always know which section you are scrolling through.
                         // 64px ≈ the height of the sticky toolbar above it,
                         // so a stuck header lands just below, not behind it.
+                        // A section title (Payments-2026): full width, on the
+                        // page's own background so it stays legible when it
+                        // sticks under the toolbar. 64px ≈ the toolbar's
+                        // height, so a stuck header lands just below it.
                         position: 'sticky', top: 64, zIndex: 4,
-                        display: 'flex', alignItems: 'center', gap: 7,
-                        width: 'fit-content', maxWidth: '100%',
-                        padding: '5px 12px',
-                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 8,
-                        marginBottom: 2,
-                        fontSize: 12, fontWeight: 800, color: 'var(--text-muted)',
-                        background: 'var(--surface)',
-                        border: '1px solid var(--ink-6)',
-                        borderRadius: 999,
-                        boxShadow: 'var(--shadow-sm)',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        width: '100%',
+                        padding: '8px 2px 6px',
+                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 10,
+                        fontFamily: 'inherit',
+                        fontSize: 16, fontWeight: 800, letterSpacing: '-0.01em', color: 'var(--text)',
+                        background: 'var(--body-bg)',
+                        border: 'none',
                         cursor: 'pointer',
                         textAlign: 'right', direction: 'rtl',
                         gridColumn: '1 / -1',
@@ -2988,12 +3003,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <span style={{ color: headerColor, display: 'flex', flexShrink: 0 }}>
                         {plan.category ? getCategoryIcon(plan.category, 14) : <Layers size={14} />}
                       </span>
-                      <span style={{ color: 'var(--primary)' }}>{plan.label}</span>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, color: headerColor,
-                        background: `${headerColor === 'var(--accent)' ? 'var(--p-8)' : `${headerColor}18`}`,
-                        borderRadius: 8, padding: '1px 8px', flexShrink: 0,
-                      }}>{plan.count}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.label}</span>
+                      <Pill size="sm" tone="neutral">{plan.count}</Pill>
                     </button>
                   );
                 }
@@ -3027,11 +3038,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 // and a finished event is worth flagging over both.
                 const pill =
                   isTodayEvent && !plan.visited
-                    ? { text: '✨ היום', color: 'var(--c-orange)', bg: 'var(--c-orange-12)' }
+                    ? { text: '✨ היום', tone: 'sky' }
                   : isExpiredEvent && !plan.visited
-                    ? { text: 'נגמר', color: 'var(--text-muted)', bg: 'var(--ink-8)' }
+                    ? { text: 'נגמר', tone: 'muted' }
                   : plan.priority === 'must' && !plan.visited
-                    ? { text: 'חובה', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', star: true }
+                    ? { text: 'חובה', tone: 'butter', star: true }
                     : null;
 
                 const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
@@ -3065,34 +3076,33 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       onKeyDown={openOnKey}
                       title={plan.title}
                       style={{
-                        // .glass-card is a column flexbox — row has to be explicit.
+                        // A tile: the category disc on top, the name under it,
+                        // flags in the top corner.
+                        position: 'relative',
                         display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '11px 12px',
-                        minHeight: 62,
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                        padding: '14px 14px 13px',
+                        minHeight: 104,
                         boxSizing: 'border-box',
                         cursor: 'pointer',
                         willChange: 'transform',
                       }}
                     >
-                      <span style={{
-                        display: 'flex', flexShrink: 0,
-                        color: plan.visited ? 'var(--text-muted)' : getCategoryColor(plan.category),
-                      }}>
+                      <CategoryDisc color={getCategoryColor(plan.category)} size={36} radius={12} muted={plan.visited}>
                         {plan.visited
-                          ? <Check size={15} strokeWidth={3} />
-                          : getCategoryIcon(plan.category, 15)}
-                      </span>
+                          ? <Check size={17} strokeWidth={3} />
+                          : getCategoryIcon(plan.category, 17)}
+                      </CategoryDisc>
 
                       <h3 style={{
-                        flex: 1, minWidth: 0, margin: 0,
-                        fontSize: 13, fontWeight: 800, lineHeight: 1.3,
+                        minWidth: 0, margin: 0, width: '100%',
+                        fontSize: 14, fontWeight: 800, lineHeight: 1.3,
                         // Visited: quieter text, no strike-through. The check
                         // already says it, and a line through a place's name
                         // reads as "cancelled", not "we went".
-                        color: plan.visited ? 'var(--text-muted)' : 'var(--primary-color)',
+                        color: plan.visited ? 'var(--text-muted)' : 'var(--text)',
                         display: '-webkit-box', WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical', overflow: 'hidden',
                         wordBreak: 'break-word',
@@ -3100,20 +3110,22 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {plan.title}
                       </h3>
 
-                      {flag && (
-                        <span title={flag.title} style={{
-                          display: 'flex', alignItems: 'center', flexShrink: 0,
-                          color: '#f59e0b', fontSize: 11, lineHeight: 1,
-                        }}>
-                          {flag.star ? <Star size={12} fill="#f59e0b" /> : flag.emoji}
-                        </span>
-                      )}
-                      {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
-                        <span title={bookedPlaceIds.has(plan.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
-                          display: 'flex', flexShrink: 0,
-                          color: bookedPlaceIds.has(plan.id) ? 'var(--c-green)' : 'var(--c-red)',
-                        }}>
-                          <CalendarCheck size={13} />
+                      {/* Flags in the top corner (inline-end; the disc is at the start). */}
+                      {(flag || (!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation))) && (
+                        <span style={{ position: 'absolute', top: 12, insetInlineEnd: 12, display: 'flex', gap: 5 }}>
+                          {flag && (
+                            <span title={flag.title} style={{ display: 'flex', alignItems: 'center', color: '#F59E0B', fontSize: 12, lineHeight: 1 }}>
+                              {flag.star ? <Star size={14} fill="#F59E0B" /> : flag.emoji}
+                            </span>
+                          )}
+                          {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
+                            <span title={bookedPlaceIds.has(plan.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
+                              display: 'flex',
+                              color: bookedPlaceIds.has(plan.id) ? 'var(--c-green)' : 'var(--c-red)',
+                            }}>
+                              <CalendarCheck size={14} />
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
@@ -3162,72 +3174,65 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       )
                     )}
 
-                    <span style={{
-                      width: LO.iconBox, height: LO.iconBox, borderRadius: 10,
-                      background: `${getCategoryColor(plan.category)}18`,
-                      color: getCategoryColor(plan.category),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      {getCategoryIcon(plan.category, LO.iconBox <= 26 ? 15 : undefined)}
-                    </span>
+                    <CategoryDisc color={getCategoryColor(plan.category)} size={LO.iconBox} muted={plan.visited}>
+                      {getCategoryIcon(plan.category, LO.iconBox >= 40 ? 20 : 16)}
+                    </CategoryDisc>
 
                     <div style={{ minWidth: 0, flex: 1 }}>
+                      {/* The name gets its own line (up to two): tags used to
+                          sit beside it and cut it to "מבצר הדי…". */}
                       <h3 style={{
                         fontSize: LO.titleSize,
                         fontWeight: 800,
-                        color: plan.visited ? 'var(--text-muted)' : 'var(--primary-color)',
-                        lineHeight: 1.3,
+                        letterSpacing: '-0.01em',
+                        color: plan.visited ? 'var(--text-muted)' : 'var(--text)',
+                        lineHeight: 1.25,
                         margin: 0,
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        overflow: 'hidden',
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        wordBreak: 'break-word',
                       }}>
-                        <span style={{
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{plan.title}</span>
-                        {pill && (
-                          <span style={{
-                            fontSize: 10, fontWeight: 900, flexShrink: 0,
-                            padding: '2px 7px', borderRadius: 999,
-                            background: pill.bg, color: pill.color,
-                            textDecoration: 'none',
-                            display: 'inline-flex', alignItems: 'center', gap: 3,
-                          }}>
-                            {pill.star && <Star size={9} fill={pill.color} />}
-                            {pill.text}
-                          </span>
-                        )}
-                        {/* Booking is a to-do, not a status, so it gets its own
-                            marker beside the pill instead of competing for it. */}
-                        {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (() => {
-                          const booked = bookedPlaceIds.has(plan.id);
-                          return (
-                            <span title={booked ? 'יש הזמנה בטאב ההזמנות' : 'צריך לסגור / להזמין מראש'} style={{
-                              fontSize: 10, fontWeight: 900, flexShrink: 0,
-                              padding: '2px 7px', borderRadius: 999,
-                              background: booked ? 'var(--c-green-10)' : 'var(--c-red-10)',
-                              color: booked ? 'var(--c-green)' : 'var(--c-red)',
-                              display: 'inline-flex', alignItems: 'center', gap: 3,
-                            }}>
-                              {booked ? <Check size={10} strokeWidth={3} /> : <CalendarCheck size={10} />}
-                              {booked ? 'הוזמן' : 'להזמין מראש'}
-                            </span>
-                          );
-                        })()}
+                        {plan.title}
                       </h3>
                       {(LO.showSubtitle && metaLine) && (
                         <span style={{
-                          fontSize: 11, color: 'var(--text-muted)', fontWeight: 600,
+                          fontSize: LO.titleSize >= 16 ? 13 : 12, color: 'var(--text-muted)', fontWeight: 500,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           display: 'block', marginTop: 2,
                         }}>
                           {metaLine}
                         </span>
                       )}
+                      {(() => {
+                        // Booking is a to-do, not a status, so it gets its own
+                        // tag beside the status one instead of competing for it.
+                        const booked = bookedPlaceIds.has(plan.id);
+                        const bookingTag = !plan.visited && (booked || plan.needsReservation);
+                        if (!pill && !bookingTag) return null;
+                        return (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
+                            {pill && (
+                              <Pill size="sm" tone={pill.tone} icon={pill.star ? <Star size={11} fill="#F59E0B" color="#F59E0B" /> : null}>
+                                {pill.text}
+                              </Pill>
+                            )}
+                            {bookingTag && (
+                              <Pill
+                                size="sm"
+                                tone={booked ? 'mint' : 'red'}
+                                title={booked ? 'יש הזמנה בטאב ההזמנות' : 'צריך לסגור / להזמין מראש'}
+                                icon={booked ? <Check size={11} strokeWidth={3} /> : <CalendarCheck size={11} />}
+                              >
+                                {booked ? 'הוזמן' : 'להזמין מראש'}
+                              </Pill>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Quiet "opens a panel" affordance (RTL: points inward) */}
-                    <ChevronLeft size={16} style={{ color: 'var(--ink-15)', flexShrink: 0 }} />
+                    <ChevronLeft size={18} style={{ color: 'var(--ink-20)', flexShrink: 0 }} />
                   </div>
                 );
               })

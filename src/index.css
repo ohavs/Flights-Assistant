@@ -355,7 +355,7 @@ button:not(:disabled):active,
   transform: scale(0.97);
 }
 
-.plan-card:active,
+.plan-card:active { transform: scale(0.98); }
 .checklist-item-row:active {
   background: var(--ink-4);
 }
@@ -1969,13 +1969,13 @@ input[type="datetime-local"].form-control {
    a green fill, a coloured rail — on the finished half of a list is
    backwards, and in a list of forty places it is most of the screen. */
 .plan-card {
-  border-right: 1px solid var(--w-60);
-  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+  border: none;
+  border-radius: 22px;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.2s ease, opacity 0.2s ease, transform 0.22s var(--ease-spring);
 }
 .plan-card.visited {
-  background: var(--ink-4);
-  border-color: transparent;
-  border-right-color: transparent;
+  background: var(--surface-2);
   box-shadow: none;
 }
 
@@ -1985,7 +1985,7 @@ input[type="datetime-local"].form-control {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  border: 1.5px solid var(--ink-18);
+  border: 2px solid var(--ink-20);
   background: transparent;
   color: transparent;
   display: flex;
@@ -2003,10 +2003,12 @@ input[type="datetime-local"].form-control {
   /* Lighter than the empty ring beside it, not darker: a solid dark
      mark on a receding card would pull the eye back to the one place
      that needs nothing. */
-  background: var(--ink-15);
+  background: var(--surface-3);
   border-color: transparent;
   color: var(--text-muted);
 }
+/* Ticking a place off pops the check (transform only). */
+.plan-visit-toggle.on svg { animation: nav-pop 0.45s var(--ease-spring); }
 
 /* Round add button (used next to search) — guaranteed circular */
 .btn-add-circle {
@@ -2160,21 +2162,12 @@ body[data-fab] .app-content {
 
 /* ── Event status highlights ── */
 .plan-card.event-today {
-  border-right: 4px solid var(--c-orange) !important;
-  background: linear-gradient(
-    135deg,
-    rgba(245,158,11,0.10),
-    rgba(245,158,11,0.03)
-  ) !important;
-  box-shadow: 0 4px 16px rgba(245,158,11,0.18) !important;
+  /* Today's event: a sky card instead of an orange rail. */
+  background: var(--sky) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 [data-theme="dark"] .plan-card.event-today {
-  background: linear-gradient(
-    135deg,
-    rgba(251,191,36,0.12),
-    rgba(251,191,36,0.04)
-  ) !important;
-  box-shadow: 0 4px 16px rgba(251,191,36,0.15) !important;
+  box-shadow: none !important;
 }
 
 
