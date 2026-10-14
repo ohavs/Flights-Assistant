@@ -60,7 +60,8 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
 - [x] שלב 1 (#12, 8.15.2): Firebase SDK 10.14 → 12.19, בלי שינוי קוד. בדיקת הדפדפן: 29 מתוך 30 ריצות (25 אחרונות ברצף).
 - [x] `deploy.yml` (#13): אחרי כל פריסה בודק שהאתר החי מגיש בדיוק את ה־build. הקונטיינר של Claude לא מגיע לאתר (הפרוקסי חוסם), אז זה האימות.
 - [x] אפליקציית Android רשומה ב־Firebase: `1:883919555591:android:1ad4ccc419e3b985b32ea2`, עם SHA-1 ו־SHA-256 של מפתח השחרור (`firebase-android-setup.yml`). `google-services.json` ב־`android/app/`.
-- [ ] שלב 2ב (#14): מעטפת Capacitor, כניסה נייטיב, `android.yml`. ממתין לסודות החתימה.
+- [x] שלב 2ב (#14): מעטפת Capacitor, כניסה נייטיב, כפתור חזור, status bar, אייקון ו־splash. ה־SW נרשם רק בווב.
+- [ ] שלב 2ג: `android.yml` (APK חתום, בדיקת חתימה, emulator), "בדוק עדכונים" ו־Release ראשון. מחכה לסודות החתימה. הקוד מוכן מקומית (`updater-wip`): `ApkUpdaterPlugin`, `src/lib/updater.js`, `release.js` עם בדיקות, `AppSettingsSheet`.
 
 ## הבא
 לפי `docs/PLAN.md`:
