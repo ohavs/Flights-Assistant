@@ -628,12 +628,14 @@ export default function FlightTab({ tripId }) {
   // Nothing to lose until the form differs from what it opened with.
   const editDirty = !!initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current;
 
-  const handleFormSubmit = async (e) => {
+  const handleFormSubmit = (e) => {
     e.preventDefault();
     if (!tripId) return;
     const docRef = doc(db, 'trips', tripId);
 
-    await setDoc(docRef, {
+    // Fire-and-forget: the offline cache queues the write. Awaiting it kept
+    // the form open until the server answered, so offline "שמור" did nothing.
+    setDoc(docRef, {
       name: formTripName,
       dates: formatDateRange(formOutDate, formRetDate),
       outboundFlightDetails: {
@@ -673,7 +675,7 @@ export default function FlightTab({ tripId }) {
         roomNumber: formHotelRoom,
         notes: formHotelNotes
       }
-    }, { merge: true });
+    }, { merge: true }).catch(err => console.error('Trip details save error:', err));
 
     setShowEditModal(false);
   };
