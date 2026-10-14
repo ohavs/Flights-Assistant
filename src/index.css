@@ -505,6 +505,22 @@ button:not(:disabled):active,
   color: var(--accent);
 }
 
+/* Under the trip's title: the destination, and its weather as a chip. */
+.app-header-sub {
+  display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 1px;
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+}
+.app-header-sub > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.weather-chip {
+  display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+  height: 20px; padding: 0 7px 0 8px; border: none; border-radius: 999px;
+  background: var(--surface-2); color: var(--text);
+  font-family: var(--font-hebrew); font-size: 11.5px; font-weight: 800;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.weather-chip > span { font-size: 12px; line-height: 1; }
+.weather-chip:active { background: var(--surface-3); }
+
 /* ── Content — the ONLY scrollable area ── */
 .app-content {
   flex: 1 1 0%;       /* take all remaining space */
@@ -1713,43 +1729,6 @@ input[type="datetime-local"].form-control {
   font-size: 15px;
   font-weight: 800;
 }
-
-/* Flight tab: "מידע חשוב" and the weather as one compact row of two tiles
-   (secondary to flights and hotel); each opens its own sheet. */
-.quick-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-}
-.quick-row.single { grid-template-columns: minmax(0, 1fr); }
-.quick-tile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: 64px;
-  padding: 10px 12px;
-  border: none;
-  border-radius: 20px;
-  background: var(--card-bg-solid);
-  box-shadow: var(--shadow-sm);
-  color: var(--text);
-  font-family: var(--font-hebrew);
-  text-align: right;
-  cursor: pointer;
-  transition: transform 0.22s var(--ease-spring);
-}
-.quick-tile:active { transform: scale(0.97); }
-.quick-tile-emoji { font-size: 28px; line-height: 1; flex-shrink: 0; }
-.quick-tile-text { display: flex; flex-direction: column; min-width: 0; }
-.quick-tile-text b,
-.quick-tile-text small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.quick-tile-text b { font-size: 14px; font-weight: 800; }
-.quick-tile-text small { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-top: 1px; }
 
 /* ── הזמנות (bookings tab) ── */
 .booking-section {

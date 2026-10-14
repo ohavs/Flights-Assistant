@@ -105,12 +105,12 @@ await check('trip edit form', openTripEdit, closeAll);
 await dragClose('trip edit form', openTripEdit);
 
 await check('info sheet', async () => {
-  await page.locator('.quick-tile', { hasText: 'מידע חשוב' }).click();
+  await page.locator('header button[aria-label="מידע חשוב"]').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
   await page.locator('.modal-overlay').getByText('מספרי חירום').click();   // expand: long enough to scroll
 }, closeAll);
 await dragClose('info sheet', async () => {
-  await page.locator('.quick-tile', { hasText: 'מידע חשוב' }).click();
+  await page.locator('header button[aria-label="מידע חשוב"]').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
 });
 

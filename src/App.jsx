@@ -10,6 +10,7 @@ import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
+import { WeatherChip, InfoButton } from './components/TripHeaderInfo';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
@@ -1838,6 +1839,26 @@ function AppInner() {
   return (
     <div className="app-container">
       {OfflineBanner}
+      {/* The trip's role reaches the header too: its "מידע חשוב" sheet
+          edits the trip like any tab. */}
+      <TripProvider value={{
+        tripId: selectedTripId,
+        role: selectedTrip?.members?.[user.uid] || null,
+        canEdit: ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]),
+        isOwner: selectedTrip?.members?.[user.uid] === 'owner',
+        ownerProfile: (() => {
+          const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
+          return ownerUid && ownerUid !== user.uid ? memberProfiles[ownerUid] : null;
+        })(),
+        currentUid: user.uid,
+        currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
+        memberProfiles: memberProfiles,
+        tripMembers: selectedTrip?.members || {},
+        // People who were on the trip and are not any more. Their work
+        // stays; the tabs render them greyed so it is clear why they
+        // can no longer be picked.
+        formerMembers: selectedTrip?.formerMembers || {},
+      }}>
       <header className={`app-header${contentScrolled ? ' scrolled' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
           <button
@@ -1851,12 +1872,14 @@ function AppInner() {
             <h1 style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {getHeaderTitle()}
             </h1>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {selectedTrip?.destination || selectedTrip?.name || ''}
-            </p>
+            <div className="app-header-sub">
+              <span>{selectedTrip?.destination || selectedTrip?.name || ''}</span>
+              <WeatherChip trip={selectedTrip} />
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {selectedTripId && <InfoButton tripId={selectedTripId} />}
           {selectedTripId && selectedTrip && (
             <ExportMenu tripId={selectedTripId} trip={selectedTrip} activeTab={activeTab} />
           )}
@@ -1880,24 +1903,6 @@ function AppInner() {
         ref={contentRef}
         onScroll={handleContentScroll}
       >
-        <TripProvider value={{
-          tripId: selectedTripId,
-          role: selectedTrip?.members?.[user.uid] || null,
-          canEdit: ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]),
-          isOwner: selectedTrip?.members?.[user.uid] === 'owner',
-          ownerProfile: (() => {
-            const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');
-            return ownerUid && ownerUid !== user.uid ? memberProfiles[ownerUid] : null;
-          })(),
-          currentUid: user.uid,
-          currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
-          memberProfiles: memberProfiles,
-          tripMembers: selectedTrip?.members || {},
-          // People who were on the trip and are not any more. Their work
-          // stays; the tabs render them greyed so it is clear why they
-          // can no longer be picked.
-          formerMembers: selectedTrip?.formerMembers || {},
-        }}>
           {/* One boundary per tab: a failure stays inside the tab it came
               from, leaving the nav and every other tab usable. */}
           <ErrorBoundary label={getHeaderTitle()} resetKey={activeTab}>
@@ -1918,8 +1923,8 @@ function AppInner() {
             {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
             </Suspense>
           </ErrorBoundary>
-        </TripProvider>
       </main>
+      </TripProvider>
 
       {/* Bottom nav — a floating pill. The active tab is marked by one
           indicator that travels between the icons, so the eye follows the
