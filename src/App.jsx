@@ -10,7 +10,7 @@ import ConfirmModal from './components/ConfirmModal';
 import ExportMenu from './components/ExportMenu';
 import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
-import { WeatherChip, InfoButton } from './components/TripHeaderInfo';
+import { InfoButton } from './components/TripHeaderInfo';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
@@ -1883,7 +1883,6 @@ function AppInner() {
             </h1>
             <div className="app-header-sub">
               <span>{selectedTrip?.destination || selectedTrip?.name || ''}</span>
-              <WeatherChip trip={selectedTrip} />
             </div>
           </div>
         </div>
