@@ -54,6 +54,9 @@ public class AppActivity extends BridgeActivity {
         super.onStop();
         boolean now = AppIcons.switchNow;
         AppIcons.switchNow = false;
+        if (AppIcons.pending(this) != null) {
+            android.util.Log.i("AppIcons", "stop: now=" + now + " finishing=" + isFinishing() + " openedOther=" + openedOther);
+        }
         if (now || isFinishing() || (!openedOther && !isChangingConfigurations())) {
             AppIcons.applyPending(this, now);
         }
