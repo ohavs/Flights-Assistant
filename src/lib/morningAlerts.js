@@ -8,6 +8,7 @@
 // it opens, so it stays fresh enough.
 import { alertId } from './flightAlerts.js';
 import { getWeatherIcon, getWeatherLabel } from './weatherCodes.js';
+import { dayActivities } from './dayActivities.js';
 
 export const MORNING_DAYS = 7;
 export const MORNING_TIME = '08:00';
@@ -102,7 +103,7 @@ export function morningAlerts(trips, daysByTrip, weatherByTrip, time = MORNING_T
       const day = dayFor(days, iso, range);
       const n = range.indexOf(iso);
       const dayTitle = day?.title || (n >= 0 ? `יום ${n + 1}` : 'היום');
-      const body = [planText(day?.activities), weatherText(forecast[iso])].filter(Boolean).join(' ');
+      const body = [planText(dayActivities(day?.activities)), weatherText(forecast[iso])].filter(Boolean).join(' ');
       out.push({
         id: alertId(trip.id, 'morning', iso),
         at,

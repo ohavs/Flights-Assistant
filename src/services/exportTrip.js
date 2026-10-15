@@ -4,6 +4,7 @@
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { saveFile } from '../lib/saveFile';
+import { dayActivities } from '../lib/dayActivities';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from './currency';
 import { toTime24 } from './flightSimulator';
 
@@ -17,7 +18,7 @@ export async function loadTripExportData(tripId, trip) {
 
   const daysSnap = await getDocs(collection(db, 'trips', tripId, 'days'));
   const days = daysSnap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
+    .map(d => ({ id: d.id, ...d.data(), activities: dayActivities(d.data().activities) }))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const checklistSnap = await getDocs(collection(db, 'trips', tripId, 'checklist'));
