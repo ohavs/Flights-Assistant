@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { listen } from '../lib/listen';
+import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
   Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText, Hash,
   ChevronDown, ExternalLink, RotateCcw, Globe, X, GripVertical
@@ -80,7 +81,7 @@ export default function InfoTab({ tripId, embedded = false }) {
 
   useEffect(() => {
     if (!tripId) return;
-    const unsub = onSnapshot(collection(db, 'trips', tripId, 'info'), (snap) => {
+    const unsub = listen(collection(db, 'trips', tripId, 'info'), (snap) => {
       setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
@@ -89,7 +90,7 @@ export default function InfoTab({ tripId, embedded = false }) {
 
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(doc(db, 'trips', tripId, 'settings', 'infoSync'), snap => {
+    return listen(doc(db, 'trips', tripId, 'settings', 'infoSync'), snap => {
       setCategoryOrder(snap.exists() ? (snap.data()?.categoryOrder || []) : []);
     });
   }, [tripId]);

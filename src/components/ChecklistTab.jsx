@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
+import { listen } from '../lib/listen';
 import {
   collection,
   onSnapshot,
@@ -191,7 +192,7 @@ function RemindersCard({ tripId, canEdit }) {
 
   useEffect(() => {
     if (!tripId) return undefined;
-    return onSnapshot(collection(db, 'trips', tripId, 'reminders'), snap => {
+    return listen(collection(db, 'trips', tripId, 'reminders'), snap => {
       setReminders(snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
@@ -820,7 +821,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // ── Firestore listeners ──────────────────────────────────────────────────
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(collection(db, 'trips', tripId, 'checklist'), snap => {
+    return listen(collection(db, 'trips', tripId, 'checklist'), snap => {
       setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
@@ -828,7 +829,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
+    return listen(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
       const data = snap.exists() ? snap.data() : {};
       setDeletedGlobalIds(data.deletedGlobalIds || []);
       setExtraCategories(data.extraCategories || []);

@@ -1,7 +1,8 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { CircleAlert, ChevronLeft } from 'lucide-react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection } from 'firebase/firestore';
 import { db } from '../firebase';
+import { listen } from '../lib/listen';
 import { Pill } from '../ui/kit';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import Sheet from '../ui/Sheet';
@@ -95,7 +96,7 @@ export function InfoCard({ tripId }) {
   const [items, setItems] = useState(null);
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(collection(db, 'trips', tripId, 'info'),
+    return listen(collection(db, 'trips', tripId, 'info'),
       snap => setItems(snap.docs.map(d => d.data())),
       () => setItems([]));
   }, [tripId]);

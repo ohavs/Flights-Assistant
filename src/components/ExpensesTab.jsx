@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { listen } from '../lib/listen';
+import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import {
   Plus, Trash2, Search, X, Check, TrendingUp,
   Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin,
@@ -139,7 +140,7 @@ export default function ExpensesTab({ tripId }) {
   // Load expenses
   useEffect(() => {
     if (!tripId) return;
-    const unsub = onSnapshot(collection(db, 'trips', tripId, 'expenses'), snap => {
+    const unsub = listen(collection(db, 'trips', tripId, 'expenses'), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setExpenses(data);
@@ -155,7 +156,7 @@ export default function ExpensesTab({ tripId }) {
   // Load planning items for linking
   useEffect(() => {
     if (!tripId) return;
-    const unsub = onSnapshot(collection(db, 'trips', tripId, 'planning'), snap => {
+    const unsub = listen(collection(db, 'trips', tripId, 'planning'), snap => {
       setPlans(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
