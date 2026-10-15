@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.42.0 (`changelog.md`)
+- גרסת ווב: 8.44.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).

@@ -28,6 +28,8 @@ import java.io.FileOutputStream;
  * where the user saves it to Files or Drive or sends it on. The content
  * comes as base64. permissions / openSettings: what the app may do, and
  * Android's own page for each permission, for the list in settings.
+ * "shared" event: text shared to the app from another one (a place from
+ * Google Maps), { title, text }.
  */
 @CapacitorPlugin(name = "AppTools")
 public class AppToolsPlugin extends Plugin {
@@ -106,5 +108,22 @@ public class AppToolsPlugin extends Plugin {
             getActivity().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg)));
         }
         call.resolve();
+    }
+
+    // Text shared to the app (a place from Google Maps). BridgeActivity hands
+    // the launch intent here too, so a share that starts the app arrives the
+    // same way, kept until the app listens.
+    @Override
+    protected void handleOnNewIntent(Intent intent) {
+        super.handleOnNewIntent(intent);
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
+        String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (text == null || text.trim().isEmpty()) return;
+        JSObject data = new JSObject();
+        data.put("title", intent.getStringExtra(Intent.EXTRA_SUBJECT));
+        data.put("text", text);
+        // Handled once: a recreated activity must not share it again.
+        intent.setAction(Intent.ACTION_MAIN);
+        notifyListeners("shared", data, true);
     }
 }

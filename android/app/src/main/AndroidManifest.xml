@@ -23,6 +23,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Share" from Google Maps (or anywhere that shares text): the
+                 app is in the list and opens on the trip picker
+                 (AppToolsPlugin "shared", ShareTargetScreen). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <!-- The activity's old name, no longer a launcher entry: an intent

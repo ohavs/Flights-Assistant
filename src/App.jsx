@@ -43,7 +43,7 @@ import EmptyState from './components/EmptyState';
 import Sheet from './ui/Sheet';
 import Notice from './ui/Notice';
 import Skeleton from './components/Skeleton';
-import { readSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
+import { readSharedPlace, receiveSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
   Plane, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
@@ -1304,6 +1304,20 @@ function AppInner() {
   }, [widgetKey, signedInUid, loading]);
   // A renamed trip, a moved flight or another palette: the same data, saved again.
   useEffect(() => { widgetSync.current?.(); }, [trips, palette]);
+
+  // "Share" from Google Maps to the Android app: the same trip picker as a
+  // share to the web app (ShareTargetScreen), whatever screen was open.
+  useEffect(() => {
+    if (!isNative) return undefined;
+    let off = () => {};
+    import('./lib/native/appTools').then(t => {
+      off = t.onShared((shared) => {
+        setPendingTripPick(null);
+        setSharedPlace(receiveSharedPlace(shared));
+      });
+    }).catch(() => {});
+    return () => off();
+  }, []);
 
   // A tap on a notification or on the widget opens its trip on the right tab.
   useEffect(() => {

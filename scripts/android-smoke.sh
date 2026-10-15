@@ -80,3 +80,26 @@ if adb shell pidof "$PKG" >/dev/null && adb shell dumpsys activity activities | 
 fi
 echo "back on the first screen leaves the app"
 
+
+# "Share" from Google Maps: the app is one of the share targets, and a
+# shared place opens the trip picker with the place's name.
+targets=$(adb shell cmd package query-activities --components -a android.intent.action.SEND -t text/plain | tr -d '\r' | grep "$PKG/" || true)
+echo "share targets: $targets"
+[ -n "$targets" ] || { echo "the app is not in the share sheet"; exit 1; }
+adb shell "am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Louvre Museum https://maps.app.goo.gl/smoke123' -n $PKG/.AppActivity" | grep -E "Status|Activity:" || true
+for i in $(seq 1 15); do
+  sleep 2
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
+  adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
+  if grep -q "לאיזה טיול להוסיף" ui.xml && grep -q "Louvre Museum" ui.xml; then
+    echo "a shared place opens the trip picker after $((i * 2))s"
+    adb exec-out screencap -p > android-share.png
+    shared=1; break
+  fi
+done
+if [ -z "${shared:-}" ]; then
+  echo "sharing a place did not open the trip picker"
+  grep -o 'text="[^"]*"' ui.xml | head -20
+  adb exec-out screencap -p > android-share.png || true
+  exit 1
+fi

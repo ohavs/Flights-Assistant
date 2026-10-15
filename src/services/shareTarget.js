@@ -74,6 +74,14 @@ export function readSharedPlace(loc = window.location) {
   } catch { return null; }
 }
 
+// A share that reached the Android app (AppToolsPlugin "shared"), not the
+// URL: parsed and kept like one, so a reload does not lose it either.
+export function receiveSharedPlace(shared) {
+  const place = parseSharedPlace(shared || {});
+  try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(place)); } catch { /* ignore */ }
+  return place;
+}
+
 // Drop the share params from the address bar so a refresh (or the back
 // button) doesn't hand us the same place a second time.
 export function clearShareUrl() {
