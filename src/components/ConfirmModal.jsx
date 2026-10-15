@@ -30,8 +30,8 @@ export default function ConfirmModal({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
           <div style={{
             width: 44, height: 44, borderRadius: '50%',
-            background: danger ? 'var(--c-red-10)' : 'var(--mint)',
-            color: danger ? 'var(--c-red)' : 'var(--c-green)',
+            background: danger ? 'var(--c-red-10)' : 'var(--brand-soft)',
+            color: danger ? 'var(--c-red)' : 'var(--accent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
           }}>
             {danger ? <AlertTriangle size={22} /> : <HelpCircle size={22} />}

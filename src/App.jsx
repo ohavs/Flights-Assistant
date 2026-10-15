@@ -187,7 +187,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
           alignItems: 'center',
           gap: 12,
           border: 'none',
-          background: 'var(--mint)',
+          background: 'var(--brand-soft)',
           color: 'var(--text)',
           borderRadius: 22,
           padding: '14px 16px',
