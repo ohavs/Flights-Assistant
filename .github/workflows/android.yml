@@ -130,7 +130,7 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: bash scripts/android-smoke.sh flights-assistant.apk
+          script: bash scripts/android-smoke.sh flights-assistant.apk && bash scripts/widget-shots.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -139,6 +139,32 @@ jobs:
             android-smoke.png
             android-signin.png
             ui.xml
+            widget-*.png
+
+  # The emulator's screenshots on the ci-shots branch, for review from a git
+  # checkout. Its own job: only this one may write, and it runs no code
+  # from the change, just git.
+  shots:
+    needs: smoke
+    if: always() && needs.smoke.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-smoke
+          path: shots
+      - name: Publish to ci-shots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd shots
+          ls -1
+          git init -q -b ci-shots
+          git add .
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Emulator screenshots for $GITHUB_SHA"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-shots
 
   # Publish only after the APK booted on the emulator, and only from master.
   release:

@@ -23,7 +23,6 @@ const DAY_LETTERS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
 const pad = (n) => String(n).padStart(2, '0');
 const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const assignees = (it) => (Array.isArray(it.assignedTo) ? it.assignedTo : it.assignedTo ? [it.assignedTo] : []);
 
 // "יום ג׳ 20.10 · 07:30" (the time only when known).
 function whenText(date, clock) {
@@ -91,16 +90,15 @@ function remindersOf(list) {
 }
 
 // trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip: { [tripId]: [doc] }.
-// uid: whose packing is counted first ("mine" beside the whole list).
-export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, uid = null, accent = null, now = new Date() }) {
+// palette: the app's palette key; the widget has each one's light and dark colours.
+export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, palette = 'green', now = new Date() }) {
   return {
     v: 1,
     savedAt: now.getTime(),
-    accent,
+    palette,
     trips: widgetTrips(trips, now).map(trip => {
       const range = tripRange(trip);
       const items = checklistByTrip[trip.id] || [];
-      const mine = uid ? items.filter(it => assignees(it).includes(uid)) : [];
       return {
         id: trip.id,
         name: trip.name || trip.destination || 'הטיול',
@@ -108,12 +106,7 @@ export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, r
         end: range[range.length - 1],
         flights: flightsOf(trip),
         days: daysOf(trip, daysByTrip[trip.id], range, now),
-        packed: {
-          done: items.filter(it => it.completed).length,
-          total: items.length,
-          mineDone: mine.filter(it => it.completed).length,
-          mine: mine.length,
-        },
+        packed: { done: items.filter(it => it.completed).length, total: items.length },
         reminders: remindersOf(remindersByTrip[trip.id]),
       };
     }),

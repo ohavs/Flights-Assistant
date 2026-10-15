@@ -1,0 +1,40 @@
+// Snapshots for the widget screenshots (scripts/widget-shots.sh), made by
+// the app's own widgetSnapshot() at fixed moments, in UTC like the CI
+// emulator. Prints "name nowMs base64" per line.
+//   TZ=UTC node scripts/widget-fixtures.mjs
+import { widgetSnapshot } from '../src/lib/widgetData.js';
+
+const trip = {
+  id: 'paris', name: 'פריז עם הילדים',
+  outboundFlightDetails: {
+    date: '2026-11-03', scheduledDep: '07:30', flightNumber: 'LY 323',
+    depAirport: { code: 'TLV', timezone: 'UTC +00:00' }, arrAirport: { code: 'CDG' },
+  },
+  returnFlightDetails: {
+    date: '2026-11-06', scheduledDep: '18:10', flightNumber: 'LY 326',
+    depAirport: { code: 'CDG', timezone: 'UTC +00:00' }, arrAirport: { code: 'TLV' },
+  },
+};
+const days = [
+  { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין במלון', timeLabel: 'ערב' }] },
+  { id: 'd2', order: 1, date: '2026-11-04', title: 'מוזיאונים', activities: [
+    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב' }, { title: 'הלובר', timeLabel: 'בוקר' },
+    { title: 'גני טווילרי', timeLabel: 'צהריים' }, { title: 'גלידה ברטיון' }, { title: 'מגדל אייפל בלילה', timeLabel: 'לילה' },
+  ] },
+];
+const checklist = Array.from({ length: 22 }, (_, i) => ({ id: `c${i}`, completed: i < 12 }));
+const reminders = [{ text: 'להזמין מונית לשדה', createdAt: 1 }, { text: 'להדפיס כרטיסים', createdAt: 2 }, { text: 'מטען נייד', createdAt: 3 }];
+const data = { daysByTrip: { paris: days }, checklistByTrip: { paris: checklist }, remindersByTrip: { paris: reminders } };
+
+const at = (s) => new Date(s);
+const cases = [
+  ['flight', at('2026-10-29T10:00:00Z'), { palette: 'green' }],
+  ['soon', at('2026-11-03T04:20:00Z'), { palette: 'ocean' }],
+  ['plan', at('2026-11-04T09:00:00Z'), { palette: 'sand' }],
+  ['return', at('2026-11-06T09:00:00Z'), { palette: 'coral' }],
+  ['ended', at('2026-12-01T09:00:00Z'), { palette: 'green' }],
+];
+for (const [name, now, opts] of cases) {
+  const s = widgetSnapshot({ trips: [trip], ...data, now, ...opts });
+  console.log(`${name} ${now.getTime()} ${Buffer.from(JSON.stringify(s)).toString('base64')}`);
+}

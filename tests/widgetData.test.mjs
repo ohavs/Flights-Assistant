@@ -57,7 +57,7 @@ test('the plan of each coming day, in time-of-day order, three lines and a count
   assert.deepEqual(Object.keys(later.days), ['2026-11-05', '2026-11-06']);
 });
 
-test('packing: the whole list and my part of it; open reminders, the soonest first', () => {
+test('packing: how much of the list is packed; open reminders, the soonest first', () => {
   const checklist = [
     { completed: true, assignedTo: ['me'] }, { completed: false, assignedTo: 'me' },
     { completed: true }, { completed: false, assignedTo: ['other'] },
@@ -66,14 +66,14 @@ test('packing: the whole list and my part of it; open reminders, the soonest fir
     { text: 'מונית', createdAt: 1 }, { text: 'כרטיסים', remindAt: '2026-11-02T09:00', createdAt: 2 },
     { text: 'נעשה', completed: true, createdAt: 0 },
   ];
-  const [t] = widgetSnapshot({ trips: [paris], checklistByTrip: { p: checklist }, remindersByTrip: { p: reminders }, uid: 'me', now }).trips;
-  assert.deepEqual(t.packed, { done: 2, total: 4, mineDone: 1, mine: 2 });
+  const [t] = widgetSnapshot({ trips: [paris], checklistByTrip: { p: checklist }, remindersByTrip: { p: reminders }, now }).trips;
+  assert.deepEqual(t.packed, { done: 2, total: 4 });
   assert.deepEqual(t.reminders, { open: 2, next: 'כרטיסים' });
 });
 
 test('nothing ahead: an empty list, still a snapshot', () => {
-  const s = widgetSnapshot({ trips: [past], now, accent: '#22A45D' });
+  const s = widgetSnapshot({ trips: [past], now, palette: 'sand' });
   assert.equal(s.v, 1);
-  assert.equal(s.accent, '#22A45D');
+  assert.equal(s.palette, 'sand');
   assert.deepEqual(s.trips, []);
 });

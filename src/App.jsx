@@ -14,6 +14,7 @@ import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
 import { isMorningTrip, tripPlace, morningAlerts } from './lib/morningAlerts';
+import { widgetTrips, widgetSnapshot } from './lib/widgetData';
 import { loadWeather } from './hooks/useWeather';
 import { NavIcon } from './ui/icons';
 import { CustomDropdown } from './components/CustomDatePicker';
@@ -1269,18 +1270,54 @@ function AppInner() {
     return () => { cancelled = true; offs.forEach(off => off()); clearTimeout(timer); };
   }, [morningKey, signedInUid, notifyVersion]);
 
-  // Tapping a reminder opens its trip on the right tab.
+  // Home screen widget (Android app): the current or next trips, their
+  // planner days, packing and reminders, saved for the widget whenever any
+  // of it changes (widgetData.js). Signed out, the widget says so.
+  const { palette } = useTheme();
+  const widgetKey = widgetTrips(trips).map(t => t.id).join(',');
+  const widgetSync = useRef(null);
+  useEffect(() => {
+    if (!isNative || loading) return undefined;
+    if (!signedInUid) { import('./lib/native/widget').then(w => w.saveWidget(null)).catch(() => {}); return undefined; }
+    const ids = widgetKey ? widgetKey.split(',') : [];
+    const data = { days: {}, checklist: {}, reminders: {} };
+    let timer;
+    const sync = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const current = document.documentElement.getAttribute('data-palette') || 'green';
+        import('./lib/native/widget').then(w => w.saveWidget(widgetSnapshot({
+          trips: tripsRef.current,
+          daysByTrip: data.days, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
+          palette: current,
+        }))).catch(() => {});
+      }, 600);
+    };
+    widgetSync.current = sync;
+    const offs = ids.flatMap(id => ['days', 'checklist', 'reminders'].map(sub => listen(
+      collection(db, 'trips', id, sub),
+      (snap) => { data[sub][id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
+      () => {},
+    )));
+    sync();
+    return () => { offs.forEach(off => off()); clearTimeout(timer); widgetSync.current = null; };
+  }, [widgetKey, signedInUid, loading]);
+  // A renamed trip, a moved flight or another palette: the same data, saved again.
+  useEffect(() => { widgetSync.current?.(); }, [trips, palette]);
+
+  // A tap on a notification or on the widget opens its trip on the right tab.
   useEffect(() => {
     if (!isNative) return undefined;
-    let off = () => {};
-    import('./lib/native/notify').then(n => {
-      off = n.onNotificationTap((extra) => {
-        if (!extra?.tripId) return;
-        setSelectedTripId(extra.tripId);
-        if (extra.tab) setActiveTab(extra.tab);
-      });
-    }).catch(() => {});
-    return () => off();
+    const openAt = (extra) => {
+      if (!extra?.tripId) return;
+      setSelectedTripId(extra.tripId);
+      if (extra.tab) setActiveTab(extra.tab);
+      setScreen('trip');
+    };
+    const offs = [];
+    import('./lib/native/notify').then(n => { offs.push(n.onNotificationTap(openAt)); }).catch(() => {});
+    import('./lib/native/widget').then(w => { offs.push(w.onWidgetOpen(openAt)); }).catch(() => {});
+    return () => offs.forEach(off => off());
   }, []);
 
   // Quietly look for a newer APK once signed in (at most every 6 hours).

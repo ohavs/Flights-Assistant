@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home screen widget, dark. -->
+<resources>
+    <color name="w_bg">#2C2E35</color>
+    <color name="w_text">#EDEDEB</color>
+    <color name="w_muted">#B0B1BA</color>
+    <color name="w_chip">#373941</color>
+    <color name="w_track">#42444D</color>
+    <color name="w_accent">#2DBE6C</color>
+    <color name="w_brand">#2DBE6C</color>
+</resources>
