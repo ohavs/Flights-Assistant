@@ -11,7 +11,7 @@ import { Pill } from '../ui/kit';
 import { CustomTimePicker } from './CustomDatePicker';
 import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime } from '../lib/native/notify';
 import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
-import { APP_ICONS, appIcon, setAppIcon } from '../lib/native/appIcon';
+import { APP_ICONS, appIcon, setAppIcon, applyAppIconNow } from '../lib/native/appIcon';
 import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
@@ -311,13 +311,16 @@ function LookSettings() {
 
 // The launcher icon. Picking one offers its palette too, unless it is on.
 function IconSettings({ palette, setPalette }) {
-  const [icon, setIcon] = useState(null);
+  const [state, setState] = useState(null);     // { icon, pending }
   const [offer, setOffer] = useState(null);
-  useEffect(() => { appIcon().then(setIcon); }, []);
-  if (!icon) return null;
+  useEffect(() => { appIcon().then(setState); }, []);
+  if (!state) return null;
+  const { icon, pending } = state;
   const pick = async (i) => {
-    if (i.key === icon || !(await setAppIcon(i.key))) return;
-    setIcon(i.key);
+    if (i.key === icon) return;
+    const next = await setAppIcon(i.key);
+    if (!next) return;
+    setState(next);
     setOffer(i.palette !== palette ? PALETTES.find(p => p.key === i.palette) : null);
   };
   return (
@@ -339,7 +342,13 @@ function IconSettings({ palette, setPalette }) {
           <button type="button" className="btn-secondary" onClick={() => setOffer(null)}>לא</button>
         </div>
       )}
-      <div className="settings-hint">הסמל מתחלף כשיוצאים מהאפליקציה. בחלק מהטלפונים צריך להוסיף אותו שוב למסך הבית.</div>
+      {pending && !offer && (
+        <div className="settings-offer">
+          <span>הסמל יתחלף כשתצאו מהאפליקציה. אפשר גם עכשיו: האפליקציה תיסגר, והסמל החדש יופיע מיד.</span>
+          <button type="button" className="btn-primary" onClick={applyAppIconNow}>החלף עכשיו</button>
+        </div>
+      )}
+      <div className="settings-hint">בחלק מהטלפונים צריך להוסיף את הסמל החדש שוב למסך הבית.</div>
     </>
   );
 }

@@ -2,11 +2,8 @@ package com.ohavs.flightsassistant;
 
 import android.app.AlarmManager;
 import android.content.ClipData;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -31,7 +28,7 @@ import java.io.FileOutputStream;
  * where the user saves it to Files or Drive or sends it on. The content
  * comes as base64. permissions / openSettings: what the app may do, and
  * Android's own page for each permission, for the list in settings.
- * getIcon / setIcon: the launcher icon, one of the designs in ICONS.
+ * getIcon / setIcon / applyIconNow: the launcher icon (AppIcons).
  */
 @CapacitorPlugin(name = "AppTools")
 public class AppToolsPlugin extends Plugin {
@@ -112,80 +109,36 @@ public class AppToolsPlugin extends Plugin {
         call.resolve();
     }
 
-    // Each launcher icon is an <activity-alias> (AndroidManifest.xml), and
-    // only the picked one is enabled. Classic is ".MainActivity", on by
-    // default in the manifest.
-    private static final String[][] ICONS = {
-        { "classic", ".MainActivity" },
-        { "sunset", ".IconSunset" },
-        { "night", ".IconNight" },
-        { "map", ".IconMap" },
-        { "sea", ".IconSea" },
-    };
-
-    private SharedPreferences iconPrefs() {
-        return getContext().getSharedPreferences("app_icon", Context.MODE_PRIVATE);
-    }
-
-    private ComponentName iconComponent(String alias) {
-        return new ComponentName(getContext(), AppActivity.class.getPackage().getName() + alias);
-    }
-
-    /** The icon picked: one waiting to be applied, or the enabled alias. */
+    /** The icon picked, and whether it is still waiting to be applied. */
     @PluginMethod
     public void getIcon(PluginCall call) {
-        String icon = iconPrefs().getString("pending", null);
-        if (icon == null) {
-            PackageManager pm = getContext().getPackageManager();
-            icon = "classic";
-            for (String[] i : ICONS) {
-                if (pm.getComponentEnabledSetting(iconComponent(i[1])) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
-                    icon = i[0];
-                    break;
-                }
-            }
-        }
+        String pending = AppIcons.pending(getContext());
         JSObject ret = new JSObject();
-        ret.put("icon", icon);
+        ret.put("icon", pending != null ? pending : AppIcons.current(getContext()));
+        ret.put("pending", pending != null);
         call.resolve(ret);
     }
 
-    /** Picks an icon. It is switched when the app goes to the background. */
+    /** Picks an icon. It is switched when the user leaves the app (AppActivity), or by applyIconNow. */
     @PluginMethod
     public void setIcon(PluginCall call) {
         String icon = call.getString("icon");
-        boolean known = false;
-        for (String[] i : ICONS) known |= i[0].equals(icon);
-        if (!known) {
+        if (!AppIcons.known(icon)) {
             call.reject("Unknown icon");
             return;
         }
-        iconPrefs().edit().putString("pending", icon).apply();
-        call.resolve();
+        AppIcons.request(getContext(), icon);
+        getIcon(call);
     }
 
-    // Swapping the launcher entry under a running activity can close the app
-    // on some phones, so the switch waits until the user has left it. The
-    // new alias is enabled before the others are disabled: never no icon.
-    @Override
-    protected void handleOnStop() {
-        super.handleOnStop();
-        String icon = iconPrefs().getString("pending", null);
-        if (icon == null) return;
-        iconPrefs().edit().remove("pending").apply();
-        PackageManager pm = getContext().getPackageManager();
-        try {
-            for (int pass = 0; pass < 2; pass++) {
-                for (String[] i : ICONS) {
-                    boolean on = i[0].equals(icon);
-                    if (on != (pass == 0)) continue;
-                    pm.setComponentEnabledSetting(iconComponent(i[1]),
-                        on ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP);
-                }
-            }
-        } catch (Exception e) {
-            // A launcher that refuses: the icon stays as it was.
-        }
+    /** Switches now: the app goes to the background, and its stop applies the icon. */
+    @PluginMethod
+    public void applyIconNow(PluginCall call) {
+        call.resolve();
+        if (AppIcons.pending(getContext()) == null) return;
+        getActivity().runOnUiThread(() -> {
+            AppIcons.switchNow = true;
+            getActivity().moveTaskToBack(true);
+        });
     }
 }
