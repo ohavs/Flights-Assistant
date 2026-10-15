@@ -2,18 +2,21 @@
 // own (tests/widgetData.test.mjs) and handed to the widget by
 // src/lib/native/widget.js.
 //
-// The widget draws long after the app saved this, so the snapshot carries
-// what the coming days need and the widget picks by its own clock
-// (TripWidget.java): the next flight still ahead with a countdown, or,
+// The widgets draw long after the app saved this, so the snapshot carries
+// what the coming days need and each widget picks by its own clock
+// (android/.../widget/): the next flight still ahead with a countdown, or,
 // during the trip, today's plan; packing and open reminders always. Texts
 // are ready to show; instants are epoch ms; dates are the phone's local
-// 'YYYY-MM-DD'.
+// 'YYYY-MM-DD'. The snapshot ships with the widgets in the same APK, so its
+// shape may change with them.
 import { departureAt, parseClock } from './flightAlerts.js';
 import { tripRange, dayFor, activityRank } from './morningAlerts.js';
+import { parseLocal } from './reminderAlerts.js';
 
 export const WIDGET_TRIPS = 3;      // the current or next trip, and the ones after it
 export const WIDGET_DAYS = 14;      // planner days kept per trip, from today
-const PLAN_LINES = 3;
+const PLAN_ITEMS = 8;    // a tall plan widget shows this many
+const REMINDERS = 5;
 
 const LEGS = [
   { field: 'outboundFlightDetails', name: 'טיסת הלוך' },
@@ -59,6 +62,8 @@ function flightsOf(trip) {
       date: f.date,
       title: f.flightNumber ? `${leg.name} · ${f.flightNumber}` : leg.name,
       route: from && to ? `${from} → ${to}` : (from || to || ''),
+      from: from || '',
+      to: to || '',
       when: whenText(f.date, clock),
     });
   }
@@ -75,8 +80,10 @@ function daysOf(trip, days, range, now) {
     const n = range.indexOf(iso);
     out[iso] = {
       title: [`יום ${n + 1}`, day?.title].filter(Boolean).join(' · '),
-      lines: acts.slice(0, PLAN_LINES).map(a => [a.timeLabel?.trim(), a.title].filter(Boolean).join(' · ')),
-      more: Math.max(0, acts.length - PLAN_LINES),
+      name: day?.title || '',
+      when: whenText(iso),
+      items: acts.slice(0, PLAN_ITEMS).map(a => ({ time: a.timeLabel?.trim() || '', title: a.title })),
+      more: Math.max(0, acts.length - PLAN_ITEMS),
     };
   }
   return out;
@@ -86,7 +93,11 @@ function remindersOf(list) {
   const open = (list || []).filter(r => !r.completed && r.text)
     .sort((a, b) => String(a.remindAt || '9999').localeCompare(String(b.remindAt || '9999'))
       || (a.createdAt || 0) - (b.createdAt || 0));
-  return { open: open.length, next: open[0]?.text || '' };
+  return {
+    open: open.length,
+    next: open[0]?.text || '',
+    items: open.slice(0, REMINDERS).map(r => ({ text: r.text, at: parseLocal(r.remindAt)?.getTime() ?? null })),
+  };
 }
 
 // trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip: { [tripId]: [doc] }.

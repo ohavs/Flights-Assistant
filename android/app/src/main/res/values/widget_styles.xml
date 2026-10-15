@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widgets' type, on the app's ladder (index.css): Rubik 600 for text
+     and 800 for titles and numbers on Android 8 and up (values-v26), the
+     system font before. -->
+<resources>
+    <style name="WFontSemi">
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    <style name="WFontBold">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="WText" parent="WFontSemi">
+        <item name="android:textColor">@color/w_text</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:textAlignment">viewStart</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="WText.Muted">
+        <item name="android:textColor">@color/w_muted</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="WBold" parent="WFontBold">
+        <item name="android:textColor">@color/w_text</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:textAlignment">viewStart</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="WBold.Title">
+        <item name="android:textSize">18sp</item>
+    </style>
+    <!-- The countdown chip: the palette's soft tint, accent text. -->
+    <style name="WBold.Chip">
+        <item name="android:textColor">@color/w_accent</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:background">@drawable/widget_chip</item>
+        <item name="android:paddingStart">11dp</item>
+        <item name="android:paddingEnd">11dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
+    </style>
+    <!-- A time on a plan row or a reminder. -->
+    <style name="WBold.Pill">
+        <item name="android:textColor">@color/w_accent</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:background">@drawable/widget_chip</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:paddingBottom">3dp</item>
+    </style>
+    <!-- Big numbers and airport codes: they grow with the widget. -->
+    <style name="WBold.Hero">
+        <item name="android:textSize">40sp</item>
+        <item name="android:ellipsize">none</item>
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">16sp</item>
+        <item name="android:autoSizeMaxTextSize">64sp</item>
+        <item name="android:autoSizeStepGranularity">1sp</item>
+    </style>
+</resources>

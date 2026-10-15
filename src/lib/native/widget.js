@@ -1,6 +1,6 @@
-// The home screen widget (Android app only; every export is a no-op on the
+// The home screen widgets (Android app only; every export is a no-op on the
 // web). TripWidgetPlugin.java keeps the snapshot (src/lib/widgetData.js)
-// and redraws the widget; a tap on it comes back as an "open" event.
+// and redraws every widget; a tap on one comes back as an "open" event.
 import { registerPlugin } from '@capacitor/core';
 import { isNative } from '../platform';
 
@@ -19,10 +19,11 @@ export async function widgetStatus() {
   try { return await TripWidget.status(); } catch { return null; }
 }
 
-// Asks the launcher to add the widget; the phone shows its own dialog.
-export async function pinWidget() {
+// Asks the launcher to add a widget (kind: its class, e.g. 'PlanWidget';
+// the trip widget by default); the phone shows its own dialog.
+export async function pinWidget(kind = 'TripWidget') {
   if (!isNative) return false;
-  try { return !!(await TripWidget.pin()).asked; } catch { return false; }
+  try { return !!(await TripWidget.pin({ kind })).asked; } catch { return false; }
 }
 
 // A tap on the widget: handler({ tripId, tab }). Returns an unsubscribe.

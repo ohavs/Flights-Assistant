@@ -6,4 +6,12 @@
     <string name="custom_url_scheme">com.ohavs.flightsassistant</string>
     <string name="widget_label">הטיול הבא</string>
     <string name="widget_description">הטיסה הבאה וספירה לאחור, התוכנית של היום, האריזה והתזכורות</string>
+    <string name="widget_countdown_label">ספירה לאחור</string>
+    <string name="widget_countdown_description">כמה זמן נשאר עד הטיסה, ובטיול איזה יום היום</string>
+    <string name="widget_plan_label">התוכנית של היום</string>
+    <string name="widget_plan_description">הפעילויות של היום לפי השעות, ולפני הטיול היום הראשון</string>
+    <string name="widget_pack_label">אריזה</string>
+    <string name="widget_pack_description">כמה מהציוד כבר נארז</string>
+    <string name="widget_rem_label">תזכורות</string>
+    <string name="widget_rem_description">התזכורות הפתוחות של הטיול, הקרובה קודם</string>
 </resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Today's plan, 4x3: as many activities as fit. It draws from the snapshot the app saves (TripWidgetPlugin)
+     and redraws every half hour, so it moves on with the app closed. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_plan_description"
+    android:initialLayout="@layout/widget_message"
+    android:previewLayout="@layout/widget_plan_preview"
+    android:previewImage="@mipmap/ic_launcher"
+    android:minWidth="250dp"
+    android:minHeight="180dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

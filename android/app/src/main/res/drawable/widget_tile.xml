@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A stat tile on the card (surface-2), like the app's flight card tiles. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/w_tile" />
+    <corners android:radius="18dp" />
+</shape>
