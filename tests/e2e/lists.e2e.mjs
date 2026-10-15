@@ -360,5 +360,26 @@ await step('with a mouse, ⋯ is drawn and opens the actions', async () => {
   } finally { await desk.close(); }
 });
 
+// An item added to the permanent list is copied into the trip, once the
+// server has confirmed the trip's checklist (src/lib/checklistSync.js).
+await step('checklist: an item added to the permanent list reaches the trip', async () => {
+  await page.getByRole('button', { name: 'חזרה לרשימת הטיולים' }).click();
+  await page.locator('button.press-card').first().click();
+  const global = sheet('רשימת ציוד קבועה');
+  await global.getByText('הוספת פריט קבוע חדש').click();
+  await global.getByPlaceholder('למשל: רישיון נהיגה, כפכפים').fill('מתאם שקע');
+  await global.getByRole('button', { name: 'הוסף פריט לרשימה' }).click();
+  await page.waitForFunction(() => !document.querySelector('input[placeholder="למשל: רישיון נהיגה, כפכפים"]')?.value);
+  await global.locator('button[aria-label="סגור"]').first().click();
+  await global.waitFor({ state: 'detached', timeout: 5000 });
+  await page.locator('.trip-card', { hasText: 'רשימות' }).getByText('פתח טיול').click();
+  await tab("צ'קליסט");
+  const header = page.locator('.app-content .section-header', { hasText: 'מסמכים וסידורים' }).first();
+  if ((await header.locator('.section-header-toggle').getAttribute('aria-expanded')) !== 'true') {
+    await header.locator('.section-header-toggle').click();
+  }
+  await card('מתאם שקע').waitFor({ timeout: 10000 });
+});
+
 await browser.close();
 process.exit(failed ? 1 : 0);

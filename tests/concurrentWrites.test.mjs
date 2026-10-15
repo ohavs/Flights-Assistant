@@ -8,9 +8,10 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import {
   getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc,
-  disableNetwork, enableNetwork, waitForPendingWrites,
+  disableNetwork, enableNetwork, waitForPendingWrites, writeBatch,
 } from 'firebase/firestore';
 import { addCategory, saveCategory, removeCategory } from '../src/lib/categorySettings.js';
+import { missingGlobalItems, copyGlobalItems } from '../src/lib/checklistSync.js';
 
 const phone = async (name) => {
   const app = initializeApp({ projectId: 'demo-flights', apiKey: 'demo-key' }, name);
@@ -90,4 +91,42 @@ test('categories: adding a name that already exists keeps its colour and icon', 
   const data = await serverData('trips', trip, 'settings', 'categories');
   assert.equal(data['מסעדות'].color, '#f00');
   assert.equal(data['מסעדות'].iconKey, 'utensils');
+});
+
+// Phone B ticked the passport. Phone A's view of the trip's checklist is
+// stale and has no passport, so A copies it in from the global list.
+const passport = { id: 'g-passport', text: 'דרכון', category: 'מסמכים וסידורים' };
+const charger = { id: 'g-charger', text: 'מטען', category: 'אלקטרוניקה' };
+const tickedOnB = async (label) => {
+  const trip = await newTrip(label);
+  await setDoc(doc(B.db, 'trips', trip, 'checklist', passport.id),
+    { text: passport.text, category: passport.category, completed: true });
+  return trip;
+};
+
+test('checklist: the old copy of a global item from a stale view unticks it', async () => {
+  const trip = await tickedOnB('check-old');
+  await whileOffline(() => {
+    const batch = writeBatch(A.db);
+    batch.set(doc(A.db, 'trips', trip, 'checklist', passport.id),
+      { text: passport.text, completed: false, category: passport.category });
+    return batch.commit();
+  }, async () => {});
+  const data = await serverData('trips', trip, 'checklist', passport.id);
+  assert.equal(data.completed, false, 'the risk this file guards against no longer reproduces');
+});
+
+test('checklist: copying global items never unticks one that is there', async () => {
+  const trip = await tickedOnB('check-new');
+  const missing = missingGlobalItems([passport, charger], [], []);
+  assert.deepEqual(missing.map(i => i.id), [passport.id, charger.id]);
+  await whileOffline(() => copyGlobalItems(A.db, trip, missing), async () => {});
+  assert.equal((await serverData('trips', trip, 'checklist', passport.id)).completed, true);
+  assert.deepEqual(await serverData('trips', trip, 'checklist', charger.id),
+    { text: charger.text, category: charger.category });
+});
+
+test('checklist: a global item the trip has, or deleted, is not copied', () => {
+  assert.deepEqual(missingGlobalItems([passport, charger], [{ id: passport.id }], []), [charger]);
+  assert.deepEqual(missingGlobalItems([passport, charger], [], [charger.id]), [passport]);
 });
