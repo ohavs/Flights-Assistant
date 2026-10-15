@@ -157,7 +157,8 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
   const [msg, setMsg] = useState(null);   // { tone, text, for: 'export' | 'backup' }
   const [, setTick] = useState(0);
   const fileRef = useRef(null);
-  const trip = trips.find(t => t.id === selId);
+  // A trip that appeared after the sheet opened (the first one, imported) counts too.
+  const trip = trips.find(t => t.id === selId) || trips[0];
   const savedText = isNative ? null : 'הקובץ ירד למכשיר';
 
   const exportAs = async (f) => {
@@ -213,7 +214,7 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
             {trips.length > 1 && (
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label htmlFor="settings-trip">טיול</label>
-                <select id="settings-trip" className="form-control" value={selId} onChange={e => { setSelId(e.target.value); setMsg(null); }}>
+                <select id="settings-trip" className="form-control" value={trip?.id || ''} onChange={e => { setSelId(e.target.value); setMsg(null); }}>
                   {trips.map(t => <option key={t.id} value={t.id}>{t.name || 'טיול'}</option>)}
                 </select>
               </div>
