@@ -8,6 +8,7 @@ import {
   Utensils, Bus, BedDouble, Ticket, ShoppingBag,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
+import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
 import { useConfirm } from '../ConfirmContext';
 import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
@@ -21,16 +22,6 @@ import { Pill, CategoryDisc } from '../ui/kit';
 
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
-const DEFAULT_CURRENCIES = ['ILS', 'EUR', 'USD'];
-
-const DEFAULT_EXPENSE_CATEGORIES = [
-  'אוכל ושתייה',
-  'תחבורה',
-  'לינה',
-  'בידור ותיירות',
-  'קניות',
-  'כללי',
-];
 
 // An icon and a colour per category, so a row reads at a glance like a
 // place in the planning tab. A category the trip added gets the receipt.

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An expense, 4x3: a keypad for the amount and the currency, then a sheet for the category and the place (ExpenseWidget).
+     It saves without opening the app (ExpenseStore). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_expense_description"
+    android:initialLayout="@layout/widget_message"
+    android:previewLayout="@layout/widget_expense_preview"
+    android:previewImage="@mipmap/ic_launcher"
+    android:minWidth="250dp"
+    android:minHeight="200dp"
+    android:minResizeWidth="220dp"
+    android:minResizeHeight="200dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

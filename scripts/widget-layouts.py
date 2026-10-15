@@ -218,6 +218,49 @@ def reminders(prev):
     ])
 
 
+# ── An expense from the home screen (ExpenseWidget) ──────────────────────
+def key(id_, label, bg='widget_tile', style='WBold.Key', w='0dp', h='match_parent', weight='1'):
+    """A keypad key. Every key has 3dp around it, so keys in rows and in
+    columns line up whatever the size. Its label is in the layout itself."""
+    return text(id_, style, w=w, h=h, layout_weight=weight, gravity='center', layout_margin='3dp',
+                background=f'@drawable/{bg}', text=label)
+
+
+def key_row(keys):
+    return lin(None, 'horizontal', h='0dp', layout_weight='1', kids=[key(i, l) for i, l in keys])
+
+
+def expense(prev):
+    # 1 2 3 | currency
+    # 4 5 6 |
+    # 7 8 9 | המשך
+    # . 0 ⌫ |
+    cur = key('key_cur', 'EUR', bg='widget_chip', style='WBold.Key.Cur')
+    cur.sample = 'EUR'
+    pad = lin('keypad', 'vertical', h='0dp', layout_weight='1', layout_marginTop='5dp', layoutDirection='ltr', kids=[
+        lin(None, 'horizontal', h='0dp', layout_weight='1',
+            kids=[key('key_1', '1'), key('key_2', '2'), key('key_3', '3'), cur]),
+        lin(None, 'horizontal', h='0dp', layout_weight='3', kids=[
+            lin(None, 'vertical', w='0dp', h='match_parent', layout_weight='3', kids=[
+                key_row([('key_4', '4'), ('key_5', '5'), ('key_6', '6')]),
+                key_row([('key_7', '7'), ('key_8', '8'), ('key_9', '9')]),
+                key_row([('key_dot', '.'), ('key_0', '0'), ('key_back', '⌫')]),
+            ]),
+            key('key_save', 'המשך', bg='widget_brand', style='WBold.Key.Save'),
+        ]),
+    ])
+    return root([
+        lin('header', 'horizontal', gravity='center_vertical', kids=[
+            icon_tile('ic_ws_wallet', 34, 21),
+            text('title', 'WText.Muted', w='0dp', layout_weight='1', layout_marginStart='10dp',
+                 sample='הוצאה · פריז עם הילדים'),
+        ]),
+        text('amount', 'WBold.Hero', w='match_parent', h='46dp', layout_marginTop='4dp', gravity='start|center_vertical',
+             autoSizeMaxTextSize='40sp', sample='42.50 €'),
+        pad,
+    ], pad=(13, 12))
+
+
 # ── A message in place of the content: signed out, nothing ahead ──────────
 def message(prev):
     return root([
@@ -237,9 +280,10 @@ LAYOUTS = {
     'widget_pack': (pack, 'Packing (PackWidget): how much of the checklist is packed.'),
     'widget_plan': (plan, 'Today\'s plan (PlanWidget), or the first day\'s before the trip.'),
     'widget_reminders': (reminders, 'Open reminders (RemindersWidget), the soonest first.'),
+    'widget_expense': (expense, 'An expense from the home screen (ExpenseWidget): the amount on a keypad, the currency, then "המשך" opens ExpenseSheetActivity.'),
     'widget_message': (message, 'In place of any widget\'s content: signed out, nothing ahead, or a snapshot it cannot read.'),
 }
-PREVIEWS = ['widget_trip', 'widget_big', 'widget_pack', 'widget_plan', 'widget_reminders']
+PREVIEWS = ['widget_trip', 'widget_big', 'widget_pack', 'widget_plan', 'widget_reminders', 'widget_expense']
 
 HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-layouts.py; edit there. {} -->\n'
 for name, (make, about) in LAYOUTS.items():

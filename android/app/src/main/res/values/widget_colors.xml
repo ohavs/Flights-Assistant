@@ -12,4 +12,5 @@
     <color name="w_brand">#22A45D</color>
     <color name="w_ink">#141414</color>      <!-- sticker icon outlines -->
     <color name="w_dot">#A1A1AA</color>
+    <color name="w_on_brand">#141414</color> <!-- brand-fg: text on the brand, light and dark -->
 </resources>
