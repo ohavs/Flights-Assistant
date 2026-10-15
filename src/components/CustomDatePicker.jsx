@@ -455,7 +455,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
                 type="button" 
                 onClick={handleSave} 
                 className="btn-primary" 
-                style={{ flex: 1, minHeight: '40px', fontSize: '14px', padding: '6px' }}
+                style={{ flex: 1 }}
               >
                 בחירה
               </button>
@@ -463,7 +463,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
                 type="button" 
                 onClick={() => setIsOpen(false)} 
                 className="btn-secondary" 
-                style={{ flex: 1, minHeight: '40px', fontSize: '14px', padding: '6px' }}
+                style={{ flex: 1 }}
               >
                 ביטול
               </button>
@@ -631,7 +631,8 @@ export function CustomTimePicker({ value, onChange, label, required }) {
 /* ══════════════════════════════════════════════════════════
    CUSTOM DATE TIME PICKER
    ══════════════════════════════════════════════════════════ */
-export function CustomDateTimePicker({ value, onChange, label }) {
+// `renderTrigger(open)` replaces the field with your own control (a chip).
+export function CustomDateTimePicker({ value, onChange, label, renderTrigger }) {
   const [isOpen, setIsOpen] = useState(false);
   // Back closes the picker, not the sheet underneath it.
   useBackHandler(isOpen, () => setIsOpen(false));
@@ -685,10 +686,11 @@ export function CustomDateTimePicker({ value, onChange, label }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: renderTrigger ? 'auto' : '100%' }}>
       {label && <label className="field-label">{label}</label>}
-      
-      {/* Trigger Button Input-styled */}
+
+      {renderTrigger ? renderTrigger(() => { setActiveTab('date'); setIsOpen(true); }) : (
+      /* Trigger Button Input-styled */
       <div 
         onClick={() => {
           setActiveTab('date');
@@ -707,6 +709,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
         </span>
         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
       </div>
+      )}
 
       {/* Modal overlay — portalled, same reason as the date picker above. */}
       {isOpen && createPortal(
@@ -809,7 +812,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
                 type="button" 
                 onClick={handleSave} 
                 className="btn-primary" 
-                style={{ flex: 1, minHeight: '40px', fontSize: '14px', padding: '6px' }}
+                style={{ flex: 1 }}
               >
                 אישור
               </button>
@@ -817,7 +820,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
                 type="button" 
                 onClick={() => setIsOpen(false)} 
                 className="btn-secondary" 
-                style={{ flex: 1, minHeight: '40px', fontSize: '14px', padding: '6px' }}
+                style={{ flex: 1 }}
               >
                 ביטול
               </button>

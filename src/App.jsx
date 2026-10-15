@@ -1190,18 +1190,38 @@ function AppInner() {
     Promise.all([import('./lib/native/notify'), import('./lib/flightAlerts')]).then(async ([n, f]) => {
       const alerts = f.flightAlerts(trips);
       if (cancelled) return;
-      if (alerts.length && n.notifyPrefs().flight) {
-        let asked = false;
-        try { asked = localStorage.getItem('notify.asked') === '1'; } catch { /* private mode */ }
-        if (!asked) {
-          try { localStorage.setItem('notify.asked', '1'); } catch { /* private mode */ }
-          await n.notifyPermission({ ask: true });
-        }
-      }
+      if (alerts.length && n.notifyPrefs().flight) await n.askPermissionOnce();
       await n.syncNotifications('flight', alerts);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [trips, signedInUid, notifyVersion]);
+
+  // Reminders with a time (Android app): listen to every trip's reminders
+  // and keep the owner's notifications in step — added, moved, ticked off.
+  const tripsRef = useRef(trips);
+  useEffect(() => { tripsRef.current = trips; }, [trips]);
+  const tripIdsKey = trips.map(t => t.id).sort().join(',');
+  useEffect(() => {
+    if (!isNative || !signedInUid || !tripIdsKey) return undefined;
+    const byTrip = {};
+    let timer;
+    const sync = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        Promise.all([import('./lib/native/notify'), import('./lib/reminderAlerts')]).then(async ([n, r]) => {
+          const alerts = r.reminderAlerts(tripsRef.current, byTrip, signedInUid);
+          if (alerts.length && n.notifyPrefs().reminder) await n.askPermissionOnce();
+          await n.syncNotifications('reminder', alerts);
+        }).catch(() => {});
+      }, 400);
+    };
+    const offs = tripIdsKey.split(',').map(id => onSnapshot(
+      collection(db, 'trips', id, 'reminders'),
+      (snap) => { byTrip[id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
+      () => {},
+    ));
+    return () => { offs.forEach(off => off()); clearTimeout(timer); };
+  }, [tripIdsKey, signedInUid, notifyVersion]);
 
   // Tapping a reminder opens its trip on the right tab.
   useEffect(() => {

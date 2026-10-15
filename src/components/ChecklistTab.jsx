@@ -10,7 +10,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, User, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
-import { CustomDropdown } from './CustomDatePicker';
+import { CustomDropdown, CustomDateTimePicker, formatHebrewDateTime } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import ListCard from '../ui/ListCard';
 import SectionHeader from '../ui/SectionHeader';
@@ -185,6 +185,8 @@ function RemindersCard({ tripId, canEdit }) {
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [draftUid, setDraftUid] = useState('');
+  // When to be notified (Android app), 'YYYY-MM-DDTHH:mm' in the phone's time.
+  const [draftAt, setDraftAt] = useState('');
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -239,6 +241,7 @@ function RemindersCard({ tripId, canEdit }) {
     setDraft('');
     setEditingId(null);
     setDraftUid(currentUid || '');
+    setDraftAt('');
   }, [currentUid]);
 
   const openSheet = (focus = false) => {
@@ -250,9 +253,10 @@ function RemindersCard({ tripId, canEdit }) {
 
   const closeSheet = () => { setOpen(false); resetComposer(); };
   // A reminder typed but not added, or an edit not saved.
+  const editingOne = editingId ? reminders.find(r => r.id === editingId) : null;
   const composerDirty = editingId
-    ? draft !== (reminders.find(r => r.id === editingId)?.text || '')
-    : !!draft.trim();
+    ? draft !== (editingOne?.text || '') || draftAt !== (editingOne?.remindAt || '')
+    : !!draft.trim() || !!draftAt;
 
   const toggleDone = (r) => {
     if (!canEdit) return;
@@ -263,6 +267,7 @@ function RemindersCard({ tripId, canEdit }) {
     setEditingId(r.id);
     setDraft(r.text || '');
     setDraftUid(r.addedByUid || currentUid || '');
+    setDraftAt(r.remindAt || '');
     setTimeout(() => inputRef.current?.focus(), 40);
   };
 
@@ -286,10 +291,11 @@ function RemindersCard({ tripId, canEdit }) {
     } : {};
 
     if (editingId) {
-      updateDoc(doc(db, 'trips', tripId, 'reminders', editingId), { text, ...ownerFields });
+      updateDoc(doc(db, 'trips', tripId, 'reminders', editingId), { text, remindAt: draftAt || null, ...ownerFields });
     } else {
       setDoc(doc(collection(db, 'trips', tripId, 'reminders')), {
         text, createdAt: Date.now(), completed: false, ...ownerFields,
+        ...(draftAt ? { remindAt: draftAt } : {}),
       });
       if (filter === 'done') setFilter('open');
     }
@@ -445,6 +451,8 @@ function RemindersCard({ tripId, canEdit }) {
                     />
                   )}
                   title={r.text}
+                  meta={r.remindAt ? formatHebrewDateTime(r.remindAt) : undefined}
+                  metaIcon={r.remindAt ? <Bell size={13} aria-hidden="true" /> : undefined}
                   muted={done && !editing}
                   onOpen={canEdit ? () => toggleDone(r) : undefined}
                   trailing={(r.addedByPhoto || r.addedByName) && (
@@ -513,6 +521,31 @@ function RemindersCard({ tripId, canEdit }) {
                   })}
                 </div>
               )}
+
+              {/* An optional time: the owner's phone (Android app) is
+                  notified then. */}
+              <div style={{ display: 'flex', alignSelf: 'flex-start' }}>
+                <CustomDateTimePicker
+                  value={draftAt}
+                  onChange={setDraftAt}
+                  renderTrigger={(openPicker) => draftAt ? (
+                    <span className="chip" aria-pressed="true" style={{ paddingInlineEnd: 4 }}>
+                      <button type="button" onClick={openPicker} aria-label="שינוי שעת התזכורת"
+                        style={{ all: 'unset', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <Bell size={14} aria-hidden="true" /> {formatHebrewDateTime(draftAt)}
+                      </button>
+                      <button type="button" className="btn-x" aria-label="בלי שעה" onClick={() => setDraftAt('')}
+                        style={{ width: 28, height: 28, minWidth: 28, color: 'inherit' }}>
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" className="chip add" onClick={openPicker}>
+                      <Bell size={14} aria-hidden="true" /> שעה להתראה
+                    </button>
+                  )}
+                />
+              </div>
 
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
                 <input
