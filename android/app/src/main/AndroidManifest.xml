@@ -32,7 +32,8 @@
             android:targetActivity=".AppActivity"
             android:exported="true" />
 
-        <!-- The home screen widget (widget/TripWidget). -->
+        <!-- The home screen widgets (widget/). TripWidget keeps its name: a
+             widget already on a home screen is tied to it. -->
         <receiver
             android:name=".widget.TripWidget"
             android:exported="false"
@@ -44,8 +45,52 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/trip_widget" />
         </receiver>
+        <receiver
+            android:name=".widget.CountdownWidget"
+            android:exported="false"
+            android:label="@string/widget_countdown_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/countdown_widget" />
+        </receiver>
+        <receiver
+            android:name=".widget.PlanWidget"
+            android:exported="false"
+            android:label="@string/widget_plan_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/plan_widget" />
+        </receiver>
+        <receiver
+            android:name=".widget.PackWidget"
+            android:exported="false"
+            android:label="@string/widget_pack_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/pack_widget" />
+        </receiver>
+        <receiver
+            android:name=".widget.RemindersWidget"
+            android:exported="false"
+            android:label="@string/widget_rem_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/reminders_widget" />
+        </receiver>
 
-        <!-- CI screenshots of the widget (not exported: adb as root only). -->
+        <!-- CI screenshots of the widgets (not exported: adb as root only). -->
         <activity
             android:name=".widget.WidgetPreviewActivity"
             android:excludeFromRecents="true"

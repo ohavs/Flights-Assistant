@@ -12,10 +12,12 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 /**
- * The app's side of the widget (src/lib/native/widget.js).
+ * The app's side of the widgets (src/lib/native/widget.js).
  *   save({ json }): the snapshot (src/lib/widgetData.js), or null when
  *     signed out; every widget redraws at once.
- *   status(): { count, pinSupported }. pin(): asks the launcher to add one.
+ *   status(): { count, pinSupported }, count of every kind.
+ *   pin({ kind }): asks the launcher to add one (TripWidget unless kind
+ *     names another, e.g. "PlanWidget").
  *   "open" event: a tap on the widget, { tripId, tab }. A tap that started
  *     the app is kept until the app listens.
  */
@@ -25,15 +27,15 @@ public class TripWidgetPlugin extends Plugin {
     @PluginMethod
     public void save(PluginCall call) {
         String json = call.getString("json");
-        TripWidget.save(getContext(), json);
-        TripWidget.refreshAll(getContext());
+        WidgetKit.save(getContext(), json);
+        WidgetKit.refreshAll(getContext());
         call.resolve();
     }
 
     @PluginMethod
     public void status(PluginCall call) {
         JSObject ret = new JSObject();
-        ret.put("count", TripWidget.ids(getContext()).length);
+        ret.put("count", WidgetKit.count(getContext()));
         ret.put("pinSupported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             && AppWidgetManager.getInstance(getContext()).isRequestPinAppWidgetSupported());
         call.resolve(ret);
@@ -45,7 +47,8 @@ public class TripWidgetPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AppWidgetManager m = AppWidgetManager.getInstance(getContext());
             if (m.isRequestPinAppWidgetSupported()) {
-                asked = m.requestPinAppWidget(new ComponentName(getContext(), TripWidget.class), null, null);
+                BaseWidget kind = WidgetKit.byName(call.getString("kind", "TripWidget"));
+                asked = m.requestPinAppWidget(new ComponentName(getContext(), kind.getClass()), null, null);
             }
         }
         JSObject ret = new JSObject();
@@ -58,7 +61,7 @@ public class TripWidgetPlugin extends Plugin {
     @Override
     protected void handleOnNewIntent(Intent intent) {
         super.handleOnNewIntent(intent);
-        if (intent == null || !TripWidget.ACTION_OPEN.equals(intent.getAction())) return;
+        if (intent == null || !WidgetKit.ACTION_OPEN.equals(intent.getAction())) return;
         JSObject data = new JSObject();
         data.put("tripId", intent.getStringExtra("tripId"));
         data.put("tab", intent.getStringExtra("tab"));

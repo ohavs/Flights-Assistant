@@ -33,25 +33,30 @@ test('flights: the instant, a title, the route and when', () => {
   assert.equal(out.at, Date.UTC(2026, 10, 3, 5, 30));            // 07:30 at UTC+2
   assert.equal(out.title, 'טיסת הלוך · LY 323');
   assert.equal(out.route, 'TLV → CDG');
+  assert.deepEqual([out.from, out.to], ['TLV', 'CDG']);
   assert.equal(out.when, 'יום ג׳ 3.11 · 07:30');
   assert.equal(back.at, null);                                    // no time yet
   assert.equal(back.when, 'יום ו׳ 6.11');
   assert.equal(back.title, 'טיסת חזור');
 });
 
-test('the plan of each coming day, in time-of-day order, three lines and a count', () => {
+test('the plan of each coming day, in time-of-day order, eight items and a count', () => {
   const days = [
     { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין', timeLabel: 'ערב' }] },
     { id: 'd2', order: 1, date: '2026-11-04', activities: [
       { title: 'מסעדה', timeLabel: 'ערב' }, { title: 'לובר', timeLabel: 'בוקר' }, { title: 'שאנז אליזה', timeLabel: 'צהריים' },
       { title: 'גלידה' }, { title: '' },
+      ...['א', 'ב', 'ג', 'ד', 'ה'].map(title => ({ title, timeLabel: 'לילה' })),
     ] },
   ];
   const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now }).trips;
   assert.deepEqual(Object.keys(t.days), ['2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06']);
-  assert.deepEqual(t.days['2026-11-03'], { title: 'יום 1 · הגעה', lines: ['ערב · צ׳ק אין'], more: 0 });
-  assert.deepEqual(t.days['2026-11-04'], { title: 'יום 2', lines: ['בוקר · לובר', 'צהריים · שאנז אליזה', 'ערב · מסעדה'], more: 1 });
-  assert.deepEqual(t.days['2026-11-05'], { title: 'יום 3', lines: [], more: 0 });
+  assert.deepEqual(t.days['2026-11-03'], { title: 'יום 1 · הגעה', name: 'הגעה', when: 'יום ג׳ 3.11', items: [{ time: 'ערב', title: 'צ׳ק אין' }], more: 0 });
+  const d2 = t.days['2026-11-04'];
+  assert.deepEqual(d2.items.slice(0, 3), [{ time: 'בוקר', title: 'לובר' }, { time: 'צהריים', title: 'שאנז אליזה' }, { time: 'ערב', title: 'מסעדה' }]);
+  assert.equal(d2.items.length, 8);
+  assert.equal(d2.more, 1);
+  assert.deepEqual(t.days['2026-11-05'], { title: 'יום 3', name: '', when: 'יום ה׳ 5.11', items: [], more: 0 });
   // Days already gone are left out.
   const [later] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now: new Date(2026, 10, 5, 8) }).trips;
   assert.deepEqual(Object.keys(later.days), ['2026-11-05', '2026-11-06']);
@@ -68,7 +73,10 @@ test('packing: how much of the list is packed; open reminders, the soonest first
   ];
   const [t] = widgetSnapshot({ trips: [paris], checklistByTrip: { p: checklist }, remindersByTrip: { p: reminders }, now }).trips;
   assert.deepEqual(t.packed, { done: 2, total: 4 });
-  assert.deepEqual(t.reminders, { open: 2, next: 'כרטיסים' });
+  assert.deepEqual(t.reminders, {
+    open: 2, next: 'כרטיסים',
+    items: [{ text: 'כרטיסים', at: new Date(2026, 10, 2, 9, 0).getTime() }, { text: 'מונית', at: null }],
+  });
 });
 
 test('nothing ahead: an empty list, still a snapshot', () => {

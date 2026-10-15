@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell, FileType2, FileText, FileSpreadsheet,
-  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound, Palette, Sun, Moon, Smartphone, LayoutGrid } from 'lucide-react';
+  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound, Palette, Sun, Moon, Smartphone, LayoutGrid, Plus } from 'lucide-react';
 import Sheet, { Segmented } from '../ui/Sheet';
 import { useTheme } from '../ThemeContext';
 import { PALETTES } from '../lib/theme';
@@ -101,9 +101,17 @@ function NotifySettings({ onChange }) {
 }
 
 
-// The home screen widget: whether one is placed, and a button that asks the
-// launcher to add it (Android 8+ launchers that allow it). Back from the
-// launcher's dialog (resume), the count refreshes.
+// The home screen widgets: whether any is placed, and each kind as a row
+// that asks the launcher to add it (Android 8+ launchers that allow it).
+// Back from the launcher's dialog (resume), the count refreshes.
+const WIDGETS = [
+  { kind: 'TripWidget', label: 'הטיול הבא', hint: 'הטיסה עם ספירה לאחור, ובטיול התוכנית של היום. כמה נארז וכמה תזכורות.' },
+  { kind: 'CountdownWidget', label: 'ספירה לאחור', hint: 'מספר גדול: הזמן עד הטיסה, ובטיול איזה יום היום.' },
+  { kind: 'PlanWidget', label: 'התוכנית של היום', hint: 'הפעילויות של היום לפי השעות. לפני הטיול: היום הראשון.' },
+  { kind: 'PackWidget', label: 'אריזה', hint: 'כמה מהציוד כבר נארז.' },
+  { kind: 'RemindersWidget', label: 'תזכורות', hint: 'התזכורות הפתוחות, הקרובה קודם.' },
+];
+
 function WidgetSettings() {
   const [status, setStatus] = useState(null);
   useEffect(() => {
@@ -114,18 +122,24 @@ function WidgetSettings() {
   }, []);
   if (!status) return null;
   const placed = status.count > 0;
+  const pin = status.pinSupported;
   return (
-    <SettingsGroup id="widget" title="ווידג׳ט במסך הבית" Icon={LayoutGrid} meta={placed ? 'במסך הבית' : null}>
-      <div className="settings-hint" style={{ marginTop: 0 }}>
-        הטיסה הבאה עם ספירה לאחור, ובזמן הטיול התוכנית של היום. למטה: כמה נארז וכמה תזכורות פתוחות. לחיצה פותחת את הטיול.
+    <SettingsGroup id="widget" title="ווידג׳טים במסך הבית" Icon={LayoutGrid} meta={placed ? 'במסך הבית' : null}>
+      <div className="list-group">
+        {WIDGETS.map(w => (
+          <button key={w.kind} type="button" className="list-row" disabled={!pin} onClick={() => pinWidget(w.kind)}>
+            <LayoutGrid size={16} className="list-row-icon" />
+            <span className="list-row-label">
+              {w.label}
+              <span className="list-row-hint">{w.hint}</span>
+            </span>
+            {pin && <Plus size={16} className="list-row-chevron" />}
+          </button>
+        ))}
       </div>
-      {status.pinSupported ? (
-        <button type="button" className="btn-secondary" onClick={() => pinWidget()}>
-          <LayoutGrid size={16} /> {placed ? 'להוסיף עוד אחד' : 'להוסיף למסך הבית'}
-        </button>
-      ) : (
-        <div className="settings-hint">לחיצה ארוכה על מסך הבית ← ווידג׳טים ← עוזר טיסות.</div>
-      )}
+      <div className="settings-hint">
+        {pin ? 'לחיצה מוסיפה למסך הבית. לחיצה על ווידג׳ט פותחת את הטיול במקום הנכון.' : 'לחיצה ארוכה על מסך הבית ← ווידג׳טים ← עוזר טיסות.'}
+      </div>
     </SettingsGroup>
   );
 }

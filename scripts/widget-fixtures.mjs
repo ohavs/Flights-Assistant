@@ -23,7 +23,10 @@ const days = [
   ] },
 ];
 const checklist = Array.from({ length: 22 }, (_, i) => ({ id: `c${i}`, completed: i < 12 }));
-const reminders = [{ text: 'להזמין מונית לשדה', createdAt: 1 }, { text: 'להדפיס כרטיסים', createdAt: 2 }, { text: 'מטען נייד', createdAt: 3 }];
+const reminders = [
+  { text: 'להזמין מונית לשדה', createdAt: 1, remindAt: '2026-10-29T18:00' },
+  { text: 'להדפיס כרטיסים', createdAt: 2 }, { text: 'מטען נייד', createdAt: 3 },
+];
 const data = { daysByTrip: { paris: days }, checklistByTrip: { paris: checklist }, remindersByTrip: { paris: reminders } };
 
 const at = (s) => new Date(s);
@@ -31,6 +34,7 @@ const cases = [
   ['flight', at('2026-10-29T10:00:00Z'), { palette: 'green' }],
   ['soon', at('2026-11-03T04:20:00Z'), { palette: 'ocean' }],
   ['plan', at('2026-11-04T09:00:00Z'), { palette: 'sand' }],
+  ['plan-violet', at('2026-11-04T09:00:00Z'), { palette: 'violet' }],
   ['return', at('2026-11-06T09:00:00Z'), { palette: 'coral' }],
   ['ended', at('2026-12-01T09:00:00Z'), { palette: 'green' }],
 ];

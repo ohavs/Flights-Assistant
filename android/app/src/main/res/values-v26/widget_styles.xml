@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8 and up: the widgets in Rubik, the app's font (res/font, from
+     scripts/widget-fonts.py). -->
+<resources>
+    <style name="WFontSemi">
+        <item name="android:fontFamily">@font/rubik_semibold</item>
+    </style>
+    <style name="WFontBold">
+        <item name="android:fontFamily">@font/rubik_extrabold</item>
+    </style>
+</resources>

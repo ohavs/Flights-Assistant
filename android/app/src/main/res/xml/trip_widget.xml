@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The trip widget, 4x2: the next flight and a countdown, or during the
-     trip today's plan; packing and open reminders below. It draws from the
-     snapshot the app saves (TripWidgetPlugin) and redraws every half hour,
-     so the countdown and the day move on with the app closed. -->
+     trip today's plan; packing and open reminders below. Narrow, a big countdown. It draws from the snapshot the app saves (TripWidgetPlugin)
+     and redraws every half hour, so it moves on with the app closed. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
-    android:initialLayout="@layout/widget_trip"
+    android:initialLayout="@layout/widget_message"
     android:previewLayout="@layout/widget_trip_preview"
     android:previewImage="@mipmap/ic_launcher"
     android:minWidth="250dp"
     android:minHeight="110dp"
-    android:minResizeWidth="200dp"
+    android:minResizeWidth="110dp"
     android:minResizeHeight="110dp"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="4"

@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The home screen widget, light. The app's tokens (index.css); each
-     palette's accent is set at render time (WidgetTheme). -->
+<!-- The home screen widgets, light: the app's tokens (index.css), green.
+     Each palette's own colours are set at render time (WidgetKit.theme). -->
 <resources>
-    <color name="w_bg">#FFFFFF</color>
+    <color name="w_bg">#FFFFFF</color>       <!-- card -->
     <color name="w_text">#141414</color>
     <color name="w_muted">#5F5F66</color>
-    <color name="w_chip">#F0F0EC</color>
-    <color name="w_track">#E5E5E0</color>
+    <color name="w_tile">#F0F0EC</color>     <!-- surface-2: stat tiles -->
+    <color name="w_soft">#E6F4EC</color>     <!-- brand-soft: icon tiles, chips, pills -->
+    <color name="w_track">#E5E5E0</color>    <!-- surface-3: progress track -->
     <color name="w_accent">#16874A</color>
     <color name="w_brand">#22A45D</color>
+    <color name="w_ink">#141414</color>      <!-- sticker icon outlines -->
+    <color name="w_dot">#A1A1AA</color>
 </resources>
