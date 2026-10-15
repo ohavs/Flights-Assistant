@@ -180,10 +180,11 @@ final class ExpenseStore {
     }
 
     private static void write(Context ctx, JSONObject e) throws IOException, AuthException, DeniedException, JSONException {
+        String token = token(ctx, false);
         try {
-            commit(ctx, e, token(ctx, false));
+            commit(ctx, e, token);
         } catch (AuthException x) {
-            // A token the server no longer takes: once more with a fresh one.
+            // An ID token Firestore no longer takes: once more with a fresh one.
             commit(ctx, e, token(ctx, true));
         }
     }
@@ -257,6 +258,7 @@ final class ExpenseStore {
         String body = read(c, code);
         if (code == 400) {
             String why = errorOf(body);
+            Log.w(TAG, "sign-in refused: " + why);
             // Signed out elsewhere, or the account is gone: the app signs in again.
             if (why.contains("TOKEN_EXPIRED") || why.contains("INVALID_REFRESH_TOKEN")
                 || why.contains("USER_DISABLED") || why.contains("USER_NOT_FOUND")) {
