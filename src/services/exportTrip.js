@@ -5,6 +5,7 @@ import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { saveFile } from '../lib/saveFile';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from './currency';
+import { toTime24 } from './flightSimulator';
 
 // ──────────────────────────────────────────────────────────────────────
 // Shared helpers
@@ -48,7 +49,14 @@ export async function loadTripExportData(tripId, trip) {
     } catch { /* ignore individual profile failures */ }
   }));
 
-  return { trip, planning, days, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1) };
+  // Planning categories' own colours (the PDF draws them).
+  let categorySettings = {};
+  try {
+    const snap = await getDoc(doc(db, 'trips', tripId, 'settings', 'categories'));
+    if (snap.exists()) categorySettings = snap.data() || {};
+  } catch { /* the defaults will do */ }
+
+  return { trip, planning, days, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1), categorySettings };
 }
 
 // Build a full expense report (totals, breakdowns, statistics) for export.
@@ -199,22 +207,66 @@ const SCOPE_LABEL = { flight: 'טיסה', planning: 'תכנון', checklist: 'צ
 // PDF
 // ──────────────────────────────────────────────────────────────────────
 
-let hebrewFontPromise = null;
-async function loadHebrewFont() {
-  if (hebrewFontPromise) return hebrewFontPromise;
-  hebrewFontPromise = (async () => {
-    const res = await fetch('/fonts/NotoSansHebrew.ttf');
-    if (!res.ok) throw new Error('Failed to load Hebrew font');
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-    }
-    return btoa(bin);
-  })();
-  return hebrewFontPromise;
+// The app's look on paper (docs/PLAN-pdf.md): Rubik in three weights, the
+// light theme's colours, a chapter per part, cards and quiet tables
+// instead of colour bands. Page 1 is a cover with the contents.
+const PDF_THEME = {
+  text: [11, 11, 12], muted: [91, 95, 102], faint: [150, 153, 160], line: [230, 231, 234],
+  card: [244, 245, 247], zebra: [248, 249, 250], white: [255, 255, 255],
+  accent: [22, 135, 74], brand: [34, 164, 93], red: [220, 38, 38], orange: [194, 98, 12],
+  mint: [230, 244, 236], lavender: [238, 237, 254], butter: [255, 247, 214], sky: [231, 240, 255], rose: [253, 236, 236],
+};
+const PDF_WEIGHTS = { normal: 400, medium: 500, bold: 700 };
+
+// Category colours, as the planning and expenses tabs draw them.
+const PLAN_COLORS = {
+  'אטרקציות ודברים לעשות': '#F2701D', 'מסעדות ומקומות אכילה': '#E5484D', 'מקומות לבקר': '#16874A',
+  'תחבורה ציבורית': '#2563EB', 'מידע כללי וטיפים': '#6E56CF', 'אירועים': '#C2410C',
+};
+const EXPENSE_COLORS = {
+  'אוכל ושתייה': '#F97316', 'תחבורה': '#3B82F6', 'לינה': '#8B5CF6', 'בידור ותיירות': '#EC4899', 'קניות': '#14B8A6',
+};
+const rgbOf = (hex) => {
+  const h = String(hex || '').replace('#', '');
+  return h.length === 6 ? [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)) : [79, 70, 229];
+};
+// A pale version of a colour, as a card or a bar's track.
+const tintOf = (rgb, a = 0.14) => rgb.map(c => Math.round(c * a + 255 * (1 - a)));
+
+const pad2 = (n) => String(n).padStart(2, '0');
+// 'YYYY-MM-DD' (or any date) → dd.mm.yyyy
+function pdfDate(s) {
+  if (!s) return '';
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? String(s) : `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`;
+}
+function pdfDateTime(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return String(s);
+  return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+const WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const mapsUrl = (q) => `https://www.google.com/maps?q=${encodeURIComponent(q)}`;
+
+function bytesToBase64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+let pdfFontsPromise = null;
+function loadPdfFonts() {
+  if (!pdfFontsPromise) {
+    pdfFontsPromise = Promise.all(Object.entries(PDF_WEIGHTS).map(async ([style, w]) => {
+      const res = await fetch(`/fonts/Rubik-${w}.ttf`);
+      if (!res.ok) throw new Error('Failed to load the PDF font');
+      return { style, file: `Rubik-${w}.ttf`, data: bytesToBase64(new Uint8Array(await res.arrayBuffer())) };
+    })).catch((err) => { pdfFontsPromise = null; throw err; });
+  }
+  return pdfFontsPromise;
 }
 
 let bidiInstance = null;
@@ -227,513 +279,519 @@ async function getBidi() {
   return bidiInstance;
 }
 
+// Visual order for jsPDF. A string with no Hebrew in it (a phone number,
+// an address abroad, a flight code, a date range) stays left to right as
+// written; an RTL paragraph would reverse its runs ("+351 21 355" → "355 21 351+").
+const RTL_CHARS = /[\u0590-\u05FF\u0600-\u06FF\uFB1D-\uFDFF]/;
 function shapeBidi(bidi, text) {
   if (!text) return '';
   const s = String(text);
-  return bidi.getReorderedString(s, bidi.getEmbeddingLevels(s, 'rtl'));
+  return bidi.getReorderedString(s, bidi.getEmbeddingLevels(s, RTL_CHARS.test(s) ? 'rtl' : 'ltr'));
 }
 
 export async function exportTripPdf(data, scope = 'all') {
-  const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
+  const { trip, planning = [], days = [], checklist = [], info = [], expenses = [], rates, memberProfiles = {}, memberCount = 1, categorySettings = {} } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { jsPDF } = await import('jspdf');
-  const [fontBase64, bidi] = await Promise.all([loadHebrewFont(), getBidi()]);
+  const [fonts, bidi] = await Promise.all([loadPdfFonts(), getBidi()]);
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-  doc.addFileToVFS('NotoSansHebrew.ttf', fontBase64);
-  doc.addFont('NotoSansHebrew.ttf', 'NotoSansHebrew', 'normal');
-  doc.setFont('NotoSansHebrew');
-
+  for (const f of fonts) {
+    doc.addFileToVFS(f.file, f.data);
+    doc.addFont(f.file, 'Rubik', f.style);
+  }
+  const T = PDF_THEME;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 52;
-  const rightX = pageW - margin;
-  const leftX  = margin;
-  const contentW = pageW - margin * 2;
-  let y = margin;
+  const L = 44, R = pageW - 44, W = R - L;
+  const TOP = 72, BOTTOM = pageH - 58;
+  let y = TOP;
 
-  // Key trick: pre-shape with bidi-js AND tell jsPDF the input is already
-  // in visual order so its internal bidi engine doesn't double-process.
-  const TEXT_OPTS = { align: 'right', isInputVisual: true, isOutputVisual: true };
-  const shape = (t) => shapeBidi(bidi, t);
-
-  const ensureSpace = (h = 16) => {
-    if (y + h > pageH - margin) { doc.addPage(); y = margin; }
+  // ── Drawing helpers ──
+  // Text is pre-shaped with bidi-js and handed over as visual order, so
+  // jsPDF's own bidi does not run a second time.
+  const setFont = (weight = 'normal', size = 11, color = T.text) => {
+    doc.setFont('Rubik', weight); doc.setFontSize(size); doc.setTextColor(...color);
   };
-
-  // Colors — darker than before for readability
-  const C_TEXT = [11, 11, 38];          // near-black navy for body text
-  const C_MUTED = [55, 65, 81];         // dark gray for secondary
-  const C_ACCENT = [79, 70, 229];       // purple
-  const C_HEADING = [11, 11, 38];
-
-  const write = (text, { size = 12, color = C_TEXT, indent = 0, bold = false } = {}) => {
-    doc.setFontSize(size);
-    doc.setTextColor(...color);
-    const maxWidth = contentW - indent;
-    const lines = doc.splitTextToSize(String(text), maxWidth);
-    for (const line of lines) {
-      ensureSpace(size * 1.5);
-      doc.text(shape(line), rightX - indent, y, { ...TEXT_OPTS });
-      y += size * 1.5;
+  const text = (s, x, base, { align = 'right', weight = 'normal', size = 11, color = T.text } = {}) => {
+    setFont(weight, size, color);
+    doc.text(shapeBidi(bidi, String(s ?? '')), x, base, { align, isInputVisual: true, isOutputVisual: true });
+  };
+  const width = (s, weight = 'normal', size = 11) => { setFont(weight, size); return doc.getTextWidth(String(s ?? '')); };
+  const wrap = (s, w, weight = 'normal', size = 11) => {
+    if (s == null || s === '') return [];
+    setFont(weight, size);
+    return doc.splitTextToSize(String(s), w);
+  };
+  const link = (s, x, base, url, { align = 'right', weight = 'normal', size = 10.5 } = {}) => {
+    text(s, x, base, { align, weight, size, color: T.accent });
+    const w = width(s, weight, size);
+    const x0 = align === 'right' ? x - w : x;
+    doc.setDrawColor(...T.accent); doc.setLineWidth(0.5);
+    doc.line(x0, base + 1.8, x0 + w, base + 1.8);
+    if (url) doc.link(x0, base - size, w, size + 4, { url });
+  };
+  const box = (x, top, w, h, fill, r = 14) => { doc.setFillColor(...fill); doc.roundedRect(x, top, w, h, r, r, 'F'); };
+  const pill = (s, xRight, top, { fill = T.card, color = T.text, size = 9.5, weight = 'medium' } = {}) => {
+    const w = width(s, weight, size) + 16, h = size + 9;
+    box(xRight - w, top, w, h, fill, h / 2);
+    text(s, xRight - 8, top + h / 2 + size * 0.36, { size, weight, color });
+    return w;
+  };
+  const dot = (cx, cy, r, rgb) => { doc.setFillColor(...rgb); doc.circle(cx, cy, r, 'F'); };
+  // The app's done-circle: a ticked disc, or an empty ring.
+  const checkCircle = (cx, cy, done, r = 6) => {
+    if (done) {
+      dot(cx, cy, r, T.accent);
+      doc.setDrawColor(...T.white); doc.setLineWidth(1.4);
+      doc.lines([[r * 0.38, r * 0.38], [r * 0.7, -r * 0.78]], cx - r * 0.5, cy + 0.1, [1, 1], 'S', false);
+    } else {
+      doc.setDrawColor(...T.faint); doc.setLineWidth(1);
+      doc.circle(cx, cy, r, 'S');
     }
   };
+  const hr = (top, color = T.line, lw = 0.8) => { doc.setDrawColor(...color); doc.setLineWidth(lw); doc.line(L, top, R, top); };
 
-  const writeLink = (text, url, { size = 12, indent = 0 } = {}) => {
-    if (!url) return write(text, { size, color: C_ACCENT, indent });
-    doc.setFontSize(size);
-    doc.setTextColor(...C_ACCENT);
-    const maxWidth = contentW - indent;
-    const lines = doc.splitTextToSize(String(text), maxWidth);
-    for (const line of lines) {
-      ensureSpace(size * 1.5);
-      doc.textWithLink(shape(line), rightX - indent, y, { url, ...TEXT_OPTS });
-      y += size * 1.5;
-    }
-  };
+  const newPage = () => { doc.addPage(); y = TOP; };
+  const ensure = (h) => { if (y + h > BOTTOM) { newPage(); return true; } return false; };
 
-  // Decorative banner: full-width background + label
-  const banner = (label, color = C_ACCENT) => {
-    ensureSpace(48);
-    doc.setFillColor(color[0], color[1], color[2]);
-    doc.rect(leftX, y, contentW, 32, 'F');
-    doc.setFontSize(18);
-    doc.setTextColor(255, 255, 255);
-    doc.text(shape(label), rightX - 12, y + 22, { ...TEXT_OPTS });
-    y += 44;
-  };
-
-  const sectionHeader = (label) => {
-    ensureSpace(40);
-    // Right-edge accent bar
-    doc.setFillColor(...C_ACCENT);
-    doc.rect(rightX - 4, y - 4, 4, 26, 'F');
-    doc.setFontSize(20);
-    doc.setTextColor(...C_HEADING);
-    doc.text(shape(label), rightX - 14, y + 14, { ...TEXT_OPTS });
-    y += 32;
-  };
-
-  const subHeader = (label) => {
-    ensureSpace(22);
-    doc.setFontSize(14);
-    doc.setTextColor(...C_ACCENT);
-    doc.text(shape(label), rightX, y + 8, { ...TEXT_OPTS });
-    y += 22;
-  };
-
-  const hr = () => {
-    ensureSpace(20);
-    doc.setDrawColor(200, 200, 220);
-    doc.setLineWidth(0.5);
-    doc.line(leftX, y, pageW - margin, y);
-    y += 14;
-  };
-
-  const newPage = () => { doc.addPage(); y = margin; };
-
-  // ── Cover ──
-  doc.setFontSize(36);
-  doc.setTextColor(...C_HEADING);
-  doc.text(shape(trip?.name || 'הטיול שלי'), rightX, y + 30, { ...TEXT_OPTS });
-  y += 48;
-  // Accent bar under title
-  doc.setFillColor(...C_ACCENT);
-  doc.rect(leftX, y, contentW, 3, 'F');
-  y += 14;
-  if (trip?.destination) {
-    doc.setFontSize(16);
-    doc.setTextColor(...C_MUTED);
-    doc.text(shape(trip.destination), rightX, y + 10, { ...TEXT_OPTS });
+  // A part of the trip: always a fresh page, a small number in the
+  // accent, the title, a hairline.
+  const chapters = [];
+  const chapter = (title) => {
+    newPage();
+    chapters.push({ title, page: doc.getNumberOfPages() });
+    text(pad2(chapters.length), R, y + 8, { weight: 'medium', size: 11, color: T.accent });
+    text(title, R, y + 38, { weight: 'bold', size: 24 });
+    y += 52;
+    hr(y, T.line, 1);
     y += 24;
-  }
-  if (trip?.dates) {
-    doc.setFontSize(14);
-    doc.setTextColor(...C_MUTED);
-    doc.text(shape(trip.dates), rightX, y + 10, { ...TEXT_OPTS });
-    y += 22;
-  }
-  y += 12;
-  hr();
+  };
+  // A group's title: a dot in its colour, the name, a quiet count.
+  const groupTitle = (title, { color, count, keep = 60 } = {}) => {
+    ensure(keep);
+    let x = R;
+    if (color) { dot(R - 5, y + 8.5, 5, color); x = R - 17; }
+    text(title, x, y + 13, { weight: 'bold', size: 14 });
+    if (count != null && count !== '') {
+      text(String(count), x - width(title, 'bold', 14) - 8, y + 13, { weight: 'medium', size: 10.5, color: T.muted });
+    }
+    y += 26;
+  };
+
+  // A quiet table. cols run right to left: { label, w, weight?, color? };
+  // a cell is a string or { text, url, color, weight, check }. The header
+  // repeats on a new page.
+  const table = (cols, rows, { size = 10, total } = {}) => {
+    const PAD = 7, LH = size * 1.45;
+    const xs = [];
+    let cx = R;
+    for (const c of cols) { xs.push(cx); cx -= c.w; }
+    const header = () => {
+      ensure(48);
+      cols.forEach((c, i) => text(c.label, xs[i] - PAD, y + 13, { size: 9, weight: 'medium', color: T.muted }));
+      y += 20;
+      hr(y);
+    };
+    header();
+    rows.forEach((row, ri) => {
+      const cells = row.map((cell, i) => {
+        const c = cell && typeof cell === 'object' ? cell : { text: cell ?? '' };
+        const weight = c.weight || cols[i].weight || 'normal';
+        return { ...c, weight, lines: c.check != null ? [] : wrap(c.text, cols[i].w - PAD * 2, weight, size) };
+      });
+      const h = Math.max(1, ...cells.map(c => c.lines.length)) * LH + PAD * 2 - (LH - size) + 2;
+      if (ensure(h)) header();
+      if (ri % 2 === 1) { doc.setFillColor(...T.zebra); doc.rect(L, y, W, h, 'F'); }
+      cells.forEach((c, i) => {
+        if (c.check != null) { checkCircle(xs[i] - PAD - 6, y + PAD + size * 0.5, c.check, 5.5); return; }
+        let base = y + PAD + size * 0.8;
+        for (const line of c.lines) {
+          if (c.url) link(line, xs[i] - PAD, base, c.url, { size, weight: c.weight });
+          else text(line, xs[i] - PAD, base, { size, weight: c.weight, color: c.color || cols[i].color || T.text });
+          base += LH;
+        }
+      });
+      y += h;
+    });
+    if (total) {
+      const h = size + PAD * 2 + 4;
+      ensure(h);
+      box(L, y + 4, W, h, T.mint, 8);
+      total.forEach((cell, i) => {
+        if (cell) text(cell, xs[i] - PAD, y + 4 + h / 2 + size * 0.36, { size: size + 0.5, weight: 'bold', color: T.accent });
+      });
+      y += h + 4;
+    } else {
+      hr(y);
+    }
+    y += 18;
+  };
+
+  // A row of label over value, right to left, inside a card.
+  const facts = (items, top, x0 = R - 18, gap = 22) => {
+    let x = x0;
+    for (const { label, value, color } of items) {
+      if (!value) continue;
+      text(label, x, top, { size: 9, weight: 'medium', color: T.muted });
+      text(value, x, top + 16, { size: 12, weight: 'medium', color: color || T.text });
+      x -= Math.max(width(label, 'medium', 9), width(value, 'medium', 12)) + gap;
+    }
+  };
 
   const ob = trip?.outboundFlightDetails;
   const rt = trip?.returnFlightDetails;
   const ht = trip?.hotelDetails;
+  const planColor = (cat) => rgbOf(categorySettings?.[cat]?.color || PLAN_COLORS[cat] || '#4F46E5');
+  const expenseColor = (cat) => rgbOf(EXPENSE_COLORS[cat] || '#64748B');
 
-  // ── Flight & hotel section ──
-  if (SS.flight) {
-    banner('טיסה ומלון');
-    if (ob?.flightNumber) {
-      subHeader('טיסת הלוך');
-      write(`${ob.flightNumber}   ${ob.airline || ''}`, { size: 13, bold: true });
-      write(`${ob.depAirport?.code || ''} → ${ob.arrAirport?.code || ''}`, { size: 12, indent: 14 });
-      if (ob.date) write(`תאריך: ${ob.date}`, { size: 12, color: C_MUTED, indent: 14 });
-      if (ob.scheduledDep || ob.scheduledArr) write(`המראה ${ob.scheduledDep || '—'}    נחיתה ${ob.scheduledArr || '—'}`, { size: 12, color: C_MUTED, indent: 14 });
-      if (ob.gate) write(`שער: ${ob.gate}`, { size: 12, color: C_MUTED, indent: 14 });
-      y += 8;
-    }
-    if (rt?.flightNumber) {
-      subHeader('טיסת חזור');
-      write(`${rt.flightNumber}   ${rt.airline || ''}`, { size: 13 });
-      write(`${rt.depAirport?.code || ''} → ${rt.arrAirport?.code || ''}`, { size: 12, indent: 14 });
-      if (rt.date) write(`תאריך: ${rt.date}`, { size: 12, color: C_MUTED, indent: 14 });
-      if (rt.scheduledDep || rt.scheduledArr) write(`המראה ${rt.scheduledDep || '—'}    נחיתה ${rt.scheduledArr || '—'}`, { size: 12, color: C_MUTED, indent: 14 });
-      if (rt.gate) write(`שער: ${rt.gate}`, { size: 12, color: C_MUTED, indent: 14 });
-      y += 8;
-    }
-    if (ht?.name) {
-      subHeader('מלון');
-      write(ht.name, { size: 13 });
-      if (ht.address) writeLink(`📍 ${ht.address}`, `https://www.google.com/maps?q=${encodeURIComponent(ht.address)}`, { size: 12, indent: 14 });
-      if (ht.link) writeLink(`🔗 ${ht.link}`, ht.link, { size: 12, indent: 14 });
-      if (ht.checkIn || ht.checkOut) write(`כניסה ${formatHotelDateTime(ht.checkIn)}    יציאה ${formatHotelDateTime(ht.checkOut)}`, { size: 12, color: C_MUTED, indent: 14 });
-      if (ht.roomNumber) write(`חדר: ${ht.roomNumber}`, { size: 12, color: C_MUTED, indent: 14 });
-      if (ht.notes) write(ht.notes, { size: 11, color: C_MUTED, indent: 14 });
+  // ── Cover ──
+  const tripName = trip?.name || 'הטיול שלי';
+  const nameLines = wrap(tripName, W - 56, 'bold', 34).slice(0, 2);
+  const heroH = 150 + nameLines.length * 40;
+  box(L, 48, W, heroH, T.mint, 24);
+  text('עוזר טיסות', R - 28, 84, { size: 11, weight: 'medium', color: T.accent });
+  let cy = 84 + 48;
+  for (const line of nameLines) { text(line, R - 28, cy, { size: 34, weight: 'bold' }); cy += 40; }
+  if (trip?.destination) { text(trip.destination, R - 28, cy + 4, { size: 16, color: T.muted }); cy += 30; }
+  if (trip?.dates) pill(trip.dates, R - 28, cy + 4, { fill: T.white, size: 11 });
+  y = 48 + heroH + 40;
+
+  const contentsTop = y;   // filled in at the end, once the pages are known
+  const members = Object.keys(trip?.members || {})
+    .map(uid => memberProfiles[uid]?.displayName || memberProfiles[uid]?.email)
+    .filter(Boolean);
+
+  // ── Flight and hotel ──
+  const hasFlight = (f) => !!(f?.flightNumber || f?.depAirport?.code || f?.date);
+  if (SS.flight && (hasFlight(ob) || hasFlight(rt) || ht?.name || ht?.address)) {
+    chapter('טיסה ומלון');
+
+    const flightCard = (f, label, tone) => {
+      if (!hasFlight(f)) return;
+      const h = 168;
+      ensure(h + 16);
+      const top = y;
+      box(L, top, W, h, T.card);
+      let x = R - 18;
+      x -= pill(label, x, top + 16, { fill: tone.fill, color: tone.color }) + 10;
+      text(f.flightNumber || '—', x, top + 29, { weight: 'bold', size: 15 });
+      x -= width(f.flightNumber || '—', 'bold', 15) + 8;
+      if (f.airline) text(f.airline, x, top + 29, { size: 10.5, color: T.muted });
+      if (f.date) text(pdfDate(f.date), L + 18, top + 29, { align: 'left', size: 11, weight: 'medium', color: T.muted });
+
+      // The route: departure on the right, arrival on the left (RTL).
+      const dep = f.depAirport || {}, arr = f.arrAirport || {};
+      const depCode = dep.code || '—', arrCode = arr.code || '—';
+      text(depCode, R - 18, top + 78, { weight: 'bold', size: 28 });
+      text(arrCode, L + 18, top + 78, { weight: 'bold', size: 28, align: 'left' });
+      const x1 = L + 18 + width(arrCode, 'bold', 28) + 18;
+      const x2 = R - 18 - width(depCode, 'bold', 28) - 18;
+      if (x2 - x1 > 40) {
+        doc.setDrawColor(...T.faint); doc.setLineWidth(1); doc.setLineDashPattern([2, 3], 0);
+        doc.line(x1, top + 68, x2, top + 68);
+        doc.setLineDashPattern([], 0);
+        dot(x1, top + 68, 2.5, T.faint);
+        dot(x2, top + 68, 2.5, T.faint);
+        dot((x1 + x2) / 2, top + 68, 5, T.accent);
+      }
+      if (dep.city) text(dep.city, R - 18, top + 96, { size: 10, color: T.muted });
+      if (arr.city) text(arr.city, L + 18, top + 96, { size: 10, color: T.muted, align: 'left' });
+
+      const time = (scheduled, updated) => {
+        const s = toTime24(scheduled), u = toTime24(updated);
+        return { main: u || s || '—', was: u && s && u !== s ? s : '' };
+      };
+      const d = time(f.scheduledDep, f.actualDep), a = time(f.scheduledArr, f.estimatedArr);
+      text(d.main, R - 18, top + 122, { weight: 'bold', size: 16 });
+      text('המראה', R - 24 - width(d.main, 'bold', 16), top + 122, { size: 9.5, color: T.muted });
+      if (d.was) text(`במקור ${d.was}`, R - 18, top + 138, { size: 9, color: T.orange });
+      text(a.main, L + 18, top + 122, { weight: 'bold', size: 16, align: 'left' });
+      text('נחיתה', L + 24 + width(a.main, 'bold', 16), top + 122, { size: 9.5, color: T.muted, align: 'left' });
+      if (a.was) text(`במקור ${a.was}`, L + 18, top + 138, { size: 9, color: T.orange, align: 'left' });
+
+      let px = R - 18;
+      if (f.gate) px -= pill(`שער ${f.gate}`, px, top + 144, { fill: T.white, size: 9 }) + 6;
+      if (f.status) {
+        const bad = f.status === 'בוטלה', late = String(f.status).includes('איחור');
+        pill(f.status, px, top + 144, { fill: bad ? T.rose : late ? T.butter : T.mint, color: bad ? T.red : late ? T.orange : T.accent, size: 9 });
+      }
+      y += h + 16;
+    };
+    flightCard(ob, 'טיסת הלוך', { fill: T.mint, color: T.accent });
+    flightCard(rt, 'טיסת חזור', { fill: T.rose, color: T.red });
+
+    if (ht?.name || ht?.address) {
+      const IW = W - 36;
+      const nameL = wrap(ht.name || 'מלון', IW, 'bold', 16);
+      const addrL = wrap(ht.address, IW, 'normal', 10.5);
+      const linkL = ht.link ? [String(ht.link).replace(/^https?:\/\//, '').slice(0, 70)] : [];
+      const notesL = wrap(ht.notes, IW, 'normal', 10);
+      const hasDates = ht.checkIn || ht.checkOut || ht.roomNumber;
+      const h = 18 + 12 + nameL.length * 21 + (addrL.length + linkL.length) * 15 + (hasDates ? 50 : 0)
+        + (notesL.length ? 22 + notesL.length * 14.5 : 0) + 8;
+      ensure(h + 16);
+      const top = y;
+      box(L, top, W, h, T.card);
+      let base = top + 34;
+      for (const line of nameL) { text(line, R - 18, base, { weight: 'bold', size: 16 }); base += 21; }
+      for (const line of addrL) { link(line, R - 18, base, mapsUrl(ht.address)); base += 15; }
+      for (const line of linkL) { link(line, R - 18, base, ht.link); base += 15; }
+      if (hasDates) {
+        base += 10;
+        facts([
+          { label: 'כניסה', value: pdfDateTime(ht.checkIn) },
+          { label: 'יציאה', value: pdfDateTime(ht.checkOut) },
+          { label: 'חדר', value: ht.roomNumber },
+        ], base, R - 18, 28);
+        base += 40;
+      }
+      if (notesL.length) {
+        text('הערות', R - 18, base + 6, { size: 9, weight: 'medium', color: T.muted });
+        base += 22;
+        for (const line of notesL) { text(line, R - 18, base, { size: 10, color: T.text }); base += 14.5; }
+      }
+      y += h + 16;
     }
   }
 
-  // ── Planning section ──
+  // ── Planning ──
   if (SS.planning && planning.length > 0) {
-    if (SS.flight) newPage();
-    banner('תכנון הטיול');
-
-    // Table column layout (RTL: index 0 = rightmost visual column)
-    const PLAN_COLS = [
-      { label: 'שם',     w: 165 },
-      { label: 'תיאור',  w: 158 },
-      { label: 'כתובת',  w: 122 },
-      { label: '✓',      w: 46  },
+    chapter('תכנון');
+    const COLS = [
+      { label: '', w: 26 },
+      { label: 'שם', w: 150, weight: 'medium' },
+      { label: 'כתובת', w: 150 },
+      { label: 'הערות', w: W - 326, color: T.muted },
     ];
-    const CELL_FS      = 11;
-    const CELL_PAD     = 5;
-    const COL_HDR_H    = 22;
-    const MIN_ROW_H    = 20;
+    for (const [cat, items] of Object.entries(groupByCategory(planning))) {
+      groupTitle(cat, { color: planColor(cat), count: items.length });
+      table(COLS, items.map(p => {
+        const addr = p.address || '';
+        const firstLink = Array.isArray(p.links) && p.links[0] ? p.links[0] : null;
+        const where = addr
+          ? { text: addr, url: /^https?:\/\//i.test(addr) ? addr : mapsUrl(addr) }
+          : firstLink?.url ? { text: firstLink.label || firstLink.url.replace(/^https?:\/\//, '').slice(0, 40), url: firstLink.url } : '';
+        return [{ check: !!p.visited }, p.title || '', where, p.description || ''];
+      }));
+    }
+  }
 
-    // Pre-compute right-edge x for each column
-    const planColRX = [];
-    let _cx = rightX;
-    for (const col of PLAN_COLS) { planColRX.push(_cx); _cx -= col.w; }
-
-    const drawPlanColHeaders = () => {
-      ensureSpace(COL_HDR_H + 2);
-      doc.setFillColor(79, 70, 229);
-      doc.rect(leftX, y, contentW, COL_HDR_H, 'F');
-      for (let i = 0; i < PLAN_COLS.length; i++) {
-        const col = PLAN_COLS[i];
-        if (i < PLAN_COLS.length - 1) {
-          doc.setDrawColor(255, 255, 255);
-          doc.setLineWidth(0.4);
-          doc.line(planColRX[i] - col.w, y, planColRX[i] - col.w, y + COL_HDR_H);
-        }
-        doc.setFontSize(11);
-        doc.setTextColor(255, 255, 255);
-        doc.text(shape(col.label), planColRX[i] - CELL_PAD, y + COL_HDR_H - 6, { ...TEXT_OPTS });
+  // ── Days: a timeline each, every day on its own page ──
+  if (SS.days && days.length > 0) {
+    days.forEach((day, i) => {
+      if (i === 0) chapter('לוח הימים'); else newPage();
+      const date = day.date ? new Date(`${day.date}T12:00:00`) : null;
+      text(day.title || `יום ${i + 1}`, R, y + 16, { weight: 'bold', size: 18 });
+      if (date && !Number.isNaN(date.getTime())) {
+        text(`יום ${WEEKDAYS[date.getDay()]} · ${pdfDate(day.date)}`, L, y + 16, { align: 'left', size: 11, weight: 'medium', color: T.muted });
       }
-      y += COL_HDR_H;
-    };
-
-    const planGroups = groupByCategory(planning);
-    for (const [cat, items] of Object.entries(planGroups)) {
-      // Category banner row
-      ensureSpace(28);
-      doc.setFillColor(99, 102, 241);
-      doc.rect(leftX, y, contentW, 22, 'F');
-      doc.setFontSize(12);
-      doc.setTextColor(255, 255, 255);
-      doc.text(shape(cat), rightX - 10, y + 15, { ...TEXT_OPTS });
-      y += 26;
-
-      drawPlanColHeaders();
-
-      for (let idx = 0; idx < items.length; idx++) {
-        const p = items[idx];
-        const addrRaw = p.address
-          || (Array.isArray(p.links) && p.links[0] ? (p.links[0].label || p.links[0].url || '') : '');
-        // Build a clickable URL for the address cell
-        const addrUrl = addrRaw
-          ? (/^https?:\/\//i.test(addrRaw)
-              ? addrRaw
-              : `https://www.google.com/maps?q=${encodeURIComponent(addrRaw)}`)
-          : null;
-        const cellTexts = [p.title || '', p.description || '', addrRaw, p.visited ? '✓' : ''];
-
-        doc.setFontSize(CELL_FS);
-        const rowH = Math.max(MIN_ROW_H, ...PLAN_COLS.map((col, i) => {
-          const lines = doc.splitTextToSize(String(cellTexts[i]), col.w - CELL_PAD * 2);
-          return lines.length * (CELL_FS * 1.4) + CELL_PAD * 2;
-        }));
-
-        ensureSpace(rowH + 1);
-        const rowY = y; // capture after potential page break
-
-        const bg = idx % 2 === 0 ? [255, 255, 255] : [240, 242, 254];
-        doc.setFillColor(...bg);
-        doc.setDrawColor(210, 210, 230);
-        doc.setLineWidth(0.4);
-        doc.rect(leftX, y, contentW, rowH, 'FD');
-
-        let sepX = rightX;
-        for (let i = 0; i < PLAN_COLS.length - 1; i++) {
-          sepX -= PLAN_COLS[i].w;
-          doc.line(sepX, y, sepX, y + rowH);
+      y += 38;
+      const acts = day.activities || [];
+      if (acts.length === 0) {
+        text('אין פעילויות מתוכננות', R, y + 12, { size: 11, color: T.muted });
+        y += 30;
+        return;
+      }
+      const TX = L + 62;            // the timeline
+      const CW = R - (TX + 18);     // the item's width
+      acts.forEach((act, ai) => {
+        const titleL = wrap(act.title || '', CW, 'bold', 13);
+        const descL = wrap(act.description, CW, 'normal', 10);
+        const addrL = wrap(act.address, CW, 'normal', 10);
+        const h = titleL.length * 18 + (act.category ? 22 : 0) + descL.length * 14 + addrL.length * 14 + 18;
+        ensure(h);
+        const top = y;
+        if (act.timeLabel) text(act.timeLabel, L, top + 13, { align: 'left', weight: 'bold', size: 12 });
+        doc.setDrawColor(...T.line); doc.setLineWidth(1.5);
+        if (ai < acts.length - 1) doc.line(TX, top + 9, TX, top + h + 4);
+        dot(TX, top + 9, 4.5, act.category ? planColor(act.category) : T.accent);
+        let base = top + 13;
+        for (const line of titleL) { text(line, R, base, { weight: 'bold', size: 13 }); base += 18; }
+        if (act.category) {
+          const c = planColor(act.category);
+          pill(act.category, R, base - 9, { fill: tintOf(c), color: c, size: 9 });
+          base += 22;
         }
+        for (const line of descL) { text(line, R, base, { size: 10, color: T.muted }); base += 14; }
+        for (const line of addrL) { link(line, R, base, mapsUrl(act.address), { size: 10 }); base += 14; }
+        y += h;
+      });
+    });
+  }
 
-        for (let i = 0; i < PLAN_COLS.length; i++) {
-          const isAddr = i === 2 && !!addrUrl;
-          doc.setFontSize(CELL_FS);
-          doc.setTextColor(...(isAddr ? C_ACCENT : C_TEXT));
-          const lines = doc.splitTextToSize(String(cellTexts[i]), PLAN_COLS[i].w - CELL_PAD * 2);
-          let ty = y + CELL_PAD + CELL_FS;
-          for (const line of lines) {
-            doc.text(shape(line), planColRX[i] - CELL_PAD, ty, { ...TEXT_OPTS });
-            if (i === 0) doc.text(shape(line), planColRX[i] - CELL_PAD + 0.3, ty, { ...TEXT_OPTS });
-            ty += CELL_FS * 1.4;
-          }
-          if (isAddr) {
-            doc.link(planColRX[i] - PLAN_COLS[i].w, rowY, PLAN_COLS[i].w, rowH, { url: addrUrl });
-          }
-        }
-        y += rowH;
+  // ── Checklist: two columns of done-circles ──
+  if (SS.checklist && checklist.length > 0) {
+    chapter("צ'קליסט");
+    const GAP = 18, CW = (W - GAP) / 2;
+    for (const [cat, items] of Object.entries(groupByCategory(checklist))) {
+      groupTitle(cat, { count: `${items.filter(i => i.completed).length}/${items.length}` });
+      for (let i = 0; i < items.length; i += 2) {
+        const pair = items.slice(i, i + 2).map(it => ({ it, lines: wrap(it.text, CW - 24, 'normal', 11) }));
+        const h = Math.max(...pair.map(p => Math.max(1, p.lines.length))) * 15 + 9;
+        ensure(h);
+        pair.forEach(({ it, lines }, k) => {
+          const xr = k === 0 ? R : R - CW - GAP;
+          checkCircle(xr - 6, y + 7.5, !!it.completed);
+          let base = y + 11.5;
+          for (const line of lines) { text(line, xr - 20, base, { size: 11, color: it.completed ? T.muted : T.text }); base += 15; }
+        });
+        y += h;
       }
       y += 14;
     }
   }
 
-  // ── Daily plan: each day on its own page ──
-  if (SS.days && days.length > 0) {
-    for (let i = 0; i < days.length; i++) {
-      newPage();
-      const day = days[i];
-      banner(day.title || `יום ${i + 1}`);
-      const acts = day.activities || [];
-      if (acts.length === 0) {
-        write('אין פעילויות מתוכננות', { size: 12, color: C_MUTED });
-      } else {
-        for (const act of acts) {
-          ensureSpace(60);
-          const labelPart = act.timeLabel ? `[${act.timeLabel}]   ` : '';
-          write(`• ${labelPart}${act.title}`, { size: 14 });
-          if (act.category) write(act.category, { size: 11, color: C_MUTED, indent: 16 });
-          if (act.description) write(act.description, { size: 11, color: C_MUTED, indent: 16 });
-          if (act.address) writeLink(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`, { size: 11, indent: 16 });
-          y += 10;
-        }
-      }
-    }
-  }
-
-  // ── Checklist ──
-  if (SS.checklist && checklist?.length > 0) {
-    newPage();
-    banner("צ'קליסט ציוד");
-    const groups = groupByCategory(checklist);
-    for (const [cat, items] of Object.entries(groups)) {
-      subHeader(cat);
-      for (const item of items) {
-        ensureSpace(20);
-        const mark = item.completed ? '☑' : '☐';
-        write(`${mark}   ${item.text}`, { size: 12, indent: 6 });
-      }
-      y += 8;
-    }
-  }
-
-  // ── Important info / emergency contacts ──
-  if (SS.info && info?.length > 0) {
-    newPage();
-    banner('מידע חשוב', [220, 38, 38]);
-    const groups = groupByCategory(info);
-    for (const [cat, items] of Object.entries(groups)) {
-      subHeader(cat);
-      for (const item of items) {
-        ensureSpace(40);
-        write(`• ${item.title}`, { size: 13 });
-        if (item.value) {
-          if (item.type === 'phone') {
-            writeLink(`📞  ${item.value}`, `tel:${String(item.value).replace(/[^0-9+]/g, '')}`, { size: 12, indent: 16 });
-          } else if (item.type === 'address') {
-            writeLink(`📍 ${item.value}`, `https://www.google.com/maps?q=${encodeURIComponent(item.value)}`, { size: 12, indent: 16 });
-          } else if (item.type === 'url') {
-            const url = /^https?:\/\//i.test(item.value) ? item.value : `https://${item.value}`;
-            writeLink(`🔗 ${item.value}`, url, { size: 12, indent: 16 });
-          } else {
-            write(item.value, { size: 12, color: C_MUTED, indent: 16 });
-          }
-        }
-        y += 4;
-      }
-      y += 6;
-    }
-  }
-
-  // ── Expenses report ──
-  if (SS.expenses && expenses?.length > 0) {
-    const rep = computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning);
-    const C_GREEN = [5, 150, 105];
-    const fmtNum = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
-    const hasPrecedingContent = SS.flight || SS.planning || SS.days || SS.checklist || SS.info;
-    if (hasPrecedingContent) { newPage(); } else { y += 16; }
-    banner('דוח הוצאות', C_GREEN);
-
-    // Grand total card
-    ensureSpace(56);
-    doc.setFillColor(236, 253, 245);
-    doc.roundedRect(leftX, y, contentW, 48, 6, 6, 'F');
-    doc.setFontSize(12);
-    doc.setTextColor(6, 95, 70);
-    doc.text(shape('סך כל ההוצאות (בשקלים)'), rightX - 14, y + 19, { ...TEXT_OPTS });
-    doc.setFontSize(22);
-    doc.setTextColor(...C_GREEN);
-    doc.text(shape(ils(rep.ilsTotal)), rightX - 14, y + 41, { ...TEXT_OPTS });
-    y += 58;
-
-    // Headline figures
-    if (rep.perPerson != null) write(`עלות לאדם (חלוקה ל-${rep.memberCount} משתתפים): ${ils(rep.perPerson)}`, { size: 12, color: C_TEXT });
-    if (rep.daily) write(`ממוצע הוצאה יומי (${rep.daily.days} ימים): ${ils(rep.daily.avg)}`, { size: 12, color: C_TEXT });
-    write(`סך הכל ${rep.count} רשומות הוצאה`, { size: 12, color: C_MUTED });
-    y += 8;
-
-    // Category breakdown with bars
-    if (rep.byCategory.length > 0) {
-      subHeader('התפלגות לפי קטגוריה');
-      for (const { cat, total, pct } of rep.byCategory) {
-        ensureSpace(30);
-        doc.setFontSize(11);
-        doc.setTextColor(...C_TEXT);
-        doc.text(shape(cat), rightX, y + 10, { ...TEXT_OPTS });
-        doc.setTextColor(...C_MUTED);
-        doc.text(shape(`${ils(total)} · ${pct}%`), leftX, y + 10, { align: 'left', isInputVisual: true, isOutputVisual: true });
-        y += 14;
-        doc.setFillColor(229, 231, 235);
-        doc.roundedRect(leftX, y, contentW, 7, 3, 3, 'F');
-        const fillW = Math.max(3, (contentW * pct) / 100);
-        doc.setFillColor(...C_GREEN);
-        doc.roundedRect(rightX - fillW, y, fillW, 7, 3, 3, 'F');
-        y += 15;
-      }
-      y += 6;
-    }
-
-    // Per-payer breakdown
-    if (rep.byPayer.length > 0 && expenses.some(e => e.paidBy)) {
-      subHeader('מי שילם');
-      for (const { name, total, pct } of rep.byPayer) {
-        write(`${name} — ${ils(total)} (${pct}%)`, { size: 12, color: C_TEXT, indent: 6 });
-      }
-      y += 6;
-    }
-
-    // Original-currency totals
-    if (rep.hasForeign) {
-      subHeader('סכומים לפי מטבע מקורי');
-      for (const c of rep.byCurrency) {
-        write(`${c.name} (${c.code}): ${fmtNum(c.total)} ${c.code}`, { size: 12, color: C_TEXT, indent: 6 });
-      }
-      y += 6;
-    }
-
-    // Top expenses
-    if (rep.topExpenses.length > 0) {
-      subHeader('ההוצאות הגדולות ביותר');
-      rep.topExpenses.forEach((e, i) => {
-        write(`${i + 1}. ${e.label} — ${ils(e.ils)}`, { size: 12, color: C_TEXT, indent: 6 });
+  // ── Important info: a card per category; emergency numbers stand out ──
+  if (SS.info && info.length > 0) {
+    chapter('מידע חשוב');
+    const VW = W * 0.46;   // the value's column, on the left
+    for (const [cat, items] of Object.entries(groupByCategory(info))) {
+      const urgent = cat === 'מספרי חירום';
+      const rows = items.map(it => {
+        const v = String(it.value || '');
+        const url = !v ? null
+          : it.type === 'phone' ? `tel:${v.replace(/[^0-9+]/g, '')}`
+          : it.type === 'address' ? mapsUrl(v)
+          : it.type === 'url' ? (/^https?:\/\//i.test(v) ? v : `https://${v}`) : null;
+        const titleL = wrap(it.title || '', W - VW - 54, 'medium', 11.5);
+        const valueL = wrap(v, VW - 18, urgent ? 'bold' : 'normal', urgent ? 13 : 11);
+        return { url, titleL, valueL, h: Math.max(titleL.length, valueL.length, 1) * 16 + 14 };
       });
+      groupTitle(cat, { color: urgent ? T.red : null, keep: 26 + (rows[0]?.h || 0) + 20 });
+      const total = rows.reduce((s, r) => s + r.h, 0) + 12;
+      let top = y;
+      const start = (h) => { box(L, top, W, h, urgent ? T.rose : T.card); };
+      // One card; it breaks with the page when it has to.
+      let left = total;
+      if (y + Math.min(total, rows[0].h + 12) > BOTTOM) { newPage(); top = y; }
+      start(Math.min(left, BOTTOM - top));
       y += 6;
-    }
-
-    // Full itemized table
-    ensureSpace(40);
-    subHeader('פירוט כל ההוצאות');
-    const EXP_COLS = [
-      { label: 'תאריך',      w: 72 },
-      { label: 'קטגוריה',    w: 82 },
-      { label: 'פירוט',      w: 137 },
-      { label: 'סכום מקורי', w: 106 },
-      { label: 'בשקלים',     w: 94 },
-    ];
-    const ECELL_FS = 10, ECELL_PAD = 5, ECOL_HDR_H = 20, EMIN_ROW_H = 18;
-    const expColRX = [];
-    let _ex = rightX;
-    for (const col of EXP_COLS) { expColRX.push(_ex); _ex -= col.w; }
-    const drawExpHeaders = () => {
-      ensureSpace(ECOL_HDR_H + 2);
-      doc.setFillColor(...C_GREEN);
-      doc.rect(leftX, y, contentW, ECOL_HDR_H, 'F');
-      for (let i = 0; i < EXP_COLS.length; i++) {
-        const col = EXP_COLS[i];
-        if (i < EXP_COLS.length - 1) {
-          doc.setDrawColor(255, 255, 255);
-          doc.setLineWidth(0.4);
-          doc.line(expColRX[i] - col.w, y, expColRX[i] - col.w, y + ECOL_HDR_H);
+      rows.forEach((r, ri) => {
+        if (y + r.h > BOTTOM) {
+          newPage(); top = y;
+          start(Math.min(left, BOTTOM - top));
+          y += 6;
         }
-        doc.setFontSize(10);
-        doc.setTextColor(255, 255, 255);
-        doc.text(shape(col.label), expColRX[i] - ECELL_PAD, y + ECOL_HDR_H - 6, { ...TEXT_OPTS });
+        if (ri > 0) { doc.setDrawColor(...(urgent ? tintOf(T.red, 0.2) : T.line)); doc.setLineWidth(0.6); doc.line(L + 18, y, R - 18, y); }
+        let base = y + 18;
+        for (const line of r.titleL) { text(line, R - 18, base, { weight: 'medium', size: 11.5 }); base += 16; }
+        base = y + 18;
+        for (const line of r.valueL) {
+          if (r.url) link(line, L + 18, base, r.url, { align: 'left', weight: urgent ? 'bold' : 'normal', size: urgent ? 13 : 11 });
+          else text(line, L + 18, base, { align: 'left', size: 11, color: T.muted });
+          base += 16;
+        }
+        y += r.h;
+        left -= r.h;
+      });
+      y += 22;
+    }
+  }
+
+  // ── Expenses ──
+  if (SS.expenses && expenses.length > 0) {
+    const rep = computeExpenseReport(expenses, rates, memberProfiles, memberCount, planning);
+    const fmtNum = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    chapter('הוצאות');
+
+    // The total, and the figures around it.
+    const h = 96;
+    box(L, y, W, h, T.mint, 18);
+    text('סך כל ההוצאות', R - 22, y + 30, { size: 10.5, weight: 'medium', color: T.muted });
+    text(ils(rep.ilsTotal), R - 22, y + 68, { size: 32, weight: 'bold', color: T.accent });
+    const side = [
+      rep.perPerson != null ? `${ils(rep.perPerson)} לאדם (${rep.memberCount} משתתפים)` : null,
+      rep.daily ? `${ils(rep.daily.avg)} ביום בממוצע (${rep.daily.days} ימים)` : null,
+      `${rep.count} הוצאות`,
+    ].filter(Boolean);
+    side.forEach((s, i) => text(s, L + 22, y + 32 + i * 20, { align: 'left', size: 10.5, weight: i === 0 ? 'medium' : 'normal', color: i === 0 ? T.text : T.muted }));
+    y += h + 30;
+
+    // Bars: a pale track in the colour, filled from the right.
+    const bars = (rows, colorOf) => {
+      for (const r of rows) {
+        ensure(34);
+        const c = colorOf(r);
+        dot(R - 4.5, y + 8, 4.5, c);
+        text(r.label, R - 15, y + 12, { size: 11, weight: 'medium' });
+        text(`${ils(r.total)} · ${r.pct}%`, L, y + 12, { align: 'left', size: 10.5, color: T.muted });
+        y += 19;
+        box(L, y, W, 6, tintOf(c, 0.18), 3);
+        const fw = Math.max(6, (W * r.pct) / 100);
+        box(R - fw, y, fw, 6, c, 3);
+        y += 16;
       }
-      y += ECOL_HDR_H;
+      y += 12;
     };
-    drawExpHeaders();
-    for (let idx = 0; idx < rep.items.length; idx++) {
-      const it = rep.items[idx];
-      const cells = [
-        it.date,
-        it.category,
-        it.description || it.place || '',
-        `${fmtNum(it.amount)} ${it.currency}`,
-        ils(it.ils),
-      ];
-      doc.setFontSize(ECELL_FS);
-      const rowH = Math.max(EMIN_ROW_H, ...EXP_COLS.map((col, i) => {
-        const lines = doc.splitTextToSize(String(cells[i]), col.w - ECELL_PAD * 2);
-        return lines.length * (ECELL_FS * 1.4) + ECELL_PAD * 2;
-      }));
-      const pBefore = doc.internal.getNumberOfPages();
-      ensureSpace(rowH + 1);
-      if (doc.internal.getNumberOfPages() !== pBefore) drawExpHeaders();
-
-      const bg = idx % 2 === 0 ? [255, 255, 255] : [240, 253, 244];
-      doc.setFillColor(...bg);
-      doc.setDrawColor(209, 213, 219);
-      doc.setLineWidth(0.4);
-      doc.rect(leftX, y, contentW, rowH, 'FD');
-      let sepX = rightX;
-      for (let i = 0; i < EXP_COLS.length - 1; i++) {
-        sepX -= EXP_COLS[i].w;
-        doc.line(sepX, y, sepX, y + rowH);
-      }
-      for (let i = 0; i < EXP_COLS.length; i++) {
-        doc.setFontSize(ECELL_FS);
-        doc.setTextColor(...(i === 4 ? C_GREEN : C_TEXT));
-        const lines = doc.splitTextToSize(String(cells[i]), EXP_COLS[i].w - ECELL_PAD * 2);
-        let ty = y + ECELL_PAD + ECELL_FS;
-        for (const line of lines) {
-          doc.text(shape(line), expColRX[i] - ECELL_PAD, ty, { ...TEXT_OPTS });
-          ty += ECELL_FS * 1.4;
-        }
-      }
-      y += rowH;
+    if (rep.byCategory.length > 0) {
+      groupTitle('לפי קטגוריה');
+      bars(rep.byCategory.map(c => ({ label: c.cat, total: c.total, pct: c.pct, cat: c.cat })), r => expenseColor(r.cat));
     }
-    // Total row
-    ensureSpace(EMIN_ROW_H + 2);
-    doc.setFillColor(209, 250, 229);
-    doc.rect(leftX, y, contentW, EMIN_ROW_H + 2, 'F');
-    doc.setFontSize(11);
-    doc.setTextColor(6, 95, 70);
-    doc.text(shape('סה"כ'), rightX - ECELL_PAD, y + EMIN_ROW_H - 4, { ...TEXT_OPTS });
-    doc.text(shape(ils(rep.ilsTotal)), expColRX[4] - ECELL_PAD, y + EMIN_ROW_H - 4, { ...TEXT_OPTS });
-    y += EMIN_ROW_H + 2;
+    if (rep.byPayer.length > 0 && expenses.some(e => e.paidBy)) {
+      groupTitle('מי שילם');
+      bars(rep.byPayer.map(p => ({ label: p.name, total: p.total, pct: p.pct })), () => T.brand);
+    }
+    if (rep.hasForeign) {
+      groupTitle('לפי מטבע');
+      table([{ label: 'מטבע', w: 240, weight: 'medium' }, { label: 'סכום', w: W - 240 }],
+        rep.byCurrency.map(c => [`${c.name} (${c.code})`, `${fmtNum(c.total)} ${c.code}`]));
+    }
+    if (rep.topExpenses.length > 0) {
+      groupTitle('ההוצאות הגדולות');
+      table([{ label: '', w: 26, color: T.muted }, { label: 'פירוט', w: W - 26 - 100, weight: 'medium' }, { label: 'בשקלים', w: 100 }],
+        rep.topExpenses.map((e, i) => [String(i + 1), e.label, ils(e.ils)]));
+    }
+    groupTitle('כל ההוצאות', { count: rep.count });
+    table([
+      { label: 'תאריך', w: 66, color: T.muted },
+      { label: 'קטגוריה', w: 92 },
+      { label: 'פירוט', w: W - 66 - 92 - 96 - 76, weight: 'medium' },
+      { label: 'סכום מקורי', w: 96 },
+      { label: 'בשקלים', w: 76 },
+    ], rep.items.map(it => [
+      it.date.replace(/\//g, '.'), it.category, it.description || it.place || '', `${fmtNum(it.amount)} ${it.currency}`, ils(it.ils),
+    ]), { size: 9.5, total: ['סה"כ', '', '', '', ils(rep.ilsTotal)] });
   }
 
-  // Page numbers
+  // ── Cover: contents and who is on the trip ──
+  doc.setPage(1);
+  y = contentsTop;
+  if (chapters.length > 0) {
+    text('בחוברת', R, y, { weight: 'bold', size: 14 });
+    y += 16;
+    chapters.forEach((c, i) => {
+      y += 26;
+      text(pad2(i + 1), R, y, { weight: 'medium', size: 11, color: T.accent });
+      text(c.title, R - 26, y, { size: 13 });
+      text(String(c.page), L, y, { align: 'left', size: 12, weight: 'medium', color: T.muted });
+      doc.link(L, y - 14, W, 20, { pageNumber: c.page });
+      hr(y + 10);
+    });
+    y += 44;
+  }
+  if (chapters.length === 0) {
+    text('עוד אין בטיול פרטים לייצוא.', R, y, { size: 13, color: T.muted });
+    y += 40;
+  }
+  if (members.length > 1) {
+    text('חברי הטיול', R, y, { weight: 'bold', size: 14 });
+    y += 22;
+    for (const line of wrap(members.join(' · '), W, 'normal', 11.5)) { text(line, R, y, { size: 11.5, color: T.muted }); y += 17; }
+  }
+  const now = new Date();
+  text(`הופק ב־${pad2(now.getDate())}.${pad2(now.getMonth() + 1)}.${now.getFullYear()}`, R, pageH - 44, { size: 9.5, color: T.faint });
+
+  // ── Running header and footer, every page but the cover ──
   const totalPages = doc.internal.getNumberOfPages();
-  for (let p = 1; p <= totalPages; p++) {
+  for (let p = 2; p <= totalPages; p++) {
     doc.setPage(p);
-    doc.setFontSize(9);
-    doc.setTextColor(160, 160, 180);
-    doc.text(shape(`עמוד ${p} מתוך ${totalPages}`), rightX, pageH - 22, { ...TEXT_OPTS });
+    text(tripName, R, 40, { size: 9, weight: 'medium', color: T.faint });
+    text(`עמוד ${p} מתוך ${totalPages}`, L, pageH - 30, { align: 'left', size: 9, color: T.faint });
+    text('עוזר טיסות', R, pageH - 30, { size: 9, color: T.faint });
   }
 
-  await saveFile(doc.output('blob'), `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.pdf`);
+  await saveFile(doc.output('blob'), `${safeFileName(tripName)}_${SCOPE_LABEL[scope] || scope}.pdf`);
 }
 
 // ──────────────────────────────────────────────────────────────────────

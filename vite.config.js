@@ -107,7 +107,7 @@ export default defineConfig({
             }
           },
           {
-            // Hebrew TTF served from /fonts (for PDF export) — cache long.
+            // Rubik TTFs served from /fonts (for PDF export) — cache long.
             urlPattern: /\/fonts\/.*\.ttf$/i,
             handler: 'CacheFirst',
             options: {
