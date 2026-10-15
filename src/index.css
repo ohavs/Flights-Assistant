@@ -163,6 +163,7 @@
   --peach: #FFF1E6;
   --sky: #E7F0FF;
   --butter: #FFF7D6;
+  --brand-soft: var(--mint);   /* the palette's own pale tint (a highlighted card) */
 
   /* ── Aliases (keep old names working) ── */
   --primary-color: var(--primary);
@@ -284,6 +285,125 @@
   --peach: rgba(255, 138, 61, 0.15);
   --sky: rgba(92, 155, 255, 0.15);
   --butter: rgba(242, 183, 5, 0.14);
+}
+
+/* ══════════════════════════════════════════════════════════
+   PALETTES — settings → "מראה". Green is the default above; each other
+   palette replaces the whole look, light and dark: background, cards,
+   quiet surfaces, accent and the brand buttons. Status colours (red,
+   orange, success) stay what they mean. Contrast: accent text ≥ 4.5 on
+   cards, text on --brand ≥ 6.
+   ══════════════════════════════════════════════════════════ */
+[data-theme="light"][data-palette="ocean"] {
+  --accent: #0A6A9E;
+  --accent-rgb: 10, 106, 158;
+  --accent-gradient: linear-gradient(135deg, #2B9AD6, #0A6A9E);
+  --brand: #2B9AD6;
+  --brand-fg: #0B0B0C;
+  --bg-gradient: #F2F6F8;
+  --body-bg: #F2F6F8;
+  --header-bg: rgba(242, 246, 248, 0.88);
+  --input-bg: #E8EFF3;
+  --surface-2: #E8EFF3;
+  --surface-3: #DAE5EB;
+  --brand-soft: #E3F1F9;
+  --nav-off-fill: #E3E9ED;
+}
+[data-theme="dark"][data-palette="ocean"] {
+  --accent: #5CB8EA;
+  --accent-rgb: 92, 184, 234;
+  --accent-gradient: linear-gradient(135deg, #5CB8EA, #5CB8EA);
+  --brand: #5CB8EA;
+  --bg-gradient: #1B232B;
+  --body-bg: #1B232B;
+  --card-bg: #25303B;
+  --card-bg-solid: #25303B;
+  --surface: #25303B;
+  --nav-bg: #25303B;
+  --modal-bg: #25303B;
+  --modal-header-bg: #25303B;
+  --header-bg: rgba(27, 35, 43, 0.88);
+  --w-92: rgba(27, 35, 43, 0.96);
+  --input-bg: #2F3B47;
+  --dropdown-bg: #2F3B47;
+  --surface-2: #2F3B47;
+  --surface-3: #3A4754;
+  --nav-off-fill: #3A4754;
+  --brand-soft: rgba(92, 184, 234, 0.14);
+}
+[data-theme="light"][data-palette="violet"] {
+  --accent: #6A45D6;
+  --accent-rgb: 106, 69, 214;
+  --accent-gradient: linear-gradient(135deg, #9B82F6, #6A45D6);
+  --brand: #9B82F6;
+  --brand-fg: #0B0B0C;
+  --bg-gradient: #F6F4FA;
+  --body-bg: #F6F4FA;
+  --header-bg: rgba(246, 244, 250, 0.88);
+  --input-bg: #EEEAF6;
+  --surface-2: #EEEAF6;
+  --surface-3: #E2DCEF;
+  --brand-soft: #EFEAFE;
+  --nav-off-fill: #E9E5F0;
+}
+[data-theme="dark"][data-palette="violet"] {
+  --accent: #AD98FF;
+  --accent-rgb: 173, 152, 255;
+  --accent-gradient: linear-gradient(135deg, #AD98FF, #AD98FF);
+  --brand: #AD98FF;
+  --bg-gradient: #211E2A;
+  --body-bg: #211E2A;
+  --card-bg: #2D2938;
+  --card-bg-solid: #2D2938;
+  --surface: #2D2938;
+  --nav-bg: #2D2938;
+  --modal-bg: #2D2938;
+  --modal-header-bg: #2D2938;
+  --header-bg: rgba(33, 30, 42, 0.88);
+  --w-92: rgba(33, 30, 42, 0.96);
+  --input-bg: #3A3548;
+  --dropdown-bg: #3A3548;
+  --surface-2: #3A3548;
+  --surface-3: #463F57;
+  --nav-off-fill: #463F57;
+  --brand-soft: rgba(173, 152, 255, 0.14);
+}
+[data-theme="light"][data-palette="sand"] {
+  --accent: #A4561A;
+  --accent-rgb: 164, 86, 26;
+  --accent-gradient: linear-gradient(135deg, #E99B4C, #A4561A);
+  --brand: #E99B4C;
+  --brand-fg: #0B0B0C;
+  --bg-gradient: #F8F4EC;
+  --body-bg: #F8F4EC;
+  --header-bg: rgba(248, 244, 236, 0.88);
+  --input-bg: #F0E8DA;
+  --surface-2: #F0E8DA;
+  --surface-3: #E5DAC6;
+  --brand-soft: #FBEBD9;
+  --nav-off-fill: #EDE6DA;
+}
+[data-theme="dark"][data-palette="sand"] {
+  --accent: #F2AC63;
+  --accent-rgb: 242, 172, 99;
+  --accent-gradient: linear-gradient(135deg, #F2AC63, #F2AC63);
+  --brand: #F2AC63;
+  --bg-gradient: #25211B;
+  --body-bg: #25211B;
+  --card-bg: #312C25;
+  --card-bg-solid: #312C25;
+  --surface: #312C25;
+  --nav-bg: #312C25;
+  --modal-bg: #312C25;
+  --modal-header-bg: #312C25;
+  --header-bg: rgba(37, 33, 27, 0.88);
+  --w-92: rgba(37, 33, 27, 0.96);
+  --input-bg: #3E372E;
+  --dropdown-bg: #3E372E;
+  --surface-2: #3E372E;
+  --surface-3: #4A4339;
+  --nav-off-fill: #4A4339;
+  --brand-soft: rgba(242, 172, 99, 0.14);
 }
 
 /* ── Reset ── */
@@ -1626,6 +1746,20 @@ input[type="datetime-local"].form-control {
 .settings-group { gap: 4px; }
 .settings-group + .settings-group { border-top: 1px solid var(--ink-6); padding-top: 4px; }
 .settings-group-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+/* Settings → "מראה": the four palettes, a split disc each (page and
+   brand colour), the picked one ringed in the accent. */
+.palette-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.palette-swatch {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 4px; border: 2px solid transparent; border-radius: 16px;
+  background: var(--surface-2); color: var(--text);
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.palette-swatch[aria-checked="true"] { border-color: var(--accent); background: var(--p-8); }
+.palette-swatch-dot {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid var(--ink-12); box-shadow: var(--shadow-sm);
+}
 .settings-hint { font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.5; padding-inline: 4px; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

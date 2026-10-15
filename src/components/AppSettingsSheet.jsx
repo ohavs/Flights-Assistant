@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell, FileType2, FileText, FileSpreadsheet,
-  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound } from 'lucide-react';
-import Sheet from '../ui/Sheet';
+  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound, Palette, Sun, Moon, Smartphone } from 'lucide-react';
+import Sheet, { Segmented } from '../ui/Sheet';
+import { useTheme } from '../ThemeContext';
+import { PALETTES } from '../lib/theme';
 import SectionHeader from '../ui/SectionHeader';
 import Notice from '../ui/Notice';
 import { Pill } from '../ui/kit';
@@ -264,6 +266,34 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
   );
 }
 
+// Light, dark or the phone's setting, and the palette. The header's
+// switch stays for a quick flip.
+const MODE_OPTIONS = [
+  { key: 'light',  label: 'בהיר',        Icon: Sun },
+  { key: 'dark',   label: 'כהה',         Icon: Moon },
+  { key: 'system', label: 'לפי הטלפון', Icon: Smartphone },
+];
+function LookSettings() {
+  const { mode, setMode, palette, setPalette } = useTheme();
+  const current = PALETTES.find(p => p.key === palette);
+  return (
+    <SettingsGroup id="look" title="מראה" Icon={Palette}
+      meta={`${current?.label || ''} · ${MODE_OPTIONS.find(m => m.key === mode)?.label || ''}`}>
+      <Segmented label="בהיר או כהה" value={mode} onChange={setMode} options={MODE_OPTIONS} />
+      <div className="palette-grid" role="radiogroup" aria-label="ערכת צבעים">
+        {PALETTES.map(p => (
+          <button key={p.key} type="button" role="radio" aria-checked={palette === p.key}
+            className="palette-swatch" onClick={() => setPalette(p.key)}>
+            <span className="palette-swatch-dot" aria-hidden="true"
+              style={{ background: `linear-gradient(135deg, ${p.swatch[1]} 0 50%, ${p.swatch[0]} 50% 100%)` }} />
+            <span>{p.label}</span>
+          </button>
+        ))}
+      </div>
+    </SettingsGroup>
+  );
+}
+
 // The personal code a trip delete asks for: set once (code + again),
 // changed with the current one. The delete itself waits 24 hours.
 function DeleteCodeSettings({ uid }) {
@@ -435,6 +465,7 @@ function UpdateSettings({ initial }) {
 export default function AppSettingsSheet({ onClose, initial, onNotifyChange, trips, uid, tripId, activeTab }) {
   return (
     <Sheet title="הגדרות" onClose={onClose}>
+      <LookSettings />
       {isNative && <NotifySettings onChange={onNotifyChange} />}
       {isNative && <PermissionSettings onChange={onNotifyChange} />}
       {uid && <FileSettings trips={trips || []} uid={uid} tripId={tripId} activeTab={activeTab} />}
