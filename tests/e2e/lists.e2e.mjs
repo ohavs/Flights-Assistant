@@ -187,6 +187,38 @@ await step('checklist: a category has a visible ⋯ with rename and delete (no l
   await menu.waitFor({ state: 'detached' });
 });
 
+await step('checklist: one row holds the filter and the tally; a category filter shows just it, open', async () => {
+  const bar = page.locator('.app-content .list-toolbar');
+  const pill = bar.locator('button.plan-filter-pill');
+  const tally = bar.locator('.list-progress');
+  await pill.waitFor();
+  // Same line, and the old progress card is gone.
+  const [a, b] = [await pill.boundingBox(), await tally.boundingBox()];
+  if (Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)) > 6) throw new Error('filter and tally are not on one row');
+  if (await page.locator('.app-content').getByText('כבר נארזו').count()) throw new Error('the old progress card is still there');
+  const before = await page.locator('.app-content .section-header').count();
+  await pill.tap();
+  const menu = page.getByRole('dialog', { name: 'סינון הרשימה' });
+  await menu.waitFor();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: '.e2e/lists-checklist-menu.png' });
+  const row = menu.getByRole('radio').nth(1);                      // the first real category
+  const name = (await row.locator('.filter-menu-label').innerText()).trim();
+  await row.tap();
+  await menu.getByRole('button', { name: /^הצג \d+ פריטים$/ }).tap();
+  await menu.waitFor({ state: 'detached' });
+  if (!(await pill.innerText()).includes(name)) throw new Error('the pill does not name the filter');
+  if (await page.locator('.app-content .section-header').count() !== 1) throw new Error('more than the picked category is shown');
+  if ((await page.locator('.app-content .section-header-toggle').getAttribute('aria-expanded')) !== 'true') throw new Error('the picked category is not open');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: '.e2e/lists-checklist-filter.png' });
+  // Back to everything.
+  await pill.tap();
+  await menu.getByRole('button', { name: 'נקה' }).tap();
+  await menu.getByRole('button', { name: /^הצג \d+ פריטים$/ }).tap();
+  if (await page.locator('.app-content .section-header').count() !== before) throw new Error('clearing did not bring every category back');
+});
+
 await step('expenses and bookings group under the same header', async () => {
   await tab('הוצאות');
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();

@@ -17,6 +17,7 @@ import SectionHeader from '../ui/SectionHeader';
 import { CheckCircle } from '../ui/kit';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
+import ChecklistToolbar from './ChecklistFilter';
 import Sheet, { Segmented } from '../ui/Sheet';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
@@ -719,6 +720,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
 
   // Filter by assigned user
   const [filterAssignee, setFilterAssignee] = useState(null);
+  const [filterCategory, setFilterCategory] = useState(null);
 
   // Assignment picker (item id whose picker is open + current toggle selections)
   const [assignPickerItemId, setAssignPickerItemId] = useState(null);
@@ -1009,10 +1011,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     });
   };
 
-  // ── Progress ─────────────────────────────────────────────────────────────
   const totalCount = items.length;
-  const completedCount = items.filter(i => i.completed).length;
-  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   if (loading) {
     return <Skeleton rows={5} label="טוען רשימת ציוד" />;
@@ -1024,32 +1023,18 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       {/* Reminders — compact strip; add/edit happen in a sheet */}
       <RemindersCard tripId={tripId} canEdit={canEdit} />
 
-      {/* Progress — a read-out now, not a control. Adding used to unfold
-          out of this card; it moved to the floating button and its sheet,
-          which is how every tab adds things. Shown to viewers too: the
-          count is information, not an edit. */}
+      {/* One row: the filter (category and member, combined) and how much
+          of what it shows is packed. */}
       {totalCount > 0 && (
-        <div className="glass-card" style={{ padding: '12px 14px', flexDirection: 'row', alignItems: 'center', gap: 12, direction: 'rtl' }}>
-          <div style={{ position: 'relative', width: 46, height: 46, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width={46} height={46} viewBox="0 0 52 52" style={{ position: 'absolute', top: 0, left: 0 }}>
-              <circle cx={26} cy={26} r={20} fill="none" stroke="var(--ink-8)" strokeWidth={4} />
-              <circle cx={26} cy={26} r={20} fill="none" stroke="var(--primary-color)" strokeWidth={4}
-                strokeLinecap="round"
-                strokeDasharray="125.66"
-                strokeDashoffset={`${(125.66 * (1 - progressPercent / 100)).toFixed(2)}`}
-                transform="rotate(-90 26 26)"
-                style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4,0,0.2,1)' }}
-              />
-            </svg>
-            <span style={{ zIndex: 1, fontSize: 13, fontWeight: 900, color: 'var(--primary-color)', lineHeight: 1 }}>{progressPercent}%</span>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>רשימת הציוד</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
-              {completedCount} מתוך {totalCount} כבר נארזו
-            </div>
-          </div>
-        </div>
+        <ChecklistToolbar
+          items={items}
+          categories={categories}
+          members={allMembers}
+          category={filterCategory}
+          onCategory={setFilterCategory}
+          member={filterAssignee}
+          onMember={setFilterAssignee}
+        />
       )}
 
       {canEdit && <Fab label="פריט חדש" onClick={openAddSheet} />}
@@ -1122,42 +1107,12 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         </Sheet>
       )}
 
-      {/* Who-it's-for filter — one scrollable row (never wraps to a second
-          line) with a count per member, so the row reads as a summary too. */}
-      {allMembers.length > 1 && (() => {
-        const countFor = (uid) => items.filter(it => {
-          const a = Array.isArray(it.assignedTo) ? it.assignedTo : (it.assignedTo ? [it.assignedTo] : []);
-          return a.includes(uid);
-        }).length;
-        // The count rides in the chip as a small pill of its own.
-        const countStyle = { fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '1px 7px', background: 'var(--ink-8)' };
-        return (
-          <div className="horizontal-scroll" style={{ direction: 'rtl', gap: 6 }}>
-            <button type="button" onClick={() => setFilterAssignee(null)} className="chip" aria-pressed={filterAssignee === null} style={{ flexShrink: 0 }}>
-              הכל
-              <span style={countStyle}>{items.length}</span>
-            </button>
-            {allMembers.map(m => {
-              const active = filterAssignee === m.uid;
-              return (
-                <button type="button" key={m.uid}
-                  onClick={() => setFilterAssignee(prev => prev === m.uid ? null : m.uid)}
-                  className={`chip${m.former ? ' person-former' : ''}`}
-                  title={m.former ? `${m.displayName} — כבר לא בטיול` : undefined}
-                  aria-pressed={active}
-                  style={{ flexShrink: 0 }}>
-                  {m.photoURL
-                    ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0 }} referrerPolicy="no-referrer" />
-                    : <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
-                  }
-                  <span style={{ whiteSpace: 'nowrap' }}>{m.displayName}</span>
-                  <span style={countStyle}>{countFor(m.uid)}</span>
-                </button>
-              );
-            })}
-          </div>
-        );
-      })()}
+      {totalCount > 0 && (filterCategory || filterAssignee) && !items.some(it =>
+        (!filterCategory || it.category === filterCategory)
+        && (!filterAssignee || (Array.isArray(it.assignedTo) ? it.assignedTo : [it.assignedTo]).includes(filterAssignee))
+      ) && (
+        <EmptyState icon={ClipboardList} title="אין פריטים בסינון הזה" hint="בחרו קטגוריה או חבר אחרים בסינון." />
+      )}
 
       {totalCount === 0 && (
         <EmptyState
@@ -1173,7 +1128,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={categories} strategy={verticalListSortingStrategy}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {categories.map((category) => {
+            {categories.filter(c => !filterCategory || c === filterCategory).map((category) => {
               const categoryItems = items.filter(item => {
                 if (item.category !== category) return false;
                 if (filterAssignee !== null) {
@@ -1183,7 +1138,8 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                 return true;
               });
               if (categoryItems.length === 0 && (filterAssignee !== null || !extraCategories.includes(category))) return null;
-              const isOpen = !!openCategories[category];
+              // A category picked in the filter shows its items right away.
+              const isOpen = filterCategory === category || !!openCategories[category];
               const doneCount = categoryItems.filter(i => i.completed).length;
               return (
                 <SortableCategoryBlock
