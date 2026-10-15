@@ -44,10 +44,10 @@ expect() {   # <shot> <text>...
 adb shell cmd uimode night no; sleep 2
 open_widget flight;  expect 1-flight "פריז עם הילדים" "בעוד 5 ימים" "טיסת הלוך · LY 323" "TLV → CDG" "יום ג׳ 3.11 · 07:30" "12/22 נארזו" "3 תזכורות"
 open_widget soon;    expect 2-soon "בעוד 3 שעות" "טיסת הלוך · LY 323"
-open_widget plan;    expect 3-plan "יום 2 מתוך 4" "היום · יום 2 · מוזיאונים" "•  בוקר · הלובר" "•  ערב · מסעדה ליד הסיין" "ועוד 2 פעילויות"
+open_widget plan;    expect 3-plan "יום 2 מתוך 4" "היום · יום 2 · מוזיאונים" "•  בוקר · הלובר" "•  צהריים · גני טווילרי" "ועוד 3 פעילויות" "12/22 נארזו"
 open_widget return;  expect 4-return "בעוד 9 שעות" "טיסת חזור · LY 326" "CDG → TLV"
 open_widget none;    expect 5-signed-out "התחברו באפליקציה"
-open_widget plan 250 110; expect 6-plan-small "יום 2 מתוך 4"
+open_widget plan 250 110; expect 6-plan-small "יום 2 מתוך 4" "12/22 נארזו"
 adb shell cmd uimode night yes; sleep 3
 open_widget flight;  expect 7-flight-dark "בעוד 5 ימים"
 open_widget plan;    expect 8-plan-dark "יום 2 מתוך 4"
@@ -69,7 +69,8 @@ PY
 )
 adb shell input tap "$X" "$Y"
 sleep 4
-adb shell dumpsys activity activities | grep -m1 "topResumedActivity" | tee /dev/stderr | grep -q "$PKG/.AppActivity" \
-  || { echo "tapping the widget did not open the app"; exit 1; }
+top=$(adb shell dumpsys activity activities | grep -m1 "topResumedActivity" | tr -d '\r')
+echo "after the tap: $top"
+grep -q "$PKG/.AppActivity" <<<"$top" || { echo "tapping the widget did not open the app"; exit 1; }
 echo "widget: a tap opens the app"
 adb shell wm size reset; adb shell wm density reset

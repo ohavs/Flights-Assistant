@@ -151,14 +151,19 @@ public class TripWidget extends AppWidgetProvider {
             JSONObject day = trip.optJSONObject("days") == null ? null : trip.optJSONObject("days").optJSONObject(today);
             v.setTextViewText(R.id.plan_title, "היום" + (day != null && !day.optString("title").isEmpty() ? " · " + day.optString("title") : ""));
             JSONArray lines = day == null ? null : day.optJSONArray("lines");
+            int count = lines == null ? 0 : lines.length();
+            int more = day == null ? 0 : day.optInt("more");
+            // Three lines fit with the bottom row; with more to come, two
+            // and "ועוד N" in the third line's place.
+            int shown = more > 0 ? Math.min(count, 2) : count;
+            more += count - shown;
             int[] ids = { R.id.plan_1, R.id.plan_2, R.id.plan_3 };
             for (int i = 0; i < ids.length; i++) {
-                String line = lines != null && i < lines.length() ? lines.optString(i) : null;
-                if (i == 0 && (lines == null || lines.length() == 0)) line = "אין פעילויות בתוכנית להיום";
-                v.setTextViewText(ids[i], line == null ? "" : (lines != null && lines.length() > 0 ? "•  " : "") + line);
+                String line = i < shown ? "•  " + lines.optString(i) : null;
+                if (i == 0 && count == 0) line = "אין פעילויות בתוכנית להיום";
+                v.setTextViewText(ids[i], line == null ? "" : line);
                 v.setViewVisibility(ids[i], line == null ? View.GONE : View.VISIBLE);
             }
-            int more = day == null ? 0 : day.optInt("more");
             v.setTextViewText(R.id.plan_more, more == 1 ? "ועוד פעילות אחת" : "ועוד " + more + " פעילויות");
             v.setViewVisibility(R.id.plan_more, more > 0 ? View.VISIBLE : View.GONE);
         }
