@@ -23,7 +23,7 @@ public class RemindersWidget extends BaseWidget {
 
     @Override
     RemoteViews content(Context ctx, WidgetKit.Moment m, float w, float h) {
-        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_reminders);
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_reminders));
         JSONObject rem = m.trip.optJSONObject("reminders");
         int open = rem == null ? 0 : rem.optInt("open");
         JSONArray items = rem == null ? null : rem.optJSONArray("items");
@@ -48,7 +48,7 @@ public class RemindersWidget extends BaseWidget {
         v.setTextViewText(R.id.rem_more, count == 0 ? "אין תזכורות פתוחות" : rest == 1 ? "ועוד תזכורת אחת" : "ועוד " + rest + " תזכורות");
         WidgetKit.visible(v, R.id.rem_more, count == 0 || rest > 0);
 
-        WidgetKit.theme(ctx, v, m.palette, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip).chip(TIMES));
+        WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip).chip(TIMES));
         v.setOnClickPendingIntent(R.id.root, WidgetKit.open(ctx, m.tripId, "checklist"));
         return v;
     }

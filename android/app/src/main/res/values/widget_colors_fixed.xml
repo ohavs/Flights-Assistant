@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py from widget_colors.xml (light) and values-night (dark); edit those. The widgets' colours in one theme whatever the phone's. -->
+<resources>
+    <color name="w_bg_light">#FFFFFF</color>
+    <color name="w_text_light">#141414</color>
+    <color name="w_muted_light">#5F5F66</color>
+    <color name="w_tile_light">#F0F0EC</color>
+    <color name="w_soft_light">#E6F4EC</color>
+    <color name="w_track_light">#E5E5E0</color>
+    <color name="w_accent_light">#16874A</color>
+    <color name="w_brand_light">#22A45D</color>
+    <color name="w_ink_light">#141414</color>
+    <color name="w_dot_light">#A1A1AA</color>
+    <color name="w_on_brand_light">#141414</color>
+    <color name="w_bg_dark">#2C2E35</color>
+    <color name="w_text_dark">#EDEDEB</color>
+    <color name="w_muted_dark">#B0B1BA</color>
+    <color name="w_tile_dark">#373941</color>
+    <color name="w_soft_dark">#2C483F</color>
+    <color name="w_track_dark">#42444D</color>
+    <color name="w_accent_dark">#2DBE6C</color>
+    <color name="w_brand_dark">#2DBE6C</color>
+    <color name="w_ink_dark">#E8E8EA</color>
+    <color name="w_dot_dark">#85868F</color>
+    <color name="w_on_brand_dark">#0B0B0C</color>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py from widget_soft.xml, light; edit that. -->
+<!-- The square behind a sticker icon: the palette's soft tint, like the
+     icon on the app's trip card. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/w_soft_light" />
+    <corners android:radius="14dp" />
+</shape>

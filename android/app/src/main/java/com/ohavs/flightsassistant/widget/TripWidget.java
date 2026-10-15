@@ -30,7 +30,7 @@ public class TripWidget extends BaseWidget {
     @Override
     RemoteViews content(Context ctx, WidgetKit.Moment m, float w, float h) {
         if (w < 220f) return CountdownWidget.draw(ctx, m);
-        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_trip);
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_trip));
 
         // Three heights: roomy (Samsung's 4x2 and up) has the icon, and in
         // each tile a second line (the bar, the next reminder) unless the
@@ -65,7 +65,7 @@ public class TripWidget extends BaseWidget {
 
         WidgetKit.Paint p = new WidgetKit.Paint().card(R.id.root).tile(R.id.packed, R.id.rem)
             .soft(R.id.icon_tile).chip(R.id.chip).chip(TIMES).bar(R.id.packed_bar);
-        WidgetKit.theme(ctx, v, m.palette, p);
+        WidgetKit.theme(ctx, v, m, p);
         v.setOnClickPendingIntent(R.id.root, WidgetKit.open(ctx, m.tripId, tab));
         v.setOnClickPendingIntent(R.id.packed, WidgetKit.open(ctx, m.tripId, "checklist"));
         v.setOnClickPendingIntent(R.id.rem, WidgetKit.open(ctx, m.tripId, "checklist"));
@@ -76,7 +76,7 @@ public class TripWidget extends BaseWidget {
         JSONObject f = m.next;
         WidgetKit.visible(v, R.id.flight_block, true);
         WidgetKit.visible(v, R.id.plan_block, false);
-        v.setImageViewResource(R.id.icon, R.drawable.ic_ws_plane);
+        v.setImageViewResource(R.id.icon, m.drawable(R.drawable.ic_ws_plane));
         v.setTextViewText(R.id.subtitle, f.optString("title"));
         v.setTextViewText(R.id.chip, WidgetKit.countdown(f, m.today, m.now));
         String from = f.optString("from"), to = f.optString("to");
@@ -94,7 +94,7 @@ public class TripWidget extends BaseWidget {
     private static void plan(RemoteViews v, WidgetKit.Moment m, float body) {
         WidgetKit.visible(v, R.id.flight_block, false);
         WidgetKit.visible(v, R.id.plan_block, true);
-        v.setImageViewResource(R.id.icon, R.drawable.ic_ws_map);
+        v.setImageViewResource(R.id.icon, m.drawable(R.drawable.ic_ws_map));
         JSONObject day = m.day(m.today);
         String name = day == null ? "" : day.optString("name");
         v.setTextViewText(R.id.subtitle, "היום" + (name.isEmpty() ? "" : " · " + name));

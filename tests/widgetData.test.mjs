@@ -113,3 +113,10 @@ test('a plan item keeps its place, for the expense widget to link to', () => {
   const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now }).trips;
   assert.deepEqual(t.days['2026-11-03'].items, [{ time: '', title: 'לובר', placeId: 'pl1' }, { time: '', title: 'גלידה' }]);
 });
+
+test('the app\'s theme: light or dark whatever the phone is, else the phone\'s', () => {
+  assert.equal(widgetSnapshot({ trips: [paris], now }).theme, 'system');
+  assert.equal(widgetSnapshot({ trips: [paris], theme: 'dark', now }).theme, 'dark');
+  assert.equal(widgetSnapshot({ trips: [paris], theme: 'light', now }).theme, 'light');
+  assert.equal(widgetSnapshot({ trips: [paris], theme: 'sepia', now }).theme, 'system');
+});

@@ -96,6 +96,7 @@ final class WidgetKit {
     static final class Moment {
         JSONObject snapshot;     // null: signed out
         String palette = "green";
+        String mode = "system";  // the app's theme: light, dark, or the phone's
         long now;
         String today;
         JSONObject trip;         // null: nothing ahead
@@ -109,6 +110,26 @@ final class WidgetKit {
         JSONObject day(String iso) {
             JSONObject days = trip == null ? null : trip.optJSONObject("days");
             return days == null ? null : days.optJSONObject(iso);
+        }
+
+        /** The app is set to light or dark, whatever the phone is. */
+        boolean forced() {
+            return "light".equals(mode) || "dark".equals(mode);
+        }
+
+        /** Dark: by the app's setting, else by the phone's. */
+        boolean dark(Context ctx) {
+            if (forced()) return "dark".equals(mode);
+            return (ctx.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        }
+
+        /** The layout as the app's theme has it (WidgetThemes), or as is when it follows the phone. */
+        int layout(int base) {
+            return forced() ? WidgetThemes.layout(base, "dark".equals(mode)) : base;
+        }
+
+        int drawable(int base) {
+            return forced() ? WidgetThemes.drawable(base, "dark".equals(mode)) : base;
         }
 
         /** Before the trip, or within a day of a flight: the flight leads. */
@@ -156,6 +177,7 @@ final class WidgetKit {
         m.today = iso(now);
         if (s == null) return m;
         m.palette = s.optString("palette", "green");
+        m.mode = s.optString("theme", "system");
         JSONArray trips = s.optJSONArray("trips");
         for (int i = 0; trips != null && i < trips.length(); i++) {
             JSONObject t = trips.optJSONObject(i);
@@ -333,11 +355,13 @@ final class WidgetKit {
 
     // ── A message in place of the content ────────────────────────────────
 
-    static RemoteViews message(Context ctx, String palette, String title, String hint, String tripId, String tab) {
-        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_message);
+    /** mo: the moment, for its palette and theme; null when the snapshot cannot be read. */
+    static RemoteViews message(Context ctx, Moment mo, String title, String hint, String tripId, String tab) {
+        if (mo == null) mo = new Moment();
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), mo.layout(R.layout.widget_message));
         v.setTextViewText(R.id.title, title);
         v.setTextViewText(R.id.subtitle, hint);
-        theme(ctx, v, palette, new Paint().card(R.id.root).soft(R.id.icon_tile));
+        theme(ctx, v, mo, new Paint().card(R.id.root).soft(R.id.icon_tile));
         v.setOnClickPendingIntent(R.id.root, open(ctx, tripId, tab));
         return v;
     }
@@ -370,9 +394,11 @@ final class WidgetKit {
         Paint fill(int... ids) { for (int i : ids) fills.add(i); return this; }
     }
 
-    static void theme(Context ctx, RemoteViews v, String palette, Paint p) {
-        int[][] c = colors(palette);
+    static void theme(Context ctx, RemoteViews v, Moment m, Paint p) {
+        int[][] c = colors(m.palette);
         int[] day = c[0], night = c[1];
+        // Set to light or dark in the app: that one, whatever the phone is.
+        if (m.forced()) day = night = m.dark(ctx) ? c[1] : c[0];
         if (Build.VERSION.SDK_INT >= 31) {
             // Both, and the launcher picks with the phone's light or dark mode.
             for (int id : p.accents) v.setColorInt(id, "setTextColor", day[0], night[0]);
@@ -383,8 +409,7 @@ final class WidgetKit {
             for (int id : p.fills) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(day[1]), ColorStateList.valueOf(night[1]));
         } else {
             // Older phones keep the green surfaces; the accent follows the palette.
-            boolean dark = (ctx.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-            int[] k = dark ? night : day;
+            int[] k = m.dark(ctx) ? night : day;
             for (int id : p.accents) v.setTextColor(id, k[0]);
         }
     }

@@ -42,7 +42,7 @@ public class ExpenseWidget extends BaseWidget {
 
     @Override
     RemoteViews content(Context ctx, WidgetKit.Moment m, float w, float h, int id) {
-        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_expense);
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_expense));
         SharedPreferences p = prefs(ctx);
         String amount = p.getString("amount_" + id, "");
         String status = p.getString("status_" + id, "");
@@ -61,7 +61,7 @@ public class ExpenseWidget extends BaseWidget {
                 : key(ctx, id, c);
             v.setOnClickPendingIntent(k[0], tap);
         }
-        WidgetKit.theme(ctx, v, m.palette, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile)
+        WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile)
             .chip(R.id.key_cur).fill(R.id.key_save)
             .tile(R.id.key_0, R.id.key_1, R.id.key_2, R.id.key_3, R.id.key_4, R.id.key_5, R.id.key_6,
                 R.id.key_7, R.id.key_8, R.id.key_9, R.id.key_dot, R.id.key_back));

@@ -44,6 +44,28 @@ PY
   adb shell input tap $xy
   sleep 1.5
 }
+shade() {   # light or dark: the widget card's own colour, inside its padding
+  texts >/dev/null
+  adb exec-out screencap > w.raw
+  python3 - <<'PY'
+import re, struct
+s = open('w.xml', encoding='utf8').read()
+# The widget's outermost view of ours (its card), or the largest one listed.
+boxes = [tuple(map(int, m.groups())) for m in re.finditer(
+    r'resource-id="com\.ohavs\.flightsassistant:id/\w+"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', s)]
+x1, y1, x2, y2 = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+raw = open('w.raw', 'rb').read()
+w, h = struct.unpack('<II', raw[:8])
+i = len(raw) - w * h * 4 + (((y1 + y2) // 2) * w + x1 + 12) * 4
+print('dark' if sum(raw[i:i + 3]) < 384 else 'light')
+PY
+}
+want_shade() {   # <shot> <light|dark>
+  local got; got=$(shade)
+  if [ "$got" != "$2" ]; then echo "widget $1: the card is $got, should be $2"; adb exec-out screencap -p > "widget-$1-FAILED.png"; exit 1; fi
+  adb exec-out screencap -p > "widget-$1.png"
+  echo "widget $1: $2 card ok"
+}
 expect() {   # <shot> <text>...
   local shot=$1; shift
   local seen; seen=$(texts)
@@ -76,7 +98,14 @@ open_widget plan 360 290 PlanWidget;        expect 11-plan "היום · מוזי
 open_widget flight 360 290 PlanWidget;      expect 12-plan-before "יום 1 · הגעה" "בעוד 5 ימים" "צ׳ק אין במלון"
 open_widget flight 170 190 PackWidget;      expect 13-pack "12/22" "55%" "נארזו · פריז עם הילדים"
 open_widget flight 360 190 RemindersWidget; expect 14-reminders "תזכורות" "3 פתוחות" "להזמין מונית לשדה" "היום 18:00" "מטען נייד"
+# The app set to dark on a light phone.
+open_widget plan-app-dark; want_shade 21a-app-dark dark
+open_widget plan-app-dark 360 300 ExpenseWidget; want_shade 21b-expense-app-dark dark
+open_widget plan; want_shade 21c-phone-light light
 adb shell cmd uimode night yes; sleep 3
+# The app set to light on a dark phone; set to follow the phone, dark.
+open_widget plan-app-light; want_shade 21d-app-light light
+open_widget plan; want_shade 21e-phone-dark dark
 open_widget flight;  expect 15-flight-dark "בעוד 5 ימים" "TLV"
 open_widget plan;    expect 16-plan-dark "יום 2 מתוך 4"
 open_widget plan-violet 360 290 PlanWidget; expect 17-plan-widget-dark "הלובר"

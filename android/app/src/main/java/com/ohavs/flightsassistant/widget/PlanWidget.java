@@ -31,7 +31,7 @@ public class PlanWidget extends BaseWidget {
 
     @Override
     RemoteViews content(Context ctx, WidgetKit.Moment m, float w, float h) {
-        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_plan);
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_plan));
         String iso = m.during ? m.today : m.start;
         JSONObject day = m.day(iso);
         String name = day == null ? "" : day.optString("name");
@@ -51,7 +51,7 @@ public class PlanWidget extends BaseWidget {
         float list = h - 28f - 41f - 4f;
         rows(v, day, list, ROWS, TIMES, RINGS, TITLES, R.id.plan_more,
             m.during ? "אין פעילויות בתוכנית להיום" : "עוד אין תוכנית ליום הראשון");
-        WidgetKit.theme(ctx, v, m.palette, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip).chip(TIMES));
+        WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip).chip(TIMES));
         v.setOnClickPendingIntent(R.id.root, WidgetKit.open(ctx, m.tripId, "planning"));
         return v;
     }
