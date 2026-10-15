@@ -90,12 +90,20 @@ ask_icon() {
   adb push app_icon.xml /data/local/tmp/app_icon.xml >/dev/null
   adb shell "mkdir -p $dir && cp /data/local/tmp/app_icon.xml $dir/app_icon.xml && chown $owner $dir $dir/app_icon.xml && chmod 660 $dir/app_icon.xml && restorecon -R $dir"
 }
+top() { adb shell dumpsys activity activities | grep -m1 topResumedActivity | tr -d '\r'; }
 switch_icon() {   # <from alias> <icon> <expected alias>
   ask_icon "$2"
-  adb shell am start -W -n "$PKG/$1" >/dev/null
-  sleep 6
+  echo "prefs: $(adb shell cat /data/data/$PKG/shared_prefs/app_icon.xml | tr -d '\r\n')"
+  adb logcat -c
+  adb shell am start -W -n "$PKG/$1" | tr -d '\r' | grep -E "Status|LaunchState|Activity:" | tr '\n' ' '; echo
+  # Leave only once the app is really on screen.
+  for i in $(seq 1 20); do top | grep -q "$PKG/" && break; sleep 1; done
+  echo "before HOME: $(top)"
+  sleep 3
   adb shell input keyevent KEYCODE_HOME
   sleep 4
+  echo "after HOME: $(top)"
+  adb logcat -d -s AppIcons | tr -d '\r' | grep AppIcons || echo "(no AppIcons lines)"
   # The emulator now and then keeps the app on top through a HOME press
   # (a slow launcher after the last switch); press again only then. When
   # the app did stop, a second press changes nothing, so a real failure
