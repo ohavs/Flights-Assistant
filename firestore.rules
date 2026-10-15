@@ -8,6 +8,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // What only the user may see: the hash of their trip-delete code.
+      match /private/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Trips: role-based access.
@@ -18,6 +23,8 @@ service cloud.firestore {
     // members is a map {uid: role}.
     // Any member may "leave" the trip (remove themselves from both
     // members + memberIds); only an owner can delete the doc.
+    // deleteAt (when a requested delete takes effect, 24 hours on; the
+    // owner may cancel until then) is the owner's alone to set or clear.
     match /trips/{tripId} {
 
       function trip() { return resource.data; }
@@ -33,6 +40,9 @@ service cloud.firestore {
       }
       function isOwner(uid) {
         return role(uid) == 'owner';
+      }
+      function keepsDeleteAt() {
+        return request.resource.data.get('deleteAt', null) == resource.data.get('deleteAt', null);
       }
 
       // Get: any member. A trip that does not exist on the server — not yet
@@ -67,6 +77,7 @@ service cloud.firestore {
           canEdit(request.auth.uid)
           && request.resource.data.members == resource.data.members
           && request.resource.data.memberIds == resource.data.memberIds
+          && keepsDeleteAt()
         )
         || (
           // Self-leave: must currently be a member, must NOT appear in
@@ -74,6 +85,7 @@ service cloud.firestore {
           isMember(request.auth.uid)
           && !(request.auth.uid in request.resource.data.memberIds)
           && !(request.resource.data.members.keys().hasAny([request.auth.uid]))
+          && keepsDeleteAt()
         )
       );
 
