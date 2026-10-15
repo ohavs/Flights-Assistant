@@ -76,3 +76,39 @@ if adb shell pidof "$PKG" >/dev/null && adb shell dumpsys activity activities | 
   echo "back on the first screen did not leave the app"; exit 1
 fi
 echo "back on the first screen leaves the app"
+
+# Launcher icon: an icon picked in settings (kept in the app's prefs as
+# "pending") replaces the launcher entry once the user leaves the app, the
+# new entry opens the app, and there is still exactly one.
+launcher() { adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tail -1 | tr -d '\r'; }
+entries() { adb shell cmd package query-activities --components -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r' | grep -c "$PKG/" || true; }
+ask_icon() {
+  adb shell am force-stop "$PKG"
+  local dir=/data/data/$PKG/shared_prefs owner
+  owner=$(adb shell stat -c %u:%g /data/data/$PKG | tr -d '\r')
+  printf '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>\n<map>\n    <string name="pending">%s</string>\n</map>\n' "$1" > app_icon.xml
+  adb push app_icon.xml /data/local/tmp/app_icon.xml >/dev/null
+  adb shell "mkdir -p $dir && cp /data/local/tmp/app_icon.xml $dir/app_icon.xml && chown $owner $dir $dir/app_icon.xml && chmod 660 $dir/app_icon.xml && restorecon -R $dir"
+}
+switch_icon() {   # <from alias> <icon> <expected alias>
+  ask_icon "$2"
+  adb shell am start -W -n "$PKG/$1" >/dev/null
+  sleep 6
+  adb shell input keyevent KEYCODE_HOME
+  sleep 4
+  echo "launcher entry after leaving: $(launcher)"
+  if [ "$(launcher)" != "$PKG/$3" ] || [ "$(entries)" != "1" ]; then
+    echo "icon did not switch to $3 (entries: $(entries))"
+    adb logcat -d | grep -E "AppIcons|AndroidRuntime" | tail -20; exit 1
+  fi
+  adb shell am start -W -n "$PKG/$3" | grep -q "Status: ok" || { echo "$3 does not open the app"; exit 1; }
+  sleep 3
+  adb shell input keyevent KEYCODE_HOME
+  sleep 2
+}
+adb root >/dev/null; sleep 3; adb wait-for-device
+[ "$(launcher)" = "$PKG/.MainActivity" ] || { echo "the classic icon is not the default: $(launcher)"; exit 1; }
+switch_icon .MainActivity sunset .IconSunset
+adb logcat -d | grep -m1 "AppIcons" || true
+switch_icon .IconSunset classic .MainActivity
+echo "the launcher icon switches when the app is left, and back"
