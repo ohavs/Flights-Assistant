@@ -11,11 +11,11 @@ import ActionsMenu from './ActionsMenu';
                     (tags)
      (children: anything the item needs below — a code, quick actions)
 
-   - Tap the card: `onOpen` (its details, its form, or ticking it). A
-     quiet › says so when there are no actions.
-   - Swiping the row aside (touch) reveals the actions marked `swipe`.
-     Mark what a tap does not already do: when the tap edits, swipe only
-     deletes.
+   - Tap the card: `onOpen`, its sheet: edit, and everything else about
+     the item, delete too (SheetDelete). A tick circle in `lead` ticks on
+     its own. A quiet › says so when there are no actions.
+   - Swiping the row aside (touch) reveals the actions marked `swipe`:
+     delete, and only delete, in every list.
    - ⋯ opens a sheet with all `actions` ({ key, label, Icon, run, danger?,
      disabled?, swipe? }). Drawn only for a mouse, which cannot swipe; on a
      phone it is there for screen readers only. Every action must be

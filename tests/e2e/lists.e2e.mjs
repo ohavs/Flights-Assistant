@@ -1,7 +1,8 @@
 // Every list row is a ListCard and answers a finger the same way, on a
-// touch phone: a tap opens (or ticks) the item, a swipe shows what the tap
-// does not do, and there is no ⋯ — a third way to the same place. With a
-// mouse, which cannot swipe, ⋯ is there instead.
+// touch phone: a tap opens the item's sheet (edit, and delete in its
+// footer), a tick circle ticks, a swipe only deletes, and there is no ⋯ —
+// a third way to the same place. With a mouse, which cannot swipe, ⋯ is
+// there instead.
 //   bash scripts/run-e2e.sh tests/e2e/lists.e2e.mjs
 import { chromium } from 'playwright';
 
@@ -77,6 +78,7 @@ await step('bookings: tapping the card opens its form', async () => {
   await page.locator('.modal-overlay .segmented[aria-label="סטטוס"]').waitFor();
   const min = await smallestField();
   if (min < 16) throw new Error(`a field is ${min}px`);
+  await page.locator('.sheet-footer button[aria-label="מחיקה"]').waitFor();
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
 });
@@ -100,7 +102,7 @@ await step('expenses: a new expense is a ListCard with its category icon', async
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/lists-expenses.png' });
 });
-await step('expenses: tap opens the form; a swipe deletes', async () => {
+await step('expenses: tap opens the form; a swipe deletes, and so does the form', async () => {
   await card('קפה וקרואסון').locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
   await page.locator('.modal-overlay .chip[aria-pressed="true"]').first().waitFor();   // currency, category
@@ -111,9 +113,17 @@ await step('expenses: tap opens the form; a swipe deletes', async () => {
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   await noMoreOnPhone('קפה וקרואסון');
   const row = await swipeOpen('קפה וקרואסון');
-  await row.getByRole('button', { name: 'מחיקה' }).tap();
+  if ((await row.locator('.swipe-action').count()) !== 1) throw new Error('a swipe shows more than delete');
+  await row.getByRole('button', { name: 'מחיקה' }).waitFor();
+  // Deleting from the form asks, then closes the form. (The first tap
+  // closes the swiped row.)
+  await card('קפה וקרואסון').locator('.list-card-title').tap();
+  await page.waitForTimeout(400);
+  await card('קפה וקרואסון').locator('.list-card-title').tap();
+  await page.locator('.sheet-footer button[aria-label="מחיקה"]').tap();
   await page.locator('.modal-overlay button.btn-primary.danger').click();
   await card('קפה וקרואסון').waitFor({ state: 'detached' });
+  await page.locator('.modal-overlay').waitFor({ state: 'detached' });
 });
 
 // ── Important info (the flight tab's card opens it) ──
@@ -144,9 +154,9 @@ for (let i = 0; i < 3 && await page.locator('.modal-overlay').count(); i++) {
   await page.waitForTimeout(400);
 }
 
-// ── Checklist: one "done" circle, no strike-through, ⋯ like everywhere ──
+// ── Checklist: one "done" circle, no strike-through ──
 await tab("צ'קליסט");
-await step('checklist: the circle ticks an item; done is quiet, not struck through', async () => {
+await step('checklist: the circle ticks an item, which glides to the bottom; done is quiet, not struck through', async () => {
   // Categories start collapsed; their headers are the shared SectionHeader.
   const header = page.locator('.app-content .section-header').first();
   await header.locator('.section-header-toggle').click();
@@ -158,19 +168,35 @@ await step('checklist: the circle ticks an item; done is quiet, not struck throu
   if ((await circle.getAttribute('aria-pressed')) !== 'false') throw new Error('item starts ticked');
   await circle.tap();
   await page.locator('.app-content .list-card.muted', { hasText: title }).waitFor();
+  // It moves down rather than jumping: a row animation runs…
+  await page.waitForFunction(() => document.getAnimations()
+    .some(a => a.effect?.target?.dataset?.flip && a.playState === 'running'), null, { timeout: 3000 });
+  await page.waitForTimeout(180);
+  await page.screenshot({ path: '.e2e/lists-checklist-sinking.png' });
+  // …and it ends last in its category.
+  await page.waitForFunction((t) => {
+    const rows = [...document.querySelector('.app-content [data-flip]').parentElement.children].filter(el => el.dataset.flip);
+    return rows.length > 1 && rows[rows.length - 1].textContent.includes(t);
+  }, title, { timeout: 3000 });
   const deco = await page.locator('.app-content .list-card', { hasText: title }).first()
     .locator('.list-card-title').evaluate(el => getComputedStyle(el).textDecorationLine);
   if (deco.includes('line-through')) throw new Error('done item is struck through');
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/lists-checklist.png' });
-  // The tap ticks; editing and deleting are a swipe away.
+  // The rest of the row opens its sheet (edit, who it is for, delete); a
+  // swipe only deletes.
   await noMoreOnPhone(title);
   const swiped = await swipeOpen(title);
   await swiped.getByRole('button', { name: 'מחיקה' }).waitFor();
-  await swiped.getByRole('button', { name: 'עריכה' }).tap();
+  if ((await swiped.locator('.swipe-action').count()) !== 1) throw new Error('a swipe shows more than delete');
+  await page.locator('.app-content .list-card', { hasText: title }).first().locator('.list-card-title').tap();   // closes the row
+  await page.waitForTimeout(400);
+  await page.locator('.app-content .list-card', { hasText: title }).first().locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
+  await page.locator('.sheet-footer button[aria-label="מחיקה"]').waitFor();
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.sheet-footer').waitFor({ state: 'detached' });
+  if ((await page.locator('.app-content .list-card', { hasText: title }).first().locator('button.check-circle').getAttribute('aria-pressed')) !== 'true') throw new Error('opening the item changed its tick');
 });
 
 await step('checklist: no + in the category headers; "+ פריט" ends an open category', async () => {
@@ -203,6 +229,12 @@ await step('reminders: a reminder can carry a time, and its card shows it', asyn
   if (!(await meta.innerText()).includes('12:00')) throw new Error(`no time on the card: ${await meta.innerText()}`);
   // A new reminder starts without a time again.
   await rem.getByRole('button', { name: 'שעה להתראה' }).waitFor();
+  // A tap on the reminder edits it (with delete there too); it is not ticked.
+  await rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('.list-card-title').tap();
+  await rem.getByText('עריכת תזכורת').waitFor();
+  await rem.getByRole('button', { name: 'מחיקת התזכורת' }).waitFor();
+  if ((await rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('button.check-circle').getAttribute('aria-pressed')) !== 'false') throw new Error('the tap ticked the reminder');
+  await rem.getByRole('button', { name: 'בטל עריכה' }).tap();
   await rem.locator('button[aria-label="סגור"]').first().click();
   await rem.waitFor({ state: 'detached' });
 });

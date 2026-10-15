@@ -15,6 +15,7 @@ import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
 import ListCard from '../ui/ListCard';
+import SheetDelete from '../ui/SheetDelete';
 import SectionHeader from '../ui/SectionHeader';
 import { Pill, CategoryDisc } from '../ui/kit';
 
@@ -260,8 +261,9 @@ export default function ExpensesTab({ tripId }) {
       cancelText: 'בטל',
       danger: true,
     });
-    if (!ok) return;
+    if (!ok) return false;
     await deleteDoc(doc(db, 'trips', tripId, 'expenses', id));
+    return true;
   };
 
   const ilsTotal = useMemo(() => {
@@ -643,7 +645,7 @@ export default function ExpensesTab({ tripId }) {
           dirty={formDirty()}
           style={{ maxHeight: '92vh' }}
         >
-          {({ cancel }) => (
+          {({ cancel, close }) => (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
               {/* Amount */}
@@ -979,6 +981,7 @@ export default function ExpensesTab({ tripId }) {
               <div className="sheet-footer">
                 <button type="submit" className="btn-primary">שמור</button>
                 <button type="button" onClick={cancel} className="btn-secondary">ביטול</button>
+                {editingId && <SheetDelete close={close} onDelete={() => handleDelete(editingId)} />}
               </div>
             </form>
           )}
