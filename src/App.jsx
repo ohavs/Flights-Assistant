@@ -220,7 +220,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
         </div>
       </div>
       {importError && (
-        <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+        <div style={{ background: 'var(--c-red-8)', border: '1px solid var(--c-red-12)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--c-red)', fontWeight: 600 }}>
           {importError}
         </div>
       )}
@@ -607,8 +607,8 @@ function ShareModal({ tripId, currentUid, onClose }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '10px 12px',
-                  background: 'rgba(11,11,48,0.03)',
-                  border: '1px solid rgba(11,11,48,0.06)',
+                  background: 'var(--ink-3)',
+                  border: '1px solid var(--ink-6)',
                   borderRadius: 12,
                 }}
               >
@@ -649,8 +649,8 @@ function ShareModal({ tripId, currentUid, onClose }) {
                       type="button"
                       onClick={() => removeMember(uid)}
                       style={{
-                        background: 'rgba(220,38,38,0.08)', border: 'none',
-                        color: '#dc2626', borderRadius: 8, width: 32, height: 32,
+                        background: 'var(--c-red-8)', border: 'none',
+                        color: 'var(--c-red)', borderRadius: 8, width: 32, height: 32,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         cursor: 'pointer'
                       }}
@@ -858,7 +858,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
         </p>
 
         {/* Form Container — collapsible */}
-        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 16, flexShrink: 0, border: '1px solid rgba(79,70,229,0.15)' }}>
+        <div className="glass-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 16, flexShrink: 0, border: '1px solid var(--p-15)' }}>
           <button
             type="button"
             onClick={() => setShowAddForm(s => !s)}
@@ -874,7 +874,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
           </button>
 
           {showAddForm && (
-            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--ink-6)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>מה להביא?</label>
@@ -887,8 +887,8 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                     required
                   />
                   {duplicateSuggestions.length > 0 && (
-                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', direction: 'rtl' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(180,120,0,0.85)', display: 'block', marginBottom: 4 }}>פריטים דומים ברשימה הקבועה:</span>
+                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'var(--butter)', border: 'none', direction: 'rtl' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>פריטים דומים ברשימה הקבועה:</span>
                       {duplicateSuggestions.slice(0, 4).map(s => (
                         <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13, color: 'var(--text-main)' }}>
                           <span style={{ flex: 1, textAlign: 'right' }}>{s.text}</span>
@@ -989,11 +989,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                         <>
                           <button type="button"
                             onClick={() => { setEditingCat(category); setEditCatText(category); setLongPressedCat(null); }}
-                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(79,70,229,0.1)', color: 'rgb(79,70,229)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'var(--p-10)', color: 'var(--accent)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                             <Pencil size={13} />
                           </button>
                           <button type="button" onClick={() => handleDeleteCategory(category)}
-                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                            style={{ padding: 6, borderRadius: 8, border: 'none', background: 'var(--c-red2-10)', color: 'var(--c-red)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                             <Trash2 size={13} />
                           </button>
                           <button type="button" className="btn-x" aria-label="סגור" title="סגור" onClick={() => setLongPressedCat(null)}>
@@ -1028,7 +1028,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                           <button
                             type="button"
                             onClick={() => handleDelete(item.id)}
-                            style={{ background: 'transparent', border: 'none', color: 'rgba(239,68,68,0.6)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--c-red)', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             <Trash2 size={15} />
                           </button>
@@ -1060,7 +1060,7 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
                     ) : (
                       <button type="button"
                         onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed var(--p-22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
                         <Plus size={14} />
                         הוסף לרשימה
                       </button>
@@ -1787,7 +1787,7 @@ function AppInner() {
               onClick={e => e.stopPropagation()}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', color: 'rgb(220,38,38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--c-red-12)', color: 'var(--c-red)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <AlertTriangle size={22} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1819,7 +1819,7 @@ function AppInner() {
                     </div>
                   )}
                   {deleteError && (
-                    <p style={{ color: '#dc2626', fontSize: 12, marginTop: 8, fontWeight: 700 }}>שגיאה: {deleteError}</p>
+                    <p style={{ color: 'var(--c-red)', fontSize: 12, marginTop: 8, fontWeight: 700 }}>שגיאה: {deleteError}</p>
                   )}
                 </div>
                 <button
@@ -1844,11 +1844,9 @@ function AppInner() {
                   type="button"
                   onClick={handleConfirmDelete}
                   disabled={deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')}
-                  className="btn-primary"
+                  className="btn-primary danger"
                   style={{
                     flex: 1,
-                    background: 'rgb(220,38,38)',
-                    boxShadow: '0 4px 14px rgba(220,38,38,0.3)',
                     opacity: (deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')) ? 0.45 : 1
                   }}
                 >

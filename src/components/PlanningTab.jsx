@@ -307,7 +307,7 @@ const travelMeta = (cache) => {
   );
 };
 const priorityIcon = (priority) =>
-  priority === 'must' ? <Star size={13} fill="#F59E0B" color="#F59E0B" aria-label="חובה" />
+  priority === 'must' ? <Star size={13} className="star-must" aria-label="חובה" />
   : priority === 'optional' ? <Clock size={13} aria-label="אופציונלי" style={{ color: 'var(--text-muted)' }} />
   : undefined;
 
@@ -1330,12 +1330,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           {originLabel}:
         </span>
         {cache.walk && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--c-green)', background: 'var(--c-green-10)', padding: '4px 10px', borderRadius: 8 }}>
             <Footprints size={13} aria-hidden="true" /> {cache.walk.duration}
           </span>
         )}
         {cache.transit && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'rgba(79,70,229,0.1)', padding: '4px 10px', borderRadius: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'var(--p-10)', padding: '4px 10px', borderRadius: 8 }}>
             <Bus size={13} aria-hidden="true" /> {cache.transit.duration}
           </span>
         )}
@@ -1950,13 +1950,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   {/* Priority selector */}
                   <div className="form-group">
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Star size={13} style={{ color: '#f59e0b' }} />
+                      <Star size={13} className="star-must" />
                       עדיפות
                     </label>
                     <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 14, background: 'var(--surface-2)' }}>
                       {[
                         { value: null,       label: 'לא מוגדר',      icon: null },
-                        { value: 'must',     label: 'חובה',          icon: <Star size={13} fill="#f59e0b" color="#f59e0b" /> },
+                        { value: 'must',     label: 'חובה',          icon: <Star size={13} className="star-must" /> },
                         { value: 'optional', label: 'אם ישאר זמן',   icon: <Clock size={13} /> },
                       ].map(opt => {
                         const active = formPriority === opt.value;
@@ -1974,7 +1974,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               border: 'none',
                               // Segmented (Payments-2026): the choice is white and raised.
                               background: active ? 'var(--card-bg-solid)' : 'transparent',
-                              boxShadow: active ? '0 2px 8px rgba(20, 20, 20, 0.08)' : 'none',
+                              boxShadow: active ? 'var(--shadow-sm)' : 'none',
                               color: active ? 'var(--text)' : 'var(--text-muted)',
                               fontFamily: 'var(--font-hebrew)',
                               fontSize: 13, fontWeight: 800,
@@ -2182,7 +2182,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             padding: '10px 14px', borderRadius: 'var(--radius-md)',
-                            border: '1.5px solid rgba(79,70,229,0.25)', background: 'var(--p-4)',
+                            border: '1.5px solid var(--p-22)', background: 'var(--p-4)',
                             cursor: 'pointer', fontFamily: 'var(--font-hebrew)', fontSize: 14, fontWeight: 700,
                             color: 'var(--primary)',
                           }}
@@ -2199,7 +2199,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {originDropOpen && (
                           <div style={{
                             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
-                            background: 'var(--surface)', border: '1.5px solid rgba(79,70,229,0.15)', borderRadius: 'var(--radius-md)',
+                            background: 'var(--surface)', border: '1.5px solid var(--p-15)', borderRadius: 'var(--radius-md)',
                             boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
                           }}>
                             {/* Hotel option */}
@@ -2425,13 +2425,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
               const isMust = selectedFilter === '__must__';
               const isAll = selectedFilter === 'הכל';
-              const activeColor = isMust ? '#f59e0b' : (isAll ? null : getCategoryColor(selectedFilter));
+              const activeColor = isMust ? 'var(--c-orange)' : (isAll ? null : getCategoryColor(selectedFilter));
               const rect = showCategoryMenu ? categoryMenuRect : null;
 
               const options = [
                 ...(mustCount > 0 ? [{
-                  key: '__must__', label: 'חובה', color: '#f59e0b', count: mustCount,
-                  icon: <Star size={15} fill="#f59e0b" color="#f59e0b" />,
+                  key: '__must__', label: 'חובה', color: 'var(--c-orange)', count: mustCount,
+                  icon: <Star size={15} className="star-must" />,
                 }] : []),
                 { key: 'הכל', label: 'הכל', color: null, count: plans.length, icon: <Layers size={15} /> },
                 ...usedCategories.map(cat => ({
@@ -2907,8 +2907,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       {(flag || (!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation))) && (
                         <span style={{ position: 'absolute', top: 12, insetInlineEnd: 12, display: 'flex', gap: 5 }}>
                           {flag && (
-                            <span title={flag.title} style={{ display: 'flex', alignItems: 'center', color: '#F59E0B', fontSize: 12, lineHeight: 1 }}>
-                              {flag.star ? <Star size={14} fill="#F59E0B" /> : <Sparkles size={14} aria-label="היום" />}
+                            <span title={flag.title} style={{ display: 'flex', alignItems: 'center', color: 'var(--c-orange)', fontSize: 12, lineHeight: 1 }}>
+                              {flag.star ? <Star size={14} className="star-must" /> : <Sparkles size={14} aria-label="היום" />}
                             </span>
                           )}
                           {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
@@ -2995,7 +2995,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         return (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
                             {pill && (
-                              <Pill size="sm" tone={pill.tone} icon={pill.star ? <Star size={11} fill="#F59E0B" color="#F59E0B" /> : pill.Icon ? <pill.Icon size={11} aria-hidden="true" /> : null}>
+                              <Pill size="sm" tone={pill.tone} icon={pill.star ? <Star size={11} className="star-must" /> : pill.Icon ? <pill.Icon size={11} aria-hidden="true" /> : null}>
                                 {pill.text}
                               </Pill>
                             )}
@@ -3050,7 +3050,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 )}
                 {justSynced && (
                   <span className="sync-flash" style={{
-                    fontSize: 12, color: 'var(--success, #16a34a)',
+                    fontSize: 12, color: 'var(--c-green)',
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}>
                     <CheckCircle2 size={13} />
@@ -3167,7 +3167,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   <Pill size="sm" style={{ background: `${getCategoryColor(detailPlan.category)}1F` }}>{detailPlan.category}</Pill>
                   {detailPlan.priority === 'must' && (
-                    <Pill size="sm" tone="butter" icon={<Star size={11} fill="#F59E0B" color="#F59E0B" />}>חובה</Pill>
+                    <Pill size="sm" tone="butter" icon={<Star size={11} className="star-must" />}>חובה</Pill>
                   )}
                   {detailPlan.priority === 'optional' && (
                     <Pill size="sm" tone="muted" icon={<Clock size={11} />}>אם ישאר זמן</Pill>
@@ -3371,9 +3371,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '13px 14px',
-                    background: 'rgba(79,70,229,0.05)',
+                    background: 'var(--p-4)',
                     borderRadius: 14,
-                    border: '1px solid rgba(79,70,229,0.12)',
+                    border: '1px solid var(--p-12)',
                     transition: 'background 0.15s ease',
                   }}>
                     <div style={{
@@ -3435,7 +3435,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             setCategorySettings(rest);
                             saveCategorySettings(rest);
                           }}
-                          style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.5)', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
+                          style={{ border: 'none', background: 'transparent', color: 'var(--c-red)', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -3486,7 +3486,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               width: 28, height: 28, borderRadius: '50%', padding: 0,
                               border: color === c ? '3px solid var(--primary)' : '2px solid rgba(255,255,255,0.5)',
                               background: c, cursor: 'pointer',
-                              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                              boxShadow: '0 1px 4px var(--ink-22)',
                               transform: color === c ? 'scale(1.18)' : 'scale(1)',
                               transition: 'transform 0.15s ease',
                             }}
@@ -3610,7 +3610,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     return (
                       <div key={idx} style={{
                         display: 'flex', flexDirection: 'column', gap: 10,
-                        borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid rgba(79,70,229,0.08)' : 'none',
+                        borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid var(--p-8)' : 'none',
                         paddingBottom: idx < savedPlaceSelections.length - 1 ? 12 : 0
                       }}>
                         {/* Category row (+ remove button) */}
@@ -3646,7 +3646,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               const cache = distanceCache[`${p.id}_${originKey}`];
                               const meta = travelMeta(cache);
                               const icon = priorityIcon(p.priority);
-                              const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
+                              const labelColor = p.priority === 'must' ? 'var(--c-orange)' : p.priority === 'optional' ? 'var(--text-muted)' : undefined;
                               return { value: p.id, label: p.title, icon, meta, labelColor, visited: p.visited };
                             }),
                             ...(usedPlaces.length > 0 ? [
@@ -3658,7 +3658,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                 const cache = distanceCache[`${p.id}_${originKey}`];
                                 const meta = travelMeta(cache);
                                 const icon = priorityIcon(p.priority);
-                                const labelColor = p.priority === 'must' ? '#f59e0b' : p.priority === 'optional' ? '#94a3b8' : undefined;
+                                const labelColor = p.priority === 'must' ? 'var(--c-orange)' : p.priority === 'optional' ? 'var(--text-muted)' : undefined;
                                 return { value: p.id, label: `✓ ${p.title}`, icon, meta, labelColor, visited: p.visited, inUse: true };
                               })
                             ] : [])
@@ -3717,9 +3717,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                 {/* === DIVIDER === */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.1)' }} />
+                  <div style={{ flex: 1, height: 1, background: 'var(--ink-10)' }} />
                   <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>הזנה ידנית</span>
-                  <div style={{ flex: 1, height: 1, background: 'rgba(11,11,48,0.1)' }} />
+                  <div style={{ flex: 1, height: 1, background: 'var(--ink-10)' }} />
                 </div>
 
                 {/* === SECTION 2: Manual Entry === */}
@@ -3854,7 +3854,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   <span style={{ fontSize: 20, lineHeight: 1 }}>{getWeatherIcon(h.code)}</span>
                   <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{h.temp}°</span>
                   {h.rain > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: h.rain >= 50 ? '#2563eb' : '#93c5fd' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: h.rain >= 50 ? 'var(--c-blue)' : 'var(--text-muted)' }}>
                       💧{h.rain}%
                     </span>
                   )}
@@ -3893,7 +3893,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       {act.timeLabel && <Pill size="sm" tone="sky">{act.timeLabel}</Pill>}
                       {act.category && <Pill size="sm" style={{ background: `${getCategoryColor(act.category)}1F` }}>{act.category}</Pill>}
-                      {linked?.priority === 'must' && <Pill size="sm" tone="butter" icon={<Star size={11} fill="#F59E0B" color="#F59E0B" />}>חובה</Pill>}
+                      {linked?.priority === 'must' && <Pill size="sm" tone="butter" icon={<Star size={11} className="star-must" />}>חובה</Pill>}
                       {booked
                         ? <Pill size="sm" tone="mint" icon={<Check size={11} strokeWidth={3} />}>הוזמן</Pill>
                         : linked?.needsReservation && <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>צריך לסגור מראש</Pill>}
@@ -4068,7 +4068,7 @@ const DayCard = React.memo(function DayCard({
                         >
                           <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
                           <span>{dayW.max}°/{dayW.min}°</span>
-                          {dayW.rain > 0 && <span style={{ color: '#2563eb' }}>💧{dayW.rain}%</span>}
+                          {dayW.rain > 0 && <span style={{ color: 'var(--c-blue)' }}>💧{dayW.rain}%</span>}
                         </button>
                       )}
                     </>);
@@ -4085,7 +4085,7 @@ const DayCard = React.memo(function DayCard({
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteDay(day.id); }}
-                    style={{ border: 'none', background: 'transparent', color: 'rgba(220,38,38,0.6)', cursor: 'pointer', padding: 4 }}
+                    style={{ border: 'none', background: 'transparent', color: 'var(--c-red)', cursor: 'pointer', padding: 4 }}
                     title="מחק יום"
                   >
                     <Trash2 size={15} />
@@ -4224,7 +4224,7 @@ const DayCard = React.memo(function DayCard({
                           chips = (
                             <>
                               {cache.walk && (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green)', background: 'var(--c-green-10)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                                   <Footprints size={12} aria-hidden="true" /> {cache.walk.duration}
                                 </span>
                               )}
@@ -4258,7 +4258,7 @@ const DayCard = React.memo(function DayCard({
                                 </span>
                               )}
                               {linkedPlace?.priority === 'must' && !isVisited && (
-                                <Star size={13} fill="#F59E0B" color="#F59E0B" style={{ flexShrink: 0 }} aria-label="חובה" />
+                                <Star size={13} className="star-must" style={{ flexShrink: 0 }} aria-label="חובה" />
                               )}
                               <h4
                                 onClick={() => setActivityDetail({ ...act, __dayId: day.id })}
@@ -4484,7 +4484,7 @@ function SortableDayCard({ id, children, innerRef, className = '', compact = fal
           transform: CSS.Transform.toString(transform),
           transition,
           opacity: isDragging ? 0.45 : 1,
-          boxShadow: isDragging ? '0 8px 32px rgba(11,11,48,0.18)' : undefined,
+          boxShadow: isDragging ? '0 8px 32px var(--ink-18)' : undefined,
           zIndex: isDragging ? 10 : undefined,
           position: 'relative',
         }}

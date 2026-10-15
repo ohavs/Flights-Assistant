@@ -270,7 +270,7 @@ export default function InfoTab({ tripId, embedded = false }) {
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>שדות נוספים (אופציונלי)</label>
                 {fExtraFields.map((field, idx) => (
-                  <div key={field.id} style={{ background: 'rgba(11,11,48,0.03)', borderRadius: 12, padding: 10, marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div key={field.id} style={{ background: 'var(--ink-3)', borderRadius: 12, padding: 10, marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <input
                         type="text" className="form-control"

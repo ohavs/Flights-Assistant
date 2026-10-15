@@ -82,6 +82,20 @@ const emptyInfo = async () => {
 for (const theme of ['light', 'dark']) {
   if (theme === 'dark') await page.locator('button[aria-label="עבור למצב כהה"]').click();
 
+  // Every red action ("מחק", "מחק לצמיתות") is .btn-primary.danger. Dark
+  // mode's red is light, so white on it was unreadable (2.8).
+  await step(`${theme}: a red action button is readable`, async () => {
+    const btn = page.locator('#e2e-danger');
+    await page.evaluate(() => {
+      const b = document.createElement('button');
+      b.id = 'e2e-danger'; b.className = 'btn-primary danger'; b.textContent = 'מחק';
+      document.querySelector('.app-content').appendChild(b);
+    });
+    try {
+      const c = await expectReadable(btn, 'danger button');
+      if (c < 4.5) throw new Error(`danger button: contrast ${c.toFixed(2)} < 4.5`);
+    } finally { await page.evaluate(() => document.getElementById('e2e-danger')?.remove()); }
+  });
   await step(`${theme}: the confirm dialog's button is readable`, async () => {
     // Open first, then empty: the sheet shows the empty state live, and
     // nothing re-adds the defaults behind our back.

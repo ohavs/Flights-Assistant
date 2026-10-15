@@ -139,6 +139,7 @@
   --c-red2-10:  rgba(239,68,68,0.10);
   --c-orange:   rgb(245,158,11);
   --c-orange-12: rgba(245,158,11,0.12);
+  --c-blue:     #2563eb;
   --c-green:    rgb(22,163,74);
   --c-green-7:  rgba(22,163,74,0.07);
   --c-green-10: rgba(22,163,74,0.10);
@@ -262,6 +263,7 @@
   --c-red2-10:  rgba(252,129,129,0.12);
   --c-orange:   rgb(251,191,36);
   --c-orange-12: rgba(251,191,36,0.15);
+  --c-blue:     #60a5fa;
   --c-green:    rgb(52,211,153);
   --c-green-7:  rgba(52,211,153,0.08);
   --c-green-10: rgba(52,211,153,0.10);
@@ -962,6 +964,10 @@ input[type="datetime-local"].form-control {
 }
 
 .btn-primary.danger { background: var(--c-red); color: #fff; }
+/* Dark mode's red is light: dark text on it reads, white does not. */
+[data-theme="dark"] .btn-primary.danger { color: #0B0B0C; }
+/* "Must" — one amber star everywhere. */
+.star-must { color: var(--c-orange); fill: currentColor; }
 
 .btn-primary:active {
   transform: translateY(3px);
