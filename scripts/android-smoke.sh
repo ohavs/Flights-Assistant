@@ -101,18 +101,20 @@ switch_icon() {   # <from alias> <icon> <expected alias>
   echo "before HOME: $(top)"
   sleep 3
   adb shell input keyevent KEYCODE_HOME
-  sleep 4
-  echo "after HOME: $(top)"
+  # The stop, and so the switch, can come several seconds after HOME: the
+  # launcher is still busy with the previous switch (Android tells it about
+  # ten seconds late), and the app is stopped once the system is idle.
+  # Wait for it, up to 20 seconds; a real failure still fails.
+  for i in $(seq 1 20); do
+    sleep 1
+    [ "$(launcher)" = "$PKG/$3" ] && break
+    if [ "$i" = 5 ] && top | grep -q "$PKG/"; then
+      echo "the app is still on top after HOME; pressing it again"
+      adb shell input keyevent KEYCODE_HOME
+    fi
+  done
+  echo "after HOME (${i}s): $(top)"
   adb logcat -d -s AppIcons | tr -d '\r' | grep AppIcons || echo "(no AppIcons lines)"
-  # The emulator now and then keeps the app on top through a HOME press
-  # (a slow launcher after the last switch); press again only then. When
-  # the app did stop, a second press changes nothing, so a real failure
-  # still fails.
-  if adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q "$PKG/"; then
-    echo "the app is still on top after HOME; pressing it again"
-    adb shell input keyevent KEYCODE_HOME
-    sleep 4
-  fi
   echo "launcher entry after leaving: $(launcher)"
   if [ "$(launcher)" != "$PKG/$3" ] || [ "$(entries)" != "1" ]; then
     echo "icon did not switch to $3 (entries: $(entries))"
