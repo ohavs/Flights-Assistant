@@ -138,6 +138,7 @@ jobs:
           path: |
             android-smoke.png
             android-signin.png
+            android-share.png
             ui.xml
             widget-*.png
 
