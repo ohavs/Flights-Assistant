@@ -50,17 +50,17 @@ export function tripPlace(trip) {
 // The planner groups a day by time of day; the first activity is the first
 // of the earliest group (as in PlanningTab's groupActivitiesByTime).
 const TIME_ORDER = ['בוקר', 'צהריים', 'ערב', 'לילה'];
+export function activityRank(a) {
+  const l = (a.timeLabel || '').trim();
+  return l === '' ? 99 : TIME_ORDER.includes(l) ? TIME_ORDER.indexOf(l) : 50;
+}
 export function firstActivity(acts) {
-  const rank = (a) => {
-    const l = (a.timeLabel || '').trim();
-    return l === '' ? 99 : TIME_ORDER.includes(l) ? TIME_ORDER.indexOf(l) : 50;
-  };
-  return (acts || []).reduce((best, a) => (best === null || rank(a) < rank(best) ? a : best), null);
+  return (acts || []).reduce((best, a) => (best === null || activityRank(a) < activityRank(best) ? a : best), null);
 }
 
 // The planner day of `iso`: the one dated so, or — when no day has a date
 // (added by hand) — the one in the same place counting from the first day.
-function dayFor(days, iso, range) {
+export function dayFor(days, iso, range) {
   const sorted = [...(days || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
   const dated = sorted.find(d => d.date === iso);
   if (dated || sorted.some(d => d.date)) return dated || null;

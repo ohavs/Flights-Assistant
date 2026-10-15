@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home screen widget, light. The app's tokens (index.css); each
+     palette's accent is set at render time (WidgetTheme). -->
+<resources>
+    <color name="w_bg">#FFFFFF</color>
+    <color name="w_text">#141414</color>
+    <color name="w_muted">#5F5F66</color>
+    <color name="w_chip">#F0F0EC</color>
+    <color name="w_track">#E5E5E0</color>
+    <color name="w_accent">#16874A</color>
+    <color name="w_brand">#22A45D</color>
+</resources>

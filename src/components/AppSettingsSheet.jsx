@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell, FileType2, FileText, FileSpreadsheet,
-  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound, Palette, Sun, Moon, Smartphone } from 'lucide-react';
+  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound, Palette, Sun, Moon, Smartphone, LayoutGrid } from 'lucide-react';
 import Sheet, { Segmented } from '../ui/Sheet';
 import { useTheme } from '../ThemeContext';
 import { PALETTES } from '../lib/theme';
@@ -12,6 +12,7 @@ import { CustomTimePicker } from './CustomDatePicker';
 import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime } from '../lib/native/notify';
 import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
 import { APP_ICONS, appIcon, setAppIcon, applyAppIconNow } from '../lib/native/appIcon';
+import { widgetStatus, pinWidget } from '../lib/native/widget';
 import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
@@ -100,6 +101,35 @@ function NotifySettings({ onChange }) {
   );
 }
 
+
+// The home screen widget: whether one is placed, and a button that asks the
+// launcher to add it (Android 8+ launchers that allow it). Back from the
+// launcher's dialog (resume), the count refreshes.
+function WidgetSettings() {
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    const check = () => widgetStatus().then(setStatus);
+    check();
+    const h = CapApp.addListener('resume', check);
+    return () => { h.then(x => x.remove()); };
+  }, []);
+  if (!status) return null;
+  const placed = status.count > 0;
+  return (
+    <SettingsGroup id="widget" title="ווידג׳ט במסך הבית" Icon={LayoutGrid} meta={placed ? 'במסך הבית' : null}>
+      <div className="settings-hint" style={{ marginTop: 0 }}>
+        הטיסה הבאה עם ספירה לאחור, ובזמן הטיול התוכנית של היום. למטה: כמה נארז וכמה תזכורות פתוחות. לחיצה פותחת את הטיול.
+      </div>
+      {status.pinSupported ? (
+        <button type="button" className="btn-secondary" onClick={() => pinWidget()}>
+          <LayoutGrid size={16} /> {placed ? 'להוסיף עוד אחד' : 'להוסיף למסך הבית'}
+        </button>
+      ) : (
+        <div className="settings-hint">לחיצה ארוכה על מסך הבית ← ווידג׳טים ← עוזר טיסות.</div>
+      )}
+    </SettingsGroup>
+  );
+}
 
 const PERMISSION_ICONS = { notifications: Bell, exactAlarms: AlarmClock, installs: Download };
 
@@ -526,6 +556,7 @@ export default function AppSettingsSheet({ onClose, initial, onNotifyChange, tri
     <Sheet title="הגדרות" onClose={onClose}>
       <LookSettings />
       {isNative && <NotifySettings onChange={onNotifyChange} />}
+      {isNative && <WidgetSettings />}
       {isNative && <PermissionSettings onChange={onNotifyChange} />}
       {uid && <FileSettings trips={trips || []} uid={uid} tripId={tripId} activeTab={activeTab} />}
       {uid && <DeleteCodeSettings uid={uid} />}

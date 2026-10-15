@@ -4,4 +4,6 @@
     <string name="title_activity_main">עוזר טיסות</string>
     <string name="package_name">com.ohavs.flightsassistant</string>
     <string name="custom_url_scheme">com.ohavs.flightsassistant</string>
+    <string name="widget_label">הטיול הבא</string>
+    <string name="widget_description">הטיסה הבאה וספירה לאחור, התוכנית של היום, האריזה והתזכורות</string>
 </resources>
