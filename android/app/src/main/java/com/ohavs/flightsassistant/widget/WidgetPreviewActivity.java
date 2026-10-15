@@ -7,6 +7,7 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProviderInfo;
 import android.content.ComponentName;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
@@ -61,12 +62,20 @@ public class WidgetPreviewActivity extends Activity {
         m.updateAppWidgetOptions(id, opts);
         AppWidgetProviderInfo info = m.getAppWidgetInfo(id);
         AppWidgetHostView view = host.createView(getApplicationContext(), id, info);
+        // The host view keeps a default padding and takes it off the size it
+        // reports (about 8dp a side), so 360x190 reached the widget as
+        // 344x174. Add it back: the widget gets exactly the size under test,
+        // as on a launcher.
+        Rect pad = AppWidgetHostView.getDefaultPaddingForWidget(this, info.provider, null);
+        float density = getResources().getDisplayMetrics().density;
+        float padW = (pad.left + pad.right) / density, padH = (pad.top + pad.bottom) / density;
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#7FA4C9"));
-        root.addView(view, new FrameLayout.LayoutParams(dp(wDp), dp(hDp), Gravity.CENTER));
+        root.addView(view, new FrameLayout.LayoutParams(dp(wDp) + pad.left + pad.right, dp(hDp) + pad.top + pad.bottom, Gravity.CENTER));
         if (Build.VERSION.SDK_INT >= 31) {
-            view.updateAppWidgetSize(opts, Collections.singletonList(new SizeF(wDp, hDp)));
+            view.updateAppWidgetSize(opts, Collections.singletonList(new SizeF(wDp + padW, hDp + padH)));
         }
+        android.util.Log.i("WidgetPreview", "content " + wDp + "x" + hDp + "dp, host padding " + padW + "x" + padH + "dp");
         setContentView(root);
         host.startListening();   // before the first render, so it is not missed
         provider.redraw(this, m, id);
