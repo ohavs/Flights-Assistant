@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
+import { listen } from './lib/listen';
 import {
   collection, doc, onSnapshot, setDoc, deleteDoc,
   query, where, getDocs, updateDoc, arrayUnion, arrayRemove,
@@ -403,7 +404,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
   // Live-listen to the trip so members list refreshes when roles change
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(doc(db, 'trips', tripId), (snap) => {
+    return listen(doc(db, 'trips', tripId), (snap) => {
       if (!snap.exists()) { setTrip(null); setMembers([]); return; }
       setTrip(snap.data());
     });
@@ -1215,7 +1216,7 @@ function AppInner() {
         }).catch(() => {});
       }, 400);
     };
-    const offs = tripIdsKey.split(',').map(id => onSnapshot(
+    const offs = tripIdsKey.split(',').map(id => listen(
       collection(db, 'trips', id, 'reminders'),
       (snap) => { byTrip[id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
       () => {},

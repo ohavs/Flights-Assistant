@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
+import { listen } from '../lib/listen';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
@@ -7,7 +8,6 @@ import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather
 import { createPortal } from 'react-dom';
 import {
   collection,
-  onSnapshot,
   doc,
   setDoc,
   updateDoc,
@@ -572,7 +572,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [bookedPlaceIds, setBookedPlaceIds] = useState(() => new Set());
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(collection(db, 'trips', tripId, 'bookings'), snap => {
+    return listen(collection(db, 'trips', tripId, 'bookings'), snap => {
       setBookedPlaceIds(new Set(
         snap.docs.map(d => d.data()).filter(b => b.placeId && b.status !== 'cancelled').map(b => b.placeId)
       ));
@@ -581,7 +581,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   useEffect(() => {
     if (!tripId) return;
-    const unsub = onSnapshot(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
+    const unsub = listen(doc(db, 'trips', tripId, 'settings', 'categories'), snap => {
       setCategorySettings(snap.exists() ? (snap.data() || {}) : {});
     });
     return () => unsub();
@@ -595,7 +595,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
    * document. Everything read from the trip doc is set here together. */
   useEffect(() => {
     if (!tripId) return;
-    const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
+    const unsub = listen(doc(db, 'trips', tripId), snap => {
       if (!snap.exists()) return;
       const d = snap.data();
       setHotelDetails(d.hotelDetails || null);
@@ -620,7 +620,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // Listen to Firestore planning items (pool)
   useEffect(() => {
     if (!tripId) return;
-    const unsubscribe = onSnapshot(collection(db, 'trips', tripId, 'planning'), (snapshot) => {
+    const unsubscribe = listen(collection(db, 'trips', tripId, 'planning'), (snapshot) => {
       const fetchedPlans = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -672,7 +672,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // Listen to Firestore daily planner days
   useEffect(() => {
     if (!tripId) return;
-    const unsubscribe = onSnapshot(collection(db, 'trips', tripId, 'days'), (snapshot) => {
+    const unsubscribe = listen(collection(db, 'trips', tripId, 'days'), (snapshot) => {
       const fetchedDays = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { listen } from '../lib/listen';
+import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import {
   UtensilsCrossed, Compass, Landmark, Ticket, Train, BedDouble, Tag,
   Pencil, Trash2, Phone, MapPin, ExternalLink, Copy, Check, Users, Clock,
@@ -102,7 +103,7 @@ export default function BookingsTab({ tripId }) {
 
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(collection(db, 'trips', tripId, 'bookings'), snap => {
+    return listen(collection(db, 'trips', tripId, 'bookings'), snap => {
       setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
@@ -111,7 +112,7 @@ export default function BookingsTab({ tripId }) {
   // Planner places, for linking a booking to one.
   useEffect(() => {
     if (!tripId) return;
-    return onSnapshot(collection(db, 'trips', tripId, 'planning'), snap => {
+    return listen(collection(db, 'trips', tripId, 'planning'), snap => {
       setPlaces(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [tripId]);
