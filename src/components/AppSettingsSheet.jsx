@@ -505,6 +505,12 @@ function UpdateSettings({ initial }) {
 }
 
 export default function AppSettingsSheet({ onClose, initial, onNotifyChange, trips, uid, tripId, activeTab }) {
+  // The delete code guards deleting a trip one owns: it is shown only to
+  // someone who owns a trip, and not inside a trip someone else owns
+  // (settings opened from a trip's header carry its tab).
+  const ownerOf = (t) => t?.members?.[uid] === 'owner';
+  const inOthersTrip = !!activeTab && !ownerOf((trips || []).find(t => t.id === tripId));
+  const showDeleteCode = (trips || []).some(ownerOf) && !inOthersTrip;
   return (
     <Sheet title="הגדרות" onClose={onClose}>
       <LookSettings />
@@ -512,7 +518,7 @@ export default function AppSettingsSheet({ onClose, initial, onNotifyChange, tri
       {isNative && <WidgetSettings />}
       {isNative && <PermissionSettings onChange={onNotifyChange} />}
       {uid && <FileSettings trips={trips || []} uid={uid} tripId={tripId} activeTab={activeTab} />}
-      {uid && <DeleteCodeSettings uid={uid} />}
+      {uid && showDeleteCode && <DeleteCodeSettings uid={uid} />}
       {isNative && <UpdateSettings initial={initial} />}
     </Sheet>
   );

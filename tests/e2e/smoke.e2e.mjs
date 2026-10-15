@@ -153,6 +153,29 @@ await step(friend, 'friend sees the shared trip and its data', async () => {
 });
 await friend.screenshot({ path: `${shots}/friend-shared-trip.png` });
 
+// The delete code guards deleting one's own trips: the owner sees it in
+// settings, a friend inside the owner's trip does not.
+const settingsGroups = async (page) => {
+  await page.getByRole('button', { name: 'הגדרות', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'הגדרות' });
+  await sheet.locator('.section-header-toggle').first().waitFor();
+  const titles = await sheet.locator('.section-header-toggle').allInnerTexts();
+  await sheet.getByRole('button', { name: 'סגור' }).first().click();
+  await sheet.waitFor({ state: 'detached' });
+  return titles.join(' | ');
+};
+await step(friend, "no delete code inside someone else's trip", async () => {
+  const groups = await settingsGroups(friend);
+  if (groups.includes('קוד מחיקה')) throw new Error(groups);
+});
+await step(owner, 'the owner has the delete code, in the trip too', async () => {
+  await owner.reload();   // the share sheet is still open
+  await card(owner, 'טיול בדיקה').getByText('פתח טיול').click();
+  await tab(owner, 'תכנון טיול');
+  const groups = await settingsGroups(owner);
+  if (!groups.includes('קוד מחיקה')) throw new Error(groups);
+});
+
 check('no error screens or console errors', errors.length === 0);
 if (errors.length) console.log('  console errors:', errors);
 
