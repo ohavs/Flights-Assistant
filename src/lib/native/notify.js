@@ -14,7 +14,18 @@ const mod = () => import('@capacitor/local-notifications');
 const PREFS_KEY = 'notify.prefs';
 export const NOTIFY_KINDS = [
   { key: 'flight', label: 'טיסות', hint: "24 שעות לפני (צ'ק־אין) ו־3 שעות לפני ההמראה", default: true },
+  { key: 'reminder', label: 'תזכורות', hint: 'בשעה שקבעתם לתזכורת שלכם', default: true },
 ];
+
+// The first time there is something to notify about, ask, once per phone.
+export async function askPermissionOnce() {
+  if (!isNative) return;
+  let asked = false;
+  try { asked = localStorage.getItem('notify.asked') === '1'; } catch { /* private mode */ }
+  if (asked) return;
+  try { localStorage.setItem('notify.asked', '1'); } catch { /* private mode */ }
+  await notifyPermission({ ask: true });
+}
 
 export function notifyPrefs() {
   const defaults = Object.fromEntries(NOTIFY_KINDS.map(k => [k.key, k.default]));

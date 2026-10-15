@@ -187,6 +187,24 @@ await step('checklist: a category has a visible ⋯ with rename and delete (no l
   await menu.waitFor({ state: 'detached' });
 });
 
+await step('reminders: a reminder can carry a time, and its card shows it', async () => {
+  await page.locator('button[aria-label="תזכורות"]').click();
+  const rem = page.getByRole('dialog', { name: 'תזכורות' });
+  await rem.waitFor();
+  await rem.getByRole('button', { name: 'שעה להתראה' }).tap();
+  await page.getByRole('button', { name: 'אישור', exact: true }).tap();      // today, 12:00
+  await rem.locator('.chip[aria-pressed="true"]').waitFor();
+  await page.getByPlaceholder('כתוב תזכורת ושלח...').fill('לקנות ציפס');
+  await rem.getByRole('button', { name: 'הוסף תזכורת' }).tap();
+  const meta = rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('.list-card-meta');
+  await meta.waitFor();
+  if (!(await meta.innerText()).includes('12:00')) throw new Error(`no time on the card: ${await meta.innerText()}`);
+  // A new reminder starts without a time again.
+  await rem.getByRole('button', { name: 'שעה להתראה' }).waitFor();
+  await rem.locator('button[aria-label="סגור"]').first().click();
+  await rem.waitFor({ state: 'detached' });
+});
+
 await step('checklist: one row holds the filter and the tally; a category filter shows just it, open', async () => {
   const bar = page.locator('.app-content .list-toolbar');
   const pill = bar.locator('button.plan-filter-pill');
