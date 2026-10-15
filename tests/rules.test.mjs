@@ -110,6 +110,34 @@ test('profiles: readable by signed-in users, writable only by their owner', asyn
   await assert.rejects(updateDoc(doc(stranger.db, 'users', owner.uid), { tripIds: ['x'] }), denied);
 });
 
+test('a delete in 24 hours: only the owner sets or cancels deleteAt', async () => {
+  const tripId = await createTrip();
+  const at = Date.now() + 24 * 3600 * 1000;
+  await assert.rejects(updateDoc(trip(editor, tripId), { deleteAt: at }), denied);
+  await assert.rejects(updateDoc(trip(viewer, tripId), { deleteAt: at }), denied);
+  await updateDoc(trip(owner, tripId), { deleteAt: at });
+  // Pending, the trip is still a trip: an editor edits it, but cannot
+  // move or cancel the delete.
+  await updateDoc(trip(editor, tripId), { name: 'Still editable' });
+  await assert.rejects(updateDoc(trip(editor, tripId), { deleteAt: deleteField() }), denied);
+  await assert.rejects(updateDoc(trip(editor, tripId), { deleteAt: at + 1000 }), denied);
+  // Leaving is not a way to touch it either.
+  await assert.rejects(updateDoc(trip(viewer, tripId), {
+    [`members.${viewer.uid}`]: deleteField(), memberIds: arrayRemove(viewer.uid), deleteAt: deleteField(),
+  }), denied);
+  await updateDoc(trip(owner, tripId), { deleteAt: deleteField() });
+  assert.equal((await getDoc(trip(owner, tripId))).data().deleteAt, undefined);
+});
+
+test("the delete code's hash: the user's alone, not even readable by others", async () => {
+  const code = (who, uid = who.uid) => doc(who.db, 'users', uid, 'private', 'deleteCode');
+  await setDoc(code(owner), { hash: 'abc', updatedAt: 1 });
+  assert.equal((await getDoc(code(owner))).data().hash, 'abc');
+  await assert.rejects(getDoc(code(stranger, owner.uid)), denied);
+  await assert.rejects(setDoc(code(stranger, owner.uid), { hash: 'x' }), denied);
+  await assert.rejects(deleteDoc(code(stranger, owner.uid)), denied);
+});
+
 test('reading a trip that does not exist yet, or any more, returns "does not exist"', async () => {
   assert.equal((await getDoc(doc(owner.db, 'trips', 'trip_never_created'))).exists(), false);
   // Harmless for outsiders too: a missing document has nothing to reveal
