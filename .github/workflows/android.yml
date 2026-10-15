@@ -93,7 +93,12 @@ jobs:
           grep -qi "SHA-256 digest: $CERT_SHA256" certs.txt || { echo "::error::APK is not signed with the release key"; exit 1; }
           cp "$APK" flights-assistant.apk
           sha256sum flights-assistant.apk | cut -d' ' -f1 > flights-assistant.apk.sha256
-          "$TOOLS/aapt2" dump badging flights-assistant.apk | grep -E "^package|uses-permission|targetSdk"
+          "$TOOLS/aapt2" dump badging flights-assistant.apk | tee badging.txt | grep -E "^package|uses-permission|targetSdk"
+          # Flight reminders need the notification permission and the plugin.
+          grep -q "android.permission.POST_NOTIFICATIONS" badging.txt || { echo "::error::POST_NOTIFICATIONS missing"; exit 1; }
+          grep -q '"LocalNotifications"' android/app/src/main/assets/capacitor.plugins.json 2>/dev/null \
+            || grep -q "LocalNotifications" android/app/src/main/assets/capacitor.config.json \
+            || { echo "::error::local notifications plugin not synced"; exit 1; }
           unzip -l flights-assistant.apk | grep -q "assets/public/index.html"
 
       - uses: actions/upload-artifact@v4

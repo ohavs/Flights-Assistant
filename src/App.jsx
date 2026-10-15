@@ -1178,8 +1178,46 @@ function AppInner() {
   const [showAppSettings, setShowAppSettings] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
 
-  // Quietly look for a newer APK once signed in (at most every 6 hours).
   const signedInUid = user?.uid;
+
+  // Flight reminders (Android app): reschedule whenever the trips change —
+  // a moved flight moves its reminders. The first time there is one to
+  // schedule, ask for the notification permission, once.
+  const [notifyVersion, setNotifyVersion] = useState(0);
+  useEffect(() => {
+    if (!isNative || !signedInUid) return;
+    let cancelled = false;
+    Promise.all([import('./lib/native/notify'), import('./lib/flightAlerts')]).then(async ([n, f]) => {
+      const alerts = f.flightAlerts(trips);
+      if (cancelled) return;
+      if (alerts.length && n.notifyPrefs().flight) {
+        let asked = false;
+        try { asked = localStorage.getItem('notify.asked') === '1'; } catch { /* private mode */ }
+        if (!asked) {
+          try { localStorage.setItem('notify.asked', '1'); } catch { /* private mode */ }
+          await n.notifyPermission({ ask: true });
+        }
+      }
+      await n.syncNotifications('flight', alerts);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [trips, signedInUid, notifyVersion]);
+
+  // Tapping a reminder opens its trip on the right tab.
+  useEffect(() => {
+    if (!isNative) return undefined;
+    let off = () => {};
+    import('./lib/native/notify').then(n => {
+      off = n.onNotificationTap((extra) => {
+        if (!extra?.tripId) return;
+        setSelectedTripId(extra.tripId);
+        if (extra.tab) setActiveTab(extra.tab);
+      });
+    }).catch(() => {});
+    return () => off();
+  }, []);
+
+  // Quietly look for a newer APK once signed in (at most every 6 hours).
   useEffect(() => {
     if (!isNative || !signedInUid) return;
     import('./lib/updater').then(m => m.checkForUpdateQuietly())
@@ -1729,6 +1767,7 @@ function AppInner() {
           <Suspense fallback={null}>
             <AppSettingsSheet
               initial={updateInfo}
+              onNotifyChange={() => setNotifyVersion(v => v + 1)}
               onClose={() => { setShowAppSettings(false); setUpdateInfo(null); }}
             />
           </Suspense>
