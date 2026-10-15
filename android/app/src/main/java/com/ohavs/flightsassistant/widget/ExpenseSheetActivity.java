@@ -131,6 +131,7 @@ public class ExpenseSheetActivity extends AppCompatActivity {
                 paint(places, placeName);
             }));
         }
+        paint(places, null);
         places.setVisibility(places.getChildCount() == 0 ? View.GONE : View.VISIBLE);
         if (places.getChildCount() == 0) custom.setHint("איפה? (לא חובה)");
         custom.addTextChangedListener(new TextWatcher() {
