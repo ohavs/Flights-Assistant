@@ -10,10 +10,12 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, User, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
 import { CustomDropdown, CustomDateTimePicker, formatHebrewDateTime } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import ListCard from '../ui/ListCard';
+import SheetDelete from '../ui/SheetDelete';
+import useFlip from '../hooks/useFlip';
 import SectionHeader from '../ui/SectionHeader';
 import { CheckCircle } from '../ui/kit';
 import Fab from './Fab';
@@ -311,9 +313,10 @@ function RemindersCard({ tripId, canEdit }) {
       message: <span>למחוק את <strong>{r.text}</strong>?</span>,
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
-    if (!ok) return;
+    if (!ok) return false;
     if (editingId === r.id) resetComposer();
     deleteDoc(doc(db, 'trips', tripId, 'reminders', r.id));
+    return true;
   };
 
   const clearDone = async () => {
@@ -455,14 +458,13 @@ function RemindersCard({ tripId, canEdit }) {
                   meta={r.remindAt ? formatHebrewDateTime(r.remindAt) : undefined}
                   metaIcon={r.remindAt ? <Bell size={13} aria-hidden="true" /> : undefined}
                   muted={done && !editing}
-                  onOpen={canEdit ? () => toggleDone(r) : undefined}
+                  onOpen={canEdit ? () => startEdit(r) : undefined}
                   trailing={(r.addedByPhoto || r.addedByName) && (
                     <span title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.4 : 0.9 }}>
                       <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
                     </span>
                   )}
                   actions={canEdit ? [
-                    { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(r), swipe: true },
                     { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => remove(r), danger: true, swipe: true },
                   ] : []}
                 />
@@ -497,6 +499,18 @@ function RemindersCard({ tripId, canEdit }) {
                   >
                     <X size={12} />
                   </button>
+                  {editingOne && (
+                    <button
+                      type="button" onClick={() => remove(editingOne)} aria-label="מחיקת התזכורת" title="מחיקה"
+                      style={{
+                        background: 'var(--c-red-8)', border: 'none', cursor: 'pointer', color: 'var(--c-red)',
+                        width: 20, height: 20, borderRadius: '50%', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', padding: 0,
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -590,8 +604,10 @@ function SortableCategoryBlock({
   handleToggle, handleStartEdit, handleDeleteItem,
   quickAddCat, setQuickAddCat, quickAddText, setQuickAddText,
   quickAddInputRef, handleQuickAdd,
-  allMembers, setAssignPickerItemId,
+  allMembers,
 }) {
+  const listRef = useRef(null);
+  useFlip(listRef);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -639,13 +655,13 @@ function SortableCategoryBlock({
 
       {/* Category items + quick-add */}
       {isOpen && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categoryItems.map((item, idx) => {
             const assigned = Array.isArray(item.assignedTo) ? item.assignedTo
               : item.assignedTo ? [item.assignedTo] : [];
             return (
+              <div key={item.id} data-flip={item.id}>
               <ListCard
-                key={item.id}
                 className="list-in"
                 // Cap the stagger so the tail of a long list isn't delayed.
                 style={{ '--i': Math.min(idx, 8), padding: '12px 14px' }}
@@ -658,12 +674,12 @@ function SortableCategoryBlock({
                 )}
                 title={item.text}
                 muted={!!item.completed}
-                // Tapping a checklist row ticks it, as before.
-                onOpen={canEdit ? () => handleToggle(item) : undefined}
+                // The circle ticks; the rest of the row opens the item's
+                // sheet: its text, category, who it is for, and delete.
+                onOpen={canEdit ? () => handleStartEdit(item) : undefined}
                 trailing={assigned.length > 0 && (
-                  <button type="button" title="שייך לחברים" aria-label="שייך לחברים"
-                    onClick={e => { e.stopPropagation(); if (canEdit) setAssignPickerItemId(item.id); }}
-                    style={{ background: 'none', border: 'none', cursor: canEdit ? 'pointer' : 'default', padding: 2, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <span aria-label={`שייך ל: ${assigned.map(uid => allMembers.find(x => x.uid === uid)?.displayName).filter(Boolean).join(', ')}`}
+                    style={{ padding: 2, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
 
                           <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center' }}>
                             {assigned.slice(0, 3).map((uid, idx) => {
@@ -686,14 +702,13 @@ function SortableCategoryBlock({
                               </div>
                             )}
                           </div>
-                  </button>
+                  </span>
                 )}
                 actions={canEdit ? [
-                  { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => handleStartEdit(item), swipe: true },
-                  allMembers.length > 1 && { key: 'assign', label: 'שיוך לחברים', Icon: User, run: () => setAssignPickerItemId(item.id), swipe: true },
                   { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDeleteItem(item.id), danger: true, swipe: true },
                 ] : []}
               />
+              </div>
             );
           })}
 
@@ -756,9 +771,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [filterAssignee, setFilterAssignee] = useState(null);
   const [filterCategory, setFilterCategory] = useState(null);
 
-  // Assignment picker (item id whose picker is open + current toggle selections)
-  const [assignPickerItemId, setAssignPickerItemId] = useState(null);
-  const [pickerSelected, setPickerSelected] = useState(new Set());
+  /* A ticked item goes to the bottom of its category, but not at once: the
+     tick shows first, then the row glides down (useFlip). An unticked one
+     comes back up the same way. Ids still settling keep their place. */
+  const [settling, setSettling] = useState(() => new Set());
+  const settle = (id) => {
+    setSettling(prev => new Set(prev).add(id));
+    setTimeout(() => setSettling(prev => { const next = new Set(prev); next.delete(id); return next; }), 650);
+  };
 
   // Category open/close — default ALL closed (empty obj = all closed)
   const [openCategories, setOpenCategories] = useState({});
@@ -770,14 +790,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const [quickAddCat, setQuickAddCat] = useState(null);
   const [quickAddText, setQuickAddText] = useState('');
   const quickAddInputRef = useRef(null);
-
-  // Seed picker selection from item's current assignedTo when picker opens
-  useEffect(() => {
-    if (!assignPickerItemId) return;
-    const item = items.find(i => i.id === assignPickerItemId);
-    const cur = item?.assignedTo;
-    setPickerSelected(new Set(Array.isArray(cur) ? cur : cur ? [cur] : []));
-  }, [assignPickerItemId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const defaultCategoryNames = [
     'מסמכים וסידורים', 'בגדים', 'אלקטרוניקה',
@@ -955,6 +967,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   // ── Item actions ─────────────────────────────────────────────────────────
   const handleToggle = (item) => {
     if (!tripId) return;
+    settle(item.id);
     updateDoc(doc(db, 'trips', tripId, 'checklist', item.id), {
       completed: !item.completed,
     });
@@ -963,7 +976,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const handleDeleteItem = async (id) => {
     if (!tripId) return;
     const ok = await confirm({ message: 'למחוק את הפריט?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
-    if (!ok) return;
+    if (!ok) return false;
     // Optimistically update deletedGlobalIds BEFORE deleteDoc so the re-sync
     // effect (which runs when items changes) doesn't immediately re-add the item.
     const isGlobal = mergedGlobalChecklist.some(g => g.id === id);
@@ -974,12 +987,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       setDoc(syncRef, { deletedGlobalIds: newDeletedIds }, { merge: true });
     }
     deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
-  };
-
-  const handleSaveAssignment = (itemId) => {
-    if (!tripId) return;
-    const arr = [...pickerSelected];
-    updateDoc(doc(db, 'trips', tripId, 'checklist', itemId), { assignedTo: arr.length > 0 ? arr : null });
+    return true;
   };
 
   // The add/edit form lives in a sheet, opened by the floating button.
@@ -1081,7 +1089,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
           dirty={itemFormDirty()}
           style={{ maxHeight: '88vh' }}
         >
-          {({ cancel }) => (
+          {({ cancel, close }) => (
             <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1109,12 +1117,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>שייך ל (ניתן לבחור כמה)</label>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {/* Only current members: a new assignment to someone
-                          who has left would be a dead end. */}
-                      {allMembers.filter(m => !m.former).map(m => {
+                      {/* Current members, and someone who has left only while
+                          the item is still theirs (to hand it on): a new
+                          assignment to them would be a dead end. */}
+                      {allMembers.filter(m => !m.former || newItemAssignedTo.includes(m.uid)).map(m => {
                         const isSelected = newItemAssignedTo.includes(m.uid);
                         return (
                           <button type="button" key={m.uid}
+                            className={m.former ? 'person-former' : undefined}
                             onClick={() => setNewItemAssignedTo(prev =>
                               prev.includes(m.uid) ? prev.filter(x => x !== m.uid) : [...prev, m.uid]
                             )}
@@ -1135,6 +1145,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
               <div className="sheet-footer">
                 <button type="submit" className="btn-primary">שמור</button>
                 <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
+                {editingItemId && <SheetDelete close={close} onDelete={() => handleDeleteItem(editingItemId)} />}
               </div>
             </form>
           )}
@@ -1163,6 +1174,9 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         <SortableContext items={categories} strategy={verticalListSortingStrategy}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {categories.filter(c => !filterCategory || c === filterCategory).map((category) => {
+              // What is still to pack first, what is packed below it.
+              // (An item still settling counts as it was before the tap.)
+              const sunk = (item) => (!!item.completed !== settling.has(item.id) ? 1 : 0);
               const categoryItems = items.filter(item => {
                 if (item.category !== category) return false;
                 if (filterAssignee !== null) {
@@ -1170,7 +1184,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   if (!a.includes(filterAssignee)) return false;
                 }
                 return true;
-              });
+              }).sort((a, b) => sunk(a) - sunk(b));
               if (categoryItems.length === 0 && (filterAssignee !== null || !extraCategories.includes(category))) return null;
               // A category picked in the filter shows its items right away.
               const isOpen = filterCategory === category || !!openCategories[category];
@@ -1200,7 +1214,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   quickAddInputRef={quickAddInputRef}
                   handleQuickAdd={handleQuickAdd}
                   allMembers={allMembers}
-                  setAssignPickerItemId={setAssignPickerItemId}
                 />
               );
             })}
@@ -1208,49 +1221,6 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
         </SortableContext>
       </DndContext>
 
-      {/* Assign-to-member picker portal — multi-select with toggle + confirm */}
-      {assignPickerItemId && (
-        <Sheet title="שייך לחברים" onClose={() => setAssignPickerItemId(null)}>
-          {({ close }) => (<>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Someone who left is offered only if this item is already
-                  theirs — so it can be handed on, never newly assigned. */}
-              {allMembers.filter(m => !m.former || pickerSelected.has(m.uid)).map(m => {
-                const isSelected = pickerSelected.has(m.uid);
-                return (
-                  <button key={m.uid}
-                    className={m.former ? 'person-former' : undefined}
-                    onClick={() => setPickerSelected(prev => {
-                      const next = new Set(prev);
-                      isSelected ? next.delete(m.uid) : next.add(m.uid);
-                      return next;
-                    })}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: isSelected ? 'var(--p-10)' : 'var(--ink-4)', border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', borderRadius: 12, cursor: 'pointer', textAlign: 'right' }}>
-                    {m.photoURL
-                      ? <img src={m.photoURL} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                      : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
-                    }
-                    <span style={{ fontSize: 14, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-main)', flex: 1 }}>
-                      {m.displayName}
-                      {m.former && <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>כבר לא בטיול</span>}
-                    </span>
-                    {isSelected && <Check size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="sheet-footer">
-              <button type="button" className="btn-primary"
-                onClick={() => { handleSaveAssignment(assignPickerItemId); close(); }}>
-                שמור
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => setPickerSelected(new Set())}>
-                נקה הכל
-              </button>
-            </div>
-          </>)}
-        </Sheet>
-      )}
 
     </div>
   );

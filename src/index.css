@@ -1221,6 +1221,9 @@ input[type="datetime-local"].form-control {
 .btn-secondary:active {
   transform: scale(0.97);
 }
+/* An icon-only secondary button (delete in an edit sheet's footer). */
+.btn-secondary.btn-icon { padding: 10px 15px; }
+.btn-secondary.danger { background: var(--c-red-8); color: var(--c-red); }
 
 .btn-tab-toggle {
   background: var(--w-60);
@@ -2443,6 +2446,10 @@ div.section-header-toggle { cursor: default; }
   transition: all 0.15s ease;
   padding: 0;
 }
+/* The circle is small; a finger near it still ticks rather than opening
+   the row behind it. */
+button.check-circle { position: relative; }
+button.check-circle::before { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
 .plan-visit-toggle:hover, .check-circle:hover {
   border-color: var(--ink-35);
 }

@@ -14,6 +14,7 @@ import { useConfirm } from '../ConfirmContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import ListCard from '../ui/ListCard';
+import SheetDelete from '../ui/SheetDelete';
 import SectionHeader from '../ui/SectionHeader';
 import { Segmented } from '../ui/Sheet';
 import { Pill, CategoryDisc } from '../ui/kit';
@@ -208,8 +209,9 @@ export default function BookingsTab({ tripId }) {
       message: <>האם למחוק את <strong>{b.title}</strong>?</>,
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
-    if (!ok) return;
+    if (!ok) return false;
     await deleteDoc(doc(db, 'trips', tripId, 'bookings', b.id));
+    return true;
   };
 
   const copyCode = async (b) => {
@@ -346,7 +348,7 @@ export default function BookingsTab({ tripId }) {
           dirty={formDirty()}
           style={{ maxHeight: '92vh' }}
         >
-          {({ cancel }) => (
+          {({ cancel, close }) => (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -458,6 +460,7 @@ export default function BookingsTab({ tripId }) {
               <div className="sheet-footer">
                 <button type="submit" className="btn-primary">שמור</button>
                 <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
+                {editingId && <SheetDelete close={close} onDelete={() => handleDelete(bookings.find(b => b.id === editingId) || { id: editingId })} />}
               </div>
             </form>
           )}

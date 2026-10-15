@@ -17,6 +17,7 @@ import Skeleton from './Skeleton';
 import Fab from './Fab';
 import { defaultInfoItems } from '../data/seedData';
 import ListCard from '../ui/ListCard';
+import SheetDelete from '../ui/SheetDelete';
 import SectionHeader from '../ui/SectionHeader';
 import { CategoryDisc } from '../ui/kit';
 import EmptyState from './EmptyState';
@@ -182,8 +183,9 @@ export default function InfoTab({ tripId, embedded = false }) {
       message: item.title ? <>האם למחוק את <strong>{item.title}</strong>?</> : 'האם למחוק את הפריט?',
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
-    if (!ok) return;
+    if (!ok) return false;
     await deleteDoc(doc(db, 'trips', tripId, 'info', item.id));
+    return true;
   };
 
   const handleSeedDefaults = async () => {
@@ -221,7 +223,7 @@ export default function InfoTab({ tripId, embedded = false }) {
           dirty={formDirty()}
           style={{ maxHeight: '92vh' }}
         >
-          {({ cancel }) => (
+          {({ cancel, close }) => (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>כותרת</label>
@@ -320,6 +322,7 @@ export default function InfoTab({ tripId, embedded = false }) {
               <div className="sheet-footer">
                 <button type="submit" className="btn-primary">שמור</button>
                 <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
+                {editingId && <SheetDelete close={close} onDelete={() => handleDelete(items.find(i => i.id === editingId) || { id: editingId })} />}
               </div>
             </form>
           )}
