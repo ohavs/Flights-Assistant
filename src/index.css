@@ -1761,6 +1761,7 @@ input[type="datetime-local"].form-control {
   border: 2px solid var(--ink-12); box-shadow: var(--shadow-sm);
 }
 .settings-hint { font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.5; padding-inline: 4px; }
+.settings-time { padding-inline: 4px; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .settings-formats .btn-secondary { min-height: 46px; padding: 8px 10px; }

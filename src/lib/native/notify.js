@@ -15,7 +15,18 @@ const PREFS_KEY = 'notify.prefs';
 export const NOTIFY_KINDS = [
   { key: 'flight', label: 'טיסות', hint: "24 שעות לפני (צ'ק־אין) ו־3 שעות לפני ההמראה", default: true },
   { key: 'reminder', label: 'תזכורות', hint: 'בשעה שקבעתם לתזכורת שלכם', default: true },
+  { key: 'morning', label: 'סיכום בוקר', hint: 'בכל בוקר בטיול: התוכנית של היום ומזג האוויר', default: true },
 ];
+
+// The morning summary's time, 'HH:MM' in the phone's own time. Kept apart
+// from the switches, which are all booleans.
+const MORNING_KEY = 'notify.morningTime';
+export function morningTime() {
+  try { return localStorage.getItem(MORNING_KEY) || '08:00'; } catch { return '08:00'; }
+}
+export function setMorningTime(t) {
+  try { localStorage.setItem(MORNING_KEY, t); } catch { /* private mode */ }
+}
 
 // The first time there is something to notify about, ask, once per phone.
 export async function askPermissionOnce() {
