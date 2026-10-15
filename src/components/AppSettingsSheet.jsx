@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell, FileType2, FileText, FileSpreadsheet,
   Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft } from 'lucide-react';
-import Sheet, { SheetSection } from '../ui/Sheet';
+import Sheet from '../ui/Sheet';
+import SectionHeader from '../ui/SectionHeader';
 import Notice from '../ui/Notice';
 import { Pill } from '../ui/kit';
 import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission } from '../lib/native/notify';
@@ -23,7 +24,32 @@ import { exportTripBackup, saveBackupFile, importTripBackup } from '../services/
    `initial` is an update check from the launch banner, so the sheet opens
    straight on it. `onNotifyChange` reschedules after a switch. `trips`
    and `uid` are absent on the sign-in screen, which shows updates only;
-   `tripId` and `activeTab` preselect the export when opened in a trip. */
+   `tripId` and `activeTab` preselect the export when opened in a trip.
+   Each section opens and closes on its title, and stays as it was left. */
+
+const OPEN_KEY = 'settingsOpen';
+const readOpen = () => {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY)) || {}; } catch { return {}; }
+};
+
+// A section of the sheet, folded to its title until opened. `meta` is a
+// glance at its state for when it is folded; `force` opens it without
+// remembering that (the update banner opens the sheet on its update).
+function SettingsGroup({ id, title, Icon, meta, force, children }) {
+  const [open, setOpen] = useState(() => !!force || !!readOpen()[id]);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify({ ...readOpen(), [id]: next })); } catch { /* private mode */ }
+  };
+  return (
+    <section className="sheet-section settings-group">
+      <SectionHeader title={title} icon={Icon && <Icon size={17} />} meta={meta}
+        collapsed={!open} onToggle={toggle} toggleProps={{ 'aria-controls': `settings-${id}` }} />
+      {open && <div id={`settings-${id}`} className="settings-group-body">{children}</div>}
+    </section>
+  );
+}
 
 function NotifySettings({ onChange }) {
   const [prefs, setPrefs] = useState(notifyPrefs);
@@ -35,8 +61,10 @@ function NotifySettings({ onChange }) {
     setPrefs(setNotifyPref(key, on));
     onChange?.();
   };
+  const on = NOTIFY_KINDS.filter(k => prefs[k.key]).length;
+  const meta = on === 0 ? 'כבויות' : on === NOTIFY_KINDS.length ? 'פעילות' : `${on} מתוך ${NOTIFY_KINDS.length} פעילות`;
   return (
-    <SheetSection label="התראות">
+    <SettingsGroup id="notify" title="התראות" Icon={Bell} meta={meta}>
       <div className="list-group">
         {NOTIFY_KINDS.map(k => (
           <button key={k.key} type="button" role="switch" aria-checked={!!prefs[k.key]} className="list-row" onClick={() => toggle(k.key)}>
@@ -52,7 +80,7 @@ function NotifySettings({ onChange }) {
       {perm === 'denied' && Object.values(prefs).some(Boolean) && (
         <div className="settings-hint">ההתראות חסומות בטלפון. אפשר להפעיל אותן ב"הרשאות" כאן למטה.</div>
       )}
-    </SheetSection>
+    </SettingsGroup>
   );
 }
 
@@ -72,8 +100,10 @@ function PermissionSettings({ onChange }) {
     const sub = CapApp.addListener('resume', () => { refresh(); changed.current?.(); });
     return () => { sub.then((s) => s.remove()); };
   }, []);
+  const off = st ? PERMISSIONS.filter(p => !st[p.key]).length : null;
+  const meta = off == null ? null : off === 0 ? 'הכל מאושר' : `${off} לא מאושרות`;
   return (
-    <SheetSection label="הרשאות">
+    <SettingsGroup id="permissions" title="הרשאות" Icon={ShieldCheck} meta={meta}>
       <div className="list-group">
         {PERMISSIONS.map(p => {
           const Icon = PERMISSION_ICONS[p.key] || ShieldCheck;
@@ -92,7 +122,7 @@ function PermissionSettings({ onChange }) {
         })}
       </div>
       <div className="settings-hint">לחיצה פותחת את המסך של אנדרואיד להפעלה או לכיבוי.</div>
-    </SheetSection>
+    </SettingsGroup>
   );
 }
 
@@ -172,7 +202,7 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
   const last = trip && lastBackup(trip.id);
   return (
     <>
-      <SheetSection label="ייצוא לקובץ">
+      <SettingsGroup id="export" title="ייצוא לקובץ" Icon={FileType2}>
         {trips.length === 0 ? (
           <div className="settings-hint">עוד אין טיולים לייצא.</div>
         ) : (
@@ -203,9 +233,9 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
             {msg?.for === 'export' && <Notice tone={msg.tone}>{msg.text}</Notice>}
           </div>
         )}
-      </SheetSection>
+      </SettingsGroup>
 
-      <SheetSection label="גיבוי ושחזור">
+      <SettingsGroup id="backup" title="גיבוי ושחזור" Icon={Archive} meta={last ? `אחרון: ${last}` : null}>
         <div className="list-group">
           {trip && (
             <button type="button" className="list-row" onClick={backup} disabled={!!busy}>
@@ -228,7 +258,7 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
         </div>
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={importFile} hidden data-testid="backup-import" />
         {msg?.for === 'backup' && <Notice tone={msg.tone}>{msg.text}</Notice>}
-      </SheetSection>
+      </SettingsGroup>
     </>
   );
 }
@@ -277,75 +307,75 @@ function UpdateSettings({ initial }) {
   const showLatest = latest && ['available', 'permission', 'downloading', 'installing'].includes(state);
 
   return (
-    <section style={{ background: 'var(--surface-2)', borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>עדכונים</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
+    <SettingsGroup id="updates" title="עדכונים" Icon={RefreshCw} force={initial?.available}
+      meta={latest && state === 'available' ? `גרסה ${latest.versionName} זמינה` : current?.name}>
+      <div className="settings-card" style={{ gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-muted)' }}>
             הגרסה שלך: {current ? current.name : '…'}
           </div>
-        </div>
-        {['idle', 'uptodate', 'error'].includes(state) && (
-          <button type="button" className="btn-primary" onClick={check} style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-            <RefreshCw size={16} /> בדוק עדכונים
-          </button>
-        )}
-      </div>
-
-      {state === 'checking' && (
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-muted)' }}>בודק אם יש גרסה חדשה…</div>
-      )}
-      {state === 'uptodate' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: 'var(--c-green)' }}>
-          <CheckCircle2 size={16} /> יש לך את הגרסה האחרונה
-        </div>
-      )}
-      {state === 'error' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: 'var(--c-red)' }}>
-          <AlertCircle size={16} /> לא הצלחתי לבדוק או להוריד. בדוק חיבור לאינטרנט ונסה שוב.
-        </div>
-      )}
-
-      {showLatest && (
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>גרסה {latest.versionName} זמינה</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{latest.sizeMb}MB</div>
-          {latest.notes.length > 0 && (
-            <ul style={{ margin: '10px 0 0', paddingInlineStart: 18, fontSize: 14, lineHeight: 1.55 }}>
-              {latest.notes.slice(0, 8).map((n, i) => <li key={i}>{n}</li>)}
-            </ul>
+          {['idle', 'uptodate', 'error'].includes(state) && (
+            <button type="button" className="btn-primary" onClick={check} style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              <RefreshCw size={16} /> בדוק עדכונים
+            </button>
           )}
         </div>
-      )}
 
-      {state === 'permission' && (
-        <div style={{ fontSize: 14, lineHeight: 1.5, fontWeight: 600 }}>
-          אנדרואיד צריך אישור חד־פעמי להתקין עדכונים מהאפליקציה. במסך שייפתח הפעל את "אפשר מהמקור הזה" וחזור לכאן.
-        </div>
-      )}
-      {state === 'downloading' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>
-            <span>מוריד</span><span>{pct}%</span>
+        {state === 'checking' && (
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-muted)' }}>בודק אם יש גרסה חדשה…</div>
+        )}
+        {state === 'uptodate' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: 'var(--c-green)' }}>
+            <CheckCircle2 size={16} /> יש לך את הגרסה האחרונה
           </div>
-          <div style={{ height: 8, borderRadius: 999, background: 'var(--ink-6)', marginTop: 6, overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 999, transition: 'width .15s linear' }} />
+        )}
+        {state === 'error' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: 'var(--c-red)' }}>
+            <AlertCircle size={16} /> לא הצלחתי לבדוק או להוריד. בדוק חיבור לאינטרנט ונסה שוב.
           </div>
-        </div>
-      )}
-      {state === 'installing' && (
-        <div style={{ fontSize: 14, fontWeight: 700 }}>אשר את ההתקנה בחלון של אנדרואיד.</div>
-      )}
+        )}
 
-      {state === 'available' && (
-        <button type="button" className="btn-primary" onClick={update} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <Download size={16} /> עדכן עכשיו
-        </button>
-      )}
-      {state === 'permission' && (
-        <button type="button" className="btn-primary" onClick={openInstallSettings}>אפשר התקנת עדכונים</button>
-      )}
-    </section>
+        {showLatest && (
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>גרסה {latest.versionName} זמינה</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{latest.sizeMb}MB</div>
+            {latest.notes.length > 0 && (
+              <ul style={{ margin: '10px 0 0', paddingInlineStart: 18, fontSize: 14, lineHeight: 1.55 }}>
+                {latest.notes.slice(0, 8).map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {state === 'permission' && (
+          <div style={{ fontSize: 14, lineHeight: 1.5, fontWeight: 600 }}>
+            אנדרואיד צריך אישור חד־פעמי להתקין עדכונים מהאפליקציה. במסך שייפתח הפעל את "אפשר מהמקור הזה" וחזור לכאן.
+          </div>
+        )}
+        {state === 'downloading' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>
+              <span>מוריד</span><span>{pct}%</span>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: 'var(--ink-6)', marginTop: 6, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 999, transition: 'width .15s linear' }} />
+            </div>
+          </div>
+        )}
+        {state === 'installing' && (
+          <div style={{ fontSize: 14, fontWeight: 700 }}>אשר את ההתקנה בחלון של אנדרואיד.</div>
+        )}
+
+        {state === 'available' && (
+          <button type="button" className="btn-primary" onClick={update} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Download size={16} /> עדכן עכשיו
+          </button>
+        )}
+        {state === 'permission' && (
+          <button type="button" className="btn-primary" onClick={openInstallSettings}>אפשר התקנת עדכונים</button>
+        )}
+      </div>
+    </SettingsGroup>
   );
 }
 

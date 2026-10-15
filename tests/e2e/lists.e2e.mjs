@@ -116,9 +116,11 @@ await step('expenses: tap opens the form; a swipe deletes', async () => {
   await card('קפה וקרואסון').waitFor({ state: 'detached' });
 });
 
-// ── Important info (the header button's sheet) ──
+// ── Important info (the flight tab's card opens it) ──
+await tab('טיסה ומלון');
+await page.getByText('טיסת הלוך').first().waitFor();
 await step('info: items are ListCards; a tap edits; "+ פריט" ends an open group', async () => {
-  await page.locator('header button[aria-label="מידע חשוב"]').click();
+  await page.locator('.app-content button.info-card').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
   // Defaults arrive collapsed under "מספרי חירום": open the group.
   const first = page.locator('.modal-overlay .list-card').first();

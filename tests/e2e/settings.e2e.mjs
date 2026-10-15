@@ -38,10 +38,32 @@ await step('the trip card has no backup button, the home has no import button', 
   if (await page.locator('[title="ייבוא טיול מגיבוי"]').count()) throw new Error('import button on the home screen');
 });
 
-await step('settings open on the web with export and backup', async () => {
+// A section's title folds and unfolds it.
+const group = (title) => sheet().locator('.section-header-toggle', { hasText: title });
+const expanded = async (title) => (await group(title).getAttribute('aria-expanded')) === 'true';
+
+await step('settings open on the web, each section folded to its title', async () => {
   await openSettings();
-  await sheet().getByText('ייצוא לקובץ').waitFor();
-  await sheet().getByText('גיבוי ושחזור').waitFor();
+  for (const t of ['ייצוא לקובץ', 'גיבוי ושחזור']) {
+    await group(t).waitFor();
+    if (await expanded(t)) throw new Error(`${t} open on a first visit`);
+  }
+  if (await sheet().getByRole('button', { name: 'ייצוא ל-PDF' }).count()) throw new Error('export buttons showing while folded');
+  await page.screenshot({ path: '.e2e/settings-folded.png' });
+});
+
+await step('a section opens on a tap and stays as it was left', async () => {
+  await group('ייצוא לקובץ').click();
+  await sheet().getByRole('button', { name: 'ייצוא ל-PDF' }).waitFor();
+  await group('גיבוי ושחזור').click();
+  await group('גיבוי ושחזור').click();   // and closed again
+  if (await expanded('גיבוי ושחזור')) throw new Error('backup did not fold back');
+  await closeSettings();
+  await openSettings();
+  if (!(await expanded('ייצוא לקובץ'))) throw new Error('export forgot it was open');
+  if (await expanded('גיבוי ושחזור')) throw new Error('backup forgot it was closed');
+  await group('גיבוי ושחזור').click();
+  await sheet().getByRole('button', { name: /גיבוי של גיבויים/ }).waitFor();
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/settings-web.png' });
 });

@@ -21,9 +21,9 @@ for (const width of [360, 390, 412]) {
   await page.getByPlaceholder("למשל: פראג, צ'כיה").fill('בודפשט');
   await page.getByRole('button', { name: 'צור טיול', exact: true }).click();
   await page.locator('.trip-card').getByText('פתח טיול').click();
-  // The header button talks to the flight tab, which loads lazily.
+  // The edit button is the flight tab's, which loads lazily.
   await page.getByText('טיסת הלוך').first().waitFor();
-  await page.locator('button[title="ערוך פרטי טיסה ומלון"]').click();
+  await page.getByRole('button', { name: 'עריכת פרטים' }).click();
   await page.getByText('עריכת כל פרטי הנסיעה').waitFor();
 
   // Give both pickers of the dates row a date (today, through the picker

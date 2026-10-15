@@ -1,14 +1,17 @@
-import { useState, lazy, Suspense } from 'react';
-import { CircleAlert } from 'lucide-react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { CircleAlert, ChevronLeft } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Pill } from '../ui/kit';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import Sheet from '../ui/Sheet';
 import Skeleton from './Skeleton';
 
 const InfoTab = lazy(() => import('./InfoTab'));
 
-/* Two quiet helpers, each opening its own sheet: the weather at the
-   destination (a chip by the destination city on the flight cards) and
-   the trip's important info (a button in the trip header, every tab).  */
+/* Two quiet helpers on the flight tab, each opening its own sheet: the
+   weather at the destination (a chip by the destination city on the
+   flight cards) and the trip's important info (a card under the hotel). */
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -85,13 +88,32 @@ export function WeatherChip({ trip }) {
   );
 }
 
-/* Emergency numbers, contacts, addresses: one tap from anywhere. */
-export function InfoButton({ tripId }) {
+/* Emergency numbers, contacts, addresses: a card on the flight tab, with
+   the flights and the hotel, that opens them in a sheet. */
+export function InfoCard({ tripId }) {
   const [open, setOpen] = useState(false);
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(collection(db, 'trips', tripId, 'info'),
+      snap => setItems(snap.docs.map(d => d.data())),
+      () => setItems([]));
+  }, [tripId]);
+
+  // The categories in use, for a glance at what is there.
+  const cats = items ? [...new Set(items.map(i => i.category).filter(Boolean))] : [];
+  const hint = cats.length ? cats.slice(0, 3).join(' · ') : 'מספרי חירום, אנשי קשר, כתובות';
+
   return (
     <>
-      <button type="button" className="icon-btn" onClick={() => setOpen(true)} aria-label="מידע חשוב" title="מידע חשוב">
-        <CircleAlert size={19} />
+      <button type="button" className="glass-card info-card" onClick={() => setOpen(true)} aria-label="מידע חשוב">
+        <span className="info-card-icon"><CircleAlert size={20} /></span>
+        <span className="info-card-text">
+          <span className="info-card-title">מידע חשוב</span>
+          <span className="info-card-hint">{hint}</span>
+        </span>
+        {items?.length > 0 && <Pill size="sm" tone="neutral">{items.length}</Pill>}
+        <ChevronLeft size={18} className="list-row-chevron" />
       </button>
       {open && (
         <Sheet

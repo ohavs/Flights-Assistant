@@ -514,6 +514,25 @@ button:not(:disabled):active,
   font-size: 11px; font-weight: 700; color: var(--text-muted);
 }
 .app-header-sub > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* "מידע חשוב" on the flight tab: one row card under the hotel. */
+.glass-card.info-card {
+  flex-direction: row; align-items: center; gap: 12px;
+  width: 100%; padding: 14px 16px; text-align: start;
+  font-family: var(--font-hebrew); color: var(--text); cursor: pointer;
+}
+.info-card-icon {
+  width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--c-red-10); color: var(--c-red);
+}
+.info-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.info-card-title { font-size: 15px; font-weight: 800; }
+.info-card-hint {
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.info-card:active { transform: scale(.99); }
+
 .weather-chip {
   display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
   height: 20px; padding: 0 7px 0 8px; border: none; border-radius: 999px;
@@ -1584,6 +1603,11 @@ input[type="datetime-local"].form-control {
   display: flex; flex-direction: column; gap: 10px;
   padding: 14px; border-radius: 16px; background: var(--surface-2);
 }
+/* Each settings section folds to its title (AppSettingsSheet's
+   SettingsGroup): a quiet line between them, the body under its title. */
+.settings-group { gap: 4px; }
+.settings-group + .settings-group { border-top: 1px solid var(--ink-6); padding-top: 4px; }
+.settings-group-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
 .settings-hint { font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.5; padding-inline: 4px; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

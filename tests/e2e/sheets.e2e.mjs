@@ -155,7 +155,7 @@ await page.getByText('טיסת הלוך').first().waitFor();
 const tab = (label) => page.locator(`nav button.nav-item[aria-label="${label}"]`).click();
 
 const openTripEdit = async () => {
-  await page.locator('button[title="ערוך פרטי טיסה ומלון"]').click();
+  await page.getByRole('button', { name: 'עריכת פרטים' }).click();
   await page.getByText('עריכת כל פרטי הנסיעה').waitFor();
 };
 await check('trip edit form', openTripEdit, closeAll);
@@ -164,15 +164,15 @@ await guardsUnsaved('trip edit form', openTripEdit,
   () => page.locator('.modal-content input.form-control').first().fill('שינוי'));
 
 await check('info sheet', async () => {
-  await page.locator('header button[aria-label="מידע חשוב"]').click();
+  await page.locator('.app-content button.info-card').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
   await page.locator('.modal-overlay').getByText('מספרי חירום').click();   // expand: long enough to scroll
 }, closeAll);
 await dragClose('info sheet', async () => {
-  await page.locator('header button[aria-label="מידע חשוב"]').click();
+  await page.locator('.app-content button.info-card').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
 });
-await page.locator('header button[aria-label="מידע חשוב"]').click();
+await page.locator('.app-content button.info-card').click();
 await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
 await guardsUnsaved('info item form', async () => {
   await page.locator('.modal-overlay').getByRole('button', { name: 'פריט חדש' }).click();
