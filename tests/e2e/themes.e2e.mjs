@@ -1,4 +1,4 @@
-// Settings → "מראה": light, dark or the phone's setting, and four full
+// Settings → "מראה": light, dark or the phone's setting, and five full
 // palettes. Each palette in each mode keeps text on the brand button and
 // accent text on a card readable (≥ 4.5), and changes the page itself,
 // not only the accent. The choice survives a reload; the header switch
@@ -65,7 +65,7 @@ await step('a fresh device follows the phone, green', async () => {
 });
 
 const seen = new Set();
-for (const palette of ['ירוק', 'כחול ים', 'סגול', 'חול חם']) {
+for (const palette of ['ירוק', 'כחול ים', 'סגול', 'שקיעה', 'חול חם']) {
   for (const mode of ['בהיר', 'כהה']) {
     await step(`${palette}, ${mode}: readable, and the page itself changes`, async () => {
       await openLook();

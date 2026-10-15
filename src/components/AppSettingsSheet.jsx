@@ -11,6 +11,7 @@ import { Pill } from '../ui/kit';
 import { CustomTimePicker } from './CustomDatePicker';
 import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime } from '../lib/native/notify';
 import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
+import { APP_ICONS, appIcon, setAppIcon } from '../lib/native/appIcon';
 import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
@@ -280,7 +281,7 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
 }
 
 // Light, dark or the phone's setting, and the palette. The header's
-// switch stays for a quick flip.
+// switch stays for a quick flip. In the app, the launcher icon too.
 const MODE_OPTIONS = [
   { key: 'light',  label: 'בהיר',        Icon: Sun },
   { key: 'dark',   label: 'כהה',         Icon: Moon },
@@ -303,7 +304,43 @@ function LookSettings() {
           </button>
         ))}
       </div>
+      {isNative && <IconSettings palette={palette} setPalette={setPalette} />}
     </SettingsGroup>
+  );
+}
+
+// The launcher icon. Picking one offers its palette too, unless it is on.
+function IconSettings({ palette, setPalette }) {
+  const [icon, setIcon] = useState(null);
+  const [offer, setOffer] = useState(null);
+  useEffect(() => { appIcon().then(setIcon); }, []);
+  if (!icon) return null;
+  const pick = async (i) => {
+    if (i.key === icon || !(await setAppIcon(i.key))) return;
+    setIcon(i.key);
+    setOffer(i.palette !== palette ? PALETTES.find(p => p.key === i.palette) : null);
+  };
+  return (
+    <>
+      <div className="field-label">סמל האפליקציה</div>
+      <div className="palette-grid" role="radiogroup" aria-label="סמל האפליקציה">
+        {APP_ICONS.map(i => (
+          <button key={i.key} type="button" role="radio" aria-checked={icon === i.key}
+            className="palette-swatch" onClick={() => pick(i)}>
+            <img className="palette-swatch-icon" src={`/app-icons/${i.key}.png`} alt="" />
+            <span>{i.label}</span>
+          </button>
+        ))}
+      </div>
+      {offer && (
+        <div className="settings-offer">
+          <span>להחליף גם את צבעי האפליקציה ל"{offer.label}", שמתאים לסמל?</span>
+          <button type="button" className="btn-primary" onClick={() => { setPalette(offer.key); setOffer(null); }}>החלף</button>
+          <button type="button" className="btn-secondary" onClick={() => setOffer(null)}>לא</button>
+        </div>
+      )}
+      <div className="settings-hint">הסמל מתחלף כשיוצאים מהאפליקציה. בחלק מהטלפונים צריך להוסיף אותו שוב למסך הבית.</div>
+    </>
   );
 }
 

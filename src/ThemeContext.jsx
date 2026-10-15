@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useLayoutEffect } from 
 import { setStatusBarTheme } from './lib/platform';
 import { PALETTES, MODES } from './lib/theme';
 
-/* Light, dark or the phone's own setting, and one of four full palettes
+/* Light, dark or the phone's own setting, and one of five full palettes
    (index.css, [data-palette]): background, surfaces, accent and buttons
    all change together. Both kept on the device. The header switch flips
    light/dark and so leaves "the phone's setting" for an explicit one.  */
