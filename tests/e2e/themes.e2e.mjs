@@ -84,10 +84,35 @@ for (const palette of ['ירוק', 'כחול ים', 'סגול', 'שקיעה', '�
       const bg = await bodyBg();
       if (seen.has(bg)) throw new Error(`page background ${bg} same as another palette/mode`);
       seen.add(bg);
+      // A texture for every palette but green: one layer behind the
+      // screens, never in the way of a tap.
+      const tex = await page.locator('.app-container').first().evaluate((el) => {
+        const cs = getComputedStyle(el, '::before');
+        return { display: cs.display, events: cs.pointerEvents, z: cs.zIndex };
+      });
+      const want = palette === 'ירוק' ? 'none' : 'block';
+      if (tex.display !== want) throw new Error(`texture display ${tex.display}, expected ${want}`);
+      if (want === 'block' && (tex.events !== 'none' || tex.z !== '-1')) throw new Error(`texture layer ${JSON.stringify(tex)}`);
       await page.screenshot({ path: `.e2e/themes-${palette.replace(' ', '-')}-${mode}.png` });
     });
   }
 }
+
+// Inside a trip the texture sits between the cards, never through them.
+await step('textures behind a trip: cards and the tally stay solid', async () => {
+  await page.locator('.trip-card').getByText('פתח טיול').first().click();
+  await page.locator(`nav button.nav-item[aria-label="צ'קליסט"]`).click();
+  await page.locator('.app-content .list-toolbar').waitFor();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: '.e2e/themes-texture-trip-sand-dark.png' });
+  // Every card on the page paints an opaque background over the texture.
+  const thin = await page.evaluate(() => [...document.querySelectorAll('.app-content .glass-card, .app-content .press-card')]
+    .map(el => getComputedStyle(el).backgroundColor)
+    .filter(c => { const m = c.match(/rgba\([^)]*,\s*([\d.]+)\)$/); return m && Number(m[1]) < 0.9; }));
+  if (thin.length) throw new Error(`see-through cards: ${thin.join(' ')}`);
+  await page.locator('.app-header button').first().click();   // back home
+  await page.locator('.trip-card').waitFor();
+});
 
 await step('the choice survives a reload; the header switch flips light/dark', async () => {
   await page.reload();
