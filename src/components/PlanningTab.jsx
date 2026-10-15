@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
+import { addCategory, saveCategory, removeCategory } from '../lib/categorySettings';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
@@ -612,9 +613,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return () => unsub();
   }, [tripId]);
 
-  const saveCategorySettings = async (updated) => {
+  // Each of these writes one category only (src/lib/categorySettings.js).
+  // The listener above shows the change at once, offline too.
+  const categoryWrite = (write) => {
     if (!tripId) return;
-    await setDoc(doc(db, 'trips', tripId, 'settings', 'categories'), updated);
+    write().catch(err => console.error('Category save error:', err));
   };
 
   // Listen to Firestore planning items (pool)
@@ -1941,9 +1944,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     addable
                     addLabel="הוסף קטגוריה חדשה"
                     onCommit={(newCat) => {
-                      const updated = { ...categorySettings, [newCat]: {} };
-                      setCategorySettings(updated);
-                      saveCategorySettings(updated);
+                      categoryWrite(() => addCategory(db, tripId, newCat));
                     }}
                   />
 
@@ -3431,9 +3432,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               danger: true,
                             });
                             if (!ok) return;
-                            const { [cat]: _, ...rest } = categorySettings;
-                            setCategorySettings(rest);
-                            saveCategorySettings(rest);
+                            categoryWrite(() => removeCategory(db, tripId, cat));
                           }}
                           style={{ border: 'none', background: 'transparent', color: 'var(--c-red)', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
                         >
@@ -3451,9 +3450,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           return (
                             <button key={key} type="button"
                               onClick={() => {
-                                const updated = { ...categorySettings, [cat]: { ...s, iconKey: key } };
-                                setCategorySettings(updated);
-                                saveCategorySettings(updated);
+                                categoryWrite(() => saveCategory(db, tripId, cat, { iconKey: key }));
                               }}
                               title={key}
                               style={{
@@ -3478,9 +3475,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {COLOR_OPTIONS.map(c => (
                           <button key={c} type="button"
                             onClick={() => {
-                              const updated = { ...categorySettings, [cat]: { ...s, color: c } };
-                              setCategorySettings(updated);
-                              saveCategorySettings(updated);
+                              categoryWrite(() => saveCategory(db, tripId, cat, { color: c }));
                             }}
                             style={{
                               width: 28, height: 28, borderRadius: '50%', padding: 0,
@@ -3526,9 +3521,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             e.preventDefault();
                             const name = newCatName.trim();
                             if (!name) return;
-                            const updated = { ...categorySettings, [name]: {} };
-                            setCategorySettings(updated);
-                            saveCategorySettings(updated);
+                            categoryWrite(() => addCategory(db, tripId, name));
                             setNewCatName('');
                             setAddingCatInSettings(false);
                           }
@@ -3541,9 +3534,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           onClick={() => {
                             const name = newCatName.trim();
                             if (!name) return;
-                            const updated = { ...categorySettings, [name]: {} };
-                            setCategorySettings(updated);
-                            saveCategorySettings(updated);
+                            categoryWrite(() => addCategory(db, tripId, name));
                             setNewCatName('');
                             setAddingCatInSettings(false);
                           }}
@@ -3744,9 +3735,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   addable
                   addLabel="הוסף קטגוריה חדשה"
                   onCommit={(newCat) => {
-                    const updated = { ...categorySettings, [newCat]: {} };
-                    setCategorySettings(updated);
-                    saveCategorySettings(updated);
+                    categoryWrite(() => addCategory(db, tripId, newCat));
                   }}
                 />
 

@@ -173,6 +173,16 @@ await step('category settings', async () => {
   await page.getByText('הגדרות קטגוריות', { exact: false }).first().click();
   await modal().waitFor();
   await shot('category-settings');
+  // Each change writes that one category only (src/lib/categorySettings.js).
+  await modal().locator('button.chip.add', { hasText: 'קטגוריה' }).click();
+  await modal().getByPlaceholder('שם הקטגוריה החדשה').fill('חופים');
+  await modal().getByRole('button', { name: 'הוסף', exact: true }).click();
+  const card = modal().locator('div', { has: page.locator('span', { hasText: /^חופים$/ }) })
+    .filter({ has: page.locator('[title="מחק קטגוריה"]') }).last();
+  await card.waitFor();
+  await card.locator('[title="מחק קטגוריה"]').click();
+  await page.getByRole('button', { name: 'מחק', exact: true }).click();
+  await modal().locator('span', { hasText: /^חופים$/ }).waitFor({ state: 'detached', timeout: 5000 });
   await closeModal();
 });
 
