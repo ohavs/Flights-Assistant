@@ -1612,6 +1612,16 @@ input[type="datetime-local"].form-control {
 .list-card-meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .list-card-more { width: 34px; height: 34px; min-width: 34px; background: var(--surface-2); color: var(--text-muted); }
+/* On a phone a card already answers a tap (open, or tick) and a swipe
+   (its actions): ⋯ would be a third way to the same place. It stays for a
+   mouse, which cannot swipe, and for screen readers, which take over the
+   swipe gesture — present, just not drawn. */
+@media (hover: none) {
+  .list-card .list-card-more {   /* !important: ActionsMenu sizes it inline */
+    position: absolute; width: 1px !important; height: 1px !important; min-width: 0 !important; padding: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
 .list-card-chevron { flex-shrink: 0; color: var(--ink-20); }
 .list-card-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .list-card-body.indent { padding-inline-start: 54px; }   /* 42px disc + 12px gap */

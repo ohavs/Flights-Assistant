@@ -404,13 +404,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
             <GripVertical size={15} />
           </button>
         )}
-      >
-        {canEdit && (
-          <button type="button" onClick={() => openAdd(category)} aria-label={`הוסף פריט ל${category}`} className="section-header-btn">
-            <Plus size={16} />
-          </button>
-        )}
-      </SectionHeader>
+      />
 
       {/* Items */}
       {isOpen && (
@@ -428,7 +422,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                 title={item.title}
                 onOpen={canEdit ? () => startEdit(item) : undefined}
                 actions={canEdit ? [
-                  { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(item), swipe: true },
+                  { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(item) },
                   { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(item), danger: true, swipe: true },
                 ] : []}
               >
@@ -480,6 +474,12 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
               </ListCard>
             );
           })}
+          {canEdit && (
+            <button type="button" className="chip add" style={{ alignSelf: 'flex-start' }}
+              onClick={() => openAdd(category)} aria-label={`הוסף פריט ל${category}`}>
+              <Plus size={14} /> פריט
+            </button>
+          )}
         </div>
       )}
     </div>
