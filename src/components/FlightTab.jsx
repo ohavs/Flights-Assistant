@@ -958,7 +958,7 @@ export default function FlightTab({ tripId }) {
 
       {/* Hotel */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--ink-6)', paddingBottom: '8px' }}>
           <Building size={18} style={{ color: 'var(--primary-color)' }} />
           <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)', flex: 1 }}>
             פרטי המלון ביעד
@@ -1005,7 +1005,7 @@ export default function FlightTab({ tripId }) {
                   color: 'var(--accent)', fontSize: 12,
                   fontWeight: 700, textDecoration: 'none',
                   background: 'var(--p-8)',
-                  border: '1px solid rgba(79,70,229,0.18)',
+                  border: '1px solid var(--p-18)',
                   borderRadius: 999, padding: '4px 10px',
                   alignSelf: 'flex-start',
                   maxWidth: '100%'
@@ -1021,7 +1021,7 @@ export default function FlightTab({ tripId }) {
             )}
           </div>
 
-          <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '4px 0' }} />
+          <div style={{ borderTop: '1px dashed var(--ink-4)', padding: '4px 0' }} />
 
           <div className="hotel-meta-grid">
             <div>
@@ -1042,7 +1042,7 @@ export default function FlightTab({ tripId }) {
 
           {hotel.notes && (
             <>
-              <div style={{ borderTop: '1px dashed rgba(0,0,0,0.04)', padding: '2px 0' }} />
+              <div style={{ borderTop: '1px dashed var(--ink-4)', padding: '2px 0' }} />
               <div style={{ background: 'var(--ink-3)', padding: '12px 14px', borderRadius: 'var(--border-radius-md)', fontSize: '13px', lineHeight: '1.4', fontWeight: '600' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', marginBottom: '4px' }}>הנחיות והערות מיוחדות:</div>
                 {hotel.notes}
@@ -1070,8 +1070,8 @@ export default function FlightTab({ tripId }) {
 
               {/* === TRIP HEADER: name + 2 decisive date pickers === */}
               {(editScope === 'all' || editScope === 'trip') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--p-3)' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--p-20)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--p-3)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid var(--ink-5)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>פרטי כותרת ותאריכי הטיול</span>
                 </h3>
 
@@ -1097,8 +1097,8 @@ export default function FlightTab({ tripId }) {
 
               {/* === OUTBOUND FLIGHT === */}
               {(editScope === 'all' || editScope === 'outbound') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--ink-10)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid var(--ink-5)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>1. פרטי טיסת הלוך</span>
                   {lookupBusyOut && <Loader2 size={14} className="spinning" style={{ color: 'var(--accent)' }} />}
                 </h3>
@@ -1176,8 +1176,8 @@ export default function FlightTab({ tripId }) {
 
               {/* === RETURN FLIGHT === */}
               {(editScope === 'all' || editScope === 'return') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--c-red2)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--ink-10)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--c-red2)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid var(--ink-5)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>2. פרטי טיסת חזור</span>
                   {lookupBusyRet && <Loader2 size={14} className="spinning" style={{ color: 'var(--accent)' }} />}
                 </h3>
@@ -1252,8 +1252,8 @@ export default function FlightTab({ tripId }) {
 
               {/* === HOTEL === */}
               {(editScope === 'all' || editScope === 'hotel') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(11,11,48,0.1)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '6px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--ink-10)', padding: '16px', borderRadius: 'var(--border-radius-lg)', background: 'var(--ink-2)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid var(--ink-5)', paddingBottom: '6px', marginBottom: '4px' }}>
                   <span>3. פרטי מלון</span>
                 </h3>
 

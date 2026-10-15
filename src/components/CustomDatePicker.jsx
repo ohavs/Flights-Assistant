@@ -434,7 +434,7 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--ink-6)', paddingBottom: '10px' }}>
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>
                 {label || 'בחירת תאריך'}
               </span>
@@ -564,7 +564,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
             onClick={(e) => e.stopPropagation()}
             style={{ width: '100%', maxWidth: '360px', background: 'var(--surface)', borderRadius: '24px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--ink-8)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--ink-6)', paddingBottom: '10px' }}>
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
               <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
             </div>
@@ -742,7 +742,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--ink-6)', paddingBottom: '10px' }}>
               <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>
                 {label || 'בחירת תאריך ושעה'}
               </span>
@@ -763,7 +763,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
                   cursor: 'pointer',
                   background: activeTab === 'date' ? 'var(--card-bg-solid)' : 'transparent',
                   color: activeTab === 'date' ? 'var(--primary)' : 'var(--text-muted)',
-                  boxShadow: activeTab === 'date' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                  boxShadow: activeTab === 'date' ? '0 2px 6px var(--ink-5)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
               >
@@ -781,7 +781,7 @@ export function CustomDateTimePicker({ value, onChange, label }) {
                   cursor: 'pointer',
                   background: activeTab === 'time' ? 'var(--card-bg-solid)' : 'transparent',
                   color: activeTab === 'time' ? 'var(--primary)' : 'var(--text-muted)',
-                  boxShadow: activeTab === 'time' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                  boxShadow: activeTab === 'time' ? '0 2px 6px var(--ink-5)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
               >

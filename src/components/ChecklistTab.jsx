@@ -694,7 +694,7 @@ function SortableCategoryBlock({
             ) : (
               <button type="button"
                 onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(79,70,229,0.22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed var(--p-22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
                 <Plus size={14} />
                 הוסף לרשימה
               </button>
@@ -1078,8 +1078,8 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                   <input type="text" className="form-control" placeholder="למשל: סוודר, מטען"
                     value={newItemText} onChange={e => setNewItemText(e.target.value)} required />
                   {duplicateSuggestions.length > 0 && (
-                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', direction: 'rtl' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(180,120,0,0.85)', display: 'block', marginBottom: 4 }}>פריטים דומים כבר ברשימה:</span>
+                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'var(--butter)', border: 'none', direction: 'rtl' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>פריטים דומים כבר ברשימה:</span>
                       {duplicateSuggestions.slice(0, 4).map(s => (
                         <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13, color: 'var(--text-main)' }}>
                           <span style={{ flex: 1, textAlign: 'right' }}>{s.text}</span>
@@ -1110,7 +1110,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
                             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, border: isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: isSelected ? 'var(--p-10)' : 'var(--ink-5)', color: isSelected ? 'var(--accent)' : 'var(--text-muted)' }}>
                             {m.photoURL
                               ? <img src={m.photoURL} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} referrerPolicy="no-referrer" />
-                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--accent)' : 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isSelected ? '#fff' : 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
+                              : <div style={{ width: 18, height: 18, borderRadius: '50%', background: isSelected ? 'var(--brand)' : 'var(--lavender)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isSelected ? 'var(--brand-fg)' : 'var(--text)', fontWeight: 800, flexShrink: 0 }}>{(m.displayName || '?')[0]}</div>
                             }
                             {m.displayName}
                             {isSelected && <Check size={12} />}
