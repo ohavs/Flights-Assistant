@@ -1,15 +1,51 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
-import { RefreshCw, Download, CheckCircle2, AlertCircle } from 'lucide-react';
-import Sheet from '../ui/Sheet';
+import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell } from 'lucide-react';
+import Sheet, { SheetSection } from '../ui/Sheet';
+import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission } from '../lib/native/notify';
 import { appVersion } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 
-/* App settings (Android app only): the installed version and "check for
-   updates" — compare with the latest GitHub Release, download it in-app,
-   verify its checksum and open Android's installer. `initial` is a check
-   result from the launch banner, so the sheet opens straight on it. */
-export default function AppSettingsSheet({ onClose, initial }) {
+/* App settings (Android app only): notifications, and the installed
+   version with "check for updates" — compare with the latest GitHub
+   Release, download it in-app, verify its checksum and open Android's
+   installer. `initial` is a check result from the launch banner, so the
+   sheet opens straight on it. `onNotifyChange` reschedules after a switch. */
+
+function NotifySettings({ onChange }) {
+  const [prefs, setPrefs] = useState(notifyPrefs);
+  const [perm, setPerm] = useState(null);
+  useEffect(() => { notifyPermission().then(setPerm); }, []);
+  const toggle = async (key) => {
+    const on = !prefs[key];
+    if (on) setPerm(await notifyPermission({ ask: true }));
+    setPrefs(setNotifyPref(key, on));
+    onChange?.();
+  };
+  return (
+    <SheetSection label="התראות">
+      <div className="list-group">
+        {NOTIFY_KINDS.map(k => (
+          <button key={k.key} type="button" role="switch" aria-checked={!!prefs[k.key]} className="list-row" onClick={() => toggle(k.key)}>
+            <Bell size={16} className="list-row-icon" />
+            <span className="list-row-label" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span>{k.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>{k.hint}</span>
+            </span>
+            <span className={`switch${prefs[k.key] ? ' on' : ''}`} aria-hidden="true"><i /></span>
+          </button>
+        ))}
+      </div>
+      {perm === 'denied' && Object.values(prefs).some(Boolean) && (
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', lineHeight: 1.5, paddingInline: 4 }}>
+          ההתראות חסומות בטלפון. אפשר להפעיל אותן בהגדרות הטלפון ← אפליקציות ← עוזר טיסות ← התראות.
+        </div>
+      )}
+    </SheetSection>
+  );
+}
+
+export default function AppSettingsSheet({ onClose, initial, onNotifyChange }) {
   // idle | checking | uptodate | available | permission | downloading | installing | error
   const [state, setState] = useState(initial?.available ? 'available' : 'idle');
   const [info, setInfo] = useState(initial || null);
@@ -54,6 +90,7 @@ export default function AppSettingsSheet({ onClose, initial }) {
 
   return (
     <Sheet title="הגדרות" onClose={onClose}>
+          <NotifySettings onChange={onNotifyChange} />
           <section style={{ background: 'var(--surface-2)', borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <div>
