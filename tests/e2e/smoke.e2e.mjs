@@ -94,12 +94,13 @@ await step(owner, 'add a place', async () => {
 
 await step(owner, 'add a checklist item', async () => {
   await tab(owner, "צ'קליסט");
-  // Categories start collapsed, so check the item count rather than the text
-  await owner.getByText('מתוך 22').waitFor();
+  // Categories start collapsed, so check the item count (the tally beside
+  // the filter: "0/22 נארזו") rather than the text
+  await owner.locator('.list-progress', { hasText: '/22' }).waitFor();
   await fab(owner, 'פריט חדש');
   await owner.getByPlaceholder('למשל: סוודר, מטען').fill('פריט בדיקה');
   await owner.locator('.sheet-footer button[type="submit"]').click();
-  await owner.getByText('מתוך 23').waitFor();
+  await owner.locator('.list-progress', { hasText: '/23' }).waitFor();
 });
 
 await step(owner, 'add an expense', async () => {
@@ -128,7 +129,7 @@ await step(owner, 'reload and find everything still there', async () => {
   await tab(owner, 'תכנון טיול');
   await owner.getByText('תצפית בדיקה').first().waitFor();
   await tab(owner, "צ'קליסט");
-  await owner.getByText('מתוך 23').waitFor();
+  await owner.locator('.list-progress', { hasText: '/23' }).waitFor();
   await tab(owner, 'הוצאות');
   await owner.getByText('הוצאת בדיקה').first().waitFor();
 });
