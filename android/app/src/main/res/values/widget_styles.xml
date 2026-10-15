@@ -75,7 +75,7 @@
         <item name="android:textColor">@color/w_accent</item>
         <item name="android:textSize">16sp</item>
     </style>
-    <!-- "המשך": the palette's brand, dark text, as the app's primary buttons (--brand, --brand-fg). -->
+    <!-- "המשך": the palette's brand, dark text, as the app's primary buttons (brand, brand-fg). -->
     <style name="WBold.Key.Save">
         <item name="android:textColor">@color/w_on_brand</item>
         <item name="android:textSize">17sp</item>
