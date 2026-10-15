@@ -99,7 +99,7 @@ for (const theme of ['light', 'dark']) {
   await step(`${theme}: the confirm dialog's button is readable`, async () => {
     // Open first, then empty: the sheet shows the empty state live, and
     // nothing re-adds the defaults behind our back.
-    await page.locator('header button[aria-label="מידע חשוב"]').click();
+    await page.locator('.app-content button.info-card').click();
     await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
     await page.waitForTimeout(800);
     await emptyInfo();
@@ -117,7 +117,7 @@ for (const theme of ['light', 'dark']) {
   }
 
   await step(`${theme}: the picked day is readable; back closes only the picker`, async () => {
-    await page.locator('button[title="ערוך פרטי טיסה ומלון"]').click();
+    await page.getByRole('button', { name: 'עריכת פרטים' }).click();
     await page.getByText('עריכת כל פרטי הנסיעה').waitFor();
     await page.locator('.modal-overlay').getByText('בחר תאריך...').first().click();
     await page.locator('button.cal-day', { hasText: /^15$/ }).first().click();

@@ -8,7 +8,6 @@ import {
 } from 'firebase/firestore';
 import ConfirmModal from './components/ConfirmModal';
 import { TripProvider } from './TripContext';
-import { InfoButton } from './components/TripHeaderInfo';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
@@ -1853,8 +1852,6 @@ function AppInner() {
   return (
     <div className="app-container">
       {OfflineBanner}
-      {/* The trip's role reaches the header too: its "מידע חשוב" sheet
-          edits the trip like any tab. */}
       <TripProvider value={{
         tripId: selectedTripId,
         role: selectedTrip?.members?.[user.uid] || null,
@@ -1892,20 +1889,9 @@ function AppInner() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {selectedTripId && <InfoButton tripId={selectedTripId} />}
           <button onClick={() => setShowAppSettings(true)} className="icon-btn" title="הגדרות, ייצוא וגיבוי" aria-label="הגדרות">
             <Settings size={16} />
           </button>
-          {activeTab === 'flight' && ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]) && (
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
-              title="ערוך פרטי טיסה ומלון"
-              aria-label="ערוך פרטי טיסה ומלון"
-              className="icon-btn accent"
-            >
-              <Pencil size={16} />
-            </button>
-          )}
           <ThemeToggle />
         </div>
       </header>

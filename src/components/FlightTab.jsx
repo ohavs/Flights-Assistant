@@ -5,7 +5,8 @@ import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/fl
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
-import { WeatherChip } from './TripHeaderInfo';
+import { WeatherChip, InfoCard } from './TripHeaderInfo';
+import Fab from './Fab';
 import Skeleton from './Skeleton';
 import Notice from '../ui/Notice';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
@@ -518,14 +519,6 @@ export default function FlightTab({ tripId }) {
 
   // Lookup is triggered explicitly by the "חפש" button — no noisy auto-lookup
   // on every keystroke (which previously made the form flicker between flights).
-
-  // Listen for "open edit" events dispatched by the App header pencil button
-  useEffect(() => {
-    const handler = (e) => openEditModal(e?.detail?.scope || 'all');
-    window.addEventListener('flight:openEdit', handler);
-    return () => window.removeEventListener('flight:openEdit', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripData]);
 
   const openEditModal = (scope = 'all') => {
     if (!canEdit) return;
@@ -1051,6 +1044,13 @@ export default function FlightTab({ tripId }) {
           )}
         </div>
       </div>
+
+      <InfoCard tripId={tripId} />
+
+      {/* Everything at once — the trip's name and dates too, which have no
+          card of their own — from the tab's main button, where every tab
+          keeps its main action. Each card's pencil edits just that card. */}
+      {canEdit && <Fab label="עריכת פרטים" icon={<Pencil size={18} />} onClick={() => openEditModal('all')} />}
 
       {/* Edit Modal */}
       {showEditModal && (
