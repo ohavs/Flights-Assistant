@@ -7,6 +7,13 @@ PKG=com.ohavs.flightsassistant
 adb install -r "$APK"
 adb shell dumpsys package "$PKG" | grep -E "versionCode|versionName" | head -2
 adb logcat -c
+# One launcher entry, the classic icon's alias (the other icons' aliases
+# are off until picked in settings), so the phone shows one app.
+launchers=$(adb shell cmd package query-activities --components -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r' | grep "$PKG/" || true)
+echo "launcher entries: $launchers"
+if [ "$(echo "$launchers" | grep -c .)" != "1" ] || ! echo "$launchers" | grep -qE "$PKG/(\.|$PKG\.)MainActivity$"; then
+  echo "expected one launcher entry, .MainActivity"; exit 1
+fi
 adb shell am start -W -n "$PKG/.MainActivity"
 for i in $(seq 1 20); do
   sleep 3
