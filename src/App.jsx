@@ -7,8 +7,6 @@ import {
   getDoc, writeBatch
 } from 'firebase/firestore';
 import ConfirmModal from './components/ConfirmModal';
-import ExportMenu from './components/ExportMenu';
-import { exportTripBackup, downloadBackupFile, importTripBackup } from './services/backupTrip';
 import { TripProvider } from './TripContext';
 import { InfoButton } from './components/TripHeaderInfo';
 import { ThemeProvider, useTheme } from './ThemeContext';
@@ -46,7 +44,7 @@ import {
   Plane, MapPin, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
   Check, ChevronDown, ChevronUp, Coins,
-  AlertTriangle, Upload, Archive, Loader2, Moon, Sun, Pin, PinOff, ClipboardList, Settings, Download, WifiOff } from 'lucide-react';
+  AlertTriangle, Moon, Sun, Pin, PinOff, ClipboardList, Settings, Download, WifiOff } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
 import './index.css';
 
@@ -147,7 +145,7 @@ function LoadingScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, onExportTrip, onImportTrip, exportBusyId, importBusy, importError, userName, onOpenGlobalChecklist, pinnedTripId, onTogglePinned }) {
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist, pinnedTripId, onTogglePinned }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -199,31 +197,16 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <span className="homepage-section-title" style={{ margin: 0 }}>טיולים מתוכננים</span>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            onClick={onImportTrip}
-            disabled={importBusy}
-            title="ייבוא טיול מגיבוי"
-            className="round-btn raised"
-          >
-            {importBusy ? <Loader2 size={16} className="spinning" /> : <Upload size={16} />}
-          </button>
-          <button
-            onClick={() => setShowCreate(!showCreate)}
-            aria-label={showCreate ? 'סגור טופס טיול חדש' : 'טיול חדש'}
-            aria-expanded={showCreate}
-            className="btn-primary"
-            style={{ width: 44, height: 44, minHeight: 0, padding: 0, borderRadius: '50%' }}
-          >
-            <Plus size={20} strokeWidth={3} />
-          </button>
-        </div>
+        <button
+          onClick={() => setShowCreate(!showCreate)}
+          aria-label={showCreate ? 'סגור טופס טיול חדש' : 'טיול חדש'}
+          aria-expanded={showCreate}
+          className="btn-primary"
+          style={{ width: 44, height: 44, minHeight: 0, padding: 0, borderRadius: '50%' }}
+        >
+          <Plus size={20} strokeWidth={3} />
+        </button>
       </div>
-      {importError && (
-        <div style={{ background: 'var(--c-red-8)', border: '1px solid var(--c-red-12)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--c-red)', fontWeight: 600 }}>
-          {importError}
-        </div>
-      )}
 
       {/* Create trip form */}
       {showCreate && (
@@ -363,14 +346,6 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
                 aria-pressed={pinnedTripId === trip.id}
               >
                 {pinnedTripId === trip.id ? <Pin size={15} /> : <PinOff size={15} />}
-              </button>
-              <button
-                onClick={() => onExportTrip(trip.id)}
-                disabled={exportBusyId === trip.id}
-                className="round-btn mint"
-                title="ייצוא גיבוי JSON"
-              >
-                {exportBusyId === trip.id ? <Loader2 size={15} className="spinning" /> : <Archive size={15} />}
               </button>
               <button
                 onClick={() => onShareTrip(trip.id)}
@@ -1572,11 +1547,6 @@ function AppInner() {
   const [deleteError, setDeleteError] = useState('');
   const [deletePasswordInput, setDeletePasswordInput] = useState('');
 
-  const [exportBusy, setExportBusy] = useState(null); // tripId | null
-  const [importBusy, setImportBusy] = useState(false);
-  const [importError, setImportError] = useState('');
-  const importFileRef = useRef(null);
-
   const requestDeleteTrip = (tripId, isOwner) => {
     const t = trips.find(x => x.id === tripId);
     setConfirmDelete({
@@ -1609,40 +1579,6 @@ function AppInner() {
       setDeleteError(err?.message || 'מחיקה נכשלה');
     } finally {
       setDeleteBusy(false);
-    }
-  };
-
-  const handleExportTrip = async (tripId) => {
-    const trip = trips.find(t => t.id === tripId);
-    if (!trip) return;
-    setExportBusy(tripId);
-    try {
-      const backup = await exportTripBackup(tripId, trip);
-      downloadBackupFile(backup, trip.name);
-      localStorage.setItem(`lastExport_${tripId}`, new Date().toISOString());
-    } catch (err) {
-      console.error('Export failed:', err);
-      alert('ייצוא נכשל: ' + (err?.message || err));
-    } finally {
-      setExportBusy(null);
-    }
-  };
-
-  const handleImportFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    setImportBusy(true);
-    setImportError('');
-    try {
-      const text = await file.text();
-      const backup = JSON.parse(text);
-      await importTripBackup(backup, user.uid);
-    } catch (err) {
-      console.error('Import failed:', err);
-      setImportError(err?.message || 'ייבוא נכשל — ודא שהקובץ תקין');
-    } finally {
-      setImportBusy(false);
     }
   };
 
@@ -1740,6 +1676,22 @@ function AppInner() {
     </div>
   ) : null;
 
+  // Settings: from the home header, and from a trip's header with that
+  // trip and tab preselected for export.
+  const settingsSheet = showAppSettings ? (
+    <Suspense fallback={null}>
+      <AppSettingsSheet
+        initial={updateInfo}
+        onNotifyChange={() => setNotifyVersion(v => v + 1)}
+        trips={trips}
+        uid={user.uid}
+        tripId={screen === 'trip' ? selectedTripId : pinnedTripId}
+        activeTab={screen === 'trip' ? activeTab : null}
+        onClose={() => { setShowAppSettings(false); setUpdateInfo(null); }}
+      />
+    </Suspense>
+  ) : null;
+
   if (screen === 'home') {
     return (
       <div className="app-container">
@@ -1757,11 +1709,9 @@ function AppInner() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <ThemeToggle />
-            {isNative && (
-              <button onClick={() => setShowAppSettings(true)} className="icon-btn" title="הגדרות" aria-label="הגדרות">
-                <Settings size={16} />
-              </button>
-            )}
+            <button onClick={() => setShowAppSettings(true)} className="icon-btn" title="הגדרות" aria-label="הגדרות">
+              <Settings size={16} />
+            </button>
             <button
               onClick={async () => {
                 const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
@@ -1783,24 +1733,9 @@ function AppInner() {
             <span>גרסה {updateInfo.latest.versionName} זמינה · הקישו לעדכון</span>
           </button>
         )}
-        {showAppSettings && (
-          <Suspense fallback={null}>
-            <AppSettingsSheet
-              initial={updateInfo}
-              onNotifyChange={() => setNotifyVersion(v => v + 1)}
-              onClose={() => { setShowAppSettings(false); setUpdateInfo(null); }}
-            />
-          </Suspense>
-        )}
+        {settingsSheet}
 
         <main className="app-content">
-          <input
-            ref={importFileRef}
-            type="file"
-            accept=".json"
-            style={{ display: 'none' }}
-            onChange={handleImportFile}
-          />
           <Homepage
             trips={trips}
             currentUid={user.uid}
@@ -1810,11 +1745,6 @@ function AppInner() {
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={requestDeleteTrip}
             onShareTrip={(id) => setSharingTripId(id)}
-            onExportTrip={handleExportTrip}
-            onImportTrip={() => importFileRef.current?.click()}
-            exportBusyId={exportBusy}
-            importBusy={importBusy}
-            importError={importError}
             userName={user.displayName}
             pinnedTripId={pinnedTripId}
             onTogglePinned={handleTogglePinned}
@@ -1963,9 +1893,9 @@ function AppInner() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {selectedTripId && <InfoButton tripId={selectedTripId} />}
-          {selectedTripId && selectedTrip && (
-            <ExportMenu tripId={selectedTripId} trip={selectedTrip} activeTab={activeTab} />
-          )}
+          <button onClick={() => setShowAppSettings(true)} className="icon-btn" title="הגדרות, ייצוא וגיבוי" aria-label="הגדרות">
+            <Settings size={16} />
+          </button>
           {activeTab === 'flight' && ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]) && (
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('flight:openEdit'))}
@@ -1979,6 +1909,7 @@ function AppInner() {
           <ThemeToggle />
         </div>
       </header>
+      {settingsSheet}
 
       <main
         className="app-content"

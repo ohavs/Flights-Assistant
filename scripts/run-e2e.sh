@@ -7,7 +7,7 @@ set -m  # background jobs get their own process group, so cleanup stops their ch
 cd "$(dirname "$0")/.."
 OUT=.e2e
 TESTS=("${@:-tests/e2e/smoke.e2e.mjs}")
-[ $# -eq 0 ] && TESTS=(tests/e2e/smoke.e2e.mjs tests/e2e/layout.e2e.mjs tests/e2e/planning.e2e.mjs tests/e2e/flight.e2e.mjs tests/e2e/sheets.e2e.mjs tests/e2e/contrast.e2e.mjs tests/e2e/lists.e2e.mjs)
+[ $# -eq 0 ] && TESTS=(tests/e2e/smoke.e2e.mjs tests/e2e/layout.e2e.mjs tests/e2e/planning.e2e.mjs tests/e2e/flight.e2e.mjs tests/e2e/sheets.e2e.mjs tests/e2e/contrast.e2e.mjs tests/e2e/lists.e2e.mjs tests/e2e/settings.e2e.mjs)
 rm -rf "$OUT" && mkdir -p "$OUT"
 FIREBASE="npx -y firebase-tools@14.27.0"
 
