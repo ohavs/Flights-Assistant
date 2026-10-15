@@ -40,10 +40,24 @@ public class TripWidget extends AppWidgetProvider {
     static final String ACTION_OPEN = "com.ohavs.flightsassistant.OPEN_TRIP";
     private static final long HOUR = 3600_000L;
 
+    // The CI host (WidgetPreviewActivity) puts a snapshot and a clock in its
+    // widget's own options, so every redraw of that one widget, the
+    // system's too, shows the moment under test. Nothing else sets them.
+    static final String OPT_PREVIEW = "previewSnapshot", OPT_NOW = "previewNow";
+
     @Override
     public void onUpdate(Context ctx, AppWidgetManager m, int[] ids) {
-        String json = snapshot(ctx);
-        for (int id : ids) render(ctx, m, id, json, System.currentTimeMillis());
+        for (int id : ids) redraw(ctx, m, id);
+    }
+
+    private static void redraw(Context ctx, AppWidgetManager m, int id) {
+        android.os.Bundle o = m.getAppWidgetOptions(id);
+        if (o != null && o.containsKey(OPT_NOW)) {
+            String json = o.getString(OPT_PREVIEW, "");
+            render(ctx, m, id, json.isEmpty() ? null : json, o.getLong(OPT_NOW));
+        } else {
+            render(ctx, m, id, snapshot(ctx), System.currentTimeMillis());
+        }
     }
 
     static String snapshot(Context ctx) {
@@ -67,8 +81,7 @@ public class TripWidget extends AppWidgetProvider {
     /** Redraws every widget on the home screen, now. */
     static void refreshAll(Context ctx) {
         AppWidgetManager m = AppWidgetManager.getInstance(ctx);
-        String json = snapshot(ctx);
-        for (int id : ids(ctx)) render(ctx, m, id, json, System.currentTimeMillis());
+        for (int id : ids(ctx)) redraw(ctx, m, id);
     }
 
     static void render(Context ctx, AppWidgetManager m, int id, String json, long now) {

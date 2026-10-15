@@ -50,13 +50,19 @@ public class WidgetPreviewActivity extends Activity {
             finish();
             return;
         }
+        // The moment under test, kept with this widget (TripWidget.redraw):
+        // the system redraws it right after binding, and must draw the same.
+        Bundle opts = new Bundle();
+        opts.putString(TripWidget.OPT_PREVIEW, json == null ? "" : json);
+        opts.putLong(TripWidget.OPT_NOW, now);
+        m.updateAppWidgetOptions(id, opts);
         AppWidgetProviderInfo info = m.getAppWidgetInfo(id);
         AppWidgetHostView view = host.createView(getApplicationContext(), id, info);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#7FA4C9"));
         root.addView(view, new FrameLayout.LayoutParams(dp(wDp), dp(hDp), Gravity.CENTER));
         if (Build.VERSION.SDK_INT >= 31) {
-            view.updateAppWidgetSize(new Bundle(), Collections.singletonList(new SizeF(wDp, hDp)));
+            view.updateAppWidgetSize(opts, Collections.singletonList(new SizeF(wDp, hDp)));
         }
         setContentView(root);
         host.startListening();   // before the first render, so it is not missed
