@@ -1273,7 +1273,7 @@ function AppInner() {
   // Home screen widget (Android app): the current or next trips, their
   // planner days, packing and reminders, saved for the widget whenever any
   // of it changes (widgetData.js). Signed out, the widget says so.
-  const { palette } = useTheme();
+  const { palette, mode: themeMode } = useTheme();
   const widgetKey = widgetTrips(trips).map(t => t.id).join(',');
   const widgetSync = useRef(null);
   useEffect(() => {
@@ -1286,13 +1286,16 @@ function AppInner() {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         const current = document.documentElement.getAttribute('data-palette') || 'green';
+        // Light or dark as the app is set (ThemeContext), not the phone.
+        let theme = 'system';
+        try { theme = localStorage.getItem('theme') || 'system'; } catch { /* private mode */ }
         // The expense widget values a foreign expense in shekels at these.
         const rates = await import('./services/currency').then(c => c.refreshRatesIfStale()).then(r => r?.rates).catch(() => null);
         import('./lib/native/widget').then(w => w.saveWidget(widgetSnapshot({
           trips: tripsRef.current,
           daysByTrip: data.days, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
           expensesByTrip: data.expenses, rates,
-          palette: current,
+          palette: current, theme,
         }))).catch(() => {});
       }, 600);
     };
@@ -1305,8 +1308,8 @@ function AppInner() {
     sync();
     return () => { offs.forEach(off => off()); clearTimeout(timer); widgetSync.current = null; };
   }, [widgetKey, signedInUid, loading]);
-  // A renamed trip, a moved flight or another palette: the same data, saved again.
-  useEffect(() => { widgetSync.current?.(); }, [trips, palette]);
+  // A renamed trip, a moved flight, another palette or theme: the same data, saved again.
+  useEffect(() => { widgetSync.current?.(); }, [trips, palette, themeMode]);
 
   // The expense widget saves on its own with the user's sign-in (the
   // refresh token, kept on the phone); signed out, it is taken back.

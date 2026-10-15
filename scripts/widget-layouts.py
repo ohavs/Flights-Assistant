@@ -8,6 +8,7 @@
 # Rubik 800 titles and numbers, sticker icons on a soft square, soft chips
 # and pills, stat tiles. Colours per palette: WidgetKit.theme.
 import os
+import re
 
 OUT = 'android/app/src/main/res/layout/'
 NS = 'xmlns:android="http://schemas.android.com/apk/res/android"'
@@ -286,9 +287,83 @@ LAYOUTS = {
 PREVIEWS = ['widget_trip', 'widget_big', 'widget_pack', 'widget_plan', 'widget_reminders', 'widget_expense']
 
 HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-layouts.py; edit there. {} -->\n'
+
+# ── Light or dark by the app's own setting, not the phone's ────────────────
+# The app can be set to light or dark whatever the phone is (ThemeContext).
+# A widget's colours come from resources the launcher resolves by the
+# phone's mode, so for each fixed theme there is a copy of every layout and
+# of every drawable it uses, with the colours of that theme spelled out
+# (w_text_dark, widget_tile_dark, …). WidgetThemes.java picks the copy.
+RES = 'android/app/src/main/res/'
+THEMES = ('light', 'dark')
+THEMED = ['widget_bg', 'widget_tile', 'widget_soft', 'widget_chip', 'widget_brand', 'widget_dot', 'widget_progress',
+          'widget_route', 'ic_ws_plane', 'ic_ws_map', 'ic_ws_checklist', 'ic_ws_bell', 'ic_ws_wallet']
+# The colour (and background) each text style gives, so a copy can say it outright.
+STYLE_COLOR = {'WText': 'w_text', 'WText.Muted': 'w_muted', 'WBold': 'w_text', 'WBold.Title': 'w_text',
+               'WBold.Hero': 'w_text', 'WBold.Key': 'w_text', 'WBold.Chip': 'w_accent', 'WBold.Pill': 'w_accent',
+               'WBold.Key.Cur': 'w_accent', 'WBold.Key.Save': 'w_on_brand'}
+STYLE_BG = {'WBold.Chip': 'widget_chip', 'WBold.Pill': 'widget_chip'}
+COLOR_REF = re.compile(r'@color/(w_\w+)')
+
+
+def themed_value(val, t):
+    val = COLOR_REF.sub(lambda m: f'@color/{m.group(1)}_{t}', val)
+    if val.startswith('@drawable/') and val[len('@drawable/'):] in THEMED:
+        val = f'{val}_{t}'
+    return val
+
+
+def themed(view, t):
+    attrs = {k: themed_value(v, t) if isinstance(v, str) else v for k, v in view.attrs.items()}
+    style = attrs.get('style', '')
+    if style.startswith('@style/'):
+        name = style[len('@style/'):]
+        assert name in STYLE_COLOR, f'widget-layouts.py: no colour for style {name}'
+        attrs.setdefault('textColor', f'@color/{STYLE_COLOR[name]}_{t}')
+        if name in STYLE_BG:
+            attrs.setdefault('background', f'@drawable/{STYLE_BG[name]}_{t}')
+    return V(view.tag, attrs, [themed(k, t) for k in view.kids], view.sample, view.preview)
+
+
+def colors(path):
+    return re.findall(r'<color name="(w_\w+)">([^<]+)</color>', open(path, encoding='utf8').read())
+
+
+with open(RES + 'values/widget_colors_fixed.xml', 'w') as f:
+    f.write('<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-layouts.py from widget_colors.xml '
+            '(light) and values-night (dark); edit those. The widgets\' colours in one theme whatever the phone\'s. -->\n<resources>\n')
+    for t, path in (('light', RES + 'values/widget_colors.xml'), ('dark', RES + 'values-night/widget_colors.xml')):
+        for name, value in colors(path):
+            f.write(f'    <color name="{name}_{t}">{value}</color>\n')
+    f.write('</resources>\n')
+for d in THEMED:
+    src = open(RES + 'drawable/' + d + '.xml', encoding='utf8').read()
+    for t in THEMES:
+        body = COLOR_REF.sub(lambda m: f'@color/{m.group(1)}_{t}', src)
+        body = body.replace('<?xml version="1.0" encoding="utf-8"?>\n',
+                            f'<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-layouts.py from {d}.xml, {t}; edit that. -->\n', 1)
+        with open(RES + 'drawable/' + d + '_' + t + '.xml', 'w') as f:
+            f.write(body)
+
+java = ['package com.ohavs.flightsassistant.widget;', '', 'import com.ohavs.flightsassistant.R;', '',
+        '/** Written by scripts/widget-layouts.py; edit there. A layout or drawable in the app\'s light or dark theme. */',
+        'final class WidgetThemes {', '    private WidgetThemes() {}', '',
+        '    static int layout(int base, boolean dark) {']
+for name in LAYOUTS:
+    java.append(f'        if (base == R.layout.{name}) return dark ? R.layout.{name}_dark : R.layout.{name}_light;')
+java += ['        return base;', '    }', '', '    static int drawable(int base, boolean dark) {']
+for d in THEMED:
+    java.append(f'        if (base == R.drawable.{d}) return dark ? R.drawable.{d}_dark : R.drawable.{d}_light;')
+java += ['        return base;', '    }', '}', '']
+with open('android/app/src/main/java/com/ohavs/flightsassistant/widget/WidgetThemes.java', 'w') as f:
+    f.write('\n'.join(java))
+
 for name, (make, about) in LAYOUTS.items():
     with open(OUT + name + '.xml', 'w') as f:
         f.write(HEAD.format(about) + make(False).xml(0, False, root=True))
+    for t in THEMES:
+        with open(OUT + name + '_' + t + '.xml', 'w') as f:
+            f.write(HEAD.format(f'{name}, always {t} (the app set to {t}).') + themed(make(False), t).xml(0, False, root=True))
     if name in PREVIEWS:
         with open(OUT + name + '_preview.xml', 'w') as f:
             f.write(HEAD.format('The widget picker\'s preview: ' + name + ' with sample text.') + make(True).xml(0, True, root=True))

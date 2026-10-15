@@ -26,12 +26,12 @@ public class CountdownWidget extends BaseWidget {
     }
 
     static RemoteViews draw(Context ctx, WidgetKit.Moment m) {
-        RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_big);
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_big));
         String tab;
         if (m.flightFirst()) {
             tab = "flight";
             JSONObject f = m.next;
-            v.setImageViewResource(R.id.icon, R.drawable.ic_ws_plane);
+            v.setImageViewResource(R.id.icon, m.drawable(R.drawable.ic_ws_plane));
             v.setTextViewText(R.id.chip, WidgetKit.legName(f));
             String[] n = WidgetKit.countdownBig(f, m.today, m.now);
             v.setTextViewText(R.id.big, WidgetKit.big("", n[0], n[1]));
@@ -39,7 +39,7 @@ public class CountdownWidget extends BaseWidget {
             v.setTextViewText(R.id.caption, route.isEmpty() ? when : route + "\n" + when);
         } else if (m.during) {
             tab = "planning";
-            v.setImageViewResource(R.id.icon, R.drawable.ic_ws_map);
+            v.setImageViewResource(R.id.icon, m.drawable(R.drawable.ic_ws_map));
             v.setTextViewText(R.id.chip, m.dayN == m.dayTotal ? "יום אחרון" : "בטיול");
             v.setTextViewText(R.id.big, WidgetKit.big("יום", String.valueOf(m.dayN), "מתוך " + m.dayTotal));
             JSONObject day = m.day(m.today);
@@ -51,13 +51,13 @@ public class CountdownWidget extends BaseWidget {
         } else {
             // A trip ahead with no flight on it: until its first day.
             tab = "planning";
-            v.setImageViewResource(R.id.icon, R.drawable.ic_ws_map);
+            v.setImageViewResource(R.id.icon, m.drawable(R.drawable.ic_ws_map));
             v.setTextViewText(R.id.chip, "עד הטיול");
             int d = WidgetKit.days(m.today, m.start);
             v.setTextViewText(R.id.big, d == 1 ? WidgetKit.big("", "מחר", "") : WidgetKit.big("", String.valueOf(d), "ימים"));
             v.setTextViewText(R.id.caption, m.trip.optString("name"));
         }
-        WidgetKit.theme(ctx, v, m.palette, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip));
+        WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip));
         v.setOnClickPendingIntent(R.id.root, WidgetKit.open(ctx, m.tripId, tab));
         return v;
     }

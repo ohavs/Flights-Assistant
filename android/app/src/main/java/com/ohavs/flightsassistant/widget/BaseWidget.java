@@ -71,13 +71,13 @@ public abstract class BaseWidget extends AppWidgetProvider {
             mo = WidgetKit.moment(json == null ? null : new JSONObject(json), now);
         } catch (Exception e) {
             Log.w("TripWidget", "bad snapshot", e);
-            return WidgetKit.message(ctx, "green", "פתחו את האפליקציה", "כדי לעדכן את הווידג׳ט", null, null);
+            return WidgetKit.message(ctx, null, "פתחו את האפליקציה", "כדי לעדכן את הווידג׳ט", null, null);
         }
         if (mo.snapshot == null) {
-            return WidgetKit.message(ctx, mo.palette, "התחברו באפליקציה", "והטיול הבא יופיע כאן", null, null);
+            return WidgetKit.message(ctx, mo, "התחברו באפליקציה", "והטיול הבא יופיע כאן", null, null);
         }
         if (mo.trip == null) {
-            return WidgetKit.message(ctx, mo.palette, "אין טיול קרוב", "לחצו כדי לתכנן את הבא", null, null);
+            return WidgetKit.message(ctx, mo, "אין טיול קרוב", "לחצו כדי לתכנן את הבא", null, null);
         }
         List<SizeF> sizes = WidgetKit.sizes(o);
         float[] d = defaultSize();
@@ -102,7 +102,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
         } catch (RuntimeException e) {
             // Something it did not expect: say so quietly rather than show nothing.
             Log.w("TripWidget", "cannot draw " + getClass().getSimpleName(), e);
-            return WidgetKit.message(ctx, mo.palette, "פתחו את האפליקציה", "כדי לעדכן את הווידג׳ט", mo.tripId, null);
+            return WidgetKit.message(ctx, mo, "פתחו את האפליקציה", "כדי לעדכן את הווידג׳ט", mo.tripId, null);
         }
     }
 }

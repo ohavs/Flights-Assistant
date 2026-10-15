@@ -5,7 +5,6 @@ import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
@@ -20,6 +19,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -63,9 +63,13 @@ public class ExpenseSheetActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle saved) {
-        super.onCreate(saved);
         widgetId = getIntent().getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
         WidgetKit.Moment m = WidgetKit.momentOf(this, AppWidgetManager.getInstance(this).getAppWidgetOptions(widgetId));
+        // Light or dark as the app is set, like the widget; else as the phone is.
+        if (m != null && m.forced()) {
+            getDelegate().setLocalNightMode(m.dark(this) ? AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO);
+        }
+        super.onCreate(saved);
         SharedPreferences p = ExpenseWidget.prefs(this);
         String typed = p.getString("amount_" + widgetId, "");
         amount = ExpenseWidget.value(typed);
@@ -78,8 +82,7 @@ public class ExpenseSheetActivity extends AppCompatActivity {
         currency = cur.optString("code", "ILS");
         symbol = cur.optString("symbol", currency);
         ils = shekels(m.snapshot.optJSONObject("rates"), amount, currency);
-        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        colors = WidgetKit.colors(m.palette)[dark ? 1 : 0];
+        colors = WidgetKit.colors(m.palette)[m.dark(this) ? 1 : 0];
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         setContentView(R.layout.expense_sheet);

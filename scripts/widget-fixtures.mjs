@@ -41,6 +41,9 @@ const cases = [
   ['soon', at('2026-11-03T04:20:00Z'), { palette: 'ocean' }],
   ['plan', at('2026-11-04T09:00:00Z'), { palette: 'sand' }],
   ['plan-violet', at('2026-11-04T09:00:00Z'), { palette: 'violet' }],
+  // The app set to dark, or to light, whatever the phone is.
+  ['plan-app-dark', at('2026-11-04T09:00:00Z'), { palette: 'sand', theme: 'dark' }],
+  ['plan-app-light', at('2026-11-04T09:00:00Z'), { palette: 'sand', theme: 'light' }],
   ['return', at('2026-11-06T09:00:00Z'), { palette: 'coral' }],
   ['ended', at('2026-12-01T09:00:00Z'), { palette: 'green' }],
 ];

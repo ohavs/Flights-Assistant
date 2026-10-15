@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py from widget_dot.xml, dark; edit that. -->
+<!-- An open reminder or a plan row with no time: a ring like the app's "done" circle. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <stroke android:width="2dp" android:color="@color/w_dot_dark" />
+    <size android:width="16dp" android:height="16dp" />
+</shape>

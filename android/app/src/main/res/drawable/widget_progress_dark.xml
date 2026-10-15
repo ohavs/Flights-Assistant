@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py from widget_progress.xml, dark; edit that. -->
+<!-- Packing progress: a rounded track and fill (tinted to the palette on Android 12 and up). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/w_track_dark" />
+            <corners android:radius="999dp" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <scale android:scaleWidth="100%">
+            <shape android:shape="rectangle">
+                <solid android:color="@color/w_brand_dark" />
+                <corners android:radius="999dp" />
+            </shape>
+        </scale>
+    </item>
+</layer-list>

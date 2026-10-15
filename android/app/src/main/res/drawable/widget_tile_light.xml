@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py from widget_tile.xml, light; edit that. -->
+<!-- A stat tile on the card (surface-2), like the app's flight card tiles. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/w_tile_light" />
+    <corners android:radius="18dp" />
+</shape>

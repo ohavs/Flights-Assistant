@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py from widget_chip.xml, dark; edit that. -->
+<!-- Chips and time pills: the palette's soft tint, like the app's "טיסת הלוך" pill. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/w_soft_dark" />
+    <corners android:radius="999dp" />
+</shape>
