@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell, FileType2, FileText, FileSpreadsheet,
-  Archive, Upload, Loader2 } from 'lucide-react';
+  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft } from 'lucide-react';
 import Sheet, { SheetSection } from '../ui/Sheet';
 import Notice from '../ui/Notice';
+import { Pill } from '../ui/kit';
 import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission } from '../lib/native/notify';
+import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
 import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
@@ -14,8 +16,9 @@ import { exportTripBackup, saveBackupFile, importTripBackup } from '../services/
    Both: export a trip to PDF, Word or Excel; back a trip up to a file and
    import one back. In the app a file opens Android's share sheet (save
    to Files or Drive, or send it), since a WebView cannot download.
-   App only: notifications, and the installed version with "check for
-   updates" — compare with the latest GitHub Release, download it in-app,
+   App only: notifications; the permissions the app uses, each with its
+   state and a shortcut to Android's page for it; and the installed
+   version with "check for updates" — compare with the latest GitHub Release, download it in-app,
    verify its checksum and open Android's installer.
    `initial` is an update check from the launch banner, so the sheet opens
    straight on it. `onNotifyChange` reschedules after a switch. `trips`
@@ -47,14 +50,51 @@ function NotifySettings({ onChange }) {
         ))}
       </div>
       {perm === 'denied' && Object.values(prefs).some(Boolean) && (
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', lineHeight: 1.5, paddingInline: 4 }}>
-          ההתראות חסומות בטלפון. אפשר להפעיל אותן בהגדרות הטלפון ← אפליקציות ← עוזר טיסות ← התראות.
-        </div>
+        <div className="settings-hint">ההתראות חסומות בטלפון. אפשר להפעיל אותן ב"הרשאות" כאן למטה.</div>
       )}
     </SheetSection>
   );
 }
 
+
+const PERMISSION_ICONS = { notifications: Bell, exactAlarms: AlarmClock, installs: Download };
+
+// Each permission with its state; a tap opens Android's page for it. Back
+// from there (resume) the states refresh, and notifications are scheduled
+// again, so a newly allowed exact alarm applies to them too.
+function PermissionSettings({ onChange }) {
+  const [st, setSt] = useState(null);
+  const changed = useRef(onChange);
+  useEffect(() => { changed.current = onChange; }, [onChange]);
+  useEffect(() => {
+    const refresh = () => permissionStatus().then(setSt);
+    refresh();
+    const sub = CapApp.addListener('resume', () => { refresh(); changed.current?.(); });
+    return () => { sub.then((s) => s.remove()); };
+  }, []);
+  return (
+    <SheetSection label="הרשאות">
+      <div className="list-group">
+        {PERMISSIONS.map(p => {
+          const Icon = PERMISSION_ICONS[p.key] || ShieldCheck;
+          const on = st?.[p.key];
+          return (
+            <button key={p.key} type="button" className="list-row" onClick={() => openPermission(p.key)}>
+              <Icon size={16} className="list-row-icon" />
+              <span className="list-row-label">
+                {p.label}
+                <span className="list-row-hint">{p.hint}</span>
+              </span>
+              {st && <Pill size="sm" tone={on ? 'mint' : 'red'}>{on ? 'מאושר' : 'לא מאושר'}</Pill>}
+              <ChevronLeft size={16} className="list-row-chevron" />
+            </button>
+          );
+        })}
+      </div>
+      <div className="settings-hint">לחיצה פותחת את המסך של אנדרואיד להפעלה או לכיבוי.</div>
+    </SheetSection>
+  );
+}
 
 const SCOPES = [
   { key: 'all',       label: 'הכל' },
@@ -313,6 +353,7 @@ export default function AppSettingsSheet({ onClose, initial, onNotifyChange, tri
   return (
     <Sheet title="הגדרות" onClose={onClose}>
       {isNative && <NotifySettings onChange={onNotifyChange} />}
+      {isNative && <PermissionSettings onChange={onNotifyChange} />}
       {uid && <FileSettings trips={trips || []} uid={uid} tripId={tripId} activeTab={activeTab} />}
       {isNative && <UpdateSettings initial={initial} />}
     </Sheet>

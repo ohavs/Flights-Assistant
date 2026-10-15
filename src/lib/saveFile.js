@@ -2,10 +2,8 @@
 // On the web the browser downloads it. In the Android app a WebView cannot
 // download a blob, so Android's share sheet opens instead: save it to Files
 // or Drive, or send it on (AppToolsPlugin.java).
-import { registerPlugin } from '@capacitor/core';
 import { isNative } from './platform.js';
-
-const AppTools = registerPlugin('AppTools');
+import { AppTools } from './native/appTools.js';
 
 const toBase64 = (blob) => new Promise((resolve, reject) => {
   const r = new FileReader();
