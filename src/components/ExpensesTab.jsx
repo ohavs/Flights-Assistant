@@ -620,7 +620,7 @@ export default function ExpensesTab({ tripId }) {
                           ]}
                           onOpen={canEdit ? () => openForm(expense) : undefined}
                           actions={canEdit ? [
-                            { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => openForm(expense), swipe: true },
+                            { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => openForm(expense) },
                             { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(expense.id), danger: true, swipe: true },
                           ] : []}
                         />

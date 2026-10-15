@@ -265,7 +265,7 @@ export default function BookingsTab({ tripId }) {
         muted={cancelled}
         onOpen={canEdit ? () => startEdit(b) : undefined}
         actions={canEdit ? [
-          { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(b), swipe: true },
+          { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(b) },
           { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(b), danger: true, swipe: true },
         ] : []}
       >

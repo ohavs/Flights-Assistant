@@ -1,6 +1,7 @@
 // Every list row is a ListCard and answers a finger the same way, on a
-// touch phone: tap opens the item, ⋯ (always visible, no hover) opens its
-// actions, and the actions do what they say.
+// touch phone: a tap opens (or ticks) the item, a swipe shows what the tap
+// does not do, and there is no ⋯ — a third way to the same place. With a
+// mouse, which cannot swipe, ⋯ is there instead.
 //   bash scripts/run-e2e.sh tests/e2e/lists.e2e.mjs
 import { chromium } from 'playwright';
 
@@ -17,18 +18,31 @@ const tab = (label) => page.locator(`nav button.nav-item[aria-label="${label}"]`
 const card = (text) => page.locator('.list-card', { hasText: text }).first();
 const sheet = (name) => page.getByRole('dialog', { name });
 
-// The ⋯ button is there and can be tapped: on screen, not hidden, not
-// transparent.
-async function moreIsVisible(text) {
+// Is the ⋯ drawn: on screen, a real size, not transparent.
+const moreDrawn = (loc) => loc.evaluate(el => {
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  return r.width > 20 && r.height > 20 && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5;
+});
+// On a phone ⋯ is not drawn (it stays in the page for screen readers).
+async function noMoreOnPhone(text) {
   const more = card(text).locator('button.list-card-more');
-  await more.waitFor();
-  const shown = await more.evaluate(el => {
-    const r = el.getBoundingClientRect();
-    const cs = getComputedStyle(el);
-    return r.width > 20 && r.height > 20 && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5;
-  });
-  if (!shown) throw new Error('⋯ is not visible');
-  return more;
+  if ((await more.count()) && await moreDrawn(more)) throw new Error('⋯ is drawn on a phone');
+}
+// Swipe a card aside with a finger and return the action buttons it shows.
+const cdp = await ctx.newCDPSession(page);
+async function swipeOpen(text) {
+  const box = await card(text).boundingBox();
+  const y = box.y + box.height / 2, x0 = box.x + 40;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y }] });
+  for (let i = 1; i <= 8; i++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + 25 * i, y }] });
+    await page.waitForTimeout(16);
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(350);
+  // The actions are uncovered beside the card, in its .swipe-row.
+  return page.locator('.swipe-row').filter({ has: card(text) }).first();
 }
 
 await page.goto('http://localhost:5173/');
@@ -66,12 +80,11 @@ await step('bookings: tapping the card opens its form', async () => {
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
 });
-await step('bookings: ⋯ shows edit and delete, and delete works', async () => {
-  const more = await moreIsVisible('ארוחה בלה מארה');
-  await more.tap();
-  const menu = sheet('ארוחה בלה מארה');
-  await menu.getByRole('button', { name: 'עריכה' }).waitFor();
-  await menu.getByRole('button', { name: 'מחיקה' }).click();
+await step('bookings: no ⋯ on a phone; a swipe deletes (the tap already edits)', async () => {
+  await noMoreOnPhone('ארוחה בלה מארה');
+  const row = await swipeOpen('ארוחה בלה מארה');
+  if (await row.getByRole('button', { name: 'עריכה' }).count()) throw new Error('swipe repeats the tap (עריכה)');
+  await row.getByRole('button', { name: 'מחיקה' }).tap();
   await page.locator('.modal-overlay button.btn-primary.danger').click();
   await card('ארוחה בלה מארה').waitFor({ state: 'detached' });
 });
@@ -87,7 +100,7 @@ await step('expenses: a new expense is a ListCard with its category icon', async
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/lists-expenses.png' });
 });
-await step('expenses: tap opens the form; ⋯ deletes', async () => {
+await step('expenses: tap opens the form; a swipe deletes', async () => {
   await card('קפה וקרואסון').locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
   await page.locator('.modal-overlay .chip[aria-pressed="true"]').first().waitFor();   // currency, category
@@ -96,15 +109,15 @@ await step('expenses: tap opens the form; ⋯ deletes', async () => {
   if (min < 16) throw new Error(`a field is ${min}px`);
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
-  const more = await moreIsVisible('קפה וקרואסון');
-  await more.tap();
-  await sheet('קפה וקרואסון').getByRole('button', { name: 'מחיקה' }).click();
+  await noMoreOnPhone('קפה וקרואסון');
+  const row = await swipeOpen('קפה וקרואסון');
+  await row.getByRole('button', { name: 'מחיקה' }).tap();
   await page.locator('.modal-overlay button.btn-primary.danger').click();
   await card('קפה וקרואסון').waitFor({ state: 'detached' });
 });
 
 // ── Important info (the header button's sheet) ──
-await step('info: items are ListCards; ⋯ edits', async () => {
+await step('info: items are ListCards; a tap edits; "+ פריט" ends an open group', async () => {
   await page.locator('header button[aria-label="מידע חשוב"]').click();
   await page.locator('.modal-header', { hasText: 'מידע חשוב' }).waitFor();
   // Defaults arrive collapsed under "מספרי חירום": open the group.
@@ -114,9 +127,10 @@ await step('info: items are ListCards; ⋯ edits', async () => {
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/lists-info.png' });
   const title = (await first.locator('.list-card-title').innerText()).trim();
-  const more = await moreIsVisible(title);
-  await more.tap();
-  await sheet(title).getByRole('button', { name: 'עריכה' }).click();
+  await noMoreOnPhone(title);
+  await page.locator('.modal-overlay .chip.add', { hasText: 'פריט' }).first().waitFor();
+  if (await page.locator('.modal-overlay .section-header-btn').count()) throw new Error('a + is still in a group header');
+  await first.locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.sheet-footer').waitFor({ state: 'detached' });
@@ -147,12 +161,19 @@ await step('checklist: the circle ticks an item; done is quiet, not struck throu
   if (deco.includes('line-through')) throw new Error('done item is struck through');
   await page.waitForTimeout(400);
   await page.screenshot({ path: '.e2e/lists-checklist.png' });
-  const more = await moreIsVisible(title);
-  await more.tap();
-  await sheet(title).getByRole('button', { name: 'עריכה' }).click();
+  // The tap ticks; editing and deleting are a swipe away.
+  await noMoreOnPhone(title);
+  const swiped = await swipeOpen(title);
+  await swiped.getByRole('button', { name: 'מחיקה' }).waitFor();
+  await swiped.getByRole('button', { name: 'עריכה' }).tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.sheet-footer').waitFor({ state: 'detached' });
+});
+
+await step('checklist: no + in the category headers; "+ פריט" ends an open category', async () => {
+  if (await page.locator('.app-content .section-header-btn').count()) throw new Error('a + is still in a category header');
+  await page.locator('.app-content .chip.add', { hasText: 'פריט' }).first().waitFor();
 });
 
 await step('checklist: a category has a visible ⋯ with rename and delete (no long press)', async () => {
@@ -237,6 +258,23 @@ for (const name of ['טיסה ומלון', 'תכנון טיול', "צ'קליסט
     await expectClean('.app-container');
   });
 }
+
+// A mouse cannot swipe: there ⋯ is drawn and opens the actions.
+await step('with a mouse, ⋯ is drawn and opens the actions', async () => {
+  const desk = await browser.newPage({ viewport: { width: 1200, height: 900 }, serviceWorkers: 'block' });
+  try {
+    await desk.goto('http://localhost:5173/');
+    await desk.getByText('התחבר עם Google').waitFor();
+    await desk.evaluate(() => window.__e2eSignIn('lists@example.com'));
+    await desk.locator('.trip-card', { hasText: 'רשימות' }).getByText('פתח טיול').click();
+    await desk.locator('nav button.nav-item[aria-label="הזמנות"]').click();
+    const more = desk.locator('.list-card', { hasText: 'סיור' }).first().locator('button.list-card-more');
+    await more.waitFor();
+    if (!(await moreDrawn(more))) throw new Error('⋯ is not drawn for a mouse');
+    await more.click();
+    await desk.getByRole('dialog', { name: 'סיור' }).getByRole('button', { name: 'מחיקה' }).waitFor();
+  } finally { await desk.close(); }
+});
 
 await browser.close();
 process.exit(failed ? 1 : 0);

@@ -599,14 +599,7 @@ function SortableCategoryBlock({
             { key: 'rename', label: 'שינוי שם', Icon: Pencil, run: () => { setEditingCat(category); setEditCatText(category); } },
             { key: 'del', label: 'מחיקת הקטגוריה', Icon: Trash2, run: () => handleDeleteCategory(category), danger: true },
           ] : null}
-        >
-          {canEdit && (
-            <button type="button" aria-label={`הוסף פריט ל${category}`} className="section-header-btn"
-              onClick={() => { setQuickAddCat(category); setQuickAddText(''); if (!isOpen) toggleCategory(category); }}>
-              <Plus size={16} />
-            </button>
-          )}
-        </SectionHeader>
+        />
       )}
 
       {/* Category items + quick-add */}
@@ -662,7 +655,7 @@ function SortableCategoryBlock({
                 )}
                 actions={canEdit ? [
                   { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => handleStartEdit(item), swipe: true },
-                  allMembers.length > 1 && { key: 'assign', label: 'שיוך לחברים', Icon: User, run: () => setAssignPickerItemId(item.id) },
+                  allMembers.length > 1 && { key: 'assign', label: 'שיוך לחברים', Icon: User, run: () => setAssignPickerItemId(item.id), swipe: true },
                   { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDeleteItem(item.id), danger: true, swipe: true },
                 ] : []}
               />
@@ -692,11 +685,10 @@ function SortableCategoryBlock({
                 </button>
               </form>
             ) : (
-              <button type="button"
-                onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 10, border: '1px dashed var(--p-22)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, alignSelf: 'flex-start' }}>
-                <Plus size={14} />
-                הוסף לרשימה
+              <button type="button" className="chip add" style={{ alignSelf: 'flex-start' }}
+                aria-label={`הוסף פריט ל${category}`}
+                onClick={() => { setQuickAddCat(category); setQuickAddText(''); }}>
+                <Plus size={14} /> פריט
               </button>
             )
           )}
