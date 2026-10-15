@@ -1,10 +1,12 @@
 // The palettes of settings → "מראה" (index.css, [data-palette]) and the
-// light/dark choices. `swatch`: [brand, page] for the picker's disc.
+// light/dark choices. Each is shown as the app icon drawn in its colours
+// (public/app-icons/<icon>.png, scripts/app-icons.mjs) and named after it;
+// a tap changes the colours and the background, never the app's own icon.
 export const PALETTES = [
-  { key: 'green',  label: 'ירוק',    swatch: ['#22A45D', '#F6F6F3'] },
-  { key: 'ocean',  label: 'כחול ים', swatch: ['#2B9AD6', '#F2F6F8'] },
-  { key: 'violet', label: 'סגול',    swatch: ['#9B82F6', '#F6F4FA'] },
-  { key: 'sand',   label: 'חול חם',  swatch: ['#E99B4C', '#F8F4EC'] },
-  { key: 'coral',  label: 'שקיעה',   swatch: ['#F47C6A', '#FBF3F1'] },
+  { key: 'green',  label: 'קלאסי', icon: 'classic' },
+  { key: 'coral',  label: 'שקיעה', icon: 'sunset' },
+  { key: 'violet', label: 'לילה',  icon: 'night' },
+  { key: 'sand',   label: 'מפה',   icon: 'map' },
+  { key: 'ocean',  label: 'ים',    icon: 'sea' },
 ];
 export const MODES = ['light', 'dark', 'system'];

@@ -327,8 +327,7 @@ function LookSettings() {
         {PALETTES.map(p => (
           <button key={p.key} type="button" role="radio" aria-checked={palette === p.key}
             className="palette-swatch" onClick={() => setPalette(p.key)}>
-            <span className="palette-swatch-dot" aria-hidden="true"
-              style={{ background: `linear-gradient(135deg, ${p.swatch[1]} 0 50%, ${p.swatch[0]} 50% 100%)` }} />
+            <img className="palette-swatch-icon" src={`/app-icons/${p.icon}.png`} alt="" />
             <span>{p.label}</span>
           </button>
         ))}

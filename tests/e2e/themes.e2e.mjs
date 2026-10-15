@@ -64,8 +64,19 @@ await step('a fresh device follows the phone, green', async () => {
   await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'light');
 });
 
+// The palettes are picked by the app icon drawn in each one's colours.
+await step('the palettes show as the five app icons, all loaded', async () => {
+  await openLook();
+  const icons = await sheet().locator('[role="radiogroup"][aria-label="ערכת צבעים"] img.palette-swatch-icon')
+    .evaluateAll(imgs => imgs.map(i => ({ src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0 })));
+  if (icons.length !== 5 || icons.some(i => !i.ok)) throw new Error(JSON.stringify(icons));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: '.e2e/themes-picker.png' });
+  await closeSheet();
+});
+
 const seen = new Set();
-for (const palette of ['ירוק', 'כחול ים', 'סגול', 'שקיעה', 'חול חם']) {
+for (const palette of ['קלאסי', 'ים', 'לילה', 'שקיעה', 'מפה']) {
   for (const mode of ['בהיר', 'כהה']) {
     await step(`${palette}, ${mode}: readable, and the page itself changes`, async () => {
       await openLook();
@@ -90,7 +101,7 @@ for (const palette of ['ירוק', 'כחול ים', 'סגול', 'שקיעה', '�
         const cs = getComputedStyle(el, '::before');
         return { display: cs.display, events: cs.pointerEvents, z: cs.zIndex };
       });
-      const want = palette === 'ירוק' ? 'none' : 'block';
+      const want = palette === 'קלאסי' ? 'none' : 'block';
       if (tex.display !== want) throw new Error(`texture display ${tex.display}, expected ${want}`);
       if (want === 'block' && (tex.events !== 'none' || tex.z !== '-1')) throw new Error(`texture layer ${JSON.stringify(tex)}`);
       await page.screenshot({ path: `.e2e/themes-${palette.replace(' ', '-')}-${mode}.png` });
@@ -123,7 +134,7 @@ await step('the choice survives a reload; the header switch flips light/dark', a
   await openLook();
   if ((await sheet().getByRole('radio', { name: 'בהיר' }).getAttribute('aria-checked')) !== 'true') throw new Error('settings do not show the switch');
   await sheet().getByRole('radio', { name: 'לפי הטלפון' }).click();
-  await sheet().getByRole('radio', { name: 'ירוק' }).click();
+  await sheet().getByRole('radio', { name: 'קלאסי' }).click();
   await closeSheet();
 });
 

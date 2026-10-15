@@ -1826,9 +1826,8 @@ input[type="datetime-local"].form-control {
 .settings-group { gap: 4px; }
 .settings-group + .settings-group { border-top: 1px solid var(--ink-6); padding-top: 4px; }
 .settings-group-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
-/* Settings → "מראה": the five palettes, a split disc each (page and
-   brand colour), the picked one ringed in the accent. In the app, the
-   launcher icons the same way, each with its own picture. */
+/* Settings → "מראה": the five palettes, each shown as the app icon drawn
+   in its colours, the picked one ringed in the accent. */
 .palette-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .palette-swatch {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -1837,10 +1836,7 @@ input[type="datetime-local"].form-control {
   font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .palette-swatch[aria-checked="true"] { border-color: var(--accent); background: var(--p-8); }
-.palette-swatch-dot {
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 2px solid var(--ink-12); box-shadow: var(--shadow-sm);
-}
+.palette-swatch-icon { width: 46px; height: 46px; border-radius: 12px; box-shadow: var(--shadow-sm); }
 .settings-hint { font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.5; padding-inline: 4px; }
 .settings-time { padding-inline: 4px; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }

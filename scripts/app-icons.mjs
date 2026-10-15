@@ -1,10 +1,14 @@
-// The app's launcher icon. Five designs were drawn (8.35.0); the app uses
-// one, APP_ICON ("map", the owner's pick in 8.40.0, when switching the
-// icon from settings was dropped). It is an SVG on Android's 108dp
-// adaptive-icon grid, rendered with Chromium into
-//   android/app/src/main/res/mipmap-*/ic_launcher_{background,foreground,monochrome}.png
-//   android/app/src/main/res/mipmap-*/ic_launcher[_round].png   (Android 7)
-//   android/app/src/main/res/mipmap-anydpi-v26/ic_launcher[_round].xml
+// The app's icons. Five designs, each an SVG on Android's 108dp
+// adaptive-icon grid, rendered with Chromium.
+// - The app's own icon, on Android and on the web, is one of them:
+//   APP_ICON ("map", the owner's pick, 8.40.0/8.41.0).
+//     android/app/src/main/res/mipmap-*/ic_launcher_{background,foreground,monochrome}.png
+//     android/app/src/main/res/mipmap-*/ic_launcher[_round].png   (Android 7)
+//     android/app/src/main/res/mipmap-anydpi-v26/ic_launcher[_round].xml
+//     public/favicon.svg, public/pwa-{192x192,512x512}.png, public/pwa-maskable-512x512.png,
+//     public/apple-touch-icon.png
+// - All five stand for the palettes in settings → "מראה" (a tap changes
+//   the colours and the background, not the icon): public/app-icons/<key>.png
 // --preview draws all five side by side, to compare.
 //   node scripts/app-icons.mjs [--preview out.png]
 // Keep what matters inside the 66dp circle in the middle (21..87): a
@@ -218,6 +222,19 @@ for (const icon of ICONS.filter(i => i.key === APP_ICON)) {
   mkdirSync(`${RES}/mipmap-anydpi-v26`, { recursive: true });
   writeFileSync(`${RES}/mipmap-anydpi-v26/${name}.xml`, xml);
   writeFileSync(`${RES}/mipmap-anydpi-v26/${name}_round.xml`, xml);
+
+  // The web app: a rounded square where the browser shows it as is, the
+  // full square where the system cuts its own shape (maskable, iOS).
+  writeFileSync('public/favicon.svg', whole(icon, 64, '12 12 84 84', 'rr'));
+  await render(whole(icon, 192, '12 12 84 84', 'rr'), 192, 'public/pwa-192x192.png');
+  await render(whole(icon, 512, '12 12 84 84', 'rr'), 512, 'public/pwa-512x512.png');
+  await render(svg(`<g>${icon.background}</g><g>${icon.foreground}</g>`, 512), 512, 'public/pwa-maskable-512x512.png');
+  await render(svg(`<g>${icon.background}</g><g>${icon.foreground}</g>`, 180, '9 9 90 90'), 180, 'public/apple-touch-icon.png');
+}
+// The palette picker: every design, as a phone shows it.
+mkdirSync('public/app-icons', { recursive: true });
+for (const icon of ICONS) {
+  await render(whole(icon, 144, '18 18 72 72', 'rr'), 144, `public/app-icons/${icon.key}.png`);
 }
 await browser.close();
-console.log(`ic_launcher: ${APP_ICON}`);
+console.log(`app icon: ${APP_ICON}; picker: ${ICONS.map(i => i.key).join(' ')}`);
