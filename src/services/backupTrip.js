@@ -1,5 +1,6 @@
 import { db } from '../firebase';
 import { collection, doc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
+import { saveFile } from '../lib/saveFile';
 
 const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders', 'expenses', 'settings'];
 
@@ -21,19 +22,11 @@ export async function exportTripBackup(tripId, tripDoc) {
   };
 }
 
-export function downloadBackupFile(backup, tripName) {
+export async function saveBackupFile(backup, tripName) {
   const json = JSON.stringify(backup, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
   const date = new Date().toISOString().split('T')[0];
   const safe = (tripName || 'טיול').replace(/[^א-תa-zA-Z0-9 ]/g, '').trim();
-  a.download = `גיבוי_${safe}_${date}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  await saveFile(new Blob([json], { type: 'application/json' }), `גיבוי_${safe}_${date}.json`);
 }
 
 export async function importTripBackup(backup, userId) {

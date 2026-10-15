@@ -3,6 +3,7 @@
 
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { saveFile } from '../lib/saveFile';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from './currency';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -732,7 +733,7 @@ export async function exportTripPdf(data, scope = 'all') {
     doc.text(shape(`עמוד ${p} מתוך ${totalPages}`), rightX, pageH - 22, { ...TEXT_OPTS });
   }
 
-  doc.save(`${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.pdf`);
+  await saveFile(doc.output('blob'), `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.pdf`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -744,7 +745,6 @@ export async function exportTripDocx(data, scope = 'all') {
   const SS = SCOPE[scope] || SCOPE.all;
   const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType,
           Table, TableRow, TableCell, WidthType, Footer, Header } = await import('docx');
-  const { saveAs } = await import('file-saver');
 
   const RUN_OPTS = { rtl: true, font: 'David', size: 24 };
 
@@ -1093,7 +1093,7 @@ export async function exportTripDocx(data, scope = 'all') {
     sections,
   });
   const blob = await Packer.toBlob(documentInstance);
-  saveAs(blob, `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.docx`);
+  await saveFile(blob, `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.docx`);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1171,7 +1171,6 @@ export async function exportTripXlsx(data, scope = 'all') {
   const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const ExcelJS = (await import('exceljs')).default || (await import('exceljs'));
-  const { saveAs } = await import('file-saver');
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Flights Assistant';
@@ -1486,6 +1485,6 @@ export async function exportTripXlsx(data, scope = 'all') {
   }
 
   const buf = await wb.xlsx.writeBuffer();
-  saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-         `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.xlsx`);
+  await saveFile(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+                 `${safeFileName(trip?.name || 'trip')}_${SCOPE_LABEL[scope] || scope}.xlsx`);
 }

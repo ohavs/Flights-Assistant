@@ -1576,6 +1576,19 @@ input[type="datetime-local"].form-control {
 .list-row[aria-checked="true"]:not([role="switch"]) .list-row-icon { color: currentColor; }
 .list-row-label { flex: 1; min-width: 0; }
 .list-row-chevron { flex-shrink: 0; color: var(--text-muted); opacity: .7; }
+.list-row-hint { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+/* Settings: a block of controls on the sheet's raised ground, a quiet
+   line of text, and the export format buttons side by side. */
+.settings-card {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px; border-radius: 16px; background: var(--surface-2);
+}
+.settings-hint { font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.5; padding-inline: 4px; }
+.chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.settings-formats .btn-secondary { min-height: 46px; padding: 8px 10px; }
+.settings-formats .btn-secondary:disabled { opacity: .5; cursor: default; }
 @media (hover: hover) { .list-row:not(:disabled):hover { background: var(--ink-4); } }
 .list-row:not(:disabled):active { background: var(--ink-6); }
 

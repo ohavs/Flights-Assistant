@@ -26,7 +26,6 @@
     "bidi-js": "^1.0.3",
     "docx": "^9.6.1",
     "exceljs": "^4.4.0",
-    "file-saver": "^2.0.5",
     "firebase": "^12.19.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.378.0",
