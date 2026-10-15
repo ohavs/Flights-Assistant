@@ -2517,7 +2517,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                                 padding: '10px 14px', border: 'none',
-                                background: active ? (opt.color ? `${opt.color}14` : 'var(--p-6)') : 'var(--surface)',
+                                background: active ? (opt.color ? `color-mix(in srgb, ${opt.color} 8%, transparent)` : 'var(--p-6)') : 'var(--surface)',
                                 color: active ? (opt.color || 'var(--accent)') : 'var(--primary)',
                                 cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
                                 fontSize: 13, fontWeight: 700,
@@ -2532,7 +2532,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               </span>
                               <span style={{
                                 fontSize: 11, fontWeight: 800, flexShrink: 0,
-                                background: opt.color ? `${opt.color}1f` : 'var(--ink-5)',
+                                background: opt.color ? `color-mix(in srgb, ${opt.color} 12%, transparent)` : 'var(--ink-5)',
                                 color: opt.color || 'var(--text-muted)',
                                 padding: '2px 7px', borderRadius: 999,
                               }}>
