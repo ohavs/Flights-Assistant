@@ -9,7 +9,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // Registered in main.jsx, on the web only (see there).
       injectRegister: null,
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'עוזר טיסות — Flights Assistant',
         short_name: 'עוזר טיסות',
@@ -33,7 +33,7 @@ export default defineConfig({
             type: 'image/png'
           },
           {
-            src: '/pwa-512x512.png',
+            src: '/pwa-maskable-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'
