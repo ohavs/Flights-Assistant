@@ -7,14 +7,17 @@ PKG=com.ohavs.flightsassistant
 adb install -r "$APK"
 adb shell dumpsys package "$PKG" | grep -E "versionCode|versionName" | head -2
 adb logcat -c
-# One launcher entry, the classic icon's alias (the other icons' aliases
-# are off until picked in settings), so the phone shows one app.
+# One launcher entry, the activity itself (since 8.40.0; the old
+# .MainActivity alias is no longer one), so the phone shows one app.
 launchers=$(adb shell cmd package query-activities --components -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r' | grep "$PKG/" || true)
 echo "launcher entries: $launchers"
-if [ "$(echo "$launchers" | grep -c .)" != "1" ] || ! echo "$launchers" | grep -qE "$PKG/(\.|$PKG\.)MainActivity$"; then
-  echo "expected one launcher entry, .MainActivity"; exit 1
+if [ "$(echo "$launchers" | grep -c .)" != "1" ] || ! echo "$launchers" | grep -qE "$PKG/(\.|$PKG\.)AppActivity$"; then
+  echo "expected one launcher entry, .AppActivity"; exit 1
 fi
-adb shell am start -W -n "$PKG/.MainActivity"
+# The old name still opens the app (an intent made before 8.40.0).
+adb shell am start -W -n "$PKG/.MainActivity" | grep -q "Status: ok" || { echo ".MainActivity no longer opens the app"; exit 1; }
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.AppActivity"
 for i in $(seq 1 20); do
   sleep 3
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
@@ -77,57 +80,3 @@ if adb shell pidof "$PKG" >/dev/null && adb shell dumpsys activity activities | 
 fi
 echo "back on the first screen leaves the app"
 
-# Launcher icon: an icon picked in settings (kept in the app's prefs as
-# "pending") replaces the launcher entry once the user leaves the app, the
-# new entry opens the app, and there is still exactly one.
-launcher() { adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tail -1 | tr -d '\r'; }
-entries() { adb shell cmd package query-activities --components -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r' | grep -c "$PKG/" || true; }
-ask_icon() {
-  adb shell am force-stop "$PKG"
-  local dir=/data/data/$PKG/shared_prefs owner
-  owner=$(adb shell stat -c %u:%g /data/data/$PKG | tr -d '\r')
-  printf '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>\n<map>\n    <string name="pending">%s</string>\n</map>\n' "$1" > app_icon.xml
-  adb push app_icon.xml /data/local/tmp/app_icon.xml >/dev/null
-  adb shell "mkdir -p $dir && cp /data/local/tmp/app_icon.xml $dir/app_icon.xml && chown $owner $dir $dir/app_icon.xml && chmod 660 $dir/app_icon.xml && restorecon -R $dir"
-}
-top() { adb shell dumpsys activity activities | grep -m1 topResumedActivity | tr -d '\r'; }
-switch_icon() {   # <from alias> <icon> <expected alias>
-  ask_icon "$2"
-  echo "prefs: $(adb shell cat /data/data/$PKG/shared_prefs/app_icon.xml | tr -d '\r\n')"
-  adb logcat -c
-  adb shell am start -W -n "$PKG/$1" | tr -d '\r' | grep -E "Status|LaunchState|Activity:" | tr '\n' ' '; echo
-  # Leave only once the app is really on screen.
-  for i in $(seq 1 20); do top | grep -q "$PKG/" && break; sleep 1; done
-  echo "before HOME: $(top)"
-  sleep 3
-  adb shell input keyevent KEYCODE_HOME
-  # The stop, and so the switch, can come several seconds after HOME: the
-  # launcher is still busy with the previous switch (Android tells it about
-  # ten seconds late), and the app is stopped once the system is idle.
-  # Wait for it, up to 20 seconds; a real failure still fails.
-  for i in $(seq 1 20); do
-    sleep 1
-    [ "$(launcher)" = "$PKG/$3" ] && break
-    if [ "$i" = 5 ] && top | grep -q "$PKG/"; then
-      echo "the app is still on top after HOME; pressing it again"
-      adb shell input keyevent KEYCODE_HOME
-    fi
-  done
-  echo "after HOME (${i}s): $(top)"
-  adb logcat -d -s AppIcons | tr -d '\r' | grep AppIcons || echo "(no AppIcons lines)"
-  echo "launcher entry after leaving: $(launcher)"
-  if [ "$(launcher)" != "$PKG/$3" ] || [ "$(entries)" != "1" ]; then
-    echo "icon did not switch to $3 (entries: $(entries))"
-    adb logcat -d | grep -E "AppIcons|AndroidRuntime" | tail -20; exit 1
-  fi
-  adb shell am start -W -n "$PKG/$3" | grep -q "Status: ok" || { echo "$3 does not open the app"; exit 1; }
-  sleep 3
-  adb shell input keyevent KEYCODE_HOME
-  sleep 2
-}
-adb root >/dev/null; sleep 3; adb wait-for-device
-[ "$(launcher)" = "$PKG/.MainActivity" ] || { echo "the classic icon is not the default: $(launcher)"; exit 1; }
-switch_icon .MainActivity sunset .IconSunset
-adb logcat -d | grep -m1 "AppIcons" || true
-switch_icon .IconSunset classic .MainActivity
-echo "the launcher icon switches when the app is left, and back"
