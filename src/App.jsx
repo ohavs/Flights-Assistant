@@ -13,6 +13,8 @@ import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
+import { isMorningTrip, tripPlace, morningAlerts } from './lib/morningAlerts';
+import { loadWeather } from './hooks/useWeather';
 import { NavIcon } from './ui/icons';
 import { CustomDropdown } from './components/CustomDatePicker';
 import { defaultChecklist, defaultInfoItems } from './data/seedData';
@@ -1223,6 +1225,49 @@ function AppInner() {
     ));
     return () => { offs.forEach(off => off()); clearTimeout(timer); };
   }, [tripIdsKey, signedInUid, notifyVersion]);
+
+  // Morning summary (Android app): for the trips with a day in the coming
+  // week, listen to their planner days and schedule each morning with that
+  // day's plan and the forecast at scheduling time. The key carries the
+  // dates and name, so a moved flight or a renamed trip schedules again.
+  const morningKey = trips
+    .filter(t => !pendingDelete(t) && isMorningTrip(t))
+    .map(t => [t.id, t.outboundFlightDetails?.date, t.returnFlightDetails?.date, t.name].join('|'))
+    .sort().join(',');
+  useEffect(() => {
+    if (!isNative || !signedInUid) return undefined;
+    const ids = morningKey ? morningKey.split(',').map(k => k.split('|')[0]) : [];
+    const daysByTrip = {};
+    let timer;
+    let cancelled = false;
+    const sync = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        import('./lib/native/notify').then(async (n) => {
+          const on = n.notifyPrefs().morning;
+          const list = tripsRef.current.filter(t => ids.includes(t.id));
+          const weather = {};
+          if (on) {
+            await Promise.all(list.map(async (t) => {
+              const p = tripPlace(t);
+              if (p) weather[t.id] = await loadWeather(p.lat, p.lng);
+            }));
+          }
+          if (cancelled) return;
+          const alerts = morningAlerts(list, daysByTrip, weather, n.morningTime());
+          if (alerts.length && on) await n.askPermissionOnce();
+          await n.syncNotifications('morning', alerts);
+        }).catch(() => {});
+      }, 400);
+    };
+    const offs = ids.map(id => listen(
+      collection(db, 'trips', id, 'days'),
+      (snap) => { daysByTrip[id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
+      () => {},
+    ));
+    if (!ids.length) sync();   // nothing ahead: cancel what was scheduled
+    return () => { cancelled = true; offs.forEach(off => off()); clearTimeout(timer); };
+  }, [morningKey, signedInUid, notifyVersion]);
 
   // Tapping a reminder opens its trip on the right tab.
   useEffect(() => {

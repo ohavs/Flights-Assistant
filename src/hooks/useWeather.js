@@ -1,43 +1,8 @@
 import { useState, useEffect } from 'react';
 
+export { getWeatherIcon, getWeatherLabel } from '../lib/weatherCodes.js';
+
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
-const WMO_ICONS = {
-  0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
-  45: '🌫️', 48: '🌫️',
-  51: '🌦️', 53: '🌦️', 55: '🌧️',
-  56: '🌧️', 57: '🌧️',
-  61: '🌦️', 63: '🌧️', 65: '🌧️',
-  66: '🌧️', 67: '🌧️',
-  71: '🌨️', 73: '🌨️', 75: '❄️',
-  77: '❄️',
-  80: '🌦️', 81: '🌧️', 82: '🌧️',
-  85: '🌨️', 86: '🌨️',
-  95: '⛈️', 96: '⛈️', 99: '⛈️',
-};
-
-const WMO_LABELS = {
-  0: 'בהיר', 1: 'בהיר בעיקר', 2: 'מעונן חלקית', 3: 'מעונן',
-  45: 'ערפל', 48: 'ערפל',
-  51: 'טפטוף', 53: 'טפטוף', 55: 'טפטוף חזק',
-  56: 'טפטוף קפוא', 57: 'טפטוף קפוא',
-  61: 'גשם קל', 63: 'גשם', 65: 'גשם חזק',
-  66: 'גשם קפוא', 67: 'גשם קפוא',
-  71: 'שלג קל', 73: 'שלג', 75: 'שלג כבד',
-  77: 'גרגרי שלג',
-  80: 'ממטר קל', 81: 'ממטר', 82: 'ממטר חזק',
-  85: 'ממטר שלג', 86: 'ממטר שלג כבד',
-  95: 'סופת רעמים', 96: 'סופת רעמים עם ברד', 99: 'סופת רעמים חזקה',
-};
-
-export function getWeatherIcon(code) {
-  return WMO_ICONS[code] ?? '🌡️';
-}
-
-export function getWeatherLabel(code) {
-  return WMO_LABELS[code] ?? '';
-}
-
 const CACHE_VER = 2;
 
 function cacheKey(lat, lon) {
@@ -102,6 +67,19 @@ async function fetchWeather(lat, lon) {
     })),
     hourlyByDate,
   };
+}
+
+// The forecast without a component (the morning summary): from the cache,
+// or fetched and cached. null when it cannot be had (offline).
+export async function loadWeather(lat, lon) {
+  if (!lat || !lon) return null;
+  const cached = readCache(lat, lon);
+  if (cached) return cached;
+  try {
+    const data = await fetchWeather(lat, lon);
+    writeCache(lat, lon, data);
+    return data;
+  } catch { return null; }
 }
 
 export function useWeather(lat, lon) {

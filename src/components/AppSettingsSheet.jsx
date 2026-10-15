@@ -8,7 +8,8 @@ import { PALETTES } from '../lib/theme';
 import SectionHeader from '../ui/SectionHeader';
 import Notice from '../ui/Notice';
 import { Pill } from '../ui/kit';
-import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission } from '../lib/native/notify';
+import { CustomTimePicker } from './CustomDatePicker';
+import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime } from '../lib/native/notify';
 import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
 import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
@@ -57,7 +58,13 @@ function SettingsGroup({ id, title, Icon, meta, force, children }) {
 function NotifySettings({ onChange }) {
   const [prefs, setPrefs] = useState(notifyPrefs);
   const [perm, setPerm] = useState(null);
+  const [time, setTime] = useState(morningTime);
   useEffect(() => { notifyPermission().then(setPerm); }, []);
+  const changeTime = (t) => {
+    setMorningTime(t);
+    setTime(t);
+    onChange?.();
+  };
   const toggle = async (key) => {
     const on = !prefs[key];
     if (on) setPerm(await notifyPermission({ ask: true }));
@@ -80,6 +87,11 @@ function NotifySettings({ onChange }) {
           </button>
         ))}
       </div>
+      {prefs.morning && (
+        <div className="settings-time" data-testid="morning-time">
+          <CustomTimePicker label="שעת סיכום הבוקר" value={time} onChange={changeTime} />
+        </div>
+      )}
       {perm === 'denied' && Object.values(prefs).some(Boolean) && (
         <div className="settings-hint">ההתראות חסומות בטלפון. אפשר להפעיל אותן ב"הרשאות" כאן למטה.</div>
       )}
