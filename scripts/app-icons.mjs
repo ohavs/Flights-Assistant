@@ -1,11 +1,11 @@
-// The app's launcher icons: five designs the user picks from in settings →
-// "מראה" (AppToolsPlugin.setIcon switches the launcher alias). Each is an
-// SVG on Android's 108dp adaptive-icon grid, rendered with Chromium into
-//   android/app/src/main/res/mipmap-*/ic_launcher[_key]_{background,foreground,monochrome}.png
-//   android/app/src/main/res/mipmap-*/ic_launcher[_key][_round].png   (Android 7)
-//   android/app/src/main/res/mipmap-anydpi-v26/ic_launcher[_key][_round].xml
-//   public/app-icons/<key>.png                                         (the picker)
-// Classic keeps the plain names (ic_launcher*), so the app's own icon is it.
+// The app's launcher icon. Five designs were drawn (8.35.0); the app uses
+// one, APP_ICON ("map", the owner's pick in 8.40.0, when switching the
+// icon from settings was dropped). It is an SVG on Android's 108dp
+// adaptive-icon grid, rendered with Chromium into
+//   android/app/src/main/res/mipmap-*/ic_launcher_{background,foreground,monochrome}.png
+//   android/app/src/main/res/mipmap-*/ic_launcher[_round].png   (Android 7)
+//   android/app/src/main/res/mipmap-anydpi-v26/ic_launcher[_round].xml
+// --preview draws all five side by side, to compare.
 //   node scripts/app-icons.mjs [--preview out.png]
 // Keep what matters inside the 66dp circle in the middle (21..87): a
 // launcher may crop anything past it.
@@ -195,8 +195,9 @@ if (previewAt > 0) {
   process.exit(0);
 }
 
-for (const icon of ICONS) {
-  const name = icon.key === 'classic' ? 'ic_launcher' : `ic_launcher_${icon.key}`;
+const APP_ICON = 'map';
+for (const icon of ICONS.filter(i => i.key === APP_ICON)) {
+  const name = 'ic_launcher';
   for (const [d, k] of Object.entries(DENSITIES)) {
     const dir = `${RES}/mipmap-${d}`;
     mkdirSync(dir, { recursive: true });
@@ -217,8 +218,6 @@ for (const icon of ICONS) {
   mkdirSync(`${RES}/mipmap-anydpi-v26`, { recursive: true });
   writeFileSync(`${RES}/mipmap-anydpi-v26/${name}.xml`, xml);
   writeFileSync(`${RES}/mipmap-anydpi-v26/${name}_round.xml`, xml);
-  mkdirSync('public/app-icons', { recursive: true });
-  await render(whole(icon, 144, '18 18 72 72', 'rr'), 144, `public/app-icons/${icon.key}.png`);
 }
 await browser.close();
-console.log(ICONS.map(i => i.key).join(' '));
+console.log(`ic_launcher: ${APP_ICON}`);

@@ -1837,13 +1837,6 @@ input[type="datetime-local"].form-control {
   font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .palette-swatch[aria-checked="true"] { border-color: var(--accent); background: var(--p-8); }
-.settings-offer {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  padding: 12px; border-radius: 16px; background: var(--brand-soft);
-  color: var(--text); font-size: 14px; font-weight: 700; line-height: 1.5;
-}
-.settings-offer > span { grid-column: 1 / -1; }
-.palette-swatch-icon { width: 46px; height: 46px; border-radius: 12px; box-shadow: var(--shadow-sm); }
 .palette-swatch-dot {
   width: 34px; height: 34px; border-radius: 50%;
   border: 2px solid var(--ink-12); box-shadow: var(--shadow-sm);

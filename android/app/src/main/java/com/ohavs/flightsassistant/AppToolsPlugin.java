@@ -28,7 +28,6 @@ import java.io.FileOutputStream;
  * where the user saves it to Files or Drive or sends it on. The content
  * comes as base64. permissions / openSettings: what the app may do, and
  * Android's own page for each permission, for the list in settings.
- * getIcon / setIcon / applyIconNow: the launcher icon (AppIcons).
  */
 @CapacitorPlugin(name = "AppTools")
 public class AppToolsPlugin extends Plugin {
@@ -107,38 +106,5 @@ public class AppToolsPlugin extends Plugin {
             getActivity().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg)));
         }
         call.resolve();
-    }
-
-    /** The icon picked, and whether it is still waiting to be applied. */
-    @PluginMethod
-    public void getIcon(PluginCall call) {
-        String pending = AppIcons.pending(getContext());
-        JSObject ret = new JSObject();
-        ret.put("icon", pending != null ? pending : AppIcons.current(getContext()));
-        ret.put("pending", pending != null);
-        call.resolve(ret);
-    }
-
-    /** Picks an icon. It is switched when the user leaves the app (AppActivity), or by applyIconNow. */
-    @PluginMethod
-    public void setIcon(PluginCall call) {
-        String icon = call.getString("icon");
-        if (!AppIcons.known(icon)) {
-            call.reject("Unknown icon");
-            return;
-        }
-        AppIcons.request(getContext(), icon);
-        getIcon(call);
-    }
-
-    /** Switches now: the app goes to the background, and its stop applies the icon. */
-    @PluginMethod
-    public void applyIconNow(PluginCall call) {
-        call.resolve();
-        if (AppIcons.pending(getContext()) == null) return;
-        getActivity().runOnUiThread(() -> {
-            AppIcons.switchNow = true;
-            getActivity().moveTaskToBack(true);
-        });
     }
 }
