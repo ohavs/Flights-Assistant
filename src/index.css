@@ -766,6 +766,24 @@ button:not(:disabled):active,
   width: 13px; height: 13px;
 }
 
+/* A trip on its way out (delete in 24 hours): on its card and, as a
+   banner, under the trip's header. */
+.delete-notice {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 8px 8px 12px; border-radius: 14px;
+  background: var(--c-red-10); color: var(--c-red);
+  font-size: 13.5px; font-weight: 800;
+}
+.delete-notice.banner { margin: 8px 16px 0; flex-shrink: 0; }
+.delete-notice-text { flex: 1; min-width: 0; }
+.delete-notice-undo {
+  flex-shrink: 0; min-height: 34px; padding: 6px 12px;
+  border: none; border-radius: 999px; background: var(--surface);
+  color: var(--text); font-family: var(--font-hebrew); font-size: 13px; font-weight: 800;
+  cursor: pointer; box-shadow: var(--shadow-sm);
+}
+.code-input { font-size: 18px; letter-spacing: 6px; text-align: center; }
+
 .trip-card-arrow {
   display: flex;
   align-items: center;

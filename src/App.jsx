@@ -4,8 +4,9 @@ import { db } from './firebase';
 import {
   collection, doc, onSnapshot, setDoc, deleteDoc,
   query, where, getDocs, updateDoc, arrayUnion, arrayRemove,
-  getDoc, writeBatch
+  getDoc, writeBatch, deleteField
 } from 'firebase/firestore';
+import { DELETE_DELAY_MS, useDeleteCode, validCode, checkCode, saveCode, pendingDelete, deleteAtText } from './lib/deleteCode';
 import ConfirmModal from './components/ConfirmModal';
 import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme } from './ThemeContext';
@@ -144,7 +145,18 @@ function LoadingScreen() {
 /* ══════════════════════════════════════════════════════════
    HOMEPAGE — Trip list
    ══════════════════════════════════════════════════════════ */
-function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onShareTrip, userName, onOpenGlobalChecklist, pinnedTripId, onTogglePinned }) {
+/* A trip whose delete is on its way: when, and for the owner, a way back. */
+function DeleteNotice({ at, onCancel, banner }) {
+  return (
+    <div className={`delete-notice${banner ? ' banner' : ''}`} role="status" onClick={e => e.stopPropagation()}>
+      <AlertTriangle size={16} aria-hidden="true" />
+      <span className="delete-notice-text">יימחק ב־{deleteAtText(at)}</span>
+      {onCancel && <button type="button" className="delete-notice-undo" onClick={onCancel}>בטל מחיקה</button>}
+    </div>
+  );
+}
+
+function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpenTrip, onCreateTrip, onDeleteTrip, onCancelDelete, onShareTrip, userName, onOpenGlobalChecklist, pinnedTripId, onTogglePinned }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDest, setNewDest] = useState('');
@@ -332,6 +344,10 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
             </div>
           )}
 
+          {pendingDelete(trip) && (
+            <DeleteNotice at={trip.deleteAt} onCancel={isOwner ? () => onCancelDelete(trip.id) : null} />
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <div className="trip-card-arrow">
               <span>פתח טיול</span>
@@ -353,6 +369,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               >
                 <UserPlus size={15} />
               </button>
+              {!(isOwner && pendingDelete(trip)) && (
               <button
                 onClick={() => onDeleteTrip(trip.id, isOwner)}
                 className="round-btn danger"
@@ -360,6 +377,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               >
                 <Trash2 size={15} />
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -1111,7 +1129,15 @@ function AppInner() {
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
   const [selectedTripId, setSelectedTripId] = useState(null);
-  const [trips, setTrips] = useState([]);
+  // Every trip the user is on; `trips` leaves out those whose delete is
+  // due (the owner's app is deleting them), so nothing shows them.
+  const [allTrips, setAllTrips] = useState([]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const trips = useMemo(() => allTrips.filter(t => !(pendingDelete(t) && t.deleteAt <= now)), [allTrips, now]);
   const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
@@ -1352,7 +1378,7 @@ function AppInner() {
   // We also filter client-side as a defensive check that the current uid
   // really appears in members/memberIds.
   useEffect(() => {
-    setTrips([]);
+    setAllTrips([]);
     setMemberProfiles({});
     if (!user) return;
     const uid = user.uid;
@@ -1364,7 +1390,8 @@ function AppInner() {
           (Array.isArray(t.memberIds) && t.memberIds.includes(uid)) ||
           (t.members && t.members[uid])
         );
-      setTrips(filtered);
+      setAllTrips(filtered);
+      setNow(Date.now());   // a deleteAt that just passed counts at once
     }, (err) => {
       console.error('Trips listener error:', err);
     });
@@ -1538,13 +1565,44 @@ function AppInner() {
     updateDoc(doc(db, 'users', user.uid), { tripIds: arrayRemove(tripId) }).catch(() => {});
   };
 
+  // A delete is due: the owner's app deletes the trip, once per session
+  // (again a minute later if it failed). Members only stop seeing it.
+  const deletingRef = useRef(new Set());
+  useEffect(() => {
+    if (!user) return;
+    for (const t of allTrips) {
+      if (!pendingDelete(t) || t.deleteAt > now || t.members?.[user.uid] !== 'owner') continue;
+      if (deletingRef.current.has(t.id)) continue;
+      deletingRef.current.add(t.id);
+      deleteTripFully(t.id).catch(err => {
+        console.error('Scheduled trip delete failed:', err);
+        setTimeout(() => deletingRef.current.delete(t.id), 60 * 1000);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTrips, now, user]);
+
+  // The open trip's delete came due: back to the list.
+  useEffect(() => {
+    if (screen === 'trip' && selectedTripId && allTrips.some(t => t.id === selectedTripId) && !trips.some(t => t.id === selectedTripId)) {
+      setScreen('home');
+      setSelectedTripId(null);
+    }
+  }, [screen, selectedTripId, allTrips, trips]);
+
+  const deleteCodeHash = useDeleteCode(user?.uid);
+
   const [confirmDelete, setConfirmDelete] = useState(null); // { tripId, name, mode: 'delete'|'leave' } | null
 
   // Home-screen layers, each one back press deep.
   useBackHandler(!!confirmDelete, () => setConfirmDelete(null));
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+  const [deleteCode, setDeleteCode] = useState('');
+  const [deleteCodeAgain, setDeleteCodeAgain] = useState('');
+  const closeDeleteDialog = () => {
+    setConfirmDelete(null); setDeleteError(''); setDeleteCode(''); setDeleteCodeAgain('');
+  };
 
   const requestDeleteTrip = (tripId, isOwner) => {
     const t = trips.find(x => x.id === tripId);
@@ -1556,26 +1614,46 @@ function AppInner() {
     setDeleteError('');
   };
 
+  // The owner: the delete code (set here the first time), then the trip
+  // is marked to go in 24 hours. Fire-and-forget, so it works offline.
+  const scheduleDelete = async () => {
+    const tripId = confirmDelete.tripId;
+    if (!deleteCodeHash) {
+      if (!validCode(deleteCode)) { setDeleteError('קוד של 4 עד 8 ספרות'); return false; }
+      if (deleteCode !== deleteCodeAgain) { setDeleteError('האימות לא תואם לקוד'); return false; }
+      await saveCode(user.uid, deleteCode);
+    } else if (!(await checkCode(user.uid, deleteCode, deleteCodeHash))) {
+      setDeleteError('קוד שגוי');
+      return false;
+    }
+    updateDoc(doc(db, 'trips', tripId), { deleteAt: Date.now() + DELETE_DELAY_MS })
+      .catch(err => console.error('Scheduling the delete failed:', err));
+    return true;
+  };
+
+  const cancelDelete = (tripId) => {
+    updateDoc(doc(db, 'trips', tripId), { deleteAt: deleteField() })
+      .catch(err => console.error('Cancelling the delete failed:', err));
+  };
+
   const handleConfirmDelete = async () => {
-    if (!user || !confirmDelete?.tripId) return;
-    if (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580') return;
+    if (!user || !confirmDelete?.tripId || deleteBusy) return;
     setDeleteBusy(true);
     setDeleteError('');
     try {
       if (confirmDelete.mode === 'delete') {
-        await deleteTripFully(confirmDelete.tripId);
+        if (!(await scheduleDelete())) return;
       } else {
         await leaveTrip(confirmDelete.tripId);
+        if (selectedTripId === confirmDelete.tripId) {
+          setScreen('home');
+          setSelectedTripId(null);
+        }
       }
-      if (selectedTripId === confirmDelete.tripId) {
-        setScreen('home');
-        setSelectedTripId(null);
-      }
-      setConfirmDelete(null);
-      setDeletePasswordInput('');
+      closeDeleteDialog();
     } catch (err) {
       console.error('Trip delete failed:', err);
-      setDeleteError(err?.message || 'מחיקה נכשלה');
+      setDeleteError(err?.message || 'הפעולה נכשלה');
     } finally {
       setDeleteBusy(false);
     }
@@ -1743,6 +1821,7 @@ function AppInner() {
             onOpenTrip={(id) => { setSelectedTripId(id); setActiveTab('flight'); setScreen('trip'); }}
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={requestDeleteTrip}
+            onCancelDelete={cancelDelete}
             onShareTrip={(id) => setSharingTripId(id)}
             userName={user.displayName}
             pinnedTripId={pinnedTripId}
@@ -1763,14 +1842,37 @@ function AppInner() {
           userId={user.uid}
         />
 
-        {confirmDelete && (
+        {confirmDelete && (() => {
+          const leave = confirmDelete.mode === 'leave';
+          const firstCode = !leave && deleteCodeHash === null;   // no code yet: set it here
+          const ready = leave || (deleteCodeHash !== undefined && deleteCode.length >= 4 && (!firstCode || deleteCodeAgain.length >= 4));
+          const codeField = (id, label, value, set, autoFocus) => (
+            <div className="form-group" style={{ marginBottom: 10 }}>
+              <label htmlFor={id} style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>{label}</label>
+              <input
+                id={id}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                className="form-control code-input"
+                value={value}
+                onChange={e => { set(e.target.value.replace(/\D/g, '')); setDeleteError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter' && ready) handleConfirmDelete(); }}
+                autoFocus={autoFocus}
+              />
+            </div>
+          );
+          return (
           <div
             className="modal-overlay"
-            onClick={deleteBusy ? undefined : () => { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); }}
+            onClick={deleteBusy ? undefined : closeDeleteDialog}
             style={{ alignItems: 'center' }}
           >
             <div
               className="modal-content"
+              role="dialog"
+              aria-label={leave ? 'יציאה מהטיול' : 'מחיקת טיול'}
               style={{ height: 'auto', maxHeight: '80%', maxWidth: 420, borderRadius: 'var(--radius-xl)', margin: 16, padding: '24px 20px' }}
               onClick={e => e.stopPropagation()}
             >
@@ -1780,48 +1882,42 @@ function AppInner() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--primary)', marginBottom: 6 }}>
-                    {confirmDelete.mode === 'leave' ? 'יציאה מהטיול' : 'מחיקת טיול'}
+                    {leave ? 'יציאה מהטיול' : 'מחיקת טיול'}
                   </h3>
                   <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55, fontWeight: 600, marginBottom: 0 }}>
-                    {confirmDelete.mode === 'leave' ? (
+                    {leave ? (
                       <>האם לצאת מ-<strong>{confirmDelete.name}</strong>?<br />מה שהוספת — הוצאות, מקומות, פריטים ברשימה — נשאר בטיול על שמך. הטיול עצמו לא יימחק, הוא רק יוסר מהרשימה שלך; רק הבעלים יכול למחוק אותו לכולם.</>
                     ) : (
-                      <>האם למחוק את <strong>{confirmDelete.name}</strong> לצמיתות?<br />כל הנתונים — טיסות, מלון, תכנון, צ'קליסט — יימחקו לכל חברי הטיול ולא ניתן יהיה לשחזר אותם.</>
+                      <><strong>{confirmDelete.name}</strong> יימחק לכל חברי הטיול בעוד 24 שעות, עם כל הנתונים שבו. עד אז אפשר לבטל מכרטיס הטיול.</>
                     )}
                   </p>
-                  {confirmDelete.mode === 'delete' && (
-                    <div style={{ marginTop: 14 }}>
-                      <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                        הזן סיסמת אישור למחיקה:
-                      </label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        placeholder="סיסמה"
-                        value={deletePasswordInput}
-                        onChange={e => setDeletePasswordInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && deletePasswordInput === '2580') handleConfirmDelete(); }}
-                        autoFocus
-                        style={{ fontSize: 18, letterSpacing: 6, textAlign: 'center' }}
-                      />
-                    </div>
-                  )}
-                  {deleteError && (
-                    <p style={{ color: 'var(--c-red)', fontSize: 12, marginTop: 8, fontWeight: 700 }}>שגיאה: {deleteError}</p>
-                  )}
                 </div>
                 <button
                   type="button"
                   aria-label="סגור"
                   className="btn-close"
-                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  onClick={() => { if (!deleteBusy) closeDeleteDialog(); }}
                   disabled={deleteBusy}
                 >✕</button>
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+              {!leave && (
+                <div style={{ marginTop: 16 }}>
+                  {firstCode && (
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.5, margin: '0 0 10px' }}>
+                      עוד אין לך קוד מחיקה. בחר קוד של 4 עד 8 ספרות. הוא יישמר, ואפשר לשנות אותו בהגדרות.
+                    </p>
+                  )}
+                  {deleteCodeHash !== undefined && codeField('delete-code', firstCode ? 'קוד מחיקה חדש' : 'קוד מחיקה', deleteCode, setDeleteCode, true)}
+                  {firstCode && codeField('delete-code-again', 'שוב, לאימות', deleteCodeAgain, setDeleteCodeAgain, false)}
+                </div>
+              )}
+              {deleteError && (
+                <p role="alert" style={{ color: 'var(--c-red)', fontSize: 13, marginTop: 4, fontWeight: 700 }}>{deleteError}</p>
+              )}
+              <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
                 <button
                   type="button"
-                  onClick={() => { if (!deleteBusy) { setConfirmDelete(null); setDeleteError(''); setDeletePasswordInput(''); } }}
+                  onClick={() => { if (!deleteBusy) closeDeleteDialog(); }}
                   disabled={deleteBusy}
                   className="btn-secondary"
                   style={{ flex: 1, opacity: deleteBusy ? 0.5 : 1 }}
@@ -1831,19 +1927,17 @@ function AppInner() {
                 <button
                   type="button"
                   onClick={handleConfirmDelete}
-                  disabled={deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')}
+                  disabled={deleteBusy || !ready}
                   className="btn-primary danger"
-                  style={{
-                    flex: 1,
-                    opacity: (deleteBusy || (confirmDelete.mode === 'delete' && deletePasswordInput !== '2580')) ? 0.45 : 1
-                  }}
+                  style={{ flex: 1.6, opacity: (deleteBusy || !ready) ? 0.45 : 1 }}
                 >
-                  {deleteBusy ? 'פועל...' : (confirmDelete.mode === 'leave' ? 'צא מהטיול' : 'מחק לצמיתות')}
+                  {deleteBusy ? 'פועל...' : (leave ? 'צא מהטיול' : 'מחק בעוד 24 שעות')}
                 </button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     );
   }
@@ -1895,6 +1989,10 @@ function AppInner() {
           <ThemeToggle />
         </div>
       </header>
+      {selectedTrip && pendingDelete(selectedTrip) && (
+        <DeleteNotice banner at={selectedTrip.deleteAt}
+          onCancel={selectedTrip.members?.[user.uid] === 'owner' ? () => cancelDelete(selectedTrip.id) : null} />
+      )}
       {settingsSheet}
 
       <main

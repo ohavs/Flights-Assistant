@@ -44,6 +44,7 @@ export async function importTripBackup(backup, userId) {
     importedAt: new Date().toISOString(),
   };
   delete tripData.id;
+  delete tripData.deleteAt;   // a copy of a trip on its way out starts fresh
 
   await setDoc(newTripRef, tripData);
 

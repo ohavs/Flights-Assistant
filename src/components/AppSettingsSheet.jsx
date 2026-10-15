@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { RefreshCw, Download, CheckCircle2, AlertCircle, Bell, FileType2, FileText, FileSpreadsheet,
-  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft } from 'lucide-react';
+  Archive, Upload, Loader2, AlarmClock, ShieldCheck, ChevronLeft, KeyRound } from 'lucide-react';
 import Sheet from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
 import Notice from '../ui/Notice';
@@ -12,6 +12,7 @@ import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
 import { exportTripBackup, saveBackupFile, importTripBackup } from '../services/backupTrip';
+import { useDeleteCode, validCode, checkCode, saveCode } from '../lib/deleteCode';
 
 /* Settings, on the web and in the Android app.
    Both: export a trip to PDF, Word or Excel; back a trip up to a file and
@@ -263,6 +264,58 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
   );
 }
 
+// The personal code a trip delete asks for: set once (code + again),
+// changed with the current one. The delete itself waits 24 hours.
+function DeleteCodeSettings({ uid }) {
+  const hash = useDeleteCode(uid);
+  const [cur, setCur] = useState('');
+  const [code, setCode] = useState('');
+  const [again, setAgain] = useState('');
+  const [msg, setMsg] = useState(null);
+  const has = !!hash;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setMsg(null);
+    if (has && !(await checkCode(uid, cur, hash))) { setMsg({ tone: 'error', text: 'הקוד הנוכחי שגוי' }); return; }
+    if (!validCode(code)) { setMsg({ tone: 'error', text: 'קוד של 4 עד 8 ספרות' }); return; }
+    if (code !== again) { setMsg({ tone: 'error', text: 'האימות לא תואם לקוד' }); return; }
+    await saveCode(uid, code);
+    setCur(''); setCode(''); setAgain('');
+    setMsg({ tone: 'success', text: has ? 'הקוד הוחלף' : 'קוד המחיקה נשמר' });
+  };
+
+  const field = (id, label, value, set) => (
+    <div className="form-group" style={{ marginBottom: 0 }}>
+      <label htmlFor={id}>{label}</label>
+      <input id={id} type="password" inputMode="numeric" autoComplete="off" maxLength={8}
+        className="form-control code-input" value={value}
+        onChange={e => { set(e.target.value.replace(/\D/g, '')); setMsg(null); }} />
+    </div>
+  );
+
+  return (
+    <SettingsGroup id="deleteCode" title="קוד מחיקה" Icon={KeyRound}
+      meta={hash === undefined ? null : has ? 'מוגדר' : 'לא מוגדר'}>
+      <div className="settings-hint">
+        מחיקת טיול דורשת את הקוד הזה. אחרי הקוד הטיול נמחק רק בעוד 24 שעות, ועד אז אפשר לבטל מכרטיס הטיול.
+      </div>
+      {hash !== undefined && (
+        <form className="settings-card" onSubmit={submit}>
+          <div className="field-label">{has ? 'שינוי קוד' : 'הגדרת קוד (4 עד 8 ספרות)'}</div>
+          {has && field('code-current', 'הקוד הנוכחי', cur, setCur)}
+          {field('code-new', has ? 'קוד חדש' : 'קוד', code, setCode)}
+          {field('code-again', 'שוב, לאימות', again, setAgain)}
+          <button type="submit" className="btn-primary" disabled={!code || !again || (has && !cur)}>
+            {has ? 'החלף קוד' : 'שמור קוד'}
+          </button>
+          {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
+        </form>
+      )}
+    </SettingsGroup>
+  );
+}
+
 function UpdateSettings({ initial }) {
   // idle | checking | uptodate | available | permission | downloading | installing | error
   const [state, setState] = useState(initial?.available ? 'available' : 'idle');
@@ -385,6 +438,7 @@ export default function AppSettingsSheet({ onClose, initial, onNotifyChange, tri
       {isNative && <NotifySettings onChange={onNotifyChange} />}
       {isNative && <PermissionSettings onChange={onNotifyChange} />}
       {uid && <FileSettings trips={trips || []} uid={uid} tripId={tripId} activeTab={activeTab} />}
+      {uid && <DeleteCodeSettings uid={uid} />}
       {isNative && <UpdateSettings initial={initial} />}
     </Sheet>
   );
