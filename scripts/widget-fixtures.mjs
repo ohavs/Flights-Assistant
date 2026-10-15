@@ -18,7 +18,7 @@ const trip = {
 const days = [
   { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין במלון', timeLabel: 'ערב' }] },
   { id: 'd2', order: 1, date: '2026-11-04', title: 'מוזיאונים', activities: [
-    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב' }, { title: 'הלובר', timeLabel: 'בוקר' },
+    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב' }, { title: 'הלובר', timeLabel: 'בוקר', placeId: 'pl-louvre' },
     { title: 'גני טווילרי', timeLabel: 'צהריים' }, { title: 'גלידה ברטיון' }, { title: 'מגדל אייפל בלילה', timeLabel: 'לילה' },
   ] },
 ];
@@ -27,7 +27,13 @@ const reminders = [
   { text: 'להזמין מונית לשדה', createdAt: 1, remindAt: '2026-10-29T18:00' },
   { text: 'להדפיס כרטיסים', createdAt: 2 }, { text: 'מטען נייד', createdAt: 3 },
 ];
-const data = { daysByTrip: { paris: days }, checklistByTrip: { paris: checklist }, remindersByTrip: { paris: reminders } };
+// The expense widget: the trip's last expense was in euros, in a category of its own.
+const expenses = [{ amount: 12, currency: 'EUR', category: 'מוזיאונים', createdAt: '2026-11-03T12:00:00.000Z' }];
+const rates = { EUR: 1, ILS: 4.05, USD: 1.1 };
+const data = {
+  daysByTrip: { paris: days }, checklistByTrip: { paris: checklist }, remindersByTrip: { paris: reminders },
+  expensesByTrip: { paris: expenses }, rates,
+};
 
 const at = (s) => new Date(s);
 const cases = [

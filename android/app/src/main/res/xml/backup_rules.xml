@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backups (Android 11 and lower): everything but the sign-in the expense
+     widget saves with (ExpenseStore); a restored phone signs in again. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="expense_auth.xml" />
+</full-backup-content>

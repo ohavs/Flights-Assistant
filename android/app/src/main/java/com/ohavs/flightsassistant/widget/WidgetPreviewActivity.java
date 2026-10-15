@@ -25,7 +25,9 @@ import java.util.Collections;
  * can screenshot it (scripts/widget-shots.sh). Extras: provider (the
  * widget's class name, TripWidget when absent), snapshot64 (the snapshot
  * as base64 JSON, since adb cannot pass Hebrew and quotes; "none" for
- * signed out), nowMs (the clock to draw at), widthDp, heightDp.
+ * signed out), nowMs (the clock to draw at), widthDp, heightDp, and
+ * auth64 (a sign-in for the expense widget, base64 JSON as
+ * TripWidgetPlugin.auth takes it).
  * Without the bind grant it just closes. Learned from Payments.
  */
 public class WidgetPreviewActivity extends Activity {
@@ -56,6 +58,14 @@ public class WidgetPreviewActivity extends Activity {
         }
         // The moment under test, kept with this widget (BaseWidget.redraw):
         // the system redraws it right after binding, and must draw the same.
+        String auth64 = getIntent().getStringExtra("auth64");
+        if (auth64 != null) {
+            try {
+                ExpenseStore.setAuth(this, new org.json.JSONObject(new String(Base64.decode(auth64, Base64.DEFAULT), StandardCharsets.UTF_8)));
+            } catch (org.json.JSONException e) {
+                android.util.Log.w("WidgetPreview", "bad auth64");
+            }
+        }
         Bundle opts = new Bundle();
         opts.putString(WidgetKit.OPT_PREVIEW, json == null ? "" : json);
         opts.putLong(WidgetKit.OPT_NOW, now);

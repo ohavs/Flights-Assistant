@@ -1280,21 +1280,24 @@ function AppInner() {
     if (!isNative || loading) return undefined;
     if (!signedInUid) { import('./lib/native/widget').then(w => w.saveWidget(null)).catch(() => {}); return undefined; }
     const ids = widgetKey ? widgetKey.split(',') : [];
-    const data = { days: {}, checklist: {}, reminders: {} };
+    const data = { days: {}, checklist: {}, reminders: {}, expenses: {} };
     let timer;
     const sync = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
+      timer = setTimeout(async () => {
         const current = document.documentElement.getAttribute('data-palette') || 'green';
+        // The expense widget values a foreign expense in shekels at these.
+        const rates = await import('./services/currency').then(c => c.refreshRatesIfStale()).then(r => r?.rates).catch(() => null);
         import('./lib/native/widget').then(w => w.saveWidget(widgetSnapshot({
           trips: tripsRef.current,
           daysByTrip: data.days, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
+          expensesByTrip: data.expenses, rates,
           palette: current,
         }))).catch(() => {});
       }, 600);
     };
     widgetSync.current = sync;
-    const offs = ids.flatMap(id => ['days', 'checklist', 'reminders'].map(sub => listen(
+    const offs = ids.flatMap(id => ['days', 'checklist', 'reminders', 'expenses'].map(sub => listen(
       collection(db, 'trips', id, sub),
       (snap) => { data[sub][id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
       () => {},
@@ -1304,6 +1307,41 @@ function AppInner() {
   }, [widgetKey, signedInUid, loading]);
   // A renamed trip, a moved flight or another palette: the same data, saved again.
   useEffect(() => { widgetSync.current?.(); }, [trips, palette]);
+
+  // The expense widget saves on its own with the user's sign-in (the
+  // refresh token, kept on the phone); signed out, it is taken back.
+  useEffect(() => {
+    if (!isNative) return undefined;
+    let off = () => {};
+    Promise.all([import('firebase/auth'), import('./firebase')]).then(([{ onIdTokenChanged }, { auth }]) => {
+      off = onIdTokenChanged(auth, (u) => {
+        const { apiKey, projectId } = auth.app.options;
+        import('./lib/native/widget').then(w => w.saveWidgetAuth(
+          u ? { uid: u.uid, refreshToken: u.refreshToken, apiKey, projectId } : null,
+        )).catch(() => {});
+      });
+    }).catch(() => {});
+    return () => off();
+  }, []);
+
+  // Expenses the widget saved offline or before it had the sign-in: written
+  // now, and whenever the app comes back to the front.
+  useEffect(() => {
+    if (!isNative || !signedInUid) return undefined;
+    const send = () => import('./lib/native/widget').then(w => w.sendWidgetExpenses(signedInUid,
+      // Queued in Firestore's own offline store is enough; it sends it.
+      (tripId, id, data) => Promise.race([
+        setDoc(doc(db, 'trips', tripId, 'expenses', id), data),
+        new Promise(resolve => setTimeout(resolve, 3000)),
+      ]),
+    )).catch(() => {});
+    send();
+    let sub;
+    let gone = false;
+    import('@capacitor/app').then(({ App: CapApp }) => CapApp.addListener('resume', send))
+      .then(s => { if (gone) s?.remove?.(); else sub = s; }).catch(() => {});
+    return () => { gone = true; sub?.remove?.(); };
+  }, [signedInUid]);
 
   // "Share" from Google Maps to the Android app: the same trip picker as a
   // share to the web app (ShareTargetScreen), whatever screen was open.

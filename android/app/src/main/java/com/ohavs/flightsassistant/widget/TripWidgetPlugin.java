@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Build;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -20,6 +21,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *     names another, e.g. "PlanWidget").
  *   "open" event: a tap on the widget, { tripId, tab }. A tap that started
  *     the app is kept until the app listens.
+ *   auth({ uid, refreshToken, apiKey, projectId } | {}): the sign-in the
+ *     expense widget saves with (ExpenseStore); {} when signed out.
+ *   pending(): { items: [{ id, tripId, uid, doc }] }, expenses the widget
+ *     could not send; done({ ids }) once the app has written them.
  */
 @CapacitorPlugin(name = "TripWidget")
 public class TripWidgetPlugin extends Plugin {
@@ -54,6 +59,33 @@ public class TripWidgetPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("asked", asked);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void auth(PluginCall call) {
+        JSObject a = call.getData();
+        ExpenseStore.setAuth(getContext(), a.has("uid") ? a : null);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void pending(PluginCall call) {
+        JSObject ret = new JSObject();
+        try {
+            ret.put("items", new JSArray(ExpenseStore.pending(getContext()).toString()));
+        } catch (org.json.JSONException e) {
+            ret.put("items", new JSArray());
+        }
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void done(PluginCall call) {
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        JSArray a = call.getArray("ids", new JSArray());
+        for (int i = 0; i < a.length(); i++) ids.add(a.optString(i));
+        ExpenseStore.remove(getContext(), ids);
+        call.resolve();
     }
 
     // BridgeActivity passes the launch intent here too, so a cold start from

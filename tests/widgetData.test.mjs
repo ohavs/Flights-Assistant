@@ -85,3 +85,31 @@ test('nothing ahead: an empty list, still a snapshot', () => {
   assert.equal(s.palette, 'sand');
   assert.deepEqual(s.trips, []);
 });
+
+test('the expense widget: currencies, categories, the latest currency, and rates for them', () => {
+  const expenses = [
+    { currency: 'EUR', category: 'אוכל ושתייה', createdAt: '2026-11-03T10:00:00.000Z' },
+    { currency: 'CHF', category: 'מוזיאונים', createdAt: '2026-11-04T09:00:00.000Z' },
+    { currency: 'EUR', createdAt: '2026-11-02T09:00:00.000Z' },
+  ];
+  const rates = { EUR: 1, ILS: 4.05, USD: 1.1, CHF: 0.96, JPY: 162 };
+  const s = widgetSnapshot({ trips: [paris, rome], expensesByTrip: { p: expenses }, rates, now });
+  const [p, r] = s.trips;
+  assert.equal(p.spend.currency, 'CHF');
+  assert.deepEqual(p.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD', 'CHF']);
+  assert.deepEqual(p.spend.currencies[0], { code: 'ILS', symbol: '₪' });
+  assert.equal(p.spend.categories.at(-1), 'מוזיאונים');
+  assert.ok(p.spend.categories.includes('כללי'));
+  // A trip with no expenses yet: the tab's defaults, in shekels.
+  assert.equal(r.spend.currency, 'ILS');
+  assert.deepEqual(r.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD']);
+  // Only the rates the widget can use.
+  assert.deepEqual(s.rates, { ILS: 4.05, EUR: 1, USD: 1.1, CHF: 0.96 });
+  assert.equal(widgetSnapshot({ trips: [paris], now }).rates, null);
+});
+
+test('a plan item keeps its place, for the expense widget to link to', () => {
+  const days = [{ id: 'd1', order: 0, date: '2026-11-03', activities: [{ title: 'לובר', placeId: 'pl1' }, { title: 'גלידה' }] }];
+  const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now }).trips;
+  assert.deepEqual(t.days['2026-11-03'].items, [{ time: '', title: 'לובר', placeId: 'pl1' }, { time: '', title: 'גלידה' }]);
+});

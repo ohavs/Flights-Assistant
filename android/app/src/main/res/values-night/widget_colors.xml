@@ -11,4 +11,5 @@
     <color name="w_brand">#2DBE6C</color>
     <color name="w_ink">#E8E8EA</color>
     <color name="w_dot">#85868F</color>
+    <color name="w_on_brand">#0B0B0C</color>
 </resources>

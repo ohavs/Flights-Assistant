@@ -12,6 +12,8 @@
 import { departureAt, parseClock } from './flightAlerts.js';
 import { tripRange, dayFor, activityRank } from './morningAlerts.js';
 import { parseLocal } from './reminderAlerts.js';
+import { CURRENCY_META } from '../services/currency.js';
+import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
 
 export const WIDGET_TRIPS = 3;      // the current or next trip, and the ones after it
 export const WIDGET_DAYS = 14;      // planner days kept per trip, from today
@@ -82,7 +84,10 @@ function daysOf(trip, days, range, now) {
       title: [`יום ${n + 1}`, day?.title].filter(Boolean).join(' · '),
       name: day?.title || '',
       when: whenText(iso),
-      items: acts.slice(0, PLAN_ITEMS).map(a => ({ time: a.timeLabel?.trim() || '', title: a.title })),
+      // placeId: the planning tab's place, for an expense the widget links to it.
+      items: acts.slice(0, PLAN_ITEMS).map(a => ({
+        time: a.timeLabel?.trim() || '', title: a.title, ...(a.placeId ? { placeId: a.placeId } : {}),
+      })),
       more: Math.max(0, acts.length - PLAN_ITEMS),
     };
   }
@@ -100,14 +105,32 @@ function remindersOf(list) {
   };
 }
 
-// trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip: { [tripId]: [doc] }.
-// palette: the app's palette key; the widget has each one's light and dark colours.
-export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, palette = 'green', now = new Date() }) {
+// The expense widget's choices (ExpenseWidget.java): the currencies and
+// categories the expenses tab offers for this trip, and the currency of its
+// latest expense, which the keypad starts on.
+function spendOf(list) {
+  const latest = [...(list || [])].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  const codes = [...new Set([...DEFAULT_CURRENCIES, ...latest.map(e => e.currency).filter(Boolean)])];
+  return {
+    currency: latest.find(e => e.currency)?.currency || DEFAULT_CURRENCIES[0],
+    currencies: codes.map(code => ({ code, symbol: CURRENCY_META[code]?.symbol || code })),
+    categories: [...new Set([...DEFAULT_EXPENSE_CATEGORIES, ...latest.map(e => e.category).filter(Boolean)])],
+  };
+}
+
+// trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip /
+// expensesByTrip: { [tripId]: [doc] }. palette: the app's palette key; the
+// widget has each one's light and dark colours. rates: the expenses tab's
+// (per euro), for the shekel value of an expense the widget saves.
+export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, rates = null, palette = 'green', now = new Date() }) {
+  const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(expensesByTrip[trip.id]) }));
+  const codes = new Set(['ILS', ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
   return {
     v: 1,
     savedAt: now.getTime(),
     palette,
-    trips: widgetTrips(trips, now).map(trip => {
+    rates: rates ? Object.fromEntries([...codes].filter(c => Number(rates[c]) > 0).map(c => [c, Number(rates[c])])) : null,
+    trips: shown.map(({ trip, spend }) => {
       const range = tripRange(trip);
       const items = checklistByTrip[trip.id] || [];
       return {
@@ -119,6 +142,7 @@ export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, r
         days: daysOf(trip, daysByTrip[trip.id], range, now),
         packed: { done: items.filter(it => it.completed).length, total: items.length },
         reminders: remindersOf(remindersByTrip[trip.id]),
+        spend,
       };
     }),
   };

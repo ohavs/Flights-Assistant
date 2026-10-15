@@ -51,7 +51,7 @@ final class WidgetKit {
 
     /** Every kind of widget; a new snapshot redraws them all. */
     static BaseWidget[] all() {
-        return new BaseWidget[] { new TripWidget(), new CountdownWidget(), new PlanWidget(), new PackWidget(), new RemindersWidget() };
+        return new BaseWidget[] { new TripWidget(), new CountdownWidget(), new PlanWidget(), new PackWidget(), new RemindersWidget(), new ExpenseWidget() };
     }
 
     static BaseWidget byName(String name) {
@@ -115,6 +115,38 @@ final class WidgetKit {
         boolean flightFirst() {
             return next != null && (!during || flightSoon);
         }
+    }
+
+    /**
+     * The moment a widget with these options draws: under test (CI) the
+     * snapshot and clock in its own options, else the app's snapshot now.
+     * Null when the snapshot cannot be read.
+     */
+    static Moment momentOf(Context ctx, Bundle o) {
+        String json;
+        long now;
+        if (o != null && o.containsKey(OPT_NOW)) {
+            json = o.getString(OPT_PREVIEW, "");
+            now = o.getLong(OPT_NOW);
+        } else {
+            json = snapshot(ctx);
+            now = System.currentTimeMillis();
+        }
+        try {
+            return moment(json == null || json.isEmpty() ? null : new JSONObject(json), now);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static JSONObject obj(String... kv) {
+        JSONObject o = new JSONObject();
+        try {
+            for (int i = 0; i + 1 < kv.length; i += 2) o.put(kv[i], kv[i + 1]);
+        } catch (org.json.JSONException ignored) {
+            // keys are never null
+        }
+        return o;
     }
 
     static Moment moment(JSONObject s, long now) {
@@ -327,13 +359,15 @@ final class WidgetKit {
     /** Which views take which of the palette's colours. */
     static final class Paint {
         final List<Integer> cards = new ArrayList<>(), tiles = new ArrayList<>(), softs = new ArrayList<>(),
-            accents = new ArrayList<>(), bars = new ArrayList<>();
+            accents = new ArrayList<>(), bars = new ArrayList<>(), fills = new ArrayList<>();
         Paint card(int... ids) { for (int i : ids) cards.add(i); return this; }
         Paint tile(int... ids) { for (int i : ids) tiles.add(i); return this; }
         Paint soft(int... ids) { for (int i : ids) softs.add(i); return this; }
         /** Accent text on a soft chip or pill: both. */
         Paint chip(int... ids) { for (int i : ids) { softs.add(i); accents.add(i); } return this; }
         Paint bar(int... ids) { for (int i : ids) bars.add(i); return this; }
+        /** A primary key: the brand behind it. */
+        Paint fill(int... ids) { for (int i : ids) fills.add(i); return this; }
     }
 
     static void theme(Context ctx, RemoteViews v, String palette, Paint p) {
@@ -346,6 +380,7 @@ final class WidgetKit {
             for (int id : p.cards) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(day[2]), ColorStateList.valueOf(night[2]));
             for (int id : p.tiles) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(day[3]), ColorStateList.valueOf(night[3]));
             for (int id : p.softs) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(day[4]), ColorStateList.valueOf(night[4]));
+            for (int id : p.fills) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(day[1]), ColorStateList.valueOf(night[1]));
         } else {
             // Older phones keep the green surfaces; the accent follows the palette.
             boolean dark = (ctx.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;

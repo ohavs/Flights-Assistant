@@ -3,6 +3,8 @@
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -97,6 +99,33 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/reminders_widget" />
         </receiver>
+
+        <receiver
+            android:name=".widget.ExpenseWidget"
+            android:exported="false"
+            android:label="@string/widget_expense_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/expense_widget" />
+        </receiver>
+        <!-- The expense widget's second step, over the home screen: its own
+             task, so the app does not come up behind it. -->
+        <activity
+            android:name=".widget.ExpenseSheetActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.expense"
+            android:theme="@style/ExpenseSheet"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- Sends expenses the widget queued offline, once there is a network. -->
+        <service
+            android:name=".widget.ExpenseFlushJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <!-- CI screenshots of the widgets (not exported: adb as root only). -->
         <activity
