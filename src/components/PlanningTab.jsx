@@ -7,7 +7,7 @@ import { localDay, isoDay } from '../lib/dates';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
-import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
+import { useWeather, getWeatherIcon } from '../hooks/useWeather';
 import { createPortal } from 'react-dom';
 import {
   collection,
@@ -49,7 +49,6 @@ import {
   Trash2,
   MapPin,
   ExternalLink,
-  DollarSign,
   Compass,
   UtensilsCrossed,
   Train,
@@ -82,7 +81,6 @@ import {
   Tent,
   Navigation,
   GripVertical,
-  ArrowUpDown,
   Check,
   Layers,
   LayoutList,
@@ -199,59 +197,6 @@ function clusterByProximity(items, thresholdM) {
   }
   return clusters;
 }
-
-export const defaultGironaPlans = [
-  {
-    id: 'plan-1',
-    title: 'העיר העתיקה של ז\'ירונה (Barri Vell)',
-    category: 'אטרקציות ודברים לעשות',
-    description: 'שיטוט בסמטאות הציוריות, ביקור בקתדרלת ז\'ירונה המרהיבה ובחומות העיר המציעות תצפית פנורמית (לוקיישן מרכזי ממשחקי הכס).',
-    address: 'Barri Vell, Girona',
-    rating: 5,
-    price: 'חינם',
-    visited: false
-  },
-  {
-    id: 'plan-2',
-    title: 'מסעדת El Celler de Can Roca',
-    category: 'מסעדות ומקומות אכילה',
-    description: 'מסעדת עילית עם 3 כוכבי מישלן, שנבחרה מספר פעמים למסעדה הטובה בעולם. חוויה קולינרית בלתי נשכחת (חובה להזמין מקום חודשים מראש).',
-    address: 'Carrer de Can Sunyer, 48, Girona',
-    rating: 5,
-    price: 'יקר מאוד',
-    visited: false
-  },
-  {
-    id: 'plan-3',
-    title: 'הבתים הצבעוניים על נהר האוניאר (Onyar)',
-    category: 'מקומות לבקר',
-    description: 'אחד מסימני ההיכר של ז\'ירונה. מומלץ לעמוד על גשר אייפל (שתוכנן ע"י גוסטב אייפל) לצילום מושלם של הבתים הצבעוניים המשתקפים במים.',
-    address: 'Pont de les Peixateries Velles, Girona',
-    rating: 4.8,
-    price: 'חינם',
-    visited: false
-  },
-  {
-    id: 'plan-4',
-    title: 'רכבת מהירה מברצלונה (AVE / Avant)',
-    category: 'תחבורה ציבורית',
-    description: 'הדרך הנוחה ביותר להגיע ממרכז ברצלונה (תחנת Sants) לז\'ירונה. נסיעה של 38 דקות בלבד ברכבת ממוזגת ומהירה.',
-    address: 'Girona Train Station',
-    rating: 4.7,
-    price: '15-25 €',
-    visited: false
-  },
-  {
-    id: 'plan-5',
-    title: 'רכישת כרטיס סים מקומי בשדה התעופה',
-    category: 'מידע כללי וטיפים',
-    description: 'ניתן לרכוש כרטיס e-SIM מראש או לקנות סים פיזי של חברות כמו Vodafone או Orange בשדה התעופה או במרכז העיר לגלישה נוחה.',
-    address: 'Girona Airport (GRO)',
-    rating: 4.5,
-    price: '10-20 €',
-    visited: false
-  }
-];
 
 // Card layouts for the places list. Each entry drives the density of the
 // card chrome, so every layout keeps the same behaviour (expand, navigate,

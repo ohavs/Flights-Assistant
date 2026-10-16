@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import {
   Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText, Hash,
-  ChevronDown, ExternalLink, RotateCcw, Globe, X, GripVertical
+  ExternalLink, RotateCcw, Globe, X, GripVertical
 } from 'lucide-react';
 import { CustomDropdown } from './CustomDatePicker';
 import Sheet from '../ui/Sheet';

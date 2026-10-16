@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useState, useCallback } from 'react';
+import { createContext, useContext, useRef, useState, useCallback } from 'react';
 import ConfirmModal from './components/ConfirmModal';
 import useBackHandler from './hooks/useBackHandler';
 
