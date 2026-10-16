@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.51.1 (`changelog.md`)
+- גרסת ווב: 8.51.2 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -41,15 +41,11 @@
 
 ## סקירה כללית (2026-10-16): ממצאים פתוחים
 תוקן ב־8.51.1 (#83): נתוני טיסה מומצאים, והרענון שכתב עותק ישן של הטיול.
+תוקן ב־8.51.2: הסרת חבר ויציאה (`deleteField` על המפתח בלבד), מחיקה אופליין ב־`SheetDelete`, `listen` עם שגיאה ו־seed חלקי ב־`FlightTab`, נקודת מוצא ויצירת ימים בתכנון (batch אחד, בלי `await`), תאריכים בלי שעה (`src/lib/dates.js`: `localDay`/`isoDay`, אף פעם `new Date('YYYY-MM-DD')`), ו־`ilsSnapshot` בהוצאות.
 
-**באגים שנשארו (לפי חומרה):**
-- `App.jsx` `removeMember`/`leaveTrip`: כותבים את כל `members` מה־state. חבר שנוסף בינתיים נשאר ב־`memberIds` בלי תפקיד. תיקון: `` [`members.${uid}`]: deleteField() ``.
-- `ui/SheetDelete.jsx` (הוצאות, מידע, הזמנות): `await deleteDoc` לפני סגירה. אופליין החלונית לא נסגרת, ו"שמור" בהוצאות מחזיר את מה שנמחק.
-- `FlightTab.jsx`: `onSnapshot` ישיר בלי טיפול בשגיאה (Skeleton לתמיד אחרי סירוב). ענף ה־seed כותב את כל המסמך.
-- `PlanningTab.jsx:~861`: `await` בטופס נקודת מוצא, ולחיצה כפולה יוצרת כפילות. `~1564`: יצירת ימים מחדש מוחקת עם `await` לפני שיוצרת. אם סוגרים אופליין, הימים אבדו.
-- `new Date('YYYY-MM-DD')` נקרא כ־UTC עם getters מקומיים (`PlanningTab` ‏~1568, ~4032, `TripHeaderInfo:67`): בטלפון באזור זמן מערבי, יום אחד אחורה.
-- `ExpensesTab`: `rates` הוא null עד שהשערים נטענים, ועריכה מהירה שומרת `ilsSnapshot` ישן.
+**פתוח:**
 - `backupTrip.js:39`: עותק מיובא שומר את כל החברים של המקור. לשאול את הבעלים אם זה מכוון.
+- **Blaze פעיל** (אומת 2026-10-16 ב־`firebase-plan.yml`, בדיקה לקריאה בלבד). ה־APIs של Functions עוד כבויים; ה־deploy הראשון מדליק אותם. הקובץ נשמר בצד ויחזור ב־PR של N5.
 
 **קוד מת (בטוח למחיקה, PR ניקוי אחד):** כ־265 שורות CSS (`.filter-chip*`, `.category-select`, `.checklist-row`, `.custom-checkbox`, `.btn-tab-toggle`, `.grid-2/3`, `.btn-add-circle`, בלוק "Dark-mode button overrides", ומשתנים שלא נקראים), `src/App.css`, `import './index.css'` כפול ב־`App.jsx`, `useInstallPrompt.js`, `defaultGironaPlans`, שאריות SheetJS ב־`exportTrip.js`, imports ו־props מתים, החבילה `xlsx`, `src/assets/*`, `public/icons.svg`, ושאריות תבנית באנדרואיד (`ic_launcher_background/foreground` ב־drawable, `activity_main.xml`, `Example*Test.java`).
 **לא למחוק:** `release-notes.md` (‏`android.yml`), `firebase-android-setup.yml`, `scripts/android-icons.py` (היחיד שמייצר splash). `project_overview.md` מיושן (7.4.0): לעדכן.

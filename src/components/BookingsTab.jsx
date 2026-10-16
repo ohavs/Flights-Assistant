@@ -210,7 +210,8 @@ export default function BookingsTab({ tripId }) {
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
     if (!ok) return false;
-    await deleteDoc(doc(db, 'trips', tripId, 'bookings', b.id));
+    // Not awaited, so the sheet closes offline too (see ExpensesTab).
+    deleteDoc(doc(db, 'trips', tripId, 'bookings', b.id)).catch(err => console.error('Delete booking failed:', err));
     return true;
   };
 

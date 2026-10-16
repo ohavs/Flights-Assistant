@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
+import { listen } from '../lib/listen';
+import { localDay } from '../lib/dates';
 import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightTime';
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import Sheet from '../ui/Sheet';
@@ -264,6 +266,7 @@ export default function FlightTab({ tripId }) {
   // The airports the form opened with, to tell what the lookup changed.
   const openAirports = useRef({ out: {}, ret: {} });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   // 'all' | 'trip' | 'outbound' | 'return' | 'hotel'
   const [editScope, setEditScope] = useState('all');
@@ -453,9 +456,11 @@ export default function FlightTab({ tripId }) {
   // was when the tab opened.
   const latestTrip = useRef(null);
   const refreshRef = useRef(refreshFlight);
+  const canEditRef = useRef(canEdit);
   useEffect(() => {
     latestTrip.current = tripData;
     refreshRef.current = refreshFlight;
+    canEditRef.current = canEdit;
   });
 
   // Auto-refresh every 5 minutes (always on — API key is baked in)
@@ -468,30 +473,30 @@ export default function FlightTab({ tripId }) {
     return () => clearInterval(interval);
   }, [tripId]);
 
-  // Listen to Firestore
+  // Listen to Firestore. A trip saved before it had flight details shows
+  // empty ones at once, and an editor's app adds those fields, and only
+  // those: writing the snapshot back would revert what others changed.
   useEffect(() => {
     if (!tripId) return;
     const docRef = doc(db, 'trips', tripId);
-    const unsubscribe = onSnapshot(docRef, async (docSnap) => {
-      if (docSnap.exists() && docSnap.data().outboundFlightDetails) {
-        setTripData(docSnap.data());
-        setLoading(false);
-      } else {
-        setLoading(true);
-        const currentData = docSnap.data() || {};
-        // Always seed EMPTY details — never copy any other trip's data in.
-        // Each trip is fully self-contained.
-        await setDoc(docRef, {
-          outboundFlightDetails: emptyFlightDetails,
-          returnFlightDetails: emptyFlightDetails,
-          hotelDetails: emptyHotelDetails,
-          ...currentData
-        }, { merge: true });
-        setLoading(false);
+    return listen(docRef, (docSnap) => {
+      if (!docSnap.exists()) return;   // deleted: the trip list moves on
+      const d = docSnap.data();
+      const seed = {};
+      if (!d.outboundFlightDetails) seed.outboundFlightDetails = emptyFlightDetails;
+      if (!d.returnFlightDetails) seed.returnFlightDetails = emptyFlightDetails;
+      if (!d.hotelDetails) seed.hotelDetails = emptyHotelDetails;
+      setTripData({ ...seed, ...d });
+      setLoadError(false);
+      setLoading(false);
+      if (Object.keys(seed).length && canEditRef.current) {
+        updateDoc(docRef, seed).catch(err => console.error('Seed flight details failed:', err));
       }
+    }, (err) => {
+      console.error('Flight tab listener stopped:', err?.code || err);
+      setLoadError(true);
+      setLoading(false);
     });
-
-    return () => unsubscribe();
   }, [tripId]);
 
   const applyLookup = (which, simResult) => {
@@ -732,6 +737,9 @@ export default function FlightTab({ tripId }) {
   const returning = tripData?.returnFlightDetails || emptyFlightDetails;
   const hotel = tripData?.hotelDetails || emptyHotelDetails;
 
+  if (loadError && !tripData) {
+    return <Notice tone="error">לא ניתן לטעון את פרטי הטיסה והמלון. נסו לפתוח את הטיול מחדש.</Notice>;
+  }
   if (loading || !tripData) {
     return (
       <Skeleton rows={3} label="טוען נתוני טיסה ומלון" />
@@ -887,7 +895,7 @@ export default function FlightTab({ tripId }) {
             ) : (
               <span style={tileValue}>
                 {flight.date
-                  ? new Date(flight.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                  ? (localDay(flight.date) || new Date(flight.date)).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
                   : '—'}
               </span>
             )}

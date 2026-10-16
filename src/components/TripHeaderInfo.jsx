@@ -3,6 +3,7 @@ import { CircleAlert, ChevronLeft } from 'lucide-react';
 import { collection } from 'firebase/firestore';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
+import { localDay, isoDay } from '../lib/dates';
 import { Pill } from '../ui/kit';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import Sheet from '../ui/Sheet';
@@ -14,7 +15,7 @@ const InfoTab = lazy(() => import('./InfoTab'));
    weather at the destination (a chip by the destination city on the
    flight cards) and the trip's important info (a card under the hotel). */
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => isoDay();   // the phone's day, not UTC's
 
 /* Weather at the destination airport. Nothing until the trip has one. */
 export function WeatherChip({ trip }) {
@@ -64,7 +65,7 @@ export function WeatherChip({ trip }) {
             {tripDays.length > 0 && (
               <div className="weather-days">
                 {tripDays.map((d) => {
-                  const day = new Date(d.date);
+                  const day = localDay(d.date) || new Date(d.date);
                   const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][day.getDay()];
                   const dd = String(day.getDate()).padStart(2, '0');
                   const mm = String(day.getMonth() + 1).padStart(2, '0');

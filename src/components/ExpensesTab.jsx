@@ -7,7 +7,7 @@ import {
   Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin,
   Utensils, Bus, BedDouble, Ticket, ShoppingBag,
 } from 'lucide-react';
-import { CURRENCY_META, convert, refreshRatesIfStale } from '../services/currency';
+import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
 import { useConfirm } from '../ConfirmContext';
 import Sheet from '../ui/Sheet';
@@ -98,7 +98,12 @@ export default function ExpensesTab({ tripId }) {
   const [planFilter, setPlanFilter] = useState('');
 
   // Exchange rates for ILS conversion
-  const [rates, setRates] = useState(null);
+  // The last rates fetched (cached) at once, or none: a save before the
+  // fetch finishes still snapshots the amount in shekels.
+  const [rates, setRates] = useState(() => {
+    const r = getInitialRates();
+    return r.fetchedAt ? r.rates : null;
+  });
 
   const confirm = useConfirm();
   const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canEdit } = useTrip();
@@ -218,8 +223,10 @@ export default function ExpensesTab({ tripId }) {
     let ilsSnapshot = null;
     if (currency !== 'ILS' && rates) {
       ilsSnapshot = convert(parsedAmount, currency, 'ILS', rates);
-    } else if (currency !== 'ILS' && existing?.ilsSnapshot) {
-      // Preserve existing snapshot if rates unavailable
+    } else if (currency !== 'ILS' && existing?.ilsSnapshot != null
+      && existing.currency === currency && Number(existing.amount) === parsedAmount) {
+      // No rates: keep the snapshot, but only of the same amount. A changed
+      // one has none, and the list converts it live once the rates arrive.
       ilsSnapshot = existing.ilsSnapshot;
     }
 
@@ -253,7 +260,9 @@ export default function ExpensesTab({ tripId }) {
       danger: true,
     });
     if (!ok) return false;
-    await deleteDoc(doc(db, 'trips', tripId, 'expenses', id));
+    // Not awaited: offline the write waits for the network, and the sheet
+    // (SheetDelete) closes now, or its Save would write the expense back.
+    deleteDoc(doc(db, 'trips', tripId, 'expenses', id)).catch(err => console.error('Delete expense failed:', err));
     return true;
   };
 
