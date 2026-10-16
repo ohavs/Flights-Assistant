@@ -13,7 +13,10 @@ export async function checkForUpdate() {
   if (!isNative) return { current: null, latest: null, available: false };
   const [current, res] = await Promise.all([
     appVersion(),
-    fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } }),
+    fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(15000),   // a weak connection: an error, not an endless "checking"
+    }),
   ]);
   // No release yet reads as "up to date", not as an error.
   if (res.status === 404) return { current, latest: null, available: false };

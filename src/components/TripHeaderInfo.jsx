@@ -8,6 +8,7 @@ import { Pill } from '../ui/kit';
 import { useWeather, getWeatherIcon, getWeatherLabel } from '../hooks/useWeather';
 import Sheet from '../ui/Sheet';
 import Skeleton from './Skeleton';
+import ErrorBoundary from './ErrorBoundary';
 
 const InfoTab = lazy(() => import('./InfoTab'));
 
@@ -125,9 +126,11 @@ export function InfoCard({ tripId }) {
           style={{ maxHeight: '92vh' }}
         >
           <div data-sheet-scroll style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 8 }}>
-            <Suspense fallback={<Skeleton rows={3} header={false} label="טוען מידע חשוב" />}>
-              <InfoTab tripId={tripId} embedded />
-            </Suspense>
+            <ErrorBoundary label="מידע חשוב">
+              <Suspense fallback={<Skeleton rows={3} header={false} label="טוען מידע חשוב" />}>
+                <InfoTab tripId={tripId} embedded />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </Sheet>
       )}

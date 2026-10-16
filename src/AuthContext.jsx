@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, googleProvider } from './firebase';
-import { signInWithPopup, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, browserPopupRedirectResolver, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import { isNative } from './lib/platform';
 
 // Android app: popups don't work in a WebView, so Google sign-in runs natively
@@ -17,31 +17,38 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+// Whether this phone was signed in last time: then a slow start is a slow
+// connection, not a signed-out user.
+const LAST_UID = 'auth.lastUid';
+const wasSignedIn = () => { try { return !!localStorage.getItem(LAST_UID); } catch { return false; } };
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading, null = not signed in
   const [loading, setLoading] = useState(true);
+  const [slow, setSlow] = useState(false);
 
   useEffect(() => {
-    // Offline fallback — if onAuthStateChanged hasn't fired within 3s
-    // (e.g. Firebase Auth blocked offline), unblock the UI so the
-    // signed-in cached experience can still render.
+    // Signed in, Auth checks the account with Google before it answers. Fully
+    // offline that fails at once and the user is kept; on a weak connection
+    // (Wi-Fi without internet, roaming) it can take a while. Someone who was
+    // signed in waits on "connecting" rather than seeing the sign-in screen;
+    // someone who was not sees it after a moment.
     const timeout = setTimeout(() => {
+      if (wasSignedIn()) { setSlow(true); return; }
       setLoading((wasLoading) => {
-        if (wasLoading) {
-          // Try to read the current user synchronously from auth (may be cached)
-          if (auth.currentUser) {
-            setUser(auth.currentUser);
-          } else {
-            setUser(null);
-          }
-        }
+        if (wasLoading) setUser(auth.currentUser || null);
         return false;
       });
     }, 3000);
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       clearTimeout(timeout);
+      try {
+        if (firebaseUser) localStorage.setItem(LAST_UID, firebaseUser.uid);
+        else localStorage.removeItem(LAST_UID);
+      } catch { /* private mode */ }
       setUser(firebaseUser || null);
+      setSlow(false);
       setLoading(false);
     });
     return () => {
@@ -58,7 +65,7 @@ export function AuthProvider({ children }) {
         await signInWithCredential(auth, GoogleAuthProvider.credential(res.credential?.idToken));
         return;
       }
-      await signInWithPopup(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
     } catch (error) {
       console.error('Google sign-in error:', error);
       throw error;
@@ -78,7 +85,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const value = { user, loading, signInWithGoogle, signOut };
+  const value = { user, loading, slow, signInWithGoogle, signOut };
 
   return (
     <AuthContext.Provider value={value}>

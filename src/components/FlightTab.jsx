@@ -87,6 +87,12 @@ export const defaultTrip = {
   }
 };
 
+// What a refresh the user asked for says when it changes nothing.
+const REFRESH_NOTES = {
+  'network-error': { tone: 'offline', text: 'אין חיבור לאינטרנט. מוצג המידע השמור; אפשר לרענן כשהחיבור יחזור.' },
+  'no-results': { tone: 'info', text: 'אין עדיין מידע עדכני על הטיסה הזו. המידע השמור מוצג.' },
+};
+
 const emptyFlightDetails = {
   flightNumber: '',
   airline: '',
@@ -421,16 +427,21 @@ export default function FlightTab({ tripId }) {
   // leaves the saved flight as it is.
   const [refreshingOut, setRefreshingOut] = useState(false);
   const [refreshingRet, setRefreshingRet] = useState(false);
-  const refreshFlight = async (kind) => {
+  // Why a refresh the user asked for changed nothing: { outbound, return }.
+  const [refreshNote, setRefreshNote] = useState({});
+  const refreshFlight = async (kind, { quiet = false } = {}) => {
     if (!tripId || !tripData || !canEdit) return;
     const field = kind === 'outbound' ? 'outboundFlightDetails' : 'returnFlightDetails';
     const flight = tripData[field];
     if (!flight?.flightNumber) return;
+    const note = (n) => { if (!quiet) setRefreshNote(prev => ({ ...prev, [kind]: n })); };
+    if (!navigator.onLine) { note(REFRESH_NOTES['network-error']); return; }
     const setBusy = kind === 'outbound' ? setRefreshingOut : setRefreshingRet;
     setBusy(true);
     try {
       const wrap = await lookupFlightLive(flight.flightNumber, flight.date);
       const res = wrap?.status === 'api' ? wrap.flight : null;
+      note(res ? null : REFRESH_NOTES[wrap?.status] || (wrap?.message ? { tone: 'warn', text: wrap.message } : null));
       // The leg was edited while the API answered: this answer is for the old one.
       const now = latestTrip.current?.[field];
       if (!res || now?.flightNumber !== flight.flightNumber || now?.date !== flight.date) return;
@@ -467,8 +478,10 @@ export default function FlightTab({ tripId }) {
   useEffect(() => {
     if (!tripId) return;
     const interval = setInterval(() => {
-      refreshRef.current('outbound');
-      refreshRef.current('return');
+      // Offline there is nothing to ask; the saved flight stays on screen.
+      if (!navigator.onLine) return;
+      refreshRef.current('outbound', { quiet: true });
+      refreshRef.current('return', { quiet: true });
     }, AUTO_REFRESH_MS);
     return () => clearInterval(interval);
   }, [tripId]);
@@ -815,6 +828,10 @@ export default function FlightTab({ tripId }) {
             </button>
           </div>
         </div>
+
+        {refreshNote[kind] && (
+          <Notice tone={refreshNote[kind].tone} style={{ marginBottom: 10 }}>{refreshNote[kind].text}</Notice>
+        )}
 
         {/* Route — the two ends of the flight, side by side, with the times
             that actually change sitting under each airport. This is what
