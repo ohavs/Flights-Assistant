@@ -22,10 +22,11 @@ export async function widgetStatus() {
 }
 
 // Asks the launcher to add a widget (kind: its class, e.g. 'PlanWidget';
-// the trip widget by default); the phone shows its own dialog.
-export async function pinWidget(kind = 'TripWidget') {
+// the trip widget by default) of tripId's trip, or of the next trip
+// without one; the phone shows its own dialog.
+export async function pinWidget(kind = 'TripWidget', tripId = '') {
   if (!isNative) return false;
-  try { return !!(await TripWidget.pin({ kind })).asked; } catch { return false; }
+  try { return !!(await TripWidget.pin({ kind, tripId: tripId || '' })).asked; } catch { return false; }
 }
 
 // A tap on the widget: handler({ tripId, tab }). Returns an unsubscribe.

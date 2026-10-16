@@ -145,7 +145,23 @@ final class WidgetKit {
      * snapshot and clock in its own options, else the app's snapshot now.
      * Null when the snapshot cannot be read.
      */
-    static Moment momentOf(Context ctx, Bundle o) {
+    /** The snapshot widget id draws: under test (CI) its own, else the app's; null without one. */
+    static JSONObject snapshotOf(Context ctx, int widgetId) {
+        Bundle o = AppWidgetManager.getInstance(ctx).getAppWidgetOptions(widgetId);
+        String json = o != null && o.containsKey(OPT_NOW) ? o.getString(OPT_PREVIEW, "") : snapshot(ctx);
+        try {
+            return json == null || json.isEmpty() ? null : new JSONObject(json);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static Moment momentOf(Context ctx, int widgetId) {
+        Moment m = momentOf(ctx, AppWidgetManager.getInstance(ctx).getAppWidgetOptions(widgetId), WidgetTrips.get(ctx, widgetId));
+        return m;
+    }
+
+    private static Moment momentOf(Context ctx, Bundle o, String tripId) {
         String json;
         long now;
         if (o != null && o.containsKey(OPT_NOW)) {
@@ -156,7 +172,7 @@ final class WidgetKit {
             now = System.currentTimeMillis();
         }
         try {
-            return moment(json == null || json.isEmpty() ? null : new JSONObject(json), now);
+            return moment(json == null || json.isEmpty() ? null : new JSONObject(json), now, tripId);
         } catch (Exception e) {
             return null;
         }
@@ -173,6 +189,11 @@ final class WidgetKit {
     }
 
     static Moment moment(JSONObject s, long now) {
+        return moment(s, now, null);
+    }
+
+    /** tripId: the trip the widget is set to (WidgetTrips); the next trip when null, or when that one is over. */
+    static Moment moment(JSONObject s, long now, String tripId) {
         Moment m = new Moment();
         m.snapshot = s;
         m.now = now;
@@ -181,7 +202,11 @@ final class WidgetKit {
         m.palette = s.optString("palette", "green");
         m.mode = s.optString("theme", "system");
         JSONArray trips = s.optJSONArray("trips");
-        for (int i = 0; trips != null && i < trips.length(); i++) {
+        for (int i = 0; tripId != null && trips != null && i < trips.length(); i++) {
+            JSONObject t = trips.optJSONObject(i);
+            if (t != null && tripId.equals(t.optString("id")) && t.optString("end").compareTo(m.today) >= 0) { m.trip = t; break; }
+        }
+        for (int i = 0; m.trip == null && trips != null && i < trips.length(); i++) {
             JSONObject t = trips.optJSONObject(i);
             if (t != null && t.optString("end").compareTo(m.today) >= 0) { m.trip = t; break; }
         }

@@ -17,7 +17,7 @@ import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
 import { tripCurrencies, destinationCurrency } from './destinationCurrency.js';
 
-export const WIDGET_TRIPS = 3;      // the current or next trip, and the ones after it
+export const WIDGET_TRIPS = 8;      // the current or next trip, and the ones after it: a widget can be set to any (WidgetTrips.java)
 export const WIDGET_DAYS = 14;      // planner days kept per trip, from today
 const PLAN_ITEMS = 20;   // the plan widget's list scrolls
 const REMINDERS = 30;    // the reminders widget's list scrolls

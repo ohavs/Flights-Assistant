@@ -54,6 +54,11 @@ public abstract class BaseWidget extends AppWidgetProvider {
     }
 
     @Override
+    public void onDeleted(Context ctx, int[] ids) {
+        WidgetTrips.forget(ctx, ids);
+    }
+
+    @Override
     public void onAppWidgetOptionsChanged(Context ctx, AppWidgetManager m, int id, Bundle options) {
         redraw(ctx, m, id);
     }
@@ -77,7 +82,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
     RemoteViews views(Context ctx, String json, long now, Bundle o, int id) {
         WidgetKit.Moment mo;
         try {
-            mo = WidgetKit.moment(json == null ? null : new JSONObject(json), now);
+            mo = WidgetKit.moment(json == null ? null : new JSONObject(json), now, WidgetTrips.get(ctx, id));
         } catch (Exception e) {
             Log.w("TripWidget", "bad snapshot", e);
             return WidgetKit.message(ctx, null, "פתחו את האפליקציה", "כדי לעדכן את הווידג׳ט", null, null);

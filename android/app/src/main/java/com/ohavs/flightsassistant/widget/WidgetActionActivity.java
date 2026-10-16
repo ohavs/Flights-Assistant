@@ -47,7 +47,7 @@ public class WidgetActionActivity extends Activity {
         if (path == null || field == null) return;
         boolean value = i.getBooleanExtra("value", true);
         AppWidgetManager m = AppWidgetManager.getInstance(this);
-        WidgetKit.Moment mo = WidgetKit.momentOf(this, m.getAppWidgetOptions(id));
+        WidgetKit.Moment mo = WidgetKit.momentOf(this, id);
         long savedAt = mo == null || mo.snapshot == null ? 0 : mo.snapshot.optLong("savedAt");
         WidgetLists.tick(this, path, field, value, savedAt);
         try {
