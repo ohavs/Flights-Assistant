@@ -4,7 +4,7 @@
 Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) designed to assist travelers in planning, tracking, and managing their flight and hotel bookings, packing checklists, trip itineraries, and travel expenses. The app is optimized for mobile screens, supports full offline capability, synchronizes with Firestore in real-time, and supports collaborative editing between users.
 
 **Live URL:** https://listify-84018.web.app  
-**Current Version:** 7.4.0
+**Current Version:** see `changelog.md` (the top entry). Android app: Capacitor shell of the same code (`android/`).
 
 ---
 
@@ -38,6 +38,11 @@ Flights-Assistant is a mobile-first, premium Progressive Web Application (PWA) d
 - `/users/{uid}`: any signed-in user can read profiles (for sharing lookups); only the user themselves can write their own doc.
 - `/trips/{tripId}`: role-based read/write. Owners have full control; editors can modify content but not membership; viewers are read-only; any member can self-remove.
 - `/trips/{tripId}/{subcollection}/{docId}`: members can read; owners/editors/members can write.
+- `/users/{uid}/private/*` and `/users/{uid}/devices/*`: the user alone.
+- Anything else (`pushDigests`): no client access; only Cloud Functions write it.
+
+## Cloud Functions (`functions/`, N5)
+Push to a trip's other members when one of them changes it: a new expense, place or activity, someone joining, a flight or hotel change. Firestore triggers (`index.js`, `…WithAuthContext`, so the one who made the change is not told), what each change says (`push.js`, pure) and to whom (`handlers.js`). Several additions by one person within 30 minutes are one notification that counts up (`pushDigests`, and an Android `tag` so the newer replaces the older). Android only: each phone lists its FCM token under `users/{uid}/devices` while the "שינויים של שותפים" switch is on (`src/lib/native/push.js`). Deployed by `.github/workflows/functions.yml` on merge to master.
 
 ---
 
@@ -165,6 +170,15 @@ App-wide styled confirm dialog via `useConfirm()` hook.
   displayName, email, photoURL
   globalChecklist: [{id, text, category, completed}]
   tripIds: [...]
+
+  /private/deleteCode          (the user's alone)
+    hash, updatedAt
+
+  /devices/{deviceId}          (the user's alone; N5 push)
+    token, platform: 'android', updatedAt
+
+/pushDigests/{tripId}_{uid}_{kind}   (server only: one person's running count, N5)
+  count, items: [label], lastAt
 
 /trips/{tripId}
   name, destination, dates

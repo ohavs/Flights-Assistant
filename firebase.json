@@ -3,6 +3,19 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.local",
+        "testing.js"
+      ]
+    }
+  ],
   "hosting": {
     "public": "dist",
     "ignore": [
@@ -29,6 +42,10 @@
     },
     "ui": {
       "enabled": false
+    },
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5001
     }
   }
 }

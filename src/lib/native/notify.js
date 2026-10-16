@@ -16,6 +16,8 @@ export const NOTIFY_KINDS = [
   { key: 'flight', label: 'טיסות', hint: "24 שעות לפני (צ'ק־אין) ו־3 שעות לפני ההמראה", default: true },
   { key: 'reminder', label: 'תזכורות', hint: 'בשעה שקבעתם לתזכורת שלכם', default: true },
   { key: 'morning', label: 'סיכום בוקר', hint: 'בכל בוקר בטיול: התוכנית של היום ומזג האוויר', default: true },
+  // Sent by the server, not scheduled here: see push.js.
+  { key: 'partners', label: 'שינויים של שותפים', hint: 'הוצאה, מקום או פעילות חדשים, הצטרפות לטיול, ושינוי בטיסה או במלון', default: true },
 ];
 
 // The morning summary's time, 'HH:MM' in the phone's own time. Kept apart

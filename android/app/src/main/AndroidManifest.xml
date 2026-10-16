@@ -11,6 +11,18 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- Push from trip partners (N5): the same small icon and colour as
+             the local notifications, in the "partners" channel (push.js). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/w_brand_light" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="partners" />
+
         <!-- The launcher entry is the activity itself, with the map icon
              (8.40.0). Icons are no longer switched: a component whose state
              was never changed at runtime, so no phone is left without one. -->

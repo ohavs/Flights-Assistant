@@ -1367,9 +1367,20 @@ function AppInner() {
     };
     const offs = [];
     import('./lib/native/notify').then(n => { offs.push(n.onNotificationTap(openAt)); }).catch(() => {});
+    import('./lib/native/push').then(p => { offs.push(p.onPushTap(openAt)); }).catch(() => {});
     import('./lib/native/widget').then(w => { offs.push(w.onWidgetOpen(openAt)); }).catch(() => {});
     return () => offs.forEach(off => off());
   }, []);
+
+  // Push from trip partners (N5): this phone is on the server's list while
+  // its switch is on (Settings → התראות), and off it otherwise.
+  useEffect(() => {
+    if (!isNative) return;
+    import('./lib/native/notify').then(n => {
+      const on = !!signedInUid && n.notifyPrefs().partners;
+      return import('./lib/native/push').then(p => p.syncPush(signedInUid, on));
+    }).catch(() => {});
+  }, [signedInUid, notifyVersion]);
 
   // Quietly look for a newer APK once signed in (at most every 6 hours).
   useEffect(() => {

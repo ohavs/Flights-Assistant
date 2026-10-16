@@ -67,6 +67,9 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     try {
+      // This phone stops getting the account's pushes (N5), while still
+      // signed in to say so.
+      if (isNative) await import('./lib/native/push').then(p => p.forgetDevice()).catch(() => {});
       // Also forget the Android account choice so the picker shows next time.
       if (isNative) await (await nativeAuth()).FirebaseAuthentication.signOut().catch(() => {});
       await firebaseSignOut(auth);

@@ -138,6 +138,20 @@ test("the delete code's hash: the user's alone, not even readable by others", as
   await assert.rejects(deleteDoc(code(stranger, owner.uid)), denied);
 });
 
+test("a phone's push token: the user's alone; the server's push records are no one's", async () => {
+  const device = (who, uid = who.uid) => doc(who.db, 'users', uid, 'devices', 'android-1');
+  await setDoc(device(owner), { token: 't1', platform: 'android', updatedAt: '2026-10-16T12:00:00Z' });
+  assert.equal((await getDoc(device(owner))).data().token, 't1');
+  await assert.rejects(getDoc(device(editor, owner.uid)), denied);
+  await assert.rejects(setDoc(device(stranger, owner.uid), { token: 'mine now' }), denied);
+  await assert.rejects(deleteDoc(device(stranger, owner.uid)), denied);
+  await deleteDoc(device(owner));
+  for (const path of ['pushDigests/t_a_expense', 'pushOutbox/x']) {
+    await assert.rejects(getDoc(doc(owner.db, path)), denied);
+    await assert.rejects(setDoc(doc(owner.db, path), { count: 99 }), denied);
+  }
+});
+
 test('reading a trip that does not exist yet, or any more, returns "does not exist"', async () => {
   assert.equal((await getDoc(doc(owner.db, 'trips', 'trip_never_created'))).exists(), false);
   // Harmless for outsiders too: a missing document has nothing to reveal
