@@ -142,7 +142,8 @@ scroll_list; expect 11b-plan-scrolled "מגדל אייפל בלילה"
 open_widget plan 360 290 PlanWidget
 tap_desc "סמן: הלובר"; expect_desc 11c-plan-ticked "בוצע: הלובר"
 queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
-for t in "planning/pl-louvre" "visited"; do
+# Android's JSON writes "/" as "\/": look for the parts.
+for t in "planning" "pl-louvre" "visited"; do
   grep -qF -- "$t" <<<"$queue" || { echo "the tick is not queued (\"$t\"):"; echo "$queue"; exit 1; }
 done
 echo "widget: a ticked place is queued for Firestore
@@ -153,7 +154,7 @@ scroll_list; scroll_list; expect 14b-reminders-scrolled "להשאיר מפתח �
 open_widget flight 360 190 RemindersWidget
 tap_desc "סמן: להזמין מונית לשדה"; expect_desc 14c-reminder-ticked "בוצע: להזמין מונית לשדה"; expect 14d-reminders-count "4 פתוחות"
 queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
-grep -qF "reminders/r1" <<<"$queue" && grep -qF "completed" <<<"$queue" || { echo "the done reminder is not queued:"; echo "$queue"; exit 1; }
+grep -qF "reminders" <<<"$queue" && grep -qF "r1&quot;" <<<"$queue" && grep -qF "completed" <<<"$queue" || { echo "the done reminder is not queued:"; echo "$queue"; exit 1; }
 echo "widget: a done reminder is queued for Firestore
 # The app set to dark on a light phone.
 open_widget plan-app-dark; want_shade 21a-app-dark dark
