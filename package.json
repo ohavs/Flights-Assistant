@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "bash scripts/run-e2e.sh",
-    "test:data": "npx -y firebase-tools@14.27.0 emulators:exec --project demo-flights --only firestore,auth \"node --test tests/*.test.mjs\""
+    "test:data": "npm ci --prefix functions --no-audit --no-fund --silent && npx -y firebase-tools@14.27.0 emulators:exec --project demo-flights --only firestore,auth \"node --test tests/*.test.mjs\""
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",
@@ -18,6 +18,7 @@
     "@capacitor/core": "^8.5.3",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/push-notifications": "^8.1.3",
     "@capacitor/status-bar": "^8.0.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",

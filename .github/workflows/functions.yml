@@ -1,0 +1,60 @@
+name: Cloud Functions
+
+# Push to trip partners (N5) runs in Cloud Functions (functions/). On merge
+# to master, when functions/ changes, this deploys it. The tests run in CI
+# (tests/push.test.mjs, tests/pushHandlers.test.mjs) and again here before
+# deploying. Logs of this public repo are public: FIREBASE_TOKEN is a
+# secret and never printed.
+on:
+  push:
+    branches: [master]
+    paths: [functions/**, .github/workflows/functions.yml, firebase.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functions-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PROJECT: listify-84018
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci --prefix functions --no-audit --no-fund
+
+      - name: Unit tests
+        run: node --test tests/push.test.mjs
+
+      - name: Deploy
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$FIREBASE_TOKEN" ] || { echo "::error::FIREBASE_TOKEN is not set"; exit 1; }
+          deploy() { npx -y firebase-tools@14.27.0 deploy --only functions --project "$PROJECT" --non-interactive --force; }
+          # The first deploy turns on the APIs that Functions needs, and their
+          # service agents take a few minutes to get their permissions.
+          deploy || { echo "Retrying in 2 minutes"; sleep 120; deploy; } || { echo "Retrying in 4 minutes"; sleep 240; deploy; }
+
+      - name: Check the functions are live
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          LIST=$(npx -y firebase-tools@14.27.0 functions:list --project "$PROJECT" --non-interactive)
+          echo "$LIST"
+          for F in pushExpense pushPlace pushActivity pushTrip; do
+            echo "$LIST" | grep -q "$F" || { echo "::error::$F is not deployed"; exit 1; }
+          done
