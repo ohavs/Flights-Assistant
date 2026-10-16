@@ -120,12 +120,23 @@ public class ExpenseSheetActivity extends AppCompatActivity {
         places = findViewById(R.id.places);
         custom = findViewById(R.id.custom_place);
         custom.setBackground(round(colors[3], dp(16)));
+        // Today's plan first, then the trip's other places (the planning tab's).
+        java.util.LinkedHashMap<String, String> offered = new java.util.LinkedHashMap<>();   // title → place id ("" when none)
         JSONObject day = m.day(m.today);
         JSONArray items = day == null ? null : day.optJSONArray("items");
         for (int i = 0; items != null && i < items.length(); i++) {
             JSONObject it = items.optJSONObject(i);
-            if (it == null || it.optString("title").isEmpty()) continue;
-            String title = it.optString("title"), id = it.optString("placeId");
+            if (it != null && !it.optString("title").isEmpty()) offered.putIfAbsent(it.optString("title"), it.optString("placeId"));
+        }
+        JSONArray pool = ExpenseWidget.spend(trip).optJSONArray("places");
+        java.util.Set<String> ids = new java.util.HashSet<>(offered.values());
+        for (int i = 0; pool != null && i < pool.length(); i++) {
+            JSONObject p2 = pool.optJSONObject(i);
+            if (p2 == null || p2.optString("title").isEmpty() || ids.contains(p2.optString("id"))) continue;
+            offered.putIfAbsent(p2.optString("title"), p2.optString("id"));
+        }
+        for (java.util.Map.Entry<String, String> e : offered.entrySet()) {
+            String title = e.getKey(), id = e.getValue();
             places.addView(chip(title, v -> {
                 boolean off = title.equals(placeName);
                 placeName = off ? null : title;
@@ -135,7 +146,16 @@ public class ExpenseSheetActivity extends AppCompatActivity {
             }));
         }
         paint(places, null);
-        places.setVisibility(places.getChildCount() == 0 ? View.GONE : View.VISIBLE);
+        View placesScroll = findViewById(R.id.places_scroll);
+        placesScroll.setVisibility(places.getChildCount() == 0 ? View.GONE : View.VISIBLE);
+        // A long list scrolls inside the sheet, a few rows high.
+        places.post(() -> {
+            int max = Math.round(dp(186));
+            if (places.getHeight() > max) {
+                placesScroll.getLayoutParams().height = max;
+                placesScroll.requestLayout();
+            }
+        });
         if (places.getChildCount() == 0) custom.setHint("איפה? (לא חובה)");
         custom.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}

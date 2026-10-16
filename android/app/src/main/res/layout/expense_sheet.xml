@@ -93,11 +93,19 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="מקום" />
-        <com.ohavs.flightsassistant.widget.ChipFlow
-            android:id="@+id/places"
+        <ScrollView
+            android:id="@+id/places_scroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp" />
+            android:layout_marginTop="10dp"
+            android:fadingEdgeLength="16dp"
+            android:requiresFadingEdge="vertical"
+            android:scrollbars="none">
+            <com.ohavs.flightsassistant.widget.ChipFlow
+                android:id="@+id/places"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </ScrollView>
         <EditText
             android:id="@+id/custom_place"
             android:layout_width="match_parent"

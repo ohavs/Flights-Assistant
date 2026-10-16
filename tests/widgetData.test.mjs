@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { widgetTrips, widgetSnapshot } from '../src/lib/widgetData.js';
+import { destinationCurrency, tripCurrencies } from '../src/lib/destinationCurrency.js';
 
 const now = new Date(2026, 10, 1, 12, 0);            // 1.11.2026 12:00 local
 const paris = {
@@ -86,26 +87,48 @@ test('nothing ahead: an empty list, still a snapshot', () => {
   assert.deepEqual(s.trips, []);
 });
 
-test('the expense widget: currencies, categories, the latest currency, and rates for them', () => {
+test('the expense widget: the destination\'s currencies, categories, places, and rates for them', () => {
   const expenses = [
     { currency: 'EUR', category: 'אוכל ושתייה', createdAt: '2026-11-03T10:00:00.000Z' },
     { currency: 'CHF', category: 'מוזיאונים', createdAt: '2026-11-04T09:00:00.000Z' },
     { currency: 'EUR', createdAt: '2026-11-02T09:00:00.000Z' },
   ];
+  const plans = [
+    { id: 'p1', title: 'מגדל אייפל', visited: true }, { id: 'p2', title: 'הלובר' }, { id: 'p3', title: 'אורסיי' }, { id: 'x' },
+  ];
   const rates = { EUR: 1, ILS: 4.05, USD: 1.1, CHF: 0.96, JPY: 162 };
-  const s = widgetSnapshot({ trips: [paris, rome], expensesByTrip: { p: expenses }, rates, now });
+  const s = widgetSnapshot({ trips: [paris, rome], expensesByTrip: { p: expenses }, plansByTrip: { p: plans }, rates, now });
   const [p, r] = s.trips;
-  assert.equal(p.spend.currency, 'CHF');
-  assert.deepEqual(p.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD', 'CHF']);
+  // Paris (CDG): shekels and euros, then what the trip used.
+  assert.deepEqual(p.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'CHF']);
   assert.deepEqual(p.spend.currencies[0], { code: 'ILS', symbol: '₪' });
+  assert.equal(p.spend.currency, 'EUR');
   assert.equal(p.spend.categories.at(-1), 'מוזיאונים');
   assert.ok(p.spend.categories.includes('כללי'));
-  // A trip with no expenses yet: the tab's defaults, in shekels.
+  // Places not visited first, then by name; nameless ones left out.
+  assert.deepEqual(p.spend.places.map(x => x.id), ['p3', 'p2', 'p1']);
+  // No destination known: the tab's defaults, in shekels.
   assert.equal(r.spend.currency, 'ILS');
   assert.deepEqual(r.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD']);
   // Only the rates the widget can use.
-  assert.deepEqual(s.rates, { ILS: 4.05, EUR: 1, USD: 1.1, CHF: 0.96 });
+  assert.deepEqual(s.rates, { ILS: 4.05, EUR: 1, CHF: 0.96, USD: 1.1 });
   assert.equal(widgetSnapshot({ trips: [paris], now }).rates, null);
+});
+
+test('the destination\'s currency: Budapest offers shekels, euros and forints, New York dollars', () => {
+  const budapest = { ...rome, id: 'b', outboundFlightDetails: { date: '2026-12-10', arrAirport: { code: 'BUD' } } };
+  const [b] = widgetSnapshot({ trips: [budapest], expensesByTrip: { b: [{ currency: 'EUR', createdAt: '2026-12-10' }] }, now }).trips;
+  assert.deepEqual(b.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'HUF']);
+  assert.equal(b.spend.currency, 'HUF');
+  assert.deepEqual(destinationCurrency(budapest), 'HUF');
+  // A country the flight lookup saved wins over the table.
+  assert.equal(destinationCurrency({ outboundFlightDetails: { arrAirport: { code: 'XXX', country: 'jp' } } }), 'JPY');
+  const nyc = { outboundFlightDetails: { arrAirport: { code: 'JFK' } } };
+  assert.deepEqual(tripCurrencies(nyc, ['ILS', 'EUR', 'USD']), ['ILS', 'USD']);
+  // Somewhere the table does not know: the defaults.
+  assert.deepEqual(tripCurrencies({ outboundFlightDetails: { arrAirport: { code: 'ZZZ' } } }, ['ILS', 'EUR', 'USD']), ['ILS', 'EUR', 'USD']);
+  // A known country whose money the app does not list: euros or dollars only.
+  assert.deepEqual(tripCurrencies({ outboundFlightDetails: { arrAirport: { code: 'TBS' } } }, ['ILS']), ['ILS', 'USD']);
 });
 
 test('a plan item keeps its place, for the expense widget to link to', () => {

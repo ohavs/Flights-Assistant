@@ -30,9 +30,14 @@ const reminders = [
 // The expense widget: the trip's last expense was in euros, in a category of its own.
 const expenses = [{ amount: 12, currency: 'EUR', category: 'מוזיאונים', createdAt: '2026-11-03T12:00:00.000Z' }];
 const rates = { EUR: 1, ILS: 4.05, USD: 1.1 };
+// The planning tab's places: the expense sheet offers them after today's plan.
+const plans = [
+  { id: 'pl-louvre', title: 'הלובר' }, { id: 'pl-orsay', title: 'מוזיאון אורסיי' },
+  { id: 'pl-eiffel', title: 'מגדל אייפל', visited: true },
+];
 const data = {
   daysByTrip: { paris: days }, checklistByTrip: { paris: checklist }, remindersByTrip: { paris: reminders },
-  expensesByTrip: { paris: expenses }, rates,
+  expensesByTrip: { paris: expenses }, plansByTrip: { paris: plans }, rates,
 };
 
 const at = (s) => new Date(s);

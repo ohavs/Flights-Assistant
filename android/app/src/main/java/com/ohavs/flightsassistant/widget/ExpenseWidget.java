@@ -15,9 +15,11 @@ import org.json.JSONObject;
 
 /**
  * An expense from the home screen (4x3): the amount on a keypad and the
- * currency (a tap moves to the next of the trip's), then "המשך" opens
+ * currency (a tap moves to the next of the trip's: shekels, euros or
+ * dollars, the destination's own), then "המשך" opens
  * ExpenseSheetActivity over the home screen for the category and the
- * place, and saves (ExpenseStore). What was typed is kept per widget, so
+ * place, and saves (ExpenseStore). A tap anywhere else opens the trip's
+ * expenses. What was typed is kept per widget, so
  * two of them do not share it; the line under the icon says how the last
  * save went.
  */
@@ -61,6 +63,8 @@ public class ExpenseWidget extends BaseWidget {
                 : key(ctx, id, c);
             v.setOnClickPendingIntent(k[0], tap);
         }
+        // Anywhere but a key: the trip's expenses in the app.
+        v.setOnClickPendingIntent(R.id.root, WidgetKit.open(ctx, m.tripId, "expenses"));
         WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile)
             .chip(R.id.key_cur).fill(R.id.key_save)
             .tile(R.id.key_0, R.id.key_1, R.id.key_2, R.id.key_3, R.id.key_4, R.id.key_5, R.id.key_6,

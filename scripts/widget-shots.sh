@@ -119,10 +119,11 @@ adb shell cmd uimode night no; sleep 2
 open_widget plan 360 300 ExpenseWidget; expect 22-expense "הוצאה · פריז עם הילדים" "0 €" "EUR" "המשך"
 tap_text 4; tap_text 2; tap_text .; tap_text 5; tap_text 0; tap_text 1   # two decimals at most: the 1 is dropped
 expect 23-expense-typed "42.50 €"
-tap_text ⌫; tap_text EUR; expect 24-expense-usd "42.5 \$" "USD"
-tap_text USD; tap_text ILS; expect 25-expense-eur "42.5 €" "EUR"
+# Paris: shekels and euros (the destination's), nothing else used yet.
+tap_text ⌫; tap_text EUR; expect 24-expense-ils "42.5 ₪" "ILS"
+tap_text ILS; expect 25-expense-eur "42.5 €" "EUR"
 tap_text המשך; sleep 1
-expect 26-expense-sheet "42.5 €" "≈ 172.13 ₪ · פריז עם הילדים" "קטגוריה" "אוכל ושתייה" "מוזיאונים" "מקום" "הלובר" "גני טווילרי" "שמירה"
+expect 26-expense-sheet "42.5 €" "≈ 172.13 ₪ · פריז עם הילדים" "קטגוריה" "אוכל ושתייה" "מוזיאונים" "מקום" "הלובר" "גני טווילרי" "מוזיאון אורסיי" "מגדל אייפל" "שמירה"
 tap_text "אוכל ושתייה"; tap_text הלובר
 expect 27-expense-picked "אוכל ושתייה" "הלובר"
 adb logcat -c
@@ -145,6 +146,12 @@ echo "$log" | tail -5
 grep -q "INVALID_REFRESH_TOKEN" <<<"$log" || { echo "the widget did not reach Google's sign-in as the app"; exit 1; }
 grep -q "save: SIGNED_OUT" <<<"$log" || { echo "a refused sign-in should queue the expense"; exit 1; }
 expect 29-expense-refused "יישמר כשתפתחו את האפליקציה ✓"
+# A tap beside the keys opens the trip's expenses.
+open_widget plan 360 300 ExpenseWidget
+tap_text "הוצאה · פריז עם הילדים"; sleep 3
+top=$(adb shell dumpsys activity activities | grep -m1 "topResumedActivity" | tr -d '\r')
+grep -q "$PKG/.AppActivity" <<<"$top" || { echo "a tap beside the keys did not open the app: $top"; exit 1; }
+echo "widget: a tap beside the keys opens the app"
 adb shell cmd uimode night yes; sleep 3
 open_widget plan 360 300 ExpenseWidget; tap_text 7; expect 30-expense-dark "7 €"
 tap_text המשך; sleep 1; expect 31-expense-sheet-dark "שמירה"
