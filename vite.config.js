@@ -66,7 +66,12 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        // Everything the app needs, the PDF fonts too: it opens and works
+        // with no internet from the first visit on.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,ttf,webmanifest}'],
+        // A file over the limit is left out silently; the largest (exceljs)
+        // is about 1 MB.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // The launcher-icon previews are for the Android app's settings only.
         globIgnores: ['app-icons/**'],
         navigateFallback: 'index.html',
@@ -75,22 +80,6 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'gstatic-fonts-cache',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
-            }
-          },
           {
             // Currency exchange rates — keep last response for offline.
             urlPattern: /^https:\/\/api\.frankfurter\.app\/.*/i,
@@ -101,20 +90,22 @@ export default defineConfig({
             }
           },
           {
+            // The forecast is for 16 days: a week-old one still says something.
             urlPattern: /^https:\/\/api\.open-meteo\.com\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'weather-cache',
-              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 }
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 7 }
             }
           },
           {
-            // Rubik TTFs served from /fonts (for PDF export) — cache long.
-            urlPattern: /\/fonts\/.*\.ttf$/i,
+            // Members' Google profile pictures.
+            urlPattern: /^https:\/\/lh3\.googleusercontent\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'fonts-local-cache',
-              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 365 }
+              cacheName: 'avatars-cache',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 }
             }
           }
         ]

@@ -7,7 +7,10 @@ import {
   disableNetwork,
   connectFirestoreEmulator,
 } from 'firebase/firestore';
-import { getAuth, GoogleAuthProvider, connectAuthEmulator, signInWithCredential } from 'firebase/auth';
+import {
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence,
+  GoogleAuthProvider, connectAuthEmulator, signInWithCredential,
+} from 'firebase/auth';
 
 // Local testing only: `VITE_USE_FIREBASE_EMULATORS=true` makes the app talk to
 // the Firebase emulators instead of the real project. Production builds never
@@ -35,8 +38,13 @@ export const db = initializeFirestore(app, {
 });
 if (useEmulators) connectFirestoreEmulator(db, '127.0.0.1', 8080);
 
-// Initialize Auth
-export const auth = getAuth(app);
+// Auth, as getAuth() sets it up but without the popup helper. With it, on
+// a phone (web or the Android app) every start first loads Google's sign-in
+// iframe, and the signed-in user waits for the network. Sign-in on the web
+// passes the helper itself (AuthContext); the app signs in natively.
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+});
 if (useEmulators) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   // Automated browser tests sign in with a fake Google account (no popup)

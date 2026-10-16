@@ -56,6 +56,16 @@ import { useConfirm } from './ConfirmContext';
 function LoginScreen({ onSignIn }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Signing in is the one thing that needs the internet; after it, the app
+  // works without it.
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
 
   // A version that cannot sign in must still reach the next one: the app
   // looks for an update here too, before sign-in.
@@ -90,9 +100,11 @@ function LoginScreen({ onSignIn }) {
         </button>
       )}
       {showUpdate && (
-        <Suspense fallback={null}>
-          <AppSettingsSheet initial={update} onClose={() => { setShowUpdate(false); setUpdate(null); }} />
-        </Suspense>
+        <ErrorBoundary label="הגדרות">
+          <Suspense fallback={null}>
+            <AppSettingsSheet initial={update} onClose={() => { setShowUpdate(false); setUpdate(null); }} />
+          </Suspense>
+        </ErrorBoundary>
       )}
       <div style={{ textAlign: 'center' }}>
         <div style={{
@@ -111,7 +123,10 @@ function LoginScreen({ onSignIn }) {
         </p>
       </div>
 
-      <button type="button" className="google-btn" onClick={handleSignIn} disabled={busy}>
+      {!online && (
+        <Notice tone="offline">כניסה לחשבון דורשת חיבור לאינטרנט. אחרי הכניסה האפליקציה עובדת גם בלי חיבור.</Notice>
+      )}
+      <button type="button" className="google-btn" onClick={handleSignIn} disabled={busy || !online}>
         <svg width="20" height="20" viewBox="0 0 48 48">
           <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
           <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -124,7 +139,9 @@ function LoginScreen({ onSignIn }) {
         <p role="alert" className="login-error">
           {/no credential/i.test(error)
             ? 'אין חשבון Google בטלפון. הוסיפו חשבון בהגדרות הטלפון ונסו שוב.'
-            : 'הכניסה עם Google נכשלה. נסו שוב.'}
+            : /network/i.test(error)
+              ? 'אין חיבור לאינטרנט. נסו שוב כשיש חיבור.'
+              : 'הכניסה עם Google נכשלה. נסו שוב.'}
           <span dir="ltr">{error}</span>
         </p>
       )}
@@ -135,11 +152,12 @@ function LoginScreen({ onSignIn }) {
 /* ══════════════════════════════════════════════════════════
    LOADING SCREEN
    ══════════════════════════════════════════════════════════ */
-function LoadingScreen() {
+function LoadingScreen({ slow }) {
   return (
     <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', gap: 16 }}>
       <div className="pulsing-dot" style={{ width: 14, height: 14 }} />
-      <p style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: 15 }}>טוען...</p>
+      <p style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: 15 }}>{slow ? 'מתחבר… החיבור איטי' : 'טוען...'}</p>
+      {slow && <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>הטיולים שלך שמורים בטלפון ויופיעו בעוד רגע</p>}
     </div>
   );
 }
@@ -1125,7 +1143,7 @@ function tick(ms = 8) {
 }
 
 function AppInner() {
-  const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const { user, loading, slow, signInWithGoogle, signOut } = useAuth();
   const confirm = useConfirm();
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
@@ -1143,6 +1161,19 @@ function AppInner() {
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // Offline work lives in the browser's database (IndexedDB). Without it
+  // (private browsing, storage blocked) Firestore silently keeps changes in
+  // memory only, and they are gone when the page closes: say so.
+  const [storageOk, setStorageOk] = useState(() => typeof indexedDB !== 'undefined');
+  useEffect(() => {
+    try {
+      const req = indexedDB.open('storage-probe');
+      req.onsuccess = () => { req.result.close(); };
+      req.onerror = () => setStorageOk(false);
+    } catch { queueMicrotask(() => setStorageOk(false)); }
+    // Ask the browser not to clear the app's data when space runs low.
+    navigator.storage?.persist?.().catch(() => {});
+  }, []);
   // ── Share target (Google Maps → share → this app) ──
   // Read once, on the very first render, before anything can rewrite the URL.
   const [sharedPlace, setSharedPlace] = useState(() => readSharedPlace());
@@ -1853,7 +1884,7 @@ function AppInner() {
   const selectedTrip = trips.find(t => t.id === selectedTripId);
 
   // ── Loading ──
-  if (loading) return <LoadingScreen />;
+  if (loading) return <LoadingScreen slow={slow} />;
 
   // ── Opened from the share sheet ── shown before the auth gate: the trips
   // (from the local cache) are on screen straight away, and signing in only
@@ -1884,13 +1915,19 @@ function AppInner() {
 
   // ── Homepage ──
   // Offline banner — rendered inside each screen container
-  const OfflineBanner = !isOnline ? (
-    <div style={{
-      background: '#dc2626', color: '#fff', textAlign: 'center',
-      fontSize: 12, fontWeight: 700, padding: '6px 16px',
-      letterSpacing: 0.2, flexShrink: 0,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    }}>
+  const bannerStyle = {
+    background: '#dc2626', color: '#fff', textAlign: 'center',
+    fontSize: 12, fontWeight: 700, padding: '6px 16px',
+    letterSpacing: 0.2, flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  };
+  const OfflineBanner = !storageOk ? (
+    <div style={bannerStyle} role="alert">
+      <AlertTriangle size={14} aria-hidden="true" />
+      הדפדפן לא שומר נתונים בטלפון (גלישה פרטית?) — בלי חיבור, שינויים לא יישמרו
+    </div>
+  ) : !isOnline ? (
+    <div style={bannerStyle}>
       <WifiOff size={14} aria-hidden="true" />
       אין חיבור לאינטרנט — שינויים נשמרים ויסונכרנו בהתחברות
     </div>
@@ -1899,6 +1936,7 @@ function AppInner() {
   // Settings: from the home header, and from a trip's header with that
   // trip and tab preselected for export.
   const settingsSheet = showAppSettings ? (
+    <ErrorBoundary label="הגדרות">
     <Suspense fallback={null}>
       <AppSettingsSheet
         initial={updateInfo}
@@ -1910,6 +1948,7 @@ function AppInner() {
         onClose={() => { setShowAppSettings(false); setUpdateInfo(null); }}
       />
     </Suspense>
+    </ErrorBoundary>
   ) : null;
 
   if (screen === 'home') {

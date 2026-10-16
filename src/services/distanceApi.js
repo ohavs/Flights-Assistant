@@ -124,6 +124,7 @@ async function queryRoute(origin, destination, travelMode) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
       body: JSON.stringify({ origin: toWaypoint(origin), destination: toWaypoint(destination), travelMode }),
+      signal: AbortSignal.timeout(10000),
     });
   } catch {
     // Connection failed (offline / blocked) — distinct from "no route found",
@@ -236,6 +237,7 @@ async function findPlaceCoords(planId, title, { originHint, regionCoords, region
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -416,6 +418,7 @@ async function geocodeAddress(address) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location' },
       body: JSON.stringify({ textQuery: address.trim() }),
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
     const data = await res.json();

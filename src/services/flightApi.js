@@ -148,6 +148,8 @@ export async function lookupFlightLive(flightNumber, dateStr) {
     const url = `https://${API_HOST}/flights/number/${encodeURIComponent(num)}${path || ''}`;
     const res = await fetch(url + '?dateLocalRole=Both&withAircraftImage=false&withLocation=true', {
       headers: { 'X-RapidAPI-Key': API_KEY, 'X-RapidAPI-Host': API_HOST },
+      // A weak connection gives up rather than spin for minutes (network-error).
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');

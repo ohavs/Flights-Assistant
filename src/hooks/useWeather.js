@@ -3,18 +3,20 @@ import { useState, useEffect } from 'react';
 export { getWeatherIcon, getWeatherLabel } from '../lib/weatherCodes.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+// Offline, an older forecast beats none: it covers 16 days.
+const STALE_OK = 7 * 24 * 60 * 60 * 1000;
 const CACHE_VER = 2;
 
 function cacheKey(lat, lon) {
   return `weather_v${CACHE_VER}_${lat.toFixed(2)}_${lon.toFixed(2)}`;
 }
 
-function readCache(lat, lon) {
+function readCache(lat, lon, maxAge = CACHE_TTL) {
   try {
     const raw = localStorage.getItem(cacheKey(lat, lon));
     if (!raw) return null;
     const cached = JSON.parse(raw);
-    if (Date.now() - cached.ts < CACHE_TTL && cached.data?.hourlyByDate) return cached.data;
+    if (Date.now() - cached.ts < maxAge && cached.data?.hourlyByDate) return cached.data;
   } catch { /* ignore */ }
   return null;
 }
@@ -79,11 +81,11 @@ export async function loadWeather(lat, lon) {
     const data = await fetchWeather(lat, lon);
     writeCache(lat, lon, data);
     return data;
-  } catch { return null; }
+  } catch { return readCache(lat, lon, STALE_OK); }
 }
 
 export function useWeather(lat, lon) {
-  const [data, setData] = useState(() => (lat && lon) ? readCache(lat, lon) : null);
+  const [data, setData] = useState(() => (lat && lon) ? readCache(lat, lon, STALE_OK) : null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -103,7 +105,8 @@ export function useWeather(lat, lon) {
         writeCache(lat, lon, result);
         setData(result);
       })
-      .catch(() => {})
+      // Offline: the last forecast this phone saw, up to a week old.
+      .catch(() => { if (!cancelled) setData(readCache(lat, lon, STALE_OK)); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
