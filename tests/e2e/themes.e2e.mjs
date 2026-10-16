@@ -67,12 +67,22 @@ await step('a fresh device follows the phone, green', async () => {
 // The palettes are picked by the app icon drawn in each one's colours.
 await step('the palettes show as the five app icons, all loaded', async () => {
   await openLook();
-  const icons = await sheet().locator('[role="radiogroup"][aria-label="ערכת צבעים"] img.palette-swatch-icon')
-    .evaluateAll(imgs => imgs.map(i => ({ src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0 })));
-  if (icons.length !== 5 || icons.some(i => !i.ok)) throw new Error(JSON.stringify(icons));
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: '.e2e/themes-picker.png' });
-  await closeSheet();
+  try {
+    // The sheet opens before its images arrive: give them a moment, then say which did not.
+    const imgs = '[role="radiogroup"][aria-label="ערכת צבעים"] img.palette-swatch-icon';
+    await page.waitForFunction((sel) => {
+      const all = [...document.querySelectorAll(sel)];
+      return all.length === 5 && all.every(i => i.complete && i.naturalWidth > 0);
+    }, imgs, { timeout: 5000 }).catch(() => {});
+    const icons = await sheet().locator(imgs)
+      .evaluateAll(list => list.map(i => ({ src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0 })));
+    if (icons.length !== 5 || icons.some(i => !i.ok)) throw new Error(JSON.stringify(icons));
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: '.e2e/themes-picker.png' });
+  } finally {
+    // Closed either way: an open sheet would cover what the next steps tap.
+    await closeSheet();
+  }
 });
 
 const seen = new Set();
