@@ -21,7 +21,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       PROJECT: listify-84018
     steps:
@@ -37,24 +37,27 @@ jobs:
       - name: Unit tests
         run: node --test tests/push.test.mjs
 
-      - name: Deploy
+      - name: Deploy, until all the functions are live
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          WANT: pushExpense pushPlace pushActivity pushTrip
         run: |
-          set -euo pipefail
+          set -uo pipefail
           [ -n "$FIREBASE_TOKEN" ] || { echo "::error::FIREBASE_TOKEN is not set"; exit 1; }
-          deploy() { npx -y firebase-tools@14.27.0 deploy --only functions --project "$PROJECT" --non-interactive --force; }
-          # The first deploy turns on the APIs that Functions needs, and their
-          # service agents take a few minutes to get their permissions.
-          deploy || { echo "Retrying in 2 minutes"; sleep 120; deploy; } || { echo "Retrying in 4 minutes"; sleep 240; deploy; }
-
-      - name: Check the functions are live
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: |
-          set -euo pipefail
-          LIST=$(npx -y firebase-tools@14.27.0 functions:list --project "$PROJECT" --non-interactive)
-          echo "$LIST"
-          for F in pushExpense pushPlace pushActivity pushTrip; do
-            echo "$LIST" | grep -q "$F" || { echo "::error::$F is not deployed"; exit 1; }
+          fb() { npx -y firebase-tools@14.27.0 "$@" --project "$PROJECT" --non-interactive; }
+          live() {
+            local list; list=$(fb functions:list 2>/dev/null) || return 1
+            echo "$list"
+            for f in $WANT; do echo "$list" | grep -q "$f" || return 1; done
+          }
+          # The first deploy turns on the APIs that Functions needs; for a few
+          # minutes after, creating a function can fail (503), and the CLI
+          # may still exit 0. So the list of live functions decides, not the
+          # exit code.
+          for try in 1 2 3 4; do
+            fb deploy --only functions --force || echo "deploy exited non-zero (attempt $try)"
+            if live; then echo "All functions are live."; exit 0; fi
+            [ "$try" = 4 ] || { echo "Not all functions are live yet (attempt $try); retrying in 3 minutes."; sleep 180; }
           done
+          echo "::error::The functions did not deploy after 4 attempts."
+          exit 1
