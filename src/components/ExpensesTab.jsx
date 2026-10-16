@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
-import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Search, X, Check, TrendingUp,
   Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin,
@@ -142,7 +143,7 @@ export default function ExpensesTab({ tripId }) {
       data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setExpenses(data);
       setLoading(false);
-    });
+    }, () => setLoading(false));   // refused for good: the empty list, not a skeleton forever
     return () => unsub();
   }, [tripId]);
 
@@ -167,6 +168,7 @@ export default function ExpensesTab({ tripId }) {
 
   // What the form held when it opened: closing it unchanged is free.
   const [formBaseline, setFormBaseline] = useState(null);
+  const [openedWith, setOpenedWith] = useState(null);   // the form's values when it opened
   const expenseKey = (f) => JSON.stringify([f.amount, f.currency, f.category, f.description, f.linkedPlanId, f.customPlace, f.paidBy]);
 
   const openForm = (expense = null) => {
@@ -198,6 +200,7 @@ export default function ExpensesTab({ tripId }) {
     setCustomPlace(f.customPlace);
     setPaidBy(f.paidBy);
     setFormBaseline(expenseKey(f));
+    setOpenedWith(f);
     setFormQuickCurrencies(base);
     setShowCurrencyList(false);
     setCurrencySearch('');
@@ -234,17 +237,30 @@ export default function ExpensesTab({ tripId }) {
     setShowForm(false);
     setEditingId(null);
 
-    setDoc(doc(db, 'trips', tripId, 'expenses', id), {
-      amount: parsedAmount,
-      currency,
-      category: category || 'כללי',
-      description: description.trim(),
-      linkedPlanId: linkedPlanId || null,
-      customPlace: customPlace.trim() || null,
-      ilsSnapshot: ilsSnapshot,
-      paidBy: paidBy || currentUid || null,
-      createdAt: existing?.createdAt || new Date().toISOString(),
-    }).catch(err => console.error('Expense save error:', err));
+    const fieldsOf = (f) => ({
+      amount: parseFloat(f.amount),
+      currency: f.currency,
+      category: f.category || 'כללי',
+      description: f.description.trim(),
+      linkedPlanId: f.linkedPlanId || null,
+      customPlace: f.customPlace.trim() || null,
+      paidBy: f.paidBy || currentUid || null,
+    });
+    const fields = fieldsOf({ amount, currency, category, description, linkedPlanId, customPlace, paidBy });
+    const ref = doc(db, 'trips', tripId, 'expenses', id);
+    // A new expense; an edit of one a partner deleted meanwhile stays deleted
+    // (its update fails), rather than coming back.
+    if (!editingId) {
+      setDoc(ref, { ...fields, ilsSnapshot, createdAt: new Date().toISOString() })
+        .catch(err => console.error('Expense save error:', err));
+      return;
+    }
+    // An edit writes only what it changed (src/lib/changes.js).
+    const updates = changedFields(openedWith ? fieldsOf(openedWith) : {}, fields);
+    if ('amount' in updates || 'currency' in updates) updates.ilsSnapshot = ilsSnapshot;
+    if (Object.keys(updates).length) {
+      updateDoc(ref, updates).catch(err => console.error('Expense save error:', err));
+    }
   };
 
   const handleDelete = async (id) => {
