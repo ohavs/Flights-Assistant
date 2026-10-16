@@ -5,15 +5,17 @@
 // listener never comes back, so the tab would stay empty until a reload.
 // Here a refusal is tried again, a few times, a little later each time.
 // Same arguments as onSnapshot(ref, onNext, onError); returns unsubscribe.
+// `metadata: true` also calls onNext when only the snapshot's metadata
+// changes, e.g. when the server confirms what came from the cache.
 import { onSnapshot } from 'firebase/firestore';
 
-export function listen(ref, onNext, onError, { retries = 5, delay = 400 } = {}) {
+export function listen(ref, onNext, onError, { retries = 5, delay = 400, metadata = false } = {}) {
   let unsub = () => {};
   let stopped = false;
   let tries = 0;
   let timer;
   const start = () => {
-    unsub = onSnapshot(ref, onNext, (err) => {
+    unsub = onSnapshot(ref, { includeMetadataChanges: metadata }, onNext, (err) => {
       if (stopped) return;
       if (err?.code === 'permission-denied' && tries < retries) {
         tries += 1;

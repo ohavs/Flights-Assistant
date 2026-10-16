@@ -11,6 +11,7 @@
 // shape may change with them.
 import { departureAt, parseClock } from './flightAlerts.js';
 import { tripRange, dayFor, activityRank } from './morningAlerts.js';
+import { dayActivities } from './dayOrder.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
@@ -77,7 +78,7 @@ function daysOf(trip, days, range, now) {
   const out = {};
   for (const iso of range.filter(d => d >= today).slice(0, WIDGET_DAYS)) {
     const day = dayFor(days, iso, range);
-    const acts = [...(day?.activities || [])].filter(a => a.title)
+    const acts = dayActivities(day?.activities).filter(a => a.title)
       .sort((a, b) => activityRank(a) - activityRank(b));
     const n = range.indexOf(iso);
     out[iso] = {

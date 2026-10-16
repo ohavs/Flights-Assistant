@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
+import { addCategory, saveCategory, removeCategory } from '../lib/categorySettings';
+import { dayActivities, addActivities, updateActivity, removeActivity, swapActivities } from '../lib/dayActivities';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
@@ -612,9 +614,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return () => unsub();
   }, [tripId]);
 
-  const saveCategorySettings = async (updated) => {
+  // Each of these writes one category only (src/lib/categorySettings.js).
+  // The listener above shows the change at once, offline too.
+  const categoryWrite = (write) => {
     if (!tripId) return;
-    await setDoc(doc(db, 'trips', tripId, 'settings', 'categories'), updated);
+    write().catch(err => console.error('Category save error:', err));
   };
 
   // Listen to Firestore planning items (pool)
@@ -673,10 +677,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   useEffect(() => {
     if (!tripId) return;
     const unsubscribe = listen(collection(db, 'trips', tripId, 'days'), (snapshot) => {
-      const fetchedDays = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      // `activities` is the day as shown (src/lib/dayActivities.js);
+      // changes are written against `rawActivities`, the array as stored.
+      const fetchedDays = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { id: doc.id, ...data, activities: dayActivities(data.activities), rawActivities: data.activities || [] };
+      });
       // Sort days by order ascending
       fetchedDays.sort((a, b) => (a.order || 0) - (b.order || 0));
       setDays(fetchedDays);
@@ -1658,6 +1664,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const newIdx = days.findIndex(d => d.id === over.id);
     const reordered = arrayMove(days, oldIdx, newIdx);
     // Both title and date are positional anchors — only activities travel.
+    // They travel with their own document, so the array is not written:
+    // writing it back from this phone's view would erase a partner's change.
     const positionalDates  = days.map(d => d.date  ?? null);
     const positionalTitles = days.map(d => d.title ?? '');
     const batch = writeBatch(db);
@@ -1666,7 +1674,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         order:      idx + 1,
         date:       positionalDates[idx],
         title:      positionalTitles[idx],
-        activities: day.activities || [],
       });
     });
     await batch.commit();
@@ -1760,34 +1767,25 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     });
     if (!ok) return;
 
-    const updatedActivities = day.activities.filter(act => act.id !== activityId);
-    const docRef = doc(db, 'trips', tripId, 'days', dayId);
-    await updateDoc(docRef, { activities: updatedActivities });
+    removeActivity(db, tripId, dayId, day.rawActivities, activityId)
+      .catch(err => console.error('Activity delete error:', err));
   };
 
   // When activities render grouped by time label, the visual neighbor may not
   // be the array neighbor — `swapWithId` names the exact activity to swap with.
-  const moveActivity = async (dayId, activityId, direction, swapWithId = null) => {
+  const moveActivity = (dayId, activityId, direction, swapWithId = null) => {
     if (!tripId) return;
     const day = days.find(d => d.id === dayId);
     if (!day) return;
 
-    const list = [...(day.activities || [])];
+    const list = day.activities;
     const idx = list.findIndex(act => act.id === activityId);
     if (idx === -1) return;
+    const other = swapWithId != null ? swapWithId : list[idx + direction]?.id;
+    if (other == null) return;
 
-    const targetIdx = swapWithId != null
-      ? list.findIndex(act => act.id === swapWithId)
-      : idx + direction;
-    if (targetIdx < 0 || targetIdx >= list.length) return;
-
-    // Swap elements
-    const temp = list[idx];
-    list[idx] = list[targetIdx];
-    list[targetIdx] = temp;
-
-    const docRef = doc(db, 'trips', tripId, 'days', dayId);
-    await updateDoc(docRef, { activities: list });
+    swapActivities(db, tripId, dayId, day.rawActivities, activityId, other)
+      .catch(err => console.error('Activity move error:', err));
   };
 
   const handleActivitySubmit = async (e) => {
@@ -1801,8 +1799,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const day = days.find(d => d.id === selectedDayId);
     if (!day) return;
 
-    let updatedActivities = [...(day.activities || [])];
-
+    let write;
     if (editingActivityId) {
       const firstSel = savedPlaceSelections[0];
       const place = firstSel?.placeId ? plans.find(p => p.id === firstSel.placeId) : null;
@@ -1815,15 +1812,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         description: activityDescription.trim(),
         category: place ? place.category : activityCategory
       };
-      updatedActivities = updatedActivities.map(act =>
-        act.id === editingActivityId ? activityObj : act
-      );
+      write = () => updateActivity(db, tripId, selectedDayId, day.rawActivities, activityObj);
     } else {
+      const added = [];
       for (const sel of savedPlaceSelections) {
         if (sel.placeId) {
           const place = plans.find(p => p.id === sel.placeId);
           if (place) {
-            updatedActivities.push({
+            added.push({
               id: 'act-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
               title: place.title,
               timeLabel: sel.timeLabel || '',
@@ -1836,7 +1832,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         }
       }
       if (hasManualTitle) {
-        updatedActivities.push({
+        added.push({
           id: 'act-' + Date.now(),
           title: activityTitle.trim(),
           timeLabel: activityTimeLabel.trim(),
@@ -1846,12 +1842,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           category: activityCategory
         });
       }
+      write = () => addActivities(db, tripId, selectedDayId, day.rawActivities, added);
     }
 
     setShowActivityForm(false);
     setEditingActivityId(null);
-    const docRef = doc(db, 'trips', tripId, 'days', selectedDayId);
-    updateDoc(docRef, { activities: updatedActivities }).catch(err => console.error('Activity save error:', err));
+    write().catch(err => console.error('Activity save error:', err));
   };
 
   if (loading) {
@@ -1941,9 +1937,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     addable
                     addLabel="הוסף קטגוריה חדשה"
                     onCommit={(newCat) => {
-                      const updated = { ...categorySettings, [newCat]: {} };
-                      setCategorySettings(updated);
-                      saveCategorySettings(updated);
+                      categoryWrite(() => addCategory(db, tripId, newCat));
                     }}
                   />
 
@@ -3431,9 +3425,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               danger: true,
                             });
                             if (!ok) return;
-                            const { [cat]: _, ...rest } = categorySettings;
-                            setCategorySettings(rest);
-                            saveCategorySettings(rest);
+                            categoryWrite(() => removeCategory(db, tripId, cat));
                           }}
                           style={{ border: 'none', background: 'transparent', color: 'var(--c-red)', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
                         >
@@ -3451,9 +3443,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           return (
                             <button key={key} type="button"
                               onClick={() => {
-                                const updated = { ...categorySettings, [cat]: { ...s, iconKey: key } };
-                                setCategorySettings(updated);
-                                saveCategorySettings(updated);
+                                categoryWrite(() => saveCategory(db, tripId, cat, { iconKey: key }));
                               }}
                               title={key}
                               style={{
@@ -3478,9 +3468,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {COLOR_OPTIONS.map(c => (
                           <button key={c} type="button"
                             onClick={() => {
-                              const updated = { ...categorySettings, [cat]: { ...s, color: c } };
-                              setCategorySettings(updated);
-                              saveCategorySettings(updated);
+                              categoryWrite(() => saveCategory(db, tripId, cat, { color: c }));
                             }}
                             style={{
                               width: 28, height: 28, borderRadius: '50%', padding: 0,
@@ -3526,9 +3514,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             e.preventDefault();
                             const name = newCatName.trim();
                             if (!name) return;
-                            const updated = { ...categorySettings, [name]: {} };
-                            setCategorySettings(updated);
-                            saveCategorySettings(updated);
+                            categoryWrite(() => addCategory(db, tripId, name));
                             setNewCatName('');
                             setAddingCatInSettings(false);
                           }
@@ -3541,9 +3527,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           onClick={() => {
                             const name = newCatName.trim();
                             if (!name) return;
-                            const updated = { ...categorySettings, [name]: {} };
-                            setCategorySettings(updated);
-                            saveCategorySettings(updated);
+                            categoryWrite(() => addCategory(db, tripId, name));
                             setNewCatName('');
                             setAddingCatInSettings(false);
                           }}
@@ -3744,9 +3728,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   addable
                   addLabel="הוסף קטגוריה חדשה"
                   onCommit={(newCat) => {
-                    const updated = { ...categorySettings, [newCat]: {} };
-                    setCategorySettings(updated);
-                    saveCategorySettings(updated);
+                    categoryWrite(() => addCategory(db, tripId, newCat));
                   }}
                 />
 

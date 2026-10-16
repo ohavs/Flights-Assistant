@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
+import { missingGlobalItems, copyGlobalItems } from '../lib/checklistSync';
 import {
   collection,
   onSnapshot,
@@ -8,7 +9,9 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
 import { CustomDropdown, CustomDateTimePicker, formatHebrewDateTime } from './CustomDatePicker';
@@ -831,22 +834,36 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   }, [items, newItemText, editingItemId]);
 
   // ── Firestore listeners ──────────────────────────────────────────────────
+  // Both listeners also say for which trip the server has confirmed what
+  // they show (`metadata`): the copy of global items below waits for that.
+  // A snapshot that only confirms leaves the rest of the state as it is.
+  const [itemsConfirmedFor, setItemsConfirmedFor] = useState(null);
+  const [syncConfirmedFor, setSyncConfirmedFor] = useState(null);
+
   useEffect(() => {
     if (!tripId) return;
+    let first = true;
     return listen(collection(db, 'trips', tripId, 'checklist'), snap => {
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      if (first || snap.docChanges().length) setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      first = false;
+      setItemsConfirmedFor(snap.metadata.fromCache ? null : tripId);
       setLoading(false);
-    });
+    }, undefined, { metadata: true });
   }, [tripId]);
 
   useEffect(() => {
     if (!tripId) return;
+    let seen = null;
     return listen(doc(db, 'trips', tripId, 'settings', 'checklistSync'), snap => {
+      setSyncConfirmedFor(snap.metadata.fromCache ? null : tripId);
       const data = snap.exists() ? snap.data() : {};
+      const json = JSON.stringify(data);
+      if (json === seen) return;
+      seen = json;
       setDeletedGlobalIds(data.deletedGlobalIds || []);
       setExtraCategories(data.extraCategories || []);
       setCategoryOrder(data.categoryOrder || []);
-    });
+    }, undefined, { metadata: true });
   }, [tripId]);
 
   useEffect(() => {
@@ -872,23 +889,14 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     });
   }, [membersGlobalChecklists]);
 
-  // ── Auto-sync missing global items ───────────────────────────────────────
+  // ── Auto-sync missing global items (src/lib/checklistSync.js) ────────────
   useEffect(() => {
-    if (!tripId || !canEdit || loading || !mergedGlobalChecklist.length) return;
-    const existingIds = new Set(items.map(i => i.id));
-    const deletedSet = new Set(deletedGlobalIds);
-    const missing = mergedGlobalChecklist.filter(
-      item => !existingIds.has(item.id) && !deletedSet.has(item.id)
-    );
+    if (!tripId || !canEdit || !mergedGlobalChecklist.length) return;
+    if (itemsConfirmedFor !== tripId || syncConfirmedFor !== tripId) return;
+    const missing = missingGlobalItems(mergedGlobalChecklist, items, deletedGlobalIds);
     if (!missing.length) return;
-    const batch = writeBatch(db);
-    missing.forEach(item => {
-      batch.set(doc(db, 'trips', tripId, 'checklist', item.id), {
-        text: item.text, completed: false, category: item.category,
-      });
-    });
-    batch.commit().catch(console.error);
-  }, [mergedGlobalChecklist, items, loading, tripId, canEdit, deletedGlobalIds]);
+    copyGlobalItems(db, tripId, missing).catch(console.error);
+  }, [mergedGlobalChecklist, items, itemsConfirmedFor, syncConfirmedFor, tripId, canEdit, deletedGlobalIds]);
 
   // ── DnD sensors ─────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -915,7 +923,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
   const saveExtraCategory = async (cat) => {
     if (!cat || !tripId || extraCategories.includes(cat)) return;
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-    await setDoc(syncRef, { extraCategories: [...new Set([...extraCategories, cat])] }, { merge: true });
+    await setDoc(syncRef, { extraCategories: arrayUnion(cat) }, { merge: true });
   };
 
   const handleDeleteCategory = async (cat) => {
@@ -942,14 +950,17 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
     setCategoryOrder(newCategoryOrder);
 
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
+    // One batch: another phone never sees the items gone while their ids
+    // are not yet in deletedGlobalIds, and copies them back in.
     const batch = writeBatch(db);
-    catItems.forEach(item => batch.delete(doc(db, 'trips', tripId, 'checklist', item.id)));
-    batch.commit();
-    setDoc(syncRef, {
-      deletedGlobalIds: newDeletedIds,
-      extraCategories: newExtraCategories,
-      categoryOrder: newCategoryOrder,
+    batch.set(syncRef, {
+      // Only what changed, so a partner's change to these lists stays.
+      ...(deletingGlobalIds.length ? { deletedGlobalIds: arrayUnion(...deletingGlobalIds) } : {}),
+      extraCategories: arrayRemove(cat),
+      categoryOrder: arrayRemove(cat),
     }, { merge: true });
+    catItems.forEach(item => batch.delete(doc(db, 'trips', tripId, 'checklist', item.id)));
+    batch.commit().catch(console.error);
   };
 
   const handleRenameCategory = async (oldCat, newCat) => {
@@ -984,7 +995,7 @@ export default function ChecklistTab({ tripId, globalChecklist = [] }) {
       const newDeletedIds = [...new Set([...deletedGlobalIds, id])];
       setDeletedGlobalIds(newDeletedIds);
       const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-      setDoc(syncRef, { deletedGlobalIds: newDeletedIds }, { merge: true });
+      setDoc(syncRef, { deletedGlobalIds: arrayUnion(id) }, { merge: true });
     }
     deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
     return true;
