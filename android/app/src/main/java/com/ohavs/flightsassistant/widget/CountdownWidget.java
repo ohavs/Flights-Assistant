@@ -35,7 +35,8 @@ public class CountdownWidget extends BaseWidget {
             v.setTextViewText(R.id.chip, WidgetKit.legName(f));
             String[] n = WidgetKit.countdownBig(f, m.today, m.now);
             v.setTextViewText(R.id.big, WidgetKit.big("", n[0], n[1]));
-            String route = f.optString("route"), when = f.optString("when");
+            String route = f.optString("route");
+            String when = m.inAir ? WidgetKit.landing(f, m.now)[0] : WidgetKit.flightTimes(f);
             v.setTextViewText(R.id.caption, route.isEmpty() ? when : route + "\n" + when);
         } else if (m.during) {
             tab = "planning";

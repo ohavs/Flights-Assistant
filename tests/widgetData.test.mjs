@@ -160,3 +160,23 @@ test('a day named only "יום 3" has no name of its own; places say whether the
     { time: '', title: 'גלידה' },
   ]);
 });
+
+test('a flight carries its landing, local clocks, gate and status, for the widget to follow it in the air', () => {
+  const night = {
+    id: 'n', name: 'בודפשט',
+    outboundFlightDetails: {
+      date: '2026-11-03', scheduledDep: '10:30 PM', scheduledArr: '02:50 AM', flightNumber: 'W61784', gate: 'B12', status: 'בזמן',
+      depAirport: { code: 'TLV', timezone: 'UTC +02:00' }, arrAirport: { code: 'BUD', city: 'בודפשט', timezone: 'UTC +01:00' },
+    },
+    returnFlightDetails: { date: '2026-11-06' },
+  };
+  const [f] = widgetSnapshot({ trips: [night], now }).trips[0].flights;
+  assert.equal(f.at, Date.UTC(2026, 10, 3, 20, 30));
+  // 02:50 in Budapest is the next morning: 01:50 UTC on the 4th.
+  assert.equal(f.arriveAt, Date.UTC(2026, 10, 4, 1, 50));
+  assert.deepEqual([f.dep, f.arr, f.gate, f.status, f.number, f.toCity], ['22:30', '02:50', 'B12', 'בזמן', 'W61784', 'בודפשט']);
+  // Not known yet: no landing, and empty words.
+  const [, back] = widgetSnapshot({ trips: [night], now }).trips[0].flights;
+  assert.equal(back.arriveAt, null);
+  assert.deepEqual([back.dep, back.arr, back.gate], ['', '', '']);
+});

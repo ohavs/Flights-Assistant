@@ -112,8 +112,16 @@
                 android:id="@+id/when"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                style="@style/WText"
+                android:textSize="15sp"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/w_text_dark" />
+            <TextView
+                android:id="@+id/flight_info"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 style="@style/WText.Muted"
-                android:textSize="14sp"
+                android:textSize="13sp"
                 android:layout_marginTop="2dp"
                 android:textColor="@color/w_muted_dark" />
         </LinearLayout>

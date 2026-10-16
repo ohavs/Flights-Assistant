@@ -7,8 +7,8 @@ import { widgetSnapshot } from '../src/lib/widgetData.js';
 const trip = {
   id: 'paris', name: 'פריז עם הילדים',
   outboundFlightDetails: {
-    date: '2026-11-03', scheduledDep: '07:30', flightNumber: 'LY 323',
-    depAirport: { code: 'TLV', timezone: 'UTC +00:00' }, arrAirport: { code: 'CDG' },
+    date: '2026-11-03', scheduledDep: '07:30', scheduledArr: '10:45', flightNumber: 'LY 323', gate: 'B12', status: 'בזמן',
+    depAirport: { code: 'TLV', timezone: 'UTC +00:00' }, arrAirport: { code: 'CDG', city: 'פריז', timezone: 'UTC +00:00' },
   },
   returnFlightDetails: {
     date: '2026-11-06', scheduledDep: '18:10', flightNumber: 'LY 326',
@@ -45,6 +45,8 @@ const at = (s) => new Date(s);
 const cases = [
   ['flight', at('2026-10-29T10:00:00Z'), { palette: 'green' }],
   ['soon', at('2026-11-03T04:20:00Z'), { palette: 'ocean' }],
+  // In the air: took off at 07:30, lands at 10:45.
+  ['inair', at('2026-11-03T08:30:00Z'), { palette: 'green' }],
   ['plan', at('2026-11-04T09:00:00Z'), { palette: 'sand' }],
   ['plan-violet', at('2026-11-04T09:00:00Z'), { palette: 'violet' }],
   // The app set to dark, or to light, whatever the phone is.

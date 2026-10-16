@@ -104,7 +104,8 @@ final class WidgetKit {
         String tripId, start, end;
         boolean during;
         JSONObject next;         // the next flight still ahead, or null
-        boolean flightSoon;      // that flight is within a day
+        boolean flightSoon;      // that flight is within a day, or in the air
+        boolean inAir;           // it has taken off and not yet landed
         int dayN, dayTotal;      // during the trip: day n of total
 
         /** The planner day of an iso date, or null. */
@@ -197,11 +198,14 @@ final class WidgetKit {
         for (int i = 0; flights != null && i < flights.length(); i++) {
             JSONObject f = flights.optJSONObject(i);
             if (f == null) continue;
-            boolean ahead = f.isNull("at") ? f.optString("date").compareTo(m.today) >= 0 : f.optLong("at") > now;
+            // Until it lands when the landing is known, else until it takes off.
+            long at = f.isNull("at") ? 0 : f.optLong("at"), lands = f.isNull("arriveAt") ? 0 : f.optLong("arriveAt");
+            boolean ahead = at == 0 ? f.optString("date").compareTo(m.today) >= 0 : (lands > 0 ? lands : at) > now;
             if (ahead) { m.next = f; break; }
         }
-        m.flightSoon = m.next != null && (m.next.isNull("at")
-            ? m.next.optString("date").equals(m.today) : m.next.optLong("at") - now < 24 * HOUR);
+        m.inAir = m.next != null && !m.next.isNull("at") && m.next.optLong("at") <= now;
+        m.flightSoon = m.next != null && (m.inAir || (m.next.isNull("at")
+            ? m.next.optString("date").equals(m.today) : m.next.optLong("at") - now < 24 * HOUR));
         return m;
     }
 
@@ -209,6 +213,7 @@ final class WidgetKit {
 
     /** "בעוד 5 ימים", "מחר", "בעוד 3 שעות", "בעוד 40 דק׳", "היום". */
     static String countdown(JSONObject f, String today, long now) {
+        if (!f.isNull("at") && f.optLong("at") <= now) return "בטיסה";
         int d = days(today, f.optString("date"));
         if (d >= 2) return "בעוד " + d + " ימים";
         if (d == 1) return "מחר";
@@ -221,6 +226,7 @@ final class WidgetKit {
 
     /** The same countdown as a big number and its word: { "5", "ימים" }. */
     static String[] countdownBig(JSONObject f, String today, long now) {
+        if (!f.isNull("at") && f.optLong("at") <= now) return new String[] { "בטיסה", "" };
         int d = days(today, f.optString("date"));
         if (d >= 2) return new String[] { String.valueOf(d), "ימים" };
         if (d == 1) return new String[] { "מחר", "" };
@@ -229,6 +235,42 @@ final class WidgetKit {
         if (min < 60) return new String[] { String.valueOf(Math.max(1, min)), "דק׳" };
         long h = Math.round(min / 60.0);
         return new String[] { String.valueOf(h), h == 1 ? "שעה" : "שעות" };
+    }
+
+    /** "שעה ו־20 דק׳", "40 דק׳": the time until an instant, for a flight in the air. */
+    static String duration(long ms) {
+        long min = Math.max(1, Math.round(ms / 60_000.0));
+        long h = min / 60, rest = min % 60;
+        String hours = h == 1 ? "שעה" : h == 2 ? "שעתיים" : h + " שעות";
+        if (h == 0) return rest + " דק׳";
+        return rest == 0 ? hours : hours + " ו־" + rest + " דק׳";
+    }
+
+    /** The flight's day and its clocks: "יום ג׳ 3.11 · המראה 22:30 · נחיתה 02:50". */
+    static String flightTimes(JSONObject f) {
+        String when = f.optString("when"), dep = f.optString("dep"), arr = f.optString("arr");
+        if (dep.isEmpty()) return when;
+        int i = when.indexOf(" · ");
+        String day = i < 0 ? when : when.substring(0, i);
+        return (day.isEmpty() ? "" : day + " · ") + "המראה " + dep + (arr.isEmpty() ? "" : " · נחיתה " + arr);
+    }
+
+    /** What the flight tab knows besides the times: "שער B12 · בזמן", or "". */
+    static String flightInfo(JSONObject f) {
+        String gate = f.optString("gate"), status = f.optString("status");
+        StringBuilder s = new StringBuilder();
+        if (!gate.isEmpty()) s.append("שער ").append(gate);
+        if (!status.isEmpty()) s.append(s.length() > 0 ? " · " : "").append(status);
+        return s.toString();
+    }
+
+    /** In the air: "נוחתת ב־02:50 שעון בודפשט", and how long until then. */
+    static String[] landing(JSONObject f, long now) {
+        String arr = f.optString("arr"), city = f.optString("toCity");
+        String when = arr.isEmpty() ? "בדרך ל" + (city.isEmpty() ? f.optString("to") : city)
+            : "נוחתת ב־" + arr + (city.isEmpty() ? "" : " שעון " + city);
+        long lands = f.isNull("arriveAt") ? 0 : f.optLong("arriveAt");
+        return new String[] { when, lands > now ? "עוד " + duration(lands - now) : "" };
     }
 
     /** "טיסת הלוך · LY 323" → "טיסת הלוך". */

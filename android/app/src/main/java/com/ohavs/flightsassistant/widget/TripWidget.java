@@ -39,7 +39,8 @@ public class TripWidget extends BaseWidget {
         // plan needs the room; short drops those; very short also the line
         // under the title and the flight's day.
         boolean roomy = h >= 180f, short_ = h < 140f;
-        boolean full = roomy && (m.flightFirst() || h >= 250f);
+        // Tall: the tiles' second lines; else the flight keeps the room for its times.
+        boolean full = roomy && h >= 250f;
         float padTop = roomy ? 14f : short_ ? 10f : 12f;
         WidgetKit.pad(ctx, v, R.id.root, 16f, padTop);
         WidgetKit.visible(v, R.id.icon_tile, roomy);
@@ -81,6 +82,18 @@ public class TripWidget extends BaseWidget {
         v.setImageViewResource(R.id.icon, m.drawable(R.drawable.ic_ws_plane));
         v.setTextViewText(R.id.subtitle, f.optString("title"));
         v.setTextViewText(R.id.chip, WidgetKit.countdown(f, m.today, m.now));
+        // Before takeoff its times, gate and status; in the air, the landing.
+        String times, info;
+        if (m.inAir) {
+            String[] l = WidgetKit.landing(f, m.now);
+            times = l[0];
+            info = l[1];
+        } else {
+            times = WidgetKit.flightTimes(f);
+            info = WidgetKit.flightInfo(f);
+        }
+        v.setTextViewText(R.id.flight_info, info);
+        WidgetKit.visible(v, R.id.flight_info, !short_ && !info.isEmpty());
         String from = f.optString("from"), to = f.optString("to");
         boolean codes = !from.isEmpty() || !to.isEmpty();
         // No airports yet: the leg's name in their place.
@@ -89,8 +102,8 @@ public class TripWidget extends BaseWidget {
         v.setInt(R.id.from, "setGravity", (codes ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL);
         WidgetKit.visible(v, R.id.route_line, codes);
         WidgetKit.visible(v, R.id.to, codes);
-        v.setTextViewText(R.id.when, f.optString("when"));
-        WidgetKit.visible(v, R.id.when, !short_ && !f.optString("when").isEmpty());
+        v.setTextViewText(R.id.when, times);
+        WidgetKit.visible(v, R.id.when, !short_ && !times.isEmpty());
     }
 
     private static void plan(RemoteViews v, WidgetKit.Moment m, float body) {
