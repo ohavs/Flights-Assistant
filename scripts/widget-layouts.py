@@ -138,8 +138,10 @@ def trip(prev):
             text('to', 'WBold.Hero', w='0dp', h='match_parent', layout_weight='1',
                  gravity='right|center_vertical', textAlignment='gravity', sample='CDG'),
         ]),
-        text('when', 'WText.Muted', w='match_parent', textSize='14sp', layout_marginTop='2dp',
-             sample='יום ג׳ 3.11 · 07:30'),
+        text('when', 'WText', w='match_parent', textSize='15sp', layout_marginTop='2dp',
+             sample='יום ג׳ 3.11 · המראה 07:30 · נחיתה 10:45'),
+        text('flight_info', 'WText.Muted', w='match_parent', textSize='13sp', layout_marginTop='2dp',
+             sample='שער B12 · בזמן'),
     ])
     plan = lin('plan_block', 'vertical', h='match_parent', visibility='gone', kids=[
         *rows('plan', 6, PLAN_SAMPLES),

@@ -49,6 +49,20 @@ export function departureAt(flight, fallbackOffset = 180) {
   return new Date(utc);
 }
 
+// The landing instant, or null: the arrival time (estimated, else
+// scheduled) at the arrival airport's offset, on the departure's date, or
+// the day after when that would be before takeoff (an overnight flight).
+export function arrivalAt(flight, fallbackOffset = 180) {
+  const dep = departureAt(flight, fallbackOffset);
+  const d = String(flight?.date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const clock = parseClock(flight?.estimatedArr) || parseClock(flight?.scheduledArr);
+  if (!dep || !d || !clock) return null;
+  const offset = parseOffset(flight.arrAirport?.timezone) ?? fallbackOffset;
+  let utc = Date.UTC(+d[1], +d[2] - 1, +d[3], clock[0], clock[1]) - offset * 60000;
+  while (utc <= dep.getTime()) utc += 86400000;
+  return new Date(utc);
+}
+
 // A stable 31-bit id per (trip, leg, alert): scheduling again replaces the
 // same notification instead of adding a second one.
 export function alertId(tripId, leg, alert) {

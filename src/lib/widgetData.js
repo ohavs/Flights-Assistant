@@ -9,7 +9,7 @@
 // are ready to show; instants are epoch ms; dates are the phone's local
 // 'YYYY-MM-DD'. The snapshot ships with the widgets in the same APK, so its
 // shape may change with them.
-import { departureAt, parseClock } from './flightAlerts.js';
+import { departureAt, arrivalAt, parseClock } from './flightAlerts.js';
 import { tripRange, dayFor, activityRank } from './morningAlerts.js';
 import { dayActivities } from './dayOrder.js';
 import { parseLocal } from './reminderAlerts.js';
@@ -59,16 +59,27 @@ function flightsOf(trip) {
     const f = trip?.[leg.field];
     if (!f?.date) continue;
     const clock = parseClock(f.actualDep) || parseClock(f.scheduledDep);
+    const arrClock = parseClock(f.estimatedArr) || parseClock(f.scheduledArr);
     const at = departureAt(f);
+    const arriveAt = arrivalAt(f);
     const from = f.depAirport?.code, to = f.arrAirport?.code;
     out.push({
       at: at ? at.getTime() : null,
+      // Landing, so the widget can follow the flight in the air (TripWidget).
+      arriveAt: arriveAt ? arriveAt.getTime() : null,
       date: f.date,
       title: f.flightNumber ? `${leg.name} · ${f.flightNumber}` : leg.name,
       route: from && to ? `${from} → ${to}` : (from || to || ''),
       from: from || '',
       to: to || '',
       when: whenText(f.date, clock),
+      // Local clocks at each airport, and what the flight tab knows.
+      dep: clock ? `${pad(clock[0])}:${pad(clock[1])}` : '',
+      arr: arrClock ? `${pad(arrClock[0])}:${pad(arrClock[1])}` : '',
+      toCity: f.arrAirport?.city || '',
+      number: f.flightNumber || '',
+      gate: String(f.gate || '').trim(),
+      status: String(f.status || '').trim(),
     });
   }
   return out;

@@ -125,8 +125,11 @@ expect() {   # <shot> <text>...
 
 adb shell cmd uimode night no; sleep 2
 # The trip widget: the flight, then the plan, at every size.
-open_widget flight;  expect 1-flight "פריז עם הילדים" "בעוד 5 ימים" "טיסת הלוך · LY 323" "TLV" "CDG" "יום ג׳ 3.11 · 07:30" "12/22" "נארזו" "תזכורות" "להזמין מונית לשדה"
+open_widget flight;  expect 1-flight "פריז עם הילדים" "בעוד 5 ימים" "טיסת הלוך · LY 323" "TLV" "CDG" "יום ג׳ 3.11 · המראה 07:30 · נחיתה 10:45" "שער B12 · בזמן" "12/22" "תזכורות"
 open_widget soon;    expect 2-soon "בעוד 3 שעות" "טיסת הלוך · LY 323" "TLV"
+# After takeoff the widget follows the flight to its landing, by itself.
+open_widget inair;   expect 2b-in-air "בטיסה" "נוחתת ב־10:45 שעון פריז" "עוד שעתיים ו־15 דק׳" "TLV" "CDG"
+open_widget inair 170 190 CountdownWidget; expect 2c-countdown-in-air "בטיסה" "TLV → CDG"
 open_widget plan;    expect 3-plan "יום 2 מתוך 4" "היום · מוזיאונים" "בוקר" "הלובר" "צהריים" "גני טווילרי" "ועוד 3 פעילויות" "12/22"
 open_widget return;  expect 4-return "בעוד 9 שעות" "טיסת חזור · LY 326" "CDG" "TLV"
 open_widget none;    expect 5-signed-out "התחברו באפליקציה"
