@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightSimulator';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { formatOffsetFromIsrael, toTime24, parseUtcOffset } from '../services/flightTime';
 import { lookupFlightLive, normaliseFlightNumber } from '../services/flightApi';
 import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
@@ -261,6 +261,8 @@ export default function FlightTab({ tripId }) {
   // Snapshot of the form state when the modal opened, used to detect
   // unsaved changes when the user tries to close it.
   const initialFormSnapshot = useRef(null);
+  // The airports the form opened with, to tell what the lookup changed.
+  const openAirports = useRef({ out: {}, ret: {} });
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   // 'all' | 'trip' | 'outbound' | 'return' | 'hotel'
@@ -343,7 +345,7 @@ export default function FlightTab({ tripId }) {
       case 'live':
         return <Banner tone="success">נתונים בזמן אמת: {result.flightNumber} · {result.airline} · {result.route}</Banner>;
       case 'no-key':
-        return <Banner tone="warn">חיפוש חי אינו זמין (חסר מפתח API מובנה). נטענו נתונים מקומיים.</Banner>;
+        return <Banner tone="warn">חיפוש חי אינו זמין (חסר מפתח API מובנה). אפשר למלא את הפרטים ידנית.</Banner>;
       case 'no-results':
         return <Banner tone={result.message ? 'info' : 'warn'}>
           {result.message
@@ -355,7 +357,7 @@ export default function FlightTab({ tripId }) {
       case 'network-error':
         return <Banner tone="offline">{result.message}</Banner>;
       default:
-        return <Banner tone="info">נטענו נתונים משוערים מהמאגר המקומי.</Banner>;
+        return null;
     }
   };
 
@@ -374,7 +376,7 @@ export default function FlightTab({ tripId }) {
       case 'network-error':
         return { kind: 'network-error', message: wrapper.message };
       default:
-        return { kind: 'generated', flightNumber: flight?.flightNumber, airline: flight?.airline, route };
+        return null;
     }
   };
 
@@ -389,7 +391,7 @@ export default function FlightTab({ tripId }) {
       setLookupResultOut(null);
       lookupFlightLive(num, formOutDate)
         .then(wrap => {
-          if (wrap?.flight) applyLookup('out', wrap.flight);
+          if (wrap?.status === 'api') applyLookup('out', wrap.flight);
           setLookupResultOut(resultFromWrapper(wrap));
         })
         .finally(() => setLookupBusyOut(false));
@@ -403,60 +405,68 @@ export default function FlightTab({ tripId }) {
       setLookupResultRet(null);
       lookupFlightLive(num, formRetDate)
         .then(wrap => {
-          if (wrap?.flight) applyLookup('ret', wrap.flight);
+          if (wrap?.status === 'api') applyLookup('ret', wrap.flight);
           setLookupResultRet(resultFromWrapper(wrap));
         })
         .finally(() => setLookupBusyRet(false));
     }
   };
 
-  // Refresh a saved flight's live data (called from card refresh button + auto-refresh)
+  // Refresh a saved flight's live data (called from card refresh button + auto-refresh).
+  // Only a real answer from the API is written, and only the fields it
+  // changed, by path. A lookup that failed (offline, quota, no schedule yet)
+  // leaves the saved flight as it is.
   const [refreshingOut, setRefreshingOut] = useState(false);
   const [refreshingRet, setRefreshingRet] = useState(false);
   const refreshFlight = async (kind) => {
-    if (!tripId || !tripData) return;
-    const flight = kind === 'outbound' ? tripData.outboundFlightDetails : tripData.returnFlightDetails;
+    if (!tripId || !tripData || !canEdit) return;
+    const field = kind === 'outbound' ? 'outboundFlightDetails' : 'returnFlightDetails';
+    const flight = tripData[field];
     if (!flight?.flightNumber) return;
-    if (kind === 'outbound') setRefreshingOut(true);
-    else setRefreshingRet(true);
+    const setBusy = kind === 'outbound' ? setRefreshingOut : setRefreshingRet;
+    setBusy(true);
     try {
       const wrap = await lookupFlightLive(flight.flightNumber, flight.date);
-      const res = wrap?.flight;
-      if (!res) return;
-      const docRef = doc(db, 'trips', tripId);
-      const newData = { ...tripData };
-      const merged = {
-        ...flight,
-        airline: res.airline || flight.airline,
-        depAirport: { ...(flight.depAirport || {}), ...(res.depAirport || {}) },
-        arrAirport: { ...(flight.arrAirport || {}), ...(res.arrAirport || {}) },
-        scheduledDep: res.scheduledDep || flight.scheduledDep,
-        actualDep: res.actualDep || flight.actualDep,
-        scheduledArr: res.scheduledArr || flight.scheduledArr,
-        estimatedArr: res.estimatedArr || flight.estimatedArr,
-        status: res.status || flight.status,
-        gate: res.gate || flight.gate,
-        lastRefreshed: new Date().toISOString(),
-      };
-      if (kind === 'outbound') newData.outboundFlightDetails = merged;
-      else newData.returnFlightDetails = merged;
-      await setDoc(docRef, newData, { merge: true });
+      const res = wrap?.status === 'api' ? wrap.flight : null;
+      // The leg was edited while the API answered: this answer is for the old one.
+      const now = latestTrip.current?.[field];
+      if (!res || now?.flightNumber !== flight.flightNumber || now?.date !== flight.date) return;
+      const updates = {};
+      for (const key of ['airline', 'scheduledDep', 'actualDep', 'scheduledArr', 'estimatedArr', 'status', 'gate']) {
+        if (res[key] && res[key] !== now[key]) updates[`${field}.${key}`] = res[key];
+      }
+      for (const key of ['depAirport', 'arrAirport']) {
+        // What the API left out (no coordinates, no country) keeps the saved value.
+        const known = Object.fromEntries(Object.entries(res[key] || {}).filter(([, v]) => v));
+        const merged = { ...(now[key] || {}), ...known };
+        if (JSON.stringify(merged) !== JSON.stringify(now[key] || {})) updates[`${field}.${key}`] = merged;
+      }
+      updates[`${field}.lastRefreshed`] = new Date().toISOString();
+      updateDoc(doc(db, 'trips', tripId), updates).catch(err => console.error('Flight refresh save error:', err));
     } finally {
-      if (kind === 'outbound') setRefreshingOut(false);
-      else setRefreshingRet(false);
+      setBusy(false);
     }
   };
+
+  // The interval below outlives renders, so it reads the trip and calls the
+  // refresh through refs. With the render's own copies it kept the trip as it
+  // was when the tab opened.
+  const latestTrip = useRef(null);
+  const refreshRef = useRef(refreshFlight);
+  useEffect(() => {
+    latestTrip.current = tripData;
+    refreshRef.current = refreshFlight;
+  });
 
   // Auto-refresh every 5 minutes (always on — API key is baked in)
   useEffect(() => {
     if (!tripId) return;
     const interval = setInterval(() => {
-      refreshFlight('outbound');
-      refreshFlight('return');
+      refreshRef.current('outbound');
+      refreshRef.current('return');
     }, AUTO_REFRESH_MS);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripId, tripData?.outboundFlightDetails?.flightNumber, tripData?.returnFlightDetails?.flightNumber]);
+  }, [tripId]);
 
   // Listen to Firestore
   useEffect(() => {
@@ -570,6 +580,8 @@ export default function FlightTab({ tripId }) {
     setFormHotelRoom(htl.roomNumber || '');
     setFormHotelNotes(htl.notes || '');
 
+    openAirports.current = { out: outAirportsRef.current, ret: retAirportsRef.current };
+
     // Snapshot the seeded form values so we can detect unsaved changes.
     initialFormSnapshot.current = JSON.stringify({
       formTripName: tripData.name || '',
@@ -619,83 +631,95 @@ export default function FlightTab({ tripId }) {
   // Nothing to lose until the form differs from what it opened with.
   const editDirty = !!initialFormSnapshot.current && currentFormSerialized() !== initialFormSnapshot.current;
 
+  // What the form writes, from one set of its values (the keys of
+  // currentFormSerialized) and the airports the lookup filled in.
+  const formPayload = (v, outAirports, retAirports) => ({
+    name: v.formTripName,
+    dates: formatDateRange(v.formOutDate, v.formRetDate),
+    outboundFlightDetails: {
+      // Store the compact designator so saved flights always match what the
+      // lookup and refresh calls send.
+      flightNumber: normaliseFlightNumber(v.formOutFlightNum),
+      airline: v.formOutAirline,
+      depAirport: { ...outAirports.dep, timezone: v.formOutDepTz },
+      arrAirport: { ...outAirports.arr, timezone: v.formOutArrTz },
+      scheduledDep: v.formOutSchedDep,
+      actualDep: v.formOutActDep,
+      scheduledArr: v.formOutSchedArr,
+      estimatedArr: v.formOutEstArr,
+      status: v.formOutStatus,
+      date: v.formOutDate,
+      gate: v.formOutGate
+    },
+    returnFlightDetails: {
+      flightNumber: normaliseFlightNumber(v.formRetFlightNum),
+      airline: v.formRetAirline,
+      depAirport: { ...retAirports.dep, timezone: v.formRetDepTz },
+      arrAirport: { ...retAirports.arr, timezone: v.formRetArrTz },
+      scheduledDep: v.formRetSchedDep,
+      actualDep: v.formRetActDep,
+      scheduledArr: v.formRetSchedArr,
+      estimatedArr: v.formRetEstArr,
+      status: v.formRetStatus,
+      date: v.formRetDate,
+      gate: v.formRetGate
+    },
+    hotelDetails: {
+      name: v.formHotelName,
+      address: v.formHotelAddress,
+      link: v.formHotelLink,
+      checkIn: v.formHotelCheckIn,
+      checkOut: v.formHotelCheckOut,
+      roomNumber: v.formHotelRoom,
+      notes: v.formHotelNotes
+    }
+  });
+
+  // Writes only what the user changed since the form opened, by path. The
+  // form holds every field, also those its scope hides: writing them all put
+  // back what a partner, or a flight refresh, changed while it was open.
   const handleFormSubmit = (e) => {
     e.preventDefault();
     if (!tripId) return;
-    const docRef = doc(db, 'trips', tripId);
+    const prev = formPayload(JSON.parse(initialFormSnapshot.current || '{}'), openAirports.current.out, openAirports.current.ret);
+    const next = formPayload(JSON.parse(currentFormSerialized()), outAirportsRef.current, retAirportsRef.current);
+    const updates = {};
+    for (const [key, value] of Object.entries(next)) {
+      if (value && typeof value === 'object') {
+        for (const [k, v] of Object.entries(value)) {
+          if (JSON.stringify(v) !== JSON.stringify(prev[key][k])) updates[`${key}.${k}`] = v;
+        }
+      } else if (value !== prev[key]) {
+        updates[key] = value;
+      }
+    }
 
     // Fire-and-forget: the offline cache queues the write. Awaiting it kept
     // the form open until the server answered, so offline "שמור" did nothing.
-    setDoc(docRef, {
-      name: formTripName,
-      dates: formatDateRange(formOutDate, formRetDate),
-      outboundFlightDetails: {
-        // Store the compact designator so saved flights always match what the
-        // lookup and refresh calls send.
-        flightNumber: normaliseFlightNumber(formOutFlightNum),
-        airline: formOutAirline,
-        depAirport: { ...outAirportsRef.current.dep, timezone: formOutDepTz },
-        arrAirport: { ...outAirportsRef.current.arr, timezone: formOutArrTz },
-        scheduledDep: formOutSchedDep,
-        actualDep: formOutActDep,
-        scheduledArr: formOutSchedArr,
-        estimatedArr: formOutEstArr,
-        status: formOutStatus,
-        date: formOutDate,
-        gate: formOutGate
-      },
-      returnFlightDetails: {
-        flightNumber: normaliseFlightNumber(formRetFlightNum),
-        airline: formRetAirline,
-        depAirport: { ...retAirportsRef.current.dep, timezone: formRetDepTz },
-        arrAirport: { ...retAirportsRef.current.arr, timezone: formRetArrTz },
-        scheduledDep: formRetSchedDep,
-        actualDep: formRetActDep,
-        scheduledArr: formRetSchedArr,
-        estimatedArr: formRetEstArr,
-        status: formRetStatus,
-        date: formRetDate,
-        gate: formRetGate
-      },
-      hotelDetails: {
-        name: formHotelName,
-        address: formHotelAddress,
-        link: formHotelLink,
-        checkIn: formHotelCheckIn,
-        checkOut: formHotelCheckOut,
-        roomNumber: formHotelRoom,
-        notes: formHotelNotes
-      }
-    }, { merge: true }).catch(err => console.error('Trip details save error:', err));
+    if (Object.keys(updates).length > 0) {
+      updateDoc(doc(db, 'trips', tripId), updates).catch(err => console.error('Trip details save error:', err));
+    }
 
     setShowEditModal(false);
   };
 
-  const handleUpdateFlightDate = async (type, dateValue) => {
-    if (!tripId) return;
-    const docRef = doc(db, 'trips', tripId);
-    const newData = { ...tripData };
-    if (type === 'outbound') {
-      newData.outboundFlightDetails = { ...tripData.outboundFlightDetails, date: dateValue };
-    } else {
-      newData.returnFlightDetails = { ...tripData.returnFlightDetails, date: dateValue };
-    }
-    newData.dates = formatDateRange(
-      type === 'outbound' ? dateValue : tripData.outboundFlightDetails?.date,
-      type === 'return' ? dateValue : tripData.returnFlightDetails?.date
-    );
-
-    // Keep the hotel's check-in / check-out aligned with the flights.
+  // Writes only the fields the date moves, by path, and doesn't wait for the
+  // server: a whole copy of the trip would undo what others changed meanwhile.
+  const handleUpdateFlightDate = (type, dateValue) => {
+    if (!tripId || !tripData) return;
+    const out = type === 'outbound';
     const hotel = tripData.hotelDetails || {};
-    if (type === 'outbound') {
-      const time = (hotel.checkIn || '').split('T')[1] || '14:00';
-      newData.hotelDetails = { ...hotel, checkIn: `${dateValue}T${time}` };
-    } else {
-      const time = (hotel.checkOut || '').split('T')[1] || '12:00';
-      newData.hotelDetails = { ...(newData.hotelDetails || hotel), checkOut: `${dateValue}T${time}` };
-    }
-
-    await setDoc(docRef, newData, { merge: true });
+    const updates = {
+      [out ? 'outboundFlightDetails.date' : 'returnFlightDetails.date']: dateValue,
+      dates: formatDateRange(
+        out ? dateValue : tripData.outboundFlightDetails?.date,
+        out ? tripData.returnFlightDetails?.date : dateValue
+      ),
+    };
+    // Keep the hotel's check-in / check-out aligned with the flights.
+    if (out) updates['hotelDetails.checkIn'] = `${dateValue}T${(hotel.checkIn || '').split('T')[1] || '14:00'}`;
+    else updates['hotelDetails.checkOut'] = `${dateValue}T${(hotel.checkOut || '').split('T')[1] || '12:00'}`;
+    updateDoc(doc(db, 'trips', tripId), updates).catch(err => console.error('Flight date save error:', err));
   };
 
   const formatDateTime = (dateTimeStr) => {
@@ -761,7 +785,7 @@ export default function FlightTab({ tripId }) {
             )}
             <button
               onClick={() => refreshFlight(kind)}
-              disabled={isRefreshing || !flight.flightNumber}
+              disabled={isRefreshing || !flight.flightNumber || !canEdit}
               title={lastRefreshed ? `עודכן לאחרונה: ${lastRefreshed}` : 'רענן מידע טיסה'}
               style={{
                 background: 'var(--p-8)',
@@ -1147,11 +1171,11 @@ export default function FlightTab({ tripId }) {
 
                 <div className="row-2">
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>אזור זמן – מוצא ({formatOffsetFromIsrael(formOutDepTz)})</label>
+                    <label>אזור זמן – מוצא ({formatOffsetFromIsrael(formOutDepTz, formOutDate)})</label>
                     <input type="text" className="form-control" value={formOutDepTz} onChange={(e) => setFormOutDepTz(e.target.value)} placeholder="UTC +03:00" />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>אזור זמן – יעד ({formatOffsetFromIsrael(formOutArrTz)})</label>
+                    <label>אזור זמן – יעד ({formatOffsetFromIsrael(formOutArrTz, formOutDate)})</label>
                     <input type="text" className="form-control" value={formOutArrTz} onChange={(e) => setFormOutArrTz(e.target.value)} placeholder="UTC +02:00" />
                   </div>
                 </div>
@@ -1223,11 +1247,11 @@ export default function FlightTab({ tripId }) {
 
                 <div className="row-2">
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>אזור זמן – מוצא ({formatOffsetFromIsrael(formRetDepTz)})</label>
+                    <label>אזור זמן – מוצא ({formatOffsetFromIsrael(formRetDepTz, formRetDate)})</label>
                     <input type="text" className="form-control" value={formRetDepTz} onChange={(e) => setFormRetDepTz(e.target.value)} placeholder="UTC +02:00" />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>אזור זמן – יעד ({formatOffsetFromIsrael(formRetArrTz)})</label>
+                    <label>אזור זמן – יעד ({formatOffsetFromIsrael(formRetArrTz, formRetDate)})</label>
                     <input type="text" className="form-control" value={formRetArrTz} onChange={(e) => setFormRetArrTz(e.target.value)} placeholder="UTC +03:00" />
                   </div>
                 </div>

@@ -3,16 +3,17 @@
 // (see .env.local, which is gitignored). On Firebase Spark (no Functions)
 // the call goes straight from the browser to AeroDataBox.
 
-import { lookupFlight as localLookup } from './flightSimulator';
-
 const API_HOST = 'aerodatabox.p.rapidapi.com';
 const API_KEY = import.meta.env.VITE_AERODATABOX_KEY || '';
 
-export function hasApiKey() {
-  return API_KEY.length > 0;
-}
-
-function tzOffsetFromAirport(apt) {
+// "UTC +02:00" for an airport on the flight's own date. AeroDataBox writes
+// local times with their offset ("2026-11-03 07:30+02:00"), and that offset
+// already holds daylight saving for that day. Today's offset of the airport's
+// zone is only a fallback: in October it is the summer one, while a flight in
+// November flies on the winter one, and the alerts would come an hour early.
+function tzOffsetFromAirport(apt, localTime) {
+  const own = String(localTime || '').match(/([+-])(\d{2}):?(\d{2})$/);
+  if (own) return `UTC ${own[1]}${own[2]}:${own[3]}`;
   if (!apt) return 'UTC +00:00';
   const offsetMin = computeOffsetFromTz(apt.timeZone);
   if (offsetMin != null) {
@@ -52,7 +53,7 @@ function pickAirport(side) {
     name: apt.name || '',
     lat: (apt.location && apt.location.lat) || 0,
     lng: (apt.location && apt.location.lon) || 0,
-    timezone: tzOffsetFromAirport(apt),
+    timezone: tzOffsetFromAirport(apt, side.scheduledTime && side.scheduledTime.local),
     // ISO country: the expense widget's currency (destinationCurrency.js).
     country: apt.countryCode || '',
   };
@@ -64,7 +65,8 @@ function statusFromApi(apiStatus) {
   if (s.includes('cancel')) return 'בוטלה';
   if (s.includes('divert') || s.includes('delay')) return 'באיחור קל';
   if (s.includes('arriv') || s.includes('landed')) return 'נחתה';
-  if (s.includes('en route') || s.includes('inair') || s.includes('flight')) return 'בטיסה';
+  // AeroDataBox: "EnRoute", "Departed", "Approaching".
+  if (/en ?route|inair|flight|depart|approach/.test(s)) return 'בטיסה';
   return 'בזמן';
 }
 
@@ -118,6 +120,8 @@ function humaniseHttp(status, body) {
 }
 
 // Returns: { flight, status: 'api'|'no-key'|'http-error'|'no-results'|'network-error', code?, message? }
+// `flight` is set only with status 'api'. Nothing is ever made up: a flight
+// that could not be read leaves what is saved as it is.
 export async function lookupFlightLive(flightNumber, dateStr) {
   // AeroDataBox matches the compact IATA designator ("W62329"), so anything
   // the user typed with a space or dash ("W6 2329", "W6-2329") has to be
@@ -128,16 +132,10 @@ export async function lookupFlightLive(flightNumber, dateStr) {
   const num = normaliseFlightNumber(flightNumber);
   if (!num) return { flight: null, status: 'no-key', message: 'מספר טיסה חסר' };
 
-  const localFallback = () => {
-    const r = localLookup(num, dateStr);
-    if (r) r.source = 'local';
-    return r;
-  };
-
   if (!API_KEY) {
     // No key was bundled into the build — shouldn't happen in production
     // but covers the dev case where .env.local is missing.
-    return { flight: localFallback(), status: 'no-key' };
+    return { flight: null, status: 'no-key' };
   }
 
   const date = (dateStr || '').match(/^\d{4}-\d{2}-\d{2}/) ? dateStr.slice(0, 10) : '';
@@ -153,7 +151,7 @@ export async function lookupFlightLive(flightNumber, dateStr) {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      return { fail: { flight: localFallback(), status: 'http-error', code: res.status, message: humaniseHttp(res.status, text) } };
+      return { fail: { flight: null, status: 'http-error', code: res.status, message: humaniseHttp(res.status, text) } };
     }
     // "Nothing for this flight/date" comes back as 204, or as 200 with an
     // empty body. res.json() on that throws "Unexpected end of JSON input",
@@ -164,7 +162,7 @@ export async function lookupFlightLive(flightNumber, dateStr) {
     try {
       data = JSON.parse(raw);
     } catch {
-      return { fail: { flight: localFallback(), status: 'http-error', code: res.status,
+      return { fail: { flight: null, status: 'http-error', code: res.status,
         message: 'התקבלה תשובה לא תקינה משירות הטיסות. נסה שוב מאוחר יותר.' } };
     }
     return { list: Array.isArray(data) ? data : (data && data.flights) || [] };
@@ -173,7 +171,11 @@ export async function lookupFlightLive(flightNumber, dateStr) {
   try {
     const first = await queryApi(date ? `/${date}` : '');
     if (first.fail) return first.fail;
-    if (first.list.length > 0) return { flight: adaptFlight(first.list[0]), status: 'api' };
+    // dateLocalRole=Both also lists a flight that only lands on this date
+    // (last night's red-eye). Take the one that departs on it.
+    const found = first.list.map(adaptFlight);
+    const match = date && found.some(f => f.date) ? found.find(f => f.date === date) : found[0];
+    if (match) return { flight: match, status: 'api' };
 
     if (date) {
       // Nothing on the exact date. Widen to a week around it — the same
@@ -193,7 +195,7 @@ export async function lookupFlightLive(flightNumber, dateStr) {
         if (dates.length > 0) {
           const human = dates.map(d => d.split('-').reverse().join('/')).join(', ');
           return {
-            flight: localFallback(),
+            flight: null,
             status: 'no-results',
             knownDate: dates[0],
             message: `הטיסה ${num} לא מופיעה בתאריך שביקשת, אבל כן נמצאה בשבוע שסביבו — בתאריכים: ${human}. כנראה שהיא לא מופעלת בכל יום, אז כדאי לוודא את התאריך מול הכרטיס.`,
@@ -219,13 +221,13 @@ export async function lookupFlightLive(flightNumber, dateStr) {
         } else {
           message = `מספר הטיסה ${num} קיים במאגר, אבל לא בתאריך שביקשת. התאריך הקרוב שנמצא עבורו הוא ${nearHuman} — כנראה שהטיסה לא מופעלת בכל יום.`;
         }
-        return { flight: localFallback(), status: 'no-results', knownDate: near.date || '', message };
+        return { flight: null, status: 'no-results', knownDate: near.date || '', message };
       }
       if (!probe.fail) {
         // Not found on the date and not found at all → the number itself is
         // not in the database, whatever the date.
         return {
-          flight: localFallback(),
+          flight: null,
           status: 'no-results',
           message: `מספר הטיסה ${num} לא נמצא במאגר של AeroDataBox באף תאריך. ייתכן שהוא מופעל בפועל תחת מספר אחר (code-share), או שהמאגר לא מכסה את הטיסה הזו. כדאי להשוות למספר שמופיע בכרטיס העלייה למטוס.`,
         };
@@ -233,7 +235,7 @@ export async function lookupFlightLive(flightNumber, dateStr) {
     }
 
     return {
-      flight: localFallback(),
+      flight: null,
       status: 'no-results',
       message: daysAhead(date) > FUTURE_HORIZON_DAYS
         ? `לוחות הזמנים לתאריך הזה עדיין לא זמינים במאגר (התאריך בעוד כ-${daysAhead(date)} ימים). זה תקין — הנתונים יתעדכנו אוטומטית ככל שנתקרב למועד. בינתיים אפשר למלא את הפרטים ידנית.`
@@ -242,7 +244,7 @@ export async function lookupFlightLive(flightNumber, dateStr) {
   } catch (e) {
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     return {
-      flight: localFallback(),
+      flight: null,
       status: 'network-error',
       message: offline
         ? 'אין חיבור לאינטרנט — מציג נתונים שמורים.'

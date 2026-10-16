@@ -6,7 +6,7 @@ import { db } from '../firebase';
 import { saveFile } from '../lib/saveFile';
 import { dayActivities } from '../lib/dayActivities';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from './currency';
-import { toTime24 } from './flightSimulator';
+import { toTime24 } from './flightTime';
 
 // ──────────────────────────────────────────────────────────────────────
 // Shared helpers
