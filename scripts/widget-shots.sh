@@ -146,7 +146,7 @@ queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
 for t in "planning" "pl-louvre" "visited"; do
   grep -qF -- "$t" <<<"$queue" || { echo "the tick is not queued (\"$t\"):"; echo "$queue"; exit 1; }
 done
-echo "widget: a ticked place is queued for Firestore
+echo "widget: a ticked place is queued for Firestore"
 open_widget flight 360 290 PlanWidget;      expect 12-plan-before "יום 1 · הגעה" "בעוד 5 ימים" "צ׳ק אין במלון"
 open_widget flight 170 190 PackWidget;      expect 13-pack "12/22" "55%" "נארזו · פריז עם הילדים"
 open_widget flight 360 190 RemindersWidget; expect 14-reminders "תזכורות" "5 פתוחות" "להזמין מונית לשדה" "היום 18:00"
@@ -155,7 +155,7 @@ open_widget flight 360 190 RemindersWidget
 tap_desc "סמן: להזמין מונית לשדה"; expect_desc 14c-reminder-ticked "בוצע: להזמין מונית לשדה"; expect 14d-reminders-count "4 פתוחות"
 queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
 grep -qF "reminders" <<<"$queue" && grep -qF "r1&quot;" <<<"$queue" && grep -qF "completed" <<<"$queue" || { echo "the done reminder is not queued:"; echo "$queue"; exit 1; }
-echo "widget: a done reminder is queued for Firestore
+echo "widget: a done reminder is queued for Firestore"
 # The app set to dark on a light phone.
 open_widget plan-app-dark; want_shade 21a-app-dark dark
 open_widget plan-app-dark 360 300 ExpenseWidget; want_shade 21b-expense-app-dark dark
