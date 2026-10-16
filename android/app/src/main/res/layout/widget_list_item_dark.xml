@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py; edit there. widget_list_item, always dark (the app set to dark). -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/item"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layoutDirection="rtl"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
+    <FrameLayout
+        android:id="@+id/item_box"
+        android:layout_width="36dp"
+        android:layout_height="36dp">
+        <ImageView
+            android:id="@+id/item_ring"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/widget_dot_dark"
+            android:importantForAccessibility="no"
+            android:layout_gravity="center" />
+        <FrameLayout
+            android:id="@+id/item_check"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:background="@drawable/widget_check_bg_dark"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/item_tick"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/widget_tick_dark"
+                android:importantForAccessibility="no"
+                android:layout_gravity="center" />
+        </FrameLayout>
+    </FrameLayout>
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp">
+        <TextView
+            android:id="@+id/item_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/WText"
+            android:textSize="17sp"
+            android:maxLines="2"
+            android:textColor="@color/w_text_dark" />
+        <TextView
+            android:id="@+id/item_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/WText.Muted"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            android:textColor="@color/w_muted_dark" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/item_pill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        style="@style/WBold.Pill"
+        android:layout_marginStart="8dp"
+        android:textSize="13sp"
+        android:visibility="gone"
+        android:textColor="@color/w_accent_dark"
+        android:background="@drawable/widget_chip_dark" />
+</LinearLayout>

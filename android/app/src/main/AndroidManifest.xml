@@ -121,7 +121,24 @@
             android:taskAffinity="${applicationId}.expense"
             android:theme="@style/ExpenseSheet"
             android:windowSoftInputMode="adjustResize|stateHidden" />
-        <!-- Sends expenses the widget queued offline, once there is a network. -->
+        <!-- The plan and reminders lists (ListWidgetService), and a tap on one
+             of their rows: a tick, or the app opened there. No screen. -->
+        <service
+            android:name=".widget.ListWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <activity
+            android:name=".widget.WidgetActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity="${applicationId}.widgetaction"
+            android:theme="@android:style/Theme.NoDisplay" />
+        <!-- Wakes the widgets at midnight and around flights (WidgetClock). -->
+        <receiver
+            android:name=".widget.WidgetClock"
+            android:exported="false" />
+        <!-- Sends what the widgets queued offline, once there is a network. -->
         <service
             android:name=".widget.ExpenseFlushJob"
             android:exported="false"

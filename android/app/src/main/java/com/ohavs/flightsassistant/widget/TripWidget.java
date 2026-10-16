@@ -1,11 +1,13 @@
 package com.ohavs.flightsassistant.widget;
 
 import android.content.Context;
+import android.view.View;
 import android.view.Gravity;
 import android.widget.RemoteViews;
 
 import com.ohavs.flightsassistant.R;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -99,7 +101,7 @@ public class TripWidget extends BaseWidget {
         String name = day == null ? "" : day.optString("name");
         v.setTextViewText(R.id.subtitle, "היום" + (name.isEmpty() ? "" : " · " + name));
         v.setTextViewText(R.id.chip, "יום " + m.dayN + " מתוך " + m.dayTotal);
-        PlanWidget.rows(v, day, body, ROWS, TIMES, RINGS, TITLES, R.id.plan_more, "אין פעילויות בתוכנית להיום");
+        rows(v, day, body, ROWS, TIMES, RINGS, TITLES, R.id.plan_more, "אין פעילויות בתוכנית להיום");
     }
 
     private static void bottom(RemoteViews v, JSONObject trip) {
@@ -117,5 +119,30 @@ public class TripWidget extends BaseWidget {
         v.setTextViewText(R.id.rem_label, open == 0 ? "אין תזכורות" : open == 1 ? "תזכורת" : "תזכורות");
         String next = rem == null ? "" : rem.optString("next");
         v.setTextViewText(R.id.rem_next, open == 0 ? "הכל בוצע" : next);
+    }
+
+    /**
+     * A day's activities in rows: a time pill, or a ring when there is no
+     * time, and the title; as many as fit in roomDp, then "ועוד N".
+     */
+    static void rows(RemoteViews v, JSONObject day, float roomDp, int[] rows, int[] times, int[] rings, int[] titles,
+                     int more, String none) {
+        JSONArray items = day == null ? null : day.optJSONArray("items");
+        int count = items == null ? 0 : items.length();
+        int total = count + (day == null ? 0 : day.optInt("more"));
+        int shown = WidgetKit.shown(count, total, roomDp, rows.length);
+        for (int i = 0; i < rows.length; i++) {
+            JSONObject it = i < shown ? items.optJSONObject(i) : null;
+            v.setViewVisibility(rows[i], it == null ? View.GONE : View.VISIBLE);
+            if (it == null) continue;
+            String time = it.optString("time");
+            v.setTextViewText(times[i], time);
+            WidgetKit.visible(v, times[i], !time.isEmpty());
+            WidgetKit.visible(v, rings[i], time.isEmpty());
+            v.setTextViewText(titles[i], it.optString("title"));
+        }
+        int rest = total - shown;
+        v.setTextViewText(more, count == 0 ? none : rest == 1 ? "ועוד פעילות אחת" : "ועוד " + rest + " פעילויות");
+        WidgetKit.visible(v, more, count == 0 || rest > 0);
     }
 }

@@ -79,6 +79,7 @@ final class WidgetKit {
     static void refreshAll(Context ctx) {
         AppWidgetManager m = AppWidgetManager.getInstance(ctx);
         for (BaseWidget w : all()) for (int id : w.ids(ctx)) w.redraw(ctx, m, id);
+        WidgetClock.schedule(ctx);
     }
 
     static int count(Context ctx) {
@@ -343,6 +344,11 @@ final class WidgetKit {
     // ── Opening the app where the tap points ─────────────────────────────
 
     static PendingIntent open(Context ctx, String tripId, String tab) {
+        return PendingIntent.getActivity(ctx, 0, openIntent(ctx, tripId, tab), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** The app at a trip's tab (TripWidgetPlugin "open"). */
+    static Intent openIntent(Context ctx, String tripId, String tab) {
         Intent i = new Intent(ctx, AppActivity.class)
             .setAction(ACTION_OPEN)
             // A distinct address per target, or Android hands every tap the same intent.
@@ -350,7 +356,7 @@ final class WidgetKit {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (tripId != null) i.putExtra("tripId", tripId);
         if (tab != null) i.putExtra("tab", tab);
-        return PendingIntent.getActivity(ctx, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return i;
     }
 
     // ── A message in place of the content ────────────────────────────────

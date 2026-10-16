@@ -35,8 +35,9 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /**
- * Expenses added on the home screen (ExpenseWidget, ExpenseSheetActivity),
- * written to Firestore without opening the app. The app hands over its
+ * What the widgets write without opening the app: expenses added on the
+ * home screen (ExpenseWidget, ExpenseSheetActivity), and the ticks in the
+ * plan and reminders lists (patch, WidgetActionActivity). The app hands over its
  * sign-in (TripWidgetPlugin.auth: the user's refresh token and the web
  * config); this trades it for an ID token and commits the same document the
  * expenses tab writes (ExpensesTab.jsx). Learned from Payments.
@@ -120,6 +121,24 @@ final class ExpenseStore {
             .put("paidBy", uid)
             .put("createdAt", iso.format(new Date(now)));
         return new JSONObject().put("id", "exp-" + now).put("tripId", tripId).put("uid", uid).put("doc", doc);
+    }
+
+    static final String PATCH = "patch";
+
+    /**
+     * A queued change to one field of a document (a place ticked as
+     * visited, a reminder ticked as done, from a widget list):
+     * { kind: "patch", id, uid, path, field, value }.
+     */
+    static JSONObject patch(String uid, String path, String field, boolean value, long now) throws JSONException {
+        return new JSONObject().put("kind", PATCH).put("id", "patch-" + now + "-" + Math.abs(path.hashCode()))
+            .put("uid", uid).put("path", path).put("field", field).put("value", value);
+    }
+
+    /** Sends it in the background (ExpenseFlushJob) as soon as there is a network. */
+    static void queue(Context ctx, JSONObject e) {
+        enqueue(ctx, e);
+        schedule(ctx);
     }
 
     // ── Saving ───────────────────────────────────────────────────────────
@@ -284,18 +303,30 @@ final class ExpenseStore {
     private static void commit(Context ctx, JSONObject e, String token) throws IOException, AuthException, DeniedException, JSONException {
         String project = auth(ctx).getString("projectId", "");
         String base = "projects/" + project + "/databases/(default)/documents";
-        JSONObject fields = new JSONObject();
-        JSONObject doc = e.getJSONObject("doc");
-        for (Iterator<String> it = doc.keys(); it.hasNext(); ) {
-            String k = it.next();
-            fields.put(k, value(doc.opt(k)));
+        JSONObject write;
+        if (PATCH.equals(e.optString("kind"))) {
+            // One field of a document that is there: nothing else of it changes.
+            String field = e.getString("field");
+            write = new JSONObject()
+                .put("update", new JSONObject()
+                    .put("name", base + "/" + e.getString("path"))
+                    .put("fields", new JSONObject().put(field, value(e.opt("value")))))
+                .put("updateMask", new JSONObject().put("fieldPaths", new JSONArray().put(field)))
+                .put("currentDocument", new JSONObject().put("exists", true));
+        } else {
+            JSONObject fields = new JSONObject();
+            JSONObject doc = e.getJSONObject("doc");
+            for (Iterator<String> it = doc.keys(); it.hasNext(); ) {
+                String k = it.next();
+                fields.put(k, value(doc.opt(k)));
+            }
+            write = new JSONObject()
+                .put("update", new JSONObject()
+                    .put("name", base + "/trips/" + e.getString("tripId") + "/expenses/" + e.getString("id"))
+                    .put("fields", fields))
+                // Never over another document: a retry finds its own already there.
+                .put("currentDocument", new JSONObject().put("exists", false));
         }
-        JSONObject write = new JSONObject()
-            .put("update", new JSONObject()
-                .put("name", base + "/trips/" + e.getString("tripId") + "/expenses/" + e.getString("id"))
-                .put("fields", fields))
-            // Never over another document: a retry finds its own already there.
-            .put("currentDocument", new JSONObject().put("exists", false));
         HttpURLConnection c = open(ctx, "https://firestore.googleapis.com/v1/" + base + ":commit");
         c.setRequestProperty("Authorization", "Bearer " + token);
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
