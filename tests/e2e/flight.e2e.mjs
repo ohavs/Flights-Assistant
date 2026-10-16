@@ -128,6 +128,45 @@ await step('no currency converter anywhere on the tab', async () => {
   if (/המרת מטבעות|ממיר/.test(text)) throw new Error('converter still on the tab');
 });
 
+const tripDoc = async () => (await (await fetch(`${DB}/trips/${tripId}`, { headers: admin })).json()).fields;
+const patch = (mask, fields) => fetch(`${DB}/trips/${tripId}?${mask.map(m => `updateMask.fieldPaths=${m}`).join('&')}`,
+  { method: 'PATCH', headers: admin, body: JSON.stringify({ fields }) });
+
+// A lookup that fails (here: over quota) used to fill the flight with made-up
+// airports and times from a local "simulator", and save them.
+await step('a refresh that fails leaves the saved flight as it is', async () => {
+  await page.route('**/aerodatabox.p.rapidapi.com/**', route => route.fulfill({ status: 429, body: '' }));
+  await patch(['outboundFlightDetails.flightNumber', 'outboundFlightDetails.scheduledDep'], { outboundFlightDetails: { mapValue: { fields: {
+    flightNumber: { stringValue: 'LY315' }, scheduledDep: { stringValue: '08:10' },
+  } } } });
+  const refresh = page.locator('button[title="רענן מידע טיסה"]').first();
+  await page.waitForFunction(() => {
+    const b = document.querySelector('button[title="רענן מידע טיסה"]');
+    return b && !b.disabled;
+  }, null, { timeout: 5000 });
+  await refresh.click();
+  await page.waitForTimeout(1500);
+  const f = (await tripDoc()).outboundFlightDetails.mapValue.fields;
+  const got = [f.scheduledDep?.stringValue, f.arrAirport?.mapValue.fields.code.stringValue, f.lastRefreshed?.stringValue];
+  if (got[0] !== '08:10' || got[1] !== 'FCO' || got[2]) throw new Error(`flight changed: ${JSON.stringify(got)}`);
+});
+
+// The form keeps every field of the trip, also the ones its scope hides.
+// Saving wrote them all back, and undid what a partner changed meanwhile.
+await step("saving the hotel keeps a partner's change made while the form was open", async () => {
+  await page.locator('button[title="ערוך פרטי מלון"]').click();
+  await page.getByText('עריכת פרטי המלון').waitFor();
+  const r = await patch(['name'], { name: { stringValue: 'שם ששותף נתן' } });
+  if (!r.ok) throw new Error(`partner write failed ${r.status}`);
+  await page.locator('.modal-content input.form-control').first().fill('מלון חדש');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await page.getByText('עריכת פרטי המלון').waitFor({ state: 'detached', timeout: 3000 });
+  await page.waitForTimeout(1500);
+  const t = await tripDoc();
+  const got = [t.name.stringValue, t.hotelDetails.mapValue.fields.name.stringValue];
+  if (got[0] !== 'שם ששותף נתן' || got[1] !== 'מלון חדש') throw new Error(`after save: ${JSON.stringify(got)}`);
+});
+
 // Offline (no reception at the airport), "שמור" still closes the form;
 // the write waits in the local cache and the card shows it at once.
 await step('saving hotel details offline closes the form', async () => {
