@@ -14,33 +14,9 @@
 // same time can leave two copies of it. Readers show the newer one
 // (`updatedAt`), and the next change to it removes both.
 import { doc, updateDoc, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { hasOrder, rows, shownRows, dayActivities } from './dayOrder.js';
 
-const hasOrder = (a) => typeof a?.order === 'number';
-const keyOf = (a, i) => a?.id ?? `#${i}`;
-
-// Every copy in the array, each with the place it counts at (`rank`).
-function rows(raw) {
-  let prev = 0;
-  return (Array.isArray(raw) ? raw : []).map((act, i) => {
-    const rank = hasOrder(act) ? act.order : prev + 1;
-    prev = rank;
-    return { act, rank, i };
-  });
-}
-
-// One row per activity (the newest copy), in the order shown.
-function shownRows(all) {
-  const best = new Map();
-  for (const r of all) {
-    const k = keyOf(r.act, r.i);
-    const cur = best.get(k);
-    if (!cur || (r.act.updatedAt || 0) >= (cur.act.updatedAt || 0)) best.set(k, r);
-  }
-  return [...best.values()].sort((a, b) => a.rank - b.rank || a.i - b.i);
-}
-
-// The day's activities as they are shown. Every reader goes through this.
-export const dayActivities = (raw) => shownRows(rows(raw)).map(r => r.act);
+export { dayActivities };
 
 const dayRef = (db, tripId, dayId) => doc(db, 'trips', tripId, 'days', dayId);
 

@@ -8,7 +8,7 @@
 // it opens, so it stays fresh enough.
 import { alertId } from './flightAlerts.js';
 import { getWeatherIcon, getWeatherLabel } from './weatherCodes.js';
-import { dayActivities } from './dayActivities.js';
+import { dayActivities } from './dayOrder.js';
 
 export const MORNING_DAYS = 7;
 export const MORNING_TIME = '08:00';

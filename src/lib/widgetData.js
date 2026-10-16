@@ -11,7 +11,7 @@
 // shape may change with them.
 import { departureAt, parseClock } from './flightAlerts.js';
 import { tripRange, dayFor, activityRank } from './morningAlerts.js';
-import { dayActivities } from './dayActivities.js';
+import { dayActivities } from './dayOrder.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
