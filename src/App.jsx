@@ -4,8 +4,8 @@ import { db } from './firebase';
 import { listen } from './lib/listen';
 import {
   collection, doc, onSnapshot, setDoc, deleteDoc,
-  query, where, getDocs, updateDoc, arrayUnion, arrayRemove,
-  getDoc, writeBatch, deleteField
+  query, where, updateDoc, arrayUnion, arrayRemove,
+  getDoc, writeBatch, deleteField, getDocsFromServer
 } from 'firebase/firestore';
 import { DELETE_DELAY_MS, useDeleteCode, validCode, checkCode, saveCode, pendingDelete, deleteAtText } from './lib/deleteCode';
 import { TripProvider } from './TripContext';
@@ -13,7 +13,7 @@ import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
 import { isNative, haptic } from './lib/platform';
 import { isMorningTrip, tripPlace, morningAlerts } from './lib/morningAlerts';
-import { widgetTrips, widgetSnapshot } from './lib/widgetData';
+import { widgetTrips, widgetSnapshot, offlineTrips } from './lib/widgetData';
 import { loadWeather } from './hooks/useWeather';
 import { NavIcon } from './ui/icons';
 import { CustomDropdown } from './components/CustomDatePicker';
@@ -414,7 +414,6 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
 function ShareModal({ tripId, currentUid, onClose }) {
   const confirm = useConfirm();
   const [trip, setTrip] = useState(null);
-  const [members, setMembers] = useState([]); // [{ uid, role, profile? }]
   const [email, setEmail] = useState('');
   const [newRole, setNewRole] = useState('viewer'); // viewer | editor
   const [status, setStatus] = useState('');
@@ -424,39 +423,38 @@ function ShareModal({ tripId, currentUid, onClose }) {
   useEffect(() => {
     if (!tripId) return;
     return listen(doc(db, 'trips', tripId), (snap) => {
-      if (!snap.exists()) { setTrip(null); setMembers([]); return; }
+      if (!snap.exists()) { setTrip(null); return; }
       setTrip(snap.data());
     });
   }, [tripId]);
 
-  // Load each member's profile (displayName/email)
+  // Each member's profile (displayName/email), live: from the phone offline,
+  // and filled in once the connection returns.
+  const [profiles, setProfiles] = useState({});
+  const uidsKey = Object.keys(trip?.members || {}).sort().join(',');
   useEffect(() => {
-    if (!trip?.members) { setMembers([]); return; }
-    const entries = Object.entries(trip.members).filter(([, role]) => role);
-    let cancelled = false;
-    (async () => {
-      const enriched = await Promise.all(entries.map(async ([uid, role]) => {
-        try {
-          const u = await getDoc(doc(db, 'users', uid));
-          return { uid, role, profile: u.exists() ? u.data() : null };
-        } catch {
-          return { uid, role, profile: null };
-        }
-      }));
-      if (!cancelled) setMembers(enriched);
-    })();
-    return () => { cancelled = true; };
-  }, [trip]);
+    if (!uidsKey) return;
+    const unsubs = uidsKey.split(',').map(uid => onSnapshot(doc(db, 'users', uid),
+      (snap) => setProfiles(prev => ({ ...prev, [uid]: snap.exists() ? snap.data() : null })),
+      () => {}));
+    return () => unsubs.forEach(u => u());
+  }, [uidsKey]);
+  const members = useMemo(() => Object.entries(trip?.members || {})
+    .filter(([, role]) => role)
+    .map(([uid, role]) => ({ uid, role, profile: profiles[uid] ?? null })), [trip, profiles]);
 
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!email.trim()) return;
+    // Finding the user needs the server: offline, the phone's copy said
+    // "no such user" for anyone it had not seen.
+    if (!navigator.onLine) { setStatus('offline'); return; }
     setStatus('searching');
     setErrorMsg('');
 
     try {
       const q = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()));
-      const snap = await getDocs(q);
+      const snap = await getDocsFromServer(q);
 
       if (snap.empty) {
         setStatus('not-found');
@@ -474,10 +472,11 @@ function ShareModal({ tripId, currentUid, onClose }) {
       }
 
       const tripRef = doc(db, 'trips', tripId);
-      await updateDoc(tripRef, {
+      // Not awaited: if the connection drops now, the add waits on the phone.
+      updateDoc(tripRef, {
         [`members.${targetUid}`]: newRole,
         memberIds: arrayUnion(targetUid),
-      });
+      }).catch(err => { setStatus('error'); setErrorMsg(err?.message || 'Unknown error'); });
 
       setStatus('success');
       setEmail('');
@@ -590,6 +589,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
             </form>
 
             {status === 'success' && <Notice tone="success">נוסף בהצלחה.</Notice>}
+            {status === 'offline' && <Notice tone="offline">שיתוף דורש חיבור לאינטרנט, כדי למצוא את המשתמש. נסו שוב כשיש חיבור.</Notice>}
             {status === 'not-found' && <Notice tone="error">אין משתמש רשום עם האימייל הזה.</Notice>}
             {status === 'self' && <Notice tone="error">אי אפשר לשתף את עצמך.</Notice>}
             {status === 'already' && <Notice tone="info">המשתמש כבר חבר בטיול.</Notice>}
@@ -733,14 +733,11 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
 
   const saveExtraCategory = async (cat) => {
     if (!cat || !userId || extraCategories.includes(cat)) return;
-    try {
-      await setDoc(doc(db, 'users', userId), {
-        globalExtraCategories: [...new Set([...extraCategories, cat])],
-      }, { merge: true });
-      setOpenCategories(prev => ({ ...prev, [cat]: true }));
-    } catch (err) {
-      console.error('Error saving extra category:', err);
-    }
+    // Opens at once; the write is not awaited (offline it waits on the phone),
+    // and adds just this one (another phone of the user may add one too).
+    setOpenCategories(prev => ({ ...prev, [cat]: true }));
+    setDoc(doc(db, 'users', userId), { globalExtraCategories: arrayUnion(cat) }, { merge: true })
+      .catch(err => console.error('Error saving extra category:', err));
   };
 
   const handleDeleteCategory = async (cat) => {
@@ -755,14 +752,10 @@ function GlobalChecklistModal({ isOpen, onClose, globalChecklist, extraCategorie
     setLongPressedCat(null);
     if (!ok) return;
     const updatedList = (globalChecklist || []).filter(i => i.category !== cat);
-    try {
-      await updateDoc(doc(db, 'users', userId), {
-        globalChecklist: updatedList,
-        globalExtraCategories: extraCategories.filter(c => c !== cat),
-      });
-    } catch (err) {
-      console.error('Error deleting category:', err);
-    }
+    updateDoc(doc(db, 'users', userId), {
+      globalChecklist: updatedList,
+      globalExtraCategories: arrayRemove(cat),
+    }).catch(err => console.error('Error deleting category:', err));
   };
 
   const handleRenameCategory = (oldCat, newCat) => {
@@ -1160,6 +1153,7 @@ function AppInner() {
   const [memberProfiles, setMemberProfiles] = useState({}); // uid -> profile
   const [sharingTripId, setSharingTripId] = useState(null);
   const [globalChecklist, setGlobalChecklist] = useState([]);
+  const hasOwnChecklist = useRef(false);   // the profile has a globalChecklist (else the default)
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   // Offline work lives in the browser's database (IndexedDB). Without it
   // (private browsing, storage blocked) Firestore silently keeps changes in
@@ -1338,6 +1332,19 @@ function AppInner() {
   }, [widgetKey, signedInUid, loading]);
   // A renamed trip, a moved flight, another palette or theme: the same data, saved again.
   useEffect(() => { widgetSync.current?.(); }, [trips, palette, themeMode]);
+
+  // Everything of the coming and current trips stays on the phone, web and
+  // app alike: a trip not opened lately is all there offline too, not just
+  // what its last visit happened to load. Firestore shares one listener per
+  // query, so the tabs and the widget add nothing on top of these.
+  const offlineKey = offlineTrips(trips).map(t => t.id).join(',');
+  useEffect(() => {
+    if (!signedInUid || !offlineKey) return undefined;
+    const offs = offlineKey.split(',').flatMap(id =>
+      ['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings']
+        .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})));
+    return () => offs.forEach(off => off());
+  }, [offlineKey, signedInUid]);
 
   // The expense widget saves on its own with the user's sign-in (the
   // refresh token, kept on the phone); signed out, it is taken back.
@@ -1543,6 +1550,7 @@ function AppInner() {
     if (!user) return;
     const userRef = doc(db, 'users', user.uid);
     return onSnapshot(userRef, (snap) => {
+      hasOwnChecklist.current = Array.isArray(snap.data()?.globalChecklist);
       setGlobalChecklist(snap.data()?.globalChecklist || []);
       setGlobalExtraCategories(snap.data()?.globalExtraCategories || []);
     });
@@ -1575,32 +1583,26 @@ function AppInner() {
 
   // Pre-load profile docs for every trip owner so the homepage card can
   // show "טיול של ..." badges without lazy-loading per card.
-  useEffect(() => {
-    if (!user || trips.length === 0) return;
+  const memberUidsKey = useMemo(() => {
+    if (!user) return '';
     const uids = new Set();
     for (const t of trips) {
-      const members = t.members || {};
-      for (const uid of Object.keys(members)) {
+      for (const uid of Object.keys(t.members || {})) {
         if (uid !== user.uid) uids.add(uid);
       }
     }
-    let cancelled = false;
-    (async () => {
-      const updates = {};
-      await Promise.all([...uids].map(async (uid) => {
-        if (memberProfiles[uid]) return;
-        try {
-          const u = await getDoc(doc(db, 'users', uid));
-          if (u.exists()) updates[uid] = u.data();
-        } catch { /* ignore */ }
-      }));
-      if (!cancelled && Object.keys(updates).length > 0) {
-        setMemberProfiles(prev => ({ ...prev, ...updates }));
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return [...uids].sort().join(',');
   }, [trips, user]);
+  // One listener per member: served from the phone offline, and filled in
+  // when the connection returns. A one-time read that failed offline left
+  // the names empty until the app restarted.
+  useEffect(() => {
+    if (!memberUidsKey) return;
+    const unsubs = memberUidsKey.split(',').map(uid => onSnapshot(doc(db, 'users', uid),
+      (snap) => { if (snap.exists()) setMemberProfiles(prev => ({ ...prev, [uid]: snap.data() })); },
+      () => { /* not readable: the name stays unknown */ }));
+    return () => unsubs.forEach(u => u());
+  }, [memberUidsKey]);
 
   // Create a new trip
   const handleCreateTrip = async (name, destination) => {
@@ -1635,8 +1637,11 @@ function AppInner() {
       notes: ''
     };
 
+    // Nothing here waits for the server: offline the writes queue on the
+    // phone, in order (the trip first: the rules for its sub-collections read
+    // it), and go out together when the connection returns.
     // Initialize trip doc
-    await setDoc(tripRef, {
+    setDoc(tripRef, {
       name,
       destination,
       dates: '',
@@ -1646,14 +1651,12 @@ function AppInner() {
       outboundFlightDetails: emptyFlightDetails,
       returnFlightDetails: emptyFlightDetails,
       hotelDetails: emptyHotelDetails
-    });
+    }).catch(err => console.error('Trip create error:', err));
 
-    // Fetch user's custom globalChecklist template
+    // The user's own checklist template, from their profile as this phone has
+    // it (asking the server waited offline), or the default one.
     const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    const userChecklist = userSnap.exists() && userSnap.data()?.globalChecklist
-      ? userSnap.data().globalChecklist
-      : defaultChecklist;
+    const userChecklist = hasOwnChecklist.current ? globalChecklist : defaultChecklist;
 
     // Batch write custom template items to the subcollection
     const batch = writeBatch(db);
@@ -1679,33 +1682,30 @@ function AppInner() {
         });
       });
     }
-    await batch.commit();
+    batch.commit().catch(err => console.error('Trip seed error:', err));
 
     // Add to user's tripIds
-    await updateDoc(userRef, {
-      tripIds: arrayUnion(tripId)
-    }).catch(() => {
-      // If user doc doesn't have tripIds yet
-      setDoc(userRef, { tripIds: [tripId] }, { merge: true });
-    });
+    setDoc(userRef, { tripIds: arrayUnion(tripId) }, { merge: true }).catch(() => {});
   };
 
   // Full delete: remove the trip doc *and* all its subcollection docs.
   // Also removes it from any legacy user.tripIds (best-effort).
+  // Online only, from the server's copy: the phone's cache holds only what it
+  // has seen, and deleting that much and then the trip left the rest on the
+  // server. Any failure stops it before the trip doc goes (tried again later).
   const deleteTripFully = async (tripId) => {
     const tripRef = doc(db, 'trips', tripId);
 
     // Delete all docs in the known subcollections, batched.
     const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'settings'];
     for (const name of subcollections) {
-      try {
-        const snap = await getDocs(collection(db, 'trips', tripId, name));
-        if (snap.size === 0) continue;
+      const snap = await getDocsFromServer(collection(db, 'trips', tripId, name));
+      if (snap.size === 0) continue;
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += 450) {
         const batch = writeBatch(db);
-        snap.forEach(d => batch.delete(d.ref));
+        docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
         await batch.commit();
-      } catch (err) {
-        console.warn(`Failed to clear subcollection "${name}":`, err);
       }
     }
 
@@ -1723,7 +1723,8 @@ function AppInner() {
     if (!user) return;
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
-    await updateDoc(doc(db, 'trips', tripId), {
+    // Not awaited: offline the dialog closed only once the server answered.
+    updateDoc(doc(db, 'trips', tripId), {
       [`members.${user.uid}`]: deleteField(),   // see removeMember
       memberIds: arrayRemove(user.uid),
       // See removeMember: leaving takes the person out, never their work.
@@ -1734,7 +1735,7 @@ function AppInner() {
         photoURL: user.photoURL || '',
         leftAt: new Date().toISOString(),
       },
-    });
+    }).catch(err => console.error('Leaving the trip failed:', err));
     // Best-effort legacy cleanup
     updateDoc(doc(db, 'users', user.uid), { tripIds: arrayRemove(tripId) }).catch(() => {});
   };
@@ -1744,6 +1745,7 @@ function AppInner() {
   const deletingRef = useRef(new Set());
   useEffect(() => {
     if (!user) return;
+    if (!navigator.onLine) return;   // see deleteTripFully
     for (const t of allTrips) {
       if (!pendingDelete(t) || t.deleteAt > now || t.members?.[user.uid] !== 'owner') continue;
       if (deletingRef.current.has(t.id)) continue;
@@ -1790,8 +1792,11 @@ function AppInner() {
 
   // The owner: the delete code (set here the first time), then the trip
   // is marked to go in 24 hours. Fire-and-forget, so it works offline.
+  // Online only: the 24 hours count from when the server has it, and the
+  // members see the notice only then.
   const scheduleDelete = async () => {
     const tripId = confirmDelete.tripId;
+    if (!navigator.onLine) { setDeleteError('מחיקת טיול דורשת חיבור לאינטרנט'); return false; }
     if (!deleteCodeHash) {
       if (!validCode(deleteCode)) { setDeleteError('קוד של 4 עד 8 ספרות'); return false; }
       if (deleteCode !== deleteCodeAgain) { setDeleteError('האימות לא תואם לקוד'); return false; }
@@ -1805,7 +1810,16 @@ function AppInner() {
     return true;
   };
 
-  const cancelDelete = (tripId) => {
+  // Online only too: a cancel waiting offline can lose to the delete.
+  const cancelDelete = async (tripId) => {
+    if (!navigator.onLine) {
+      await confirm({
+        title: 'אין חיבור לאינטרנט',
+        message: 'ביטול המחיקה צריך להגיע לשרת לפני מועד המחיקה. נסו שוב כשיש חיבור.',
+        confirmText: 'הבנתי', cancelText: 'סגור',
+      });
+      return;
+    }
     updateDoc(doc(db, 'trips', tripId), { deleteAt: deleteField() })
       .catch(err => console.error('Cancelling the delete failed:', err));
   };
@@ -1973,7 +1987,15 @@ function AppInner() {
             </button>
             <button
               onClick={async () => {
-                const ok = await confirm({ title: 'התנתקות', message: 'האם להתנתק מהחשבון?', confirmText: 'התנתק', cancelText: 'ביטול', danger: true });
+                // Offline, changes still waiting on this phone go out only
+                // when the same account signs in here again.
+                const ok = await confirm({
+                  title: 'התנתקות',
+                  message: isOnline
+                    ? 'האם להתנתק מהחשבון?'
+                    : 'אין חיבור לאינטרנט. שינויים שעשית בלי חיבור יישלחו רק כשתתחבר שוב לחשבון הזה בטלפון הזה. להתנתק בכל זאת?',
+                  confirmText: 'התנתק', cancelText: 'ביטול', danger: true,
+                });
                 if (ok) signOut();
               }}
               className="icon-btn"
@@ -2082,7 +2104,10 @@ function AppInner() {
                   disabled={deleteBusy}
                 >✕</button>
               </div>
-              {!leave && (
+              {!leave && !isOnline && (
+                <Notice tone="offline" style={{ marginTop: 16 }}>מחיקת טיול דורשת חיבור לאינטרנט. נסו שוב כשיש חיבור.</Notice>
+              )}
+              {!leave && isOnline && (
                 <div style={{ marginTop: 16 }}>
                   {firstCode && (
                     <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.5, margin: '0 0 10px' }}>

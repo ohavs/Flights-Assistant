@@ -1,17 +1,21 @@
 import { db } from '../firebase';
-import { collection, doc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, writeBatch } from 'firebase/firestore';
+import { readAll } from '../lib/readFresh';
 import { saveFile } from '../lib/saveFile';
 
 const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders', 'expenses', 'settings'];
 
+// `fromPhone`: made offline, from the phone's copy (src/lib/readFresh.js).
 export async function exportTripBackup(tripId, tripDoc) {
   const subcollections = {};
+  const mark = {};
   for (const name of SUBCOLS) {
     try {
-      const snap = await getDocs(collection(db, 'trips', tripId, name));
+      const snap = await readAll(collection(db, 'trips', tripId, name), mark);
       subcollections[name] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch {
       subcollections[name] = [];
+      mark.fromPhone = true;
     }
   }
   return {
@@ -19,6 +23,7 @@ export async function exportTripBackup(tripId, tripDoc) {
     exportedAt: new Date().toISOString(),
     trip: { ...tripDoc },
     subcollections,
+    ...(mark.fromPhone ? { fromPhone: true } : {}),
   };
 }
 
@@ -46,19 +51,23 @@ export async function importTripBackup(backup, userId) {
   delete tripData.id;
   delete tripData.deleteAt;   // a copy of a trip on its way out starts fresh
 
-  await setDoc(newTripRef, tripData);
+  // Nothing waits for the server: offline it all queues on the phone, in
+  // order (the trip first: the rules for its sub-collections read it).
+  const fail = (err) => console.error('Import write failed:', err);
+  setDoc(newTripRef, tripData).catch(fail);
 
   for (const name of SUBCOLS) {
     const items = backup.subcollections[name] || [];
-    if (!items.length) continue;
-    const batch = writeBatch(db);
-    for (const { id, ...data } of items) {
-      const ref = id
-        ? doc(db, 'trips', newTripId, name, id)
-        : doc(collection(db, 'trips', newTripId, name));
-      batch.set(ref, data);
+    for (let i = 0; i < items.length; i += 450) {   // a batch holds 500 writes
+      const batch = writeBatch(db);
+      for (const { id, ...data } of items.slice(i, i + 450)) {
+        const ref = id
+          ? doc(db, 'trips', newTripId, name, id)
+          : doc(collection(db, 'trips', newTripId, name));
+        batch.set(ref, data);
+      }
+      batch.commit().catch(fail);
     }
-    await batch.commit();
   }
 
   return newTripId;

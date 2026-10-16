@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { changedFields } from '../lib/changes';
 import {
   UtensilsCrossed, Compass, Landmark, Ticket, Train, BedDouble, Tag,
   Pencil, Trash2, Phone, MapPin, ExternalLink, Copy, Check, Users, Clock,
@@ -107,7 +108,7 @@ export default function BookingsTab({ tripId }) {
     return listen(collection(db, 'trips', tripId, 'bookings'), snap => {
       setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
-    });
+    }, () => setLoading(false));   // refused for good: the empty list, not a skeleton forever
   }, [tripId]);
 
   // Planner places, for linking a booking to one.
@@ -171,34 +172,42 @@ export default function BookingsTab({ tripId }) {
     }));
   };
 
+  const payloadOf = (f) => {
+    const people = parseInt(f.people, 10);
+    return {
+      title: f.title.trim(),
+      type: f.type,
+      placeId: f.placeId || null,
+      date: f.date || null,
+      time: f.time || null,
+      people: Number.isFinite(people) && people > 0 ? people : null,
+      confirmation: f.confirmation.trim(),
+      bookedUnder: f.bookedUnder.trim(),
+      address: f.address.trim(),
+      phone: f.phone.trim(),
+      url: f.url.trim() ? normalizeUrl(f.url.trim()) : '',
+      price: f.price.trim(),
+      payment: f.payment || null,
+      status: f.status || 'confirmed',
+      notes: f.notes.trim(),
+    };
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!tripId || !form.title.trim()) return;
-    const people = parseInt(form.people, 10);
-    const payload = {
-      title: form.title.trim(),
-      type: form.type,
-      placeId: form.placeId || null,
-      date: form.date || null,
-      time: form.time || null,
-      people: Number.isFinite(people) && people > 0 ? people : null,
-      confirmation: form.confirmation.trim(),
-      bookedUnder: form.bookedUnder.trim(),
-      address: form.address.trim(),
-      phone: form.phone.trim(),
-      url: form.url.trim() ? normalizeUrl(form.url.trim()) : '',
-      price: form.price.trim(),
-      payment: form.payment || null,
-      status: form.status || 'confirmed',
-      notes: form.notes.trim(),
-    };
+    const payload = payloadOf(form);
     const id = editingId || ('booking-' + Date.now());
     const ref = doc(db, 'trips', tripId, 'bookings', id);
-    // Fire-and-forget: the offline cache queues the write.
-    (editingId
-      ? updateDoc(ref, payload)
-      : setDoc(ref, { ...payload, addedBy: currentUid || null, addedAt: new Date().toISOString() })
-    ).catch(err => console.error('Booking save error:', err));
+    // Fire-and-forget: the offline cache queues the write. An edit writes
+    // only what it changed (src/lib/changes.js).
+    const updates = editingId ? changedFields(payloadOf(initialForm), payload) : null;
+    if (!editingId || Object.keys(updates).length) {
+      (editingId
+        ? updateDoc(ref, updates)
+        : setDoc(ref, { ...payload, addedBy: currentUid || null, addedAt: new Date().toISOString() })
+      ).catch(err => console.error('Booking save error:', err));
+    }
     setShowForm(false);
     setEditingId(null);
   };

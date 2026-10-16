@@ -39,14 +39,16 @@ export async function saveCode(uid, code) {
   return hash;
 }
 
-// The user's code hash: undefined while loading, null when none is set.
+// The user's code hash: undefined while unknown, null when none is set.
+// "None" only on the server's word: offline, a phone that never read the code
+// would otherwise ask for a new one, which then replaced the real one.
 export function useDeleteCode(uid) {
   const [st, setSt] = useState({ uid: null, hash: undefined });
   useEffect(() => {
     if (!uid) return undefined;
-    return onSnapshot(codeRef(uid),
-      snap => setSt({ uid, hash: snap.exists() ? (snap.data().hash || null) : null }),
-      err => { console.error('Delete code listener error:', err); setSt({ uid, hash: null }); });
+    return onSnapshot(codeRef(uid), { includeMetadataChanges: true },
+      snap => setSt({ uid, hash: snap.exists() ? (snap.data().hash || null) : snap.metadata.fromCache ? undefined : null }),
+      err => { console.error('Delete code listener error:', err); setSt({ uid, hash: undefined }); });
   }, [uid]);
   return st.uid === uid ? st.hash : undefined;
 }

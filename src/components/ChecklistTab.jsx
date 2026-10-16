@@ -13,6 +13,7 @@ import {
   arrayUnion,
   arrayRemove
 } from 'firebase/firestore';
+import { changedFields } from '../lib/changes';
 import { Check, Plus, Trash2, Pencil, X, GripVertical, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
 import { CustomDropdown, CustomDateTimePicker, formatHebrewDateTime } from './CustomDatePicker';
 import Skeleton from './Skeleton';
@@ -193,6 +194,7 @@ function RemindersCard({ tripId, canEdit }) {
   const [draftUid, setDraftUid] = useState('');
   // When to be notified (Android app), 'YYYY-MM-DDTHH:mm' in the phone's time.
   const [draftAt, setDraftAt] = useState('');
+  const [editFrom, setEditFrom] = useState(null);   // the reminder as the edit opened it
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -274,6 +276,7 @@ function RemindersCard({ tripId, canEdit }) {
     setDraft(r.text || '');
     setDraftUid(r.addedByUid || currentUid || '');
     setDraftAt(r.remindAt || '');
+    setEditFrom({ text: (r.text || '').trim(), remindAt: r.remindAt || null, uid: r.addedByUid || '' });   // no owner yet: the edit gives it one
     setTimeout(() => inputRef.current?.focus(), 40);
   };
 
@@ -297,7 +300,13 @@ function RemindersCard({ tripId, canEdit }) {
     } : {};
 
     if (editingId) {
-      updateDoc(doc(db, 'trips', tripId, 'reminders', editingId), { text, remindAt: draftAt || null, ...ownerFields });
+      // Only what the edit changed: a partner may have ticked it or moved
+      // its time meanwhile (src/lib/changes.js).
+      const updates = changedFields(editFrom || {}, { text, remindAt: draftAt || null });
+      if (owner && owner.uid !== editFrom?.uid) Object.assign(updates, ownerFields);
+      if (Object.keys(updates).length) {
+        updateDoc(doc(db, 'trips', tripId, 'reminders', editingId), updates).catch(err => console.error('Reminder save error:', err));
+      }
     } else {
       setDoc(doc(collection(db, 'trips', tripId, 'reminders')), {
         text, createdAt: Date.now(), completed: false, ...ownerFields,
@@ -848,7 +857,7 @@ export default function ChecklistTab({ tripId }) {
       first = false;
       setItemsConfirmedFor(snap.metadata.fromCache ? null : tripId);
       setLoading(false);
-    }, undefined, { metadata: true });
+    }, () => setLoading(false), { metadata: true });   // refused for good: not a skeleton forever
   }, [tripId]);
 
   useEffect(() => {
@@ -912,7 +921,7 @@ export default function ChecklistTab({ tripId }) {
     const newOrder = arrayMove(categories, oldIdx, newIdx);
     setCategoryOrder(newOrder);
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-    await setDoc(syncRef, { categoryOrder: newOrder }, { merge: true });
+    setDoc(syncRef, { categoryOrder: newOrder }, { merge: true }).catch(err => console.error('Category order save error:', err));
   };
 
   // ── Category helpers ─────────────────────────────────────────────────────
@@ -923,7 +932,8 @@ export default function ChecklistTab({ tripId }) {
   const saveExtraCategory = async (cat) => {
     if (!cat || !tripId || extraCategories.includes(cat)) return;
     const syncRef = doc(db, 'trips', tripId, 'settings', 'checklistSync');
-    await setDoc(syncRef, { extraCategories: arrayUnion(cat) }, { merge: true });
+    // Not awaited: offline the write waits for the network (the form goes on).
+    setDoc(syncRef, { extraCategories: arrayUnion(cat) }, { merge: true }).catch(err => console.error('Category save error:', err));
   };
 
   const handleDeleteCategory = async (cat) => {
@@ -972,7 +982,7 @@ export default function ChecklistTab({ tripId }) {
     catItems.forEach(item =>
       batch.update(doc(db, 'trips', tripId, 'checklist', item.id), { category: trimmed })
     );
-    await batch.commit();
+    batch.commit().catch(err => console.error('Category rename error:', err));
   };
 
   // ── Item actions ─────────────────────────────────────────────────────────
@@ -1029,7 +1039,15 @@ export default function ChecklistTab({ tripId }) {
     const cat = overrideCategory !== undefined ? overrideCategory : newItemCategory;
     const assigned = newItemAssignedTo.length > 0 ? newItemAssignedTo : null;
     if (editingItemId) {
-      updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), { text, category: cat, assignedTo: assigned });
+      // Only what the edit changed (src/lib/changes.js).
+      const [t0, c0, a0] = itemBaseline ? JSON.parse(itemBaseline) : [];
+      const updates = changedFields(
+        { text: (t0 || '').trim(), category: c0, assignedTo: a0?.length ? a0 : null },
+        { text, category: cat, assignedTo: assigned },
+      );
+      if (Object.keys(updates).length) {
+        updateDoc(doc(db, 'trips', tripId, 'checklist', editingItemId), updates).catch(err => console.error('Checklist save error:', err));
+      }
     } else {
       setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
         text, completed: false, category: cat, assignedTo: assigned,

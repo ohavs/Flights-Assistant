@@ -4,6 +4,7 @@ import { listen } from '../lib/listen';
 import { addCategory, saveCategory, removeCategory } from '../lib/categorySettings';
 import { dayActivities, addActivities, updateActivity, removeActivity, swapActivities } from '../lib/dayActivities';
 import { localDay, isoDay } from '../lib/dates';
+import { changedFields } from '../lib/changes';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
@@ -577,7 +578,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       }));
       setPlans(fetchedPlans);
       setLoading(false);
-    });
+    }, () => setLoading(false));   // refused for good: the empty list, not a skeleton forever
 
     return () => unsubscribe();
   }, [tripId]);
@@ -833,7 +834,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           .catch(() => null);
         setCoordsCache(prev => ({ ...prev, [plan.id]: c }));
         if (c && tripId) {
-          try { await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: c }); } catch { /* keep runtime */ }
+          // Not awaited: if the connection drops mid-run, the rest still goes on.
+          updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: c }).catch(() => { /* keep runtime */ });
         }
       }
       setBulkCalc({ done: i + 1, total: list.length });
@@ -1050,13 +1052,37 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     } : null;
 
     if (editingId) {
-      const oldPlan = plans.find(p => p.id === editingId);
+      // Only what the edit changed, against the form as it opened (src/lib/
+      // changes.js): writing every field put back a partner's change, e.g. a
+      // priority set while this form was open.
+      const fieldsOf = (v) => ({
+        title: (v.title || '').trim(),
+        category: v.category,
+        description: (v.description || '').trim(),
+        address: (v.address || '').trim(),
+        price: (v.price || '').trim() || 'חינם',
+        links: v.links || [],
+        distanceOriginId: v.originId && v.originId !== 'hotel' ? v.originId : null,
+        event: v.category === EVENTS_CATEGORY ? {
+          startDate: v.eventStartDate || null, endDate: v.eventEndDate || null,
+          startTime: v.eventStartTime || null, endTime: v.eventEndTime || null,
+        } : null,
+        priority: v.priority || null,
+        needsReservation: !!v.needsReservation,
+      });
+      const FORM_KEYS = ['title', 'category', 'description', 'address', 'price', 'links', 'newLinkLabel', 'newLinkUrl',
+        'eventStartDate', 'eventEndDate', 'eventStartTime', 'eventEndTime', 'originId', 'priority', 'needsReservation',
+        'walkMins', 'transitMins'];
+      const opened = editBaseline ? Object.fromEntries(JSON.parse(editBaseline).map((x, i) => [FORM_KEYS[i], x])) : null;
+      const updates = changedFields(opened ? fieldsOf(opened) : {}, fieldsOf({
+        title, category, description, address, price, links,
+        eventStartDate, eventEndDate, eventStartTime, eventEndTime,
+        originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
+      }));
       // Resolved location depends on address / links / chosen origin — if any
       // changed, drop the persisted distances + coords so they recompute.
-      const locationChanged = !oldPlan ||
-        (oldPlan.address || '') !== address.trim() ||
-        JSON.stringify(oldPlan.links || []) !== JSON.stringify(links) ||
-        (oldPlan.distanceOriginId || null) !== originId;
+      const locationChanged = ['address', 'links', 'distanceOriginId'].some(k => k in updates);
+      const manualChanged = !opened || opened.walkMins !== editWalkMins || opened.transitMins !== editTransitMins;
 
       // Build manual distance entry if the user entered values
       const cacheOriginKey = formOriginId; // 'hotel' or custom ID
@@ -1077,23 +1103,17 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       } : null;
 
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
-      updateDoc(docRef, {
-        title: title.trim(),
-        category,
-        description: description.trim(),
-        address: address.trim(),
-        price: price.trim() || 'חינם',
-        links: links,
-        distanceOriginId: originId,
-        event: eventData,
-        priority: formPriority || null,
-        needsReservation: formNeedsReservation,
+      const write = {
+        ...updates,
         ...(locationChanged
           ? { distances: manualEntry ? { [cacheOriginKey]: manualEntry } : {}, coords: null }
-          : hasManualTimes
+          : hasManualTimes && manualChanged
             ? { [`distances.${cacheOriginKey}`]: manualEntry }
             : {}),
-      }).catch(err => console.error('Planning update error:', err));
+      };
+      if (Object.keys(write).length) {
+        updateDoc(docRef, write).catch(err => console.error('Planning update error:', err));
+      }
 
       if (locationChanged) {
         setDistanceCache(prev => {
@@ -1460,7 +1480,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const dayId = 'day-' + Date.now();
     setDoc(doc(db, 'trips', tripId, 'days', dayId), {
       title: `יום ${nextDayNum}`,
-      order: nextDayNum,
+      // After the last one, whatever the count: a day deleted, or one a partner
+      // added offline, would otherwise give two days the same place.
+      order: Math.max(0, ...days.map(d => Number(d.order) || 0)) + 1,
       activities: []
     }).catch(err => console.error('Add day error:', err));
     // The write is fire-and-forget so this works offline too: the day

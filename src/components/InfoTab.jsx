@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Pencil, Phone, MapPin, Link2, FileText, Hash,
   ExternalLink, RotateCcw, Globe, X, GripVertical
@@ -78,6 +79,7 @@ export default function InfoTab({ tripId, embedded = false }) {
   const [fExtraFields, setFExtraFields] = useState([]);
   // What the form held when it opened: closing it unchanged is free.
   const [formBaseline, setFormBaseline] = useState(null);
+  const [openedWith, setOpenedWith] = useState(null);   // the item as the form opened it
   const formKey = (title, value, type, category, extra) => JSON.stringify([title, value, type, category, extra]);
 
   useEffect(() => {
@@ -85,7 +87,7 @@ export default function InfoTab({ tripId, embedded = false }) {
     const unsub = listen(collection(db, 'trips', tripId, 'info'), (snap) => {
       setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
-    });
+    }, () => setLoading(false));   // refused for good: the empty list, not a skeleton forever
     return unsub;
   }, [tripId]);
 
@@ -125,7 +127,8 @@ export default function InfoTab({ tripId, embedded = false }) {
     const newIdx = categories.indexOf(over.id);
     const newOrder = arrayMove(categories, oldIdx, newIdx);
     setCategoryOrder(newOrder);
-    await setDoc(doc(db, 'trips', tripId, 'settings', 'infoSync'), { categoryOrder: newOrder }, { merge: true });
+    setDoc(doc(db, 'trips', tripId, 'settings', 'infoSync'), { categoryOrder: newOrder }, { merge: true })
+      .catch(err => console.error('Info order save error:', err));
   };
 
   const openAdd = (preCategory = 'מספרי חירום') => {
@@ -147,6 +150,7 @@ export default function InfoTab({ tripId, embedded = false }) {
     setFCategory(item.category || 'מותאם אישית');
     setFExtraFields(item.extraFields || []);
     setFormBaseline(formKey(item.title || '', item.value || '', item.type || 'phone', item.category || 'מותאם אישית', item.extraFields || []));
+    setOpenedWith({ title: item.title || '', value: item.value || '', type: item.type || 'phone', category: item.category || 'מותאם אישית', extraFields: item.extraFields || [] });
     setShowForm(true);
   };
 
@@ -155,22 +159,27 @@ export default function InfoTab({ tripId, embedded = false }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!tripId || !fTitle.trim()) return;
-    const payload = {
-      title: fTitle.trim(),
-      value: fValue.trim(),
-      type: fType,
-      category: fCategory,
-      extraFields: fExtraFields
-        .filter(f => f.label.trim() || f.value.trim())
-        .map(f => ({ id: f.id, label: f.label.trim(), type: f.type, value: f.value.trim() })),
-    };
+    const payloadOf = (f) => ({
+      title: f.title.trim(),
+      value: f.value.trim(),
+      type: f.type,
+      category: f.category,
+      extraFields: f.extraFields
+        .filter(x => x.label.trim() || x.value.trim())
+        .map(x => ({ id: x.id, label: x.label.trim(), type: x.type, value: x.value.trim() })),
+    });
+    const payload = payloadOf({ title: fTitle, value: fValue, type: fType, category: fCategory, extraFields: fExtraFields });
     // Close form immediately; write is fire-and-forget (offline cache queues locally)
     const id = editingId || ('info-' + Date.now());
     setShowForm(false);
     setEditingId(null);
     setFTitle(''); setFValue('');
     if (editingId) {
-      updateDoc(doc(db, 'trips', tripId, 'info', id), payload).catch(err => console.error('Info save error:', err));
+      // Only what the edit changed (src/lib/changes.js).
+      const updates = changedFields(openedWith ? payloadOf(openedWith) : {}, payload);
+      if (Object.keys(updates).length) {
+        updateDoc(doc(db, 'trips', tripId, 'info', id), updates).catch(err => console.error('Info save error:', err));
+      }
     } else {
       setDoc(doc(db, 'trips', tripId, 'info', id), payload).catch(err => console.error('Info save error:', err));
     }
@@ -205,7 +214,7 @@ export default function InfoTab({ tripId, embedded = false }) {
         title: def.title, value: def.value, type: def.type, category: def.category,
       });
     }
-    await batch.commit();
+    batch.commit().catch(err => console.error('Info defaults save error:', err));
   };
 
   if (loading) {
