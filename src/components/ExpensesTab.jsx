@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -364,9 +364,6 @@ export default function ExpensesTab({ tripId }) {
         (p.category || '').includes(planFilter)
       )
     : plans;
-
-  const linkedPlan = plans.find(p => p.id === linkedPlanId);
-  const linkedLabel = linkedPlan?.title || customPlace || '';
 
   if (loading) {
     return <Skeleton rows={4} label="טוען הוצאות" />;

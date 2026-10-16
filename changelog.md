@@ -1,5 +1,15 @@
 # Changelog — Flights-Assistant
 
+## [8.51.3] - 2026-10-16 — ניקוי קוד שלא בשימוש
+
+(ווב ואפליקציה. בלי שינוי בהתנהגות.)
+
+### Removed
+- כ־190 שורות CSS של מחלקות שאף רכיב לא משתמש בהן (`.filter-chip*`, `.category-select`, `.checklist-row`, `.custom-checkbox`, `.btn-tab-toggle`, `.grid-2/3`, `.btn-add-circle`), ו־23 משתני CSS שאף אחד לא קורא.
+- החבילה `xlsx` (‏SheetJS): לא נטענה מאף מקום, ויש לה פרצות ידועות. הייצוא לאקסל משתמש ב־`exceljs`.
+- קוד JS שלא נקרא: `useInstallPrompt.js`, `src/App.css`, `defaultGironaPlans`, עזרי SheetJS ו־`curAmt` ב־`exportTrip.js`, ייבוא כפול של `index.css`, ייבואים, משתנים ו־props מתים (lint: מ־78 בעיות ל־50).
+- קבצי תבנית: `src/assets/*`, `public/icons.svg`, ובאנדרואיד `activity_main.xml`, ‏`ic_launcher_background/foreground` שב־drawable (האייקון מגיע מ־mipmap), ו־`Example*Test.java`.
+
 ## [8.51.2] - 2026-10-16 — תיקוני באגים מהסקירה: חברים, מחיקה אופליין, ימים ותאריכים
 
 (ווב ואפליקציה.)

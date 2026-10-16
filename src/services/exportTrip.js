@@ -33,7 +33,7 @@ export async function loadTripExportData(tripId, trip) {
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   // Currency rates for ILS conversion — refresh if stale, fall back to seeded.
-  let rates = null;
+  let rates;
   try {
     rates = (await refreshRatesIfStale())?.rates || getInitialRates().rates;
   } catch {
@@ -150,13 +150,6 @@ function computeExpenseReport(expenses, rates, memberProfiles, memberCount, plan
 function ils(n) {
   return '₪' + Math.round(Number(n) || 0).toLocaleString('en-US');
 }
-// Format an original-currency amount.
-function curAmt(symbol, n) {
-  const v = Number(n) || 0;
-  const s = v.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  return `${symbol}${s}`;
-}
-
 function safeFileName(name) {
   return String(name || 'trip')
     .replace(/[\\/:*?"<>|]/g, '_')
@@ -803,7 +796,7 @@ export async function exportTripDocx(data, scope = 'all') {
   const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType,
-          Table, TableRow, TableCell, WidthType, Footer, Header } = await import('docx');
+          Table, TableRow, TableCell, WidthType } = await import('docx');
 
   const RUN_OPTS = { rtl: true, font: 'David', size: 24 };
 
@@ -1158,73 +1151,6 @@ export async function exportTripDocx(data, scope = 'all') {
 // ──────────────────────────────────────────────────────────────────────
 // EXCEL (.xlsx) — with header formatting (font, fill, borders)
 // ──────────────────────────────────────────────────────────────────────
-
-// Apply consistent style ranges to a worksheet.
-function styleSheet(ws, { headerRows = [0], titleRows = [], divRows = [], colCount = 1 }) {
-  const headerStyle = {
-    font: { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 13, name: 'David' },
-    fill: { patternType: 'solid', fgColor: { rgb: 'FF4F46E5' } },
-    alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 },
-    border: {
-      top:    { style: 'thin', color: { rgb: 'FF312E81' } },
-      bottom: { style: 'thin', color: { rgb: 'FF312E81' } },
-      left:   { style: 'thin', color: { rgb: 'FF312E81' } },
-      right:  { style: 'thin', color: { rgb: 'FF312E81' } },
-    },
-  };
-  const titleStyle = {
-    font: { bold: true, color: { rgb: 'FF0B0B26' }, sz: 14, name: 'David' },
-    fill: { patternType: 'solid', fgColor: { rgb: 'FFEEF2FF' } },
-    alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 },
-  };
-  const divStyle = {
-    font: { bold: true, color: { rgb: 'FF4F46E5' }, sz: 12, name: 'David' },
-    fill: { patternType: 'solid', fgColor: { rgb: 'FFF1F5F9' } },
-    alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 },
-  };
-  const bodyStyle = {
-    font: { name: 'David', sz: 12, color: { rgb: 'FF0B0B26' } },
-    alignment: { horizontal: 'right', vertical: 'center', wrapText: true, readingOrder: 2 },
-  };
-  const setRowStyle = (r, st) => {
-    for (let c = 0; c < colCount; c++) {
-      const ref = encodeCell(c, r);
-      if (!ws[ref]) ws[ref] = { v: '', t: 's' };
-      ws[ref].s = st;
-    }
-  };
-  // Determine sheet range
-  const range = ws['!ref'] ? decodeRange(ws['!ref']) : { s: { c: 0, r: 0 }, e: { c: colCount - 1, r: 0 } };
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    if (headerRows.includes(r))      setRowStyle(r, headerStyle);
-    else if (titleRows.includes(r))  setRowStyle(r, titleStyle);
-    else if (divRows.includes(r))    setRowStyle(r, divStyle);
-    else                              setRowStyle(r, bodyStyle);
-  }
-  // Frozen header row
-  ws['!freeze'] = { xSplit: 0, ySplit: headerRows.length };
-}
-
-// Small helpers compatible with SheetJS encode/decode
-function encodeCell(c, r) {
-  let s = '';
-  let n = c;
-  do {
-    s = String.fromCharCode(65 + (n % 26)) + s;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return s + (r + 1);
-}
-function decodeRange(ref) {
-  const [from, to] = ref.split(':');
-  const decode = (a) => {
-    const m = a.match(/^([A-Z]+)(\d+)$/);
-    let c = 0;
-    for (const ch of m[1]) c = c * 26 + (ch.charCodeAt(0) - 64);
-    return { c: c - 1, r: parseInt(m[2], 10) - 1 };
-  };
-  return { s: decode(from), e: decode(to || from) };
-}
 
 export async function exportTripXlsx(data, scope = 'all') {
   const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;

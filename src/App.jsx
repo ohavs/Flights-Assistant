@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import { listen } from './lib/listen';
@@ -8,7 +8,6 @@ import {
   getDoc, writeBatch, deleteField
 } from 'firebase/firestore';
 import { DELETE_DELAY_MS, useDeleteCode, validCode, checkCode, saveCode, pendingDelete, deleteAtText } from './lib/deleteCode';
-import ConfirmModal from './components/ConfirmModal';
 import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
@@ -45,12 +44,11 @@ import Notice from './ui/Notice';
 import Skeleton from './components/Skeleton';
 import { readSharedPlace, receiveSharedPlace, clearShareUrl, clearSharedPlace, cacheTripsForShare } from './services/shareTarget';
 import {
-  Plane, MapPin, Calendar,
+  Plane, Calendar,
   ChevronLeft, LogOut, Plus, UserPlus, Trash2, Users, X, Pencil,
-  Check, ChevronDown, ChevronUp, Coins,
+  Check, ChevronDown, ChevronUp,
   AlertTriangle, Moon, Sun, Pin, PinOff, ClipboardList, Settings, Download, WifiOff } from 'lucide-react';
 import { useConfirm } from './ConfirmContext';
-import './index.css';
 
 /* ══════════════════════════════════════════════════════════
    LOGIN SCREEN
@@ -269,7 +267,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
         // Avatar stack data — owner first, then others. Cap to 4 visible.
         const stackEntries = [
           ...(ownerEntry ? [ownerEntry] : []),
-          ...memberEntries.filter(([uid, r]) => r !== 'owner').sort((a, b) => a[0].localeCompare(b[0])),
+          ...memberEntries.filter(([, r]) => r !== 'owner').sort((a, b) => a[0].localeCompare(b[0])),
         ];
         const visibleStack = stackEntries.slice(0, 4);
         const overflowCount = stackEntries.length - visibleStack.length;
@@ -2150,7 +2148,7 @@ function AppInner() {
                 onSharedPlaceHandled={() => setPendingSharedPlace(null)}
               />
             )}
-            {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} globalChecklist={globalChecklist} />}
+            {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
             {activeTab === 'bookings'  && <BookingsTab tripId={selectedTripId} />}
             {activeTab === 'expenses'  && <ExpensesTab tripId={selectedTripId} />}
             </Suspense>

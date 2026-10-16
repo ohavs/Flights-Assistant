@@ -5,11 +5,8 @@
 :root {
   /* ── Core palette ── */
   --primary: #141414;
-  --primary-hover: #2B2B2E;
   --accent: #16874A;
   --accent-rgb: 22, 135, 74;          /* drives every --p-* tint below */
-  --accent-light: rgba(var(--accent-rgb), 0.08);
-  --accent-gradient: linear-gradient(135deg, #22A45D, #16874A);
   --bg-gradient: #F6F6F3;
   --card-bg: #FFFFFF;   /* see .glass-card — no blur behind it */
   --card-bg-solid: #FFFFFF;
@@ -28,7 +25,6 @@
   --shadow-md: 0 12px 32px -10px rgba(20, 20, 20, 0.22);
   --shadow-lg: 0 16px 40px rgba(20, 20, 20, 0.12);
   --font-hebrew: 'Rubik Variable', 'Rubik', system-ui, -apple-system, sans-serif;
-  --font-en: 'Rubik Variable', 'Rubik', system-ui, -apple-system, sans-serif;
   --header-height: 60px;
 
   /* ── Type ladder ──
@@ -58,7 +54,6 @@
   --nav-height: 70px;
   --nav-gap: 0px;                        /* docked on phones (floats on desktop) */
   --nav-side: 0px;
-  --nav-count: 5;
   --nav-off-fill: #E8E8EA;               /* inactive sticker icons */
   --nav-off-stroke: #A1A1AA;
   --nav-total: calc(var(--nav-height) + var(--nav-gap) + env(safe-area-inset-bottom, 0px));
@@ -80,7 +75,6 @@
   --nav-bg: #FFFFFF;
   --modal-bg: #ffffff;
   --modal-header-bg: #ffffff;
-  --input-bg: #F0F0EC;
   --dropdown-bg: #ffffff;
   --scrollbar: rgba(20, 20, 20, 0.10);
 
@@ -100,7 +94,6 @@
   --ink-22: rgba(20,20,20,0.22);
   --ink-35: rgba(20,20,20,0.35);
   --ink-40: rgba(20,20,20,0.40);
-  --ink-50: rgba(20,20,20,0.50);
 
   /* ── Accent tints (all derived from --accent-rgb so palettes recolour them) ── */
   --p-3:  rgba(var(--accent-rgb),0.03);
@@ -115,27 +108,12 @@
   --p-22: rgba(var(--accent-rgb),0.22);
   --p-30: rgba(var(--accent-rgb),0.30);
 
-  /* ── White tints ── */
-  --w-5:  rgba(255,255,255,0.05);
-  --w-6:  rgba(255,255,255,0.06);
-  --w-60: rgba(255,255,255,0.60);
-  --w-7:  rgba(255,255,255,0.70);
-  --w-78: rgba(255,255,255,0.78);
-  --w-85: rgba(255,255,255,0.85);
-  --w-92: rgba(255,255,255,0.92);
-  --w-95: rgba(255,255,255,0.95);
-
   /* ── Status ── */
-  --success:    #16a34a;
-  --error:      #dc2626;
-  --error-bg:   rgba(220,38,38,0.08);
   --c-red:      rgb(220,38,38);
-  --c-red-6:    rgba(220,38,38,0.06);
   --c-red-8:    rgba(220,38,38,0.08);
   --c-red-10:   rgba(220,38,38,0.10);
   --c-red-12:   rgba(220,38,38,0.12);
   --c-red2:     rgb(239,68,68);
-  --c-red2-6:   rgba(239,68,68,0.06);
   --c-red2-10:  rgba(239,68,68,0.10);
   --c-orange:   rgb(245,158,11);
   --c-orange-12: rgba(245,158,11,0.12);
@@ -143,7 +121,6 @@
   --c-green:    rgb(22,163,74);
   --c-green-7:  rgba(22,163,74,0.07);
   --c-green-10: rgba(22,163,74,0.10);
-  --c-teal:     rgb(5,150,105);
   --c-teal-10:  rgba(5,150,105,0.10);
   --c-teal-12:  rgba(5,150,105,0.12);
   --c-slate:    #334155;
@@ -169,10 +146,8 @@
   --primary-color: var(--primary);
   --secondary-color: var(--accent);
   --text-main: var(--text);
-  --border-radius-xl: var(--radius-xl);
   --border-radius-lg: var(--radius-lg);
   --border-radius-md: var(--radius-md);
-  --border-radius-sm: var(--radius-sm);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -182,11 +157,8 @@
   color-scheme: dark;
 
   --primary: #F4F4F2;
-  --primary-hover: #FFFFFF;
   --accent: #2DBE6C;
   --accent-rgb: 45, 190, 108;
-  --accent-light: rgba(var(--accent-rgb),0.10);
-  --accent-gradient: linear-gradient(135deg, #2DBE6C, #22A45D);
   --bg-gradient: #212329;
   --card-bg: #2C2E35;
   --card-bg-solid: #2C2E35;
@@ -205,7 +177,6 @@
   --nav-bg: #2C2E35;
   --modal-bg: #2C2E35;
   --modal-header-bg: #2C2E35;
-  --input-bg: #373941;
   --dropdown-bg: #373941;
   --scrollbar: rgba(255,255,255,0.08);
 
@@ -225,7 +196,6 @@
   --ink-22: rgba(255,255,255,0.18);
   --ink-35: rgba(255,255,255,0.22);
   --ink-40: rgba(0, 0, 0, 0.55);   /* overlays stay dark */
-  --ink-50: rgba(0, 0, 0, 0.62);
 
   /* Accent tints → brighter alphas for dark surfaces, derived from --accent-rgb */
   --p-3:  rgba(var(--accent-rgb),0.04);
@@ -240,27 +210,12 @@
   --p-22: rgba(var(--accent-rgb),0.25);
   --p-30: rgba(var(--accent-rgb),0.35);
 
-  /* White tints → dark surfaces */
-  --w-5:  rgba(255,255,255,0.04);
-  --w-6:  rgba(255,255,255,0.05);
-  --w-60: rgba(255,255,255,0.05);
-  --w-7:  rgba(255,255,255,0.06);
-  --w-78: rgba(255,255,255,0.05);
-  --w-85: rgba(255,255,255,0.07);
-  --w-92: rgba(33, 35, 41, 0.96);
-  --w-95: rgba(255,255,255,0.07);
-
   /* Status in dark mode */
-  --success:    #34d399;
-  --error:      #f87171;
-  --error-bg:   rgba(248,113,113,0.10);
   --c-red:      rgb(248,113,113);
-  --c-red-6:    rgba(248,113,113,0.08);
   --c-red-8:    rgba(248,113,113,0.10);
   --c-red-10:   rgba(248,113,113,0.12);
   --c-red-12:   rgba(248,113,113,0.14);
   --c-red2:     rgb(252,129,129);
-  --c-red2-6:   rgba(252,129,129,0.08);
   --c-red2-10:  rgba(252,129,129,0.12);
   --c-orange:   rgb(251,191,36);
   --c-orange-12: rgba(251,191,36,0.15);
@@ -268,7 +223,6 @@
   --c-green:    rgb(52,211,153);
   --c-green-7:  rgba(52,211,153,0.08);
   --c-green-10: rgba(52,211,153,0.10);
-  --c-teal:     rgb(52,211,153);
   --c-teal-10:  rgba(52,211,153,0.10);
   --c-teal-12:  rgba(52,211,153,0.12);
   --c-slate:    #94a3b8;
@@ -297,13 +251,11 @@
 [data-theme="light"][data-palette="ocean"] {
   --accent: #0A6A9E;
   --accent-rgb: 10, 106, 158;
-  --accent-gradient: linear-gradient(135deg, #2B9AD6, #0A6A9E);
   --brand: #2B9AD6;
   --brand-fg: #0B0B0C;
   --bg-gradient: #F2F6F8;
   --body-bg: #F2F6F8;
   --header-bg: rgba(242, 246, 248, 0.88);
-  --input-bg: #E8EFF3;
   --surface-2: #E8EFF3;
   --surface-3: #DAE5EB;
   --brand-soft: #E3F1F9;
@@ -312,7 +264,6 @@
 [data-theme="dark"][data-palette="ocean"] {
   --accent: #5CB8EA;
   --accent-rgb: 92, 184, 234;
-  --accent-gradient: linear-gradient(135deg, #5CB8EA, #5CB8EA);
   --brand: #5CB8EA;
   --bg-gradient: #1B232B;
   --body-bg: #1B232B;
@@ -323,8 +274,6 @@
   --modal-bg: #25303B;
   --modal-header-bg: #25303B;
   --header-bg: rgba(27, 35, 43, 0.88);
-  --w-92: rgba(27, 35, 43, 0.96);
-  --input-bg: #2F3B47;
   --dropdown-bg: #2F3B47;
   --surface-2: #2F3B47;
   --surface-3: #3A4754;
@@ -334,13 +283,11 @@
 [data-theme="light"][data-palette="violet"] {
   --accent: #6A45D6;
   --accent-rgb: 106, 69, 214;
-  --accent-gradient: linear-gradient(135deg, #9B82F6, #6A45D6);
   --brand: #9B82F6;
   --brand-fg: #0B0B0C;
   --bg-gradient: #F6F4FA;
   --body-bg: #F6F4FA;
   --header-bg: rgba(246, 244, 250, 0.88);
-  --input-bg: #EEEAF6;
   --surface-2: #EEEAF6;
   --surface-3: #E2DCEF;
   --brand-soft: #EFEAFE;
@@ -349,7 +296,6 @@
 [data-theme="dark"][data-palette="violet"] {
   --accent: #AD98FF;
   --accent-rgb: 173, 152, 255;
-  --accent-gradient: linear-gradient(135deg, #AD98FF, #AD98FF);
   --brand: #AD98FF;
   --bg-gradient: #211E2A;
   --body-bg: #211E2A;
@@ -360,8 +306,6 @@
   --modal-bg: #2D2938;
   --modal-header-bg: #2D2938;
   --header-bg: rgba(33, 30, 42, 0.88);
-  --w-92: rgba(33, 30, 42, 0.96);
-  --input-bg: #3A3548;
   --dropdown-bg: #3A3548;
   --surface-2: #3A3548;
   --surface-3: #463F57;
@@ -371,13 +315,11 @@
 [data-theme="light"][data-palette="sand"] {
   --accent: #A4561A;
   --accent-rgb: 164, 86, 26;
-  --accent-gradient: linear-gradient(135deg, #E99B4C, #A4561A);
   --brand: #E99B4C;
   --brand-fg: #0B0B0C;
   --bg-gradient: #F8F4EC;
   --body-bg: #F8F4EC;
   --header-bg: rgba(248, 244, 236, 0.88);
-  --input-bg: #F0E8DA;
   --surface-2: #F0E8DA;
   --surface-3: #E5DAC6;
   --brand-soft: #FBEBD9;
@@ -386,7 +328,6 @@
 [data-theme="dark"][data-palette="sand"] {
   --accent: #F2AC63;
   --accent-rgb: 242, 172, 99;
-  --accent-gradient: linear-gradient(135deg, #F2AC63, #F2AC63);
   --brand: #F2AC63;
   --bg-gradient: #25211B;
   --body-bg: #25211B;
@@ -397,8 +338,6 @@
   --modal-bg: #312C25;
   --modal-header-bg: #312C25;
   --header-bg: rgba(37, 33, 27, 0.88);
-  --w-92: rgba(37, 33, 27, 0.96);
-  --input-bg: #3E372E;
   --dropdown-bg: #3E372E;
   --surface-2: #3E372E;
   --surface-3: #4A4339;
@@ -409,13 +348,11 @@
 [data-theme="light"][data-palette="coral"] {
   --accent: #B23F2E;
   --accent-rgb: 178, 63, 46;
-  --accent-gradient: linear-gradient(135deg, #F47C6A, #B23F2E);
   --brand: #F47C6A;
   --brand-fg: #0B0B0C;
   --bg-gradient: #FBF3F1;
   --body-bg: #FBF3F1;
   --header-bg: rgba(251, 243, 241, 0.88);
-  --input-bg: #F5E8E5;
   --surface-2: #F5E8E5;
   --surface-3: #ECD9D4;
   --brand-soft: #FDE7E3;
@@ -424,7 +361,6 @@
 [data-theme="dark"][data-palette="coral"] {
   --accent: #FF9A8A;
   --accent-rgb: 255, 154, 138;
-  --accent-gradient: linear-gradient(135deg, #FF9A8A, #FF9A8A);
   --brand: #FF9A8A;
   --bg-gradient: #2A1F21;
   --body-bg: #2A1F21;
@@ -435,8 +371,6 @@
   --modal-bg: #362A2C;
   --modal-header-bg: #362A2C;
   --header-bg: rgba(42, 31, 33, 0.88);
-  --w-92: rgba(42, 31, 33, 0.96);
-  --input-bg: #433537;
   --dropdown-bg: #433537;
   --surface-2: #433537;
   --surface-3: #504144;
@@ -489,7 +423,6 @@ body {
 button,
 [role="button"],
 .nav-item,
-.filter-chip,
 .trip-card {
   -webkit-user-select: none;
   user-select: none;
@@ -522,10 +455,8 @@ button:not(:disabled):active,
 /* Hover belongs to devices that actually have a pointer. On touch it
    sticks to whatever you tapped last. */
 @media (hover: none) {
-  .category-select:hover,
   .custom-dropdown-trigger:hover,
   .custom-dropdown-option:hover,
-  .filter-chip:hover,
   .plan-visit-toggle:hover,
   .check-circle:hover {
     background: inherit;
@@ -997,7 +928,6 @@ button:not(:disabled):active,
   transform: rotate(180deg); /* flip for RTL */
 }
 
-
 /* ══════════════════════════════════════════════════════════
    SHARED COMPONENTS
    ══════════════════════════════════════════════════════════ */
@@ -1147,36 +1077,6 @@ input[type="datetime-local"].form-control {
   cursor: pointer;
 }
 
-/* ── Checklist rows ── */
-.checklist-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 52px;
-  padding: 14px 16px;
-  cursor: pointer;
-  background: var(--card-bg);
-  border: var(--card-border);
-  border-radius: var(--radius-md);
-  transition: background 0.2s ease;
-}
-
-.custom-checkbox {
-  width: 24px; height: 24px;
-  border-radius: 8px;
-  border: 2px solid var(--ink-18);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.custom-checkbox.checked {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-
 /* ── Buttons ── */
 .btn-primary {
   min-height: 50px;
@@ -1264,26 +1164,6 @@ input[type="datetime-local"].form-control {
 /* An icon-only secondary button (delete in an edit sheet's footer). */
 .btn-secondary.btn-icon { padding: 10px 15px; }
 .btn-secondary.danger { background: var(--c-red-8); color: var(--c-red); }
-
-.btn-tab-toggle {
-  background: var(--w-60);
-  border: 1.5px solid var(--ink-8);
-  color: var(--text-muted);
-  font-weight: 700;
-  padding: 8px 16px;
-  min-height: 40px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-family: var(--font-hebrew);
-  font-size: 14px;
-  transition: all 0.15s ease;
-}
-
-.btn-tab-toggle.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-}
 
 /* ── A day opening ──
    Only opacity and a small translate: animating height would put layout
@@ -1538,11 +1418,6 @@ input[type="datetime-local"].form-control {
 }
 
 /* ── Grid helpers ── */
-.grid-2, .grid-3 {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
 .row-2 {
   display: grid;
@@ -2259,44 +2134,6 @@ div.section-header-toggle { cursor: default; }
    PLANNING / CHECKLIST CATEGORY SELECT
    ══════════════════════════════════════════════════════════ */
 
-.category-select {
-  appearance: none;
-  -webkit-appearance: none;
-  background-color: var(--w-85);
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: left 14px center;
-  background-size: 14px;
-  border: 1.5px solid var(--p-18);
-  border-radius: var(--radius-md);
-  padding: 12px 18px 12px 38px;
-  width: 100%;
-  min-height: 48px;
-  font-family: var(--font-hebrew);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--primary);
-  text-align: right;
-  direction: rtl;
-  cursor: pointer;
-  box-shadow: 0 2px 8px var(--p-6);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  outline: none;
-}
-[data-theme="dark"] .category-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-}
-.category-select:focus,
-.category-select:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--p-12);
-}
-.category-select option {
-  font-weight: 600;
-  color: var(--primary);
-  background: var(--dropdown-bg);
-}
-
 /* Checklist row layout — uniform RTL: actions on the (visual) left, text center, checkbox right.
    In RTL, with grid-template-columns "auto 1fr auto" and direction:rtl, the first child sits on the right.
    We want checkbox on the right, so place it LAST in DOM and keep direction:rtl. */
@@ -2400,47 +2237,6 @@ div.section-header-toggle { cursor: default; }
   margin-top: 4px;
 }
 
-/* ── Filter chips (planning tab) ── */
-.filter-chips-row {
-  align-items: stretch;
-}
-
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  padding: 10px 18px;
-  min-height: 42px;
-  border-radius: 999px;
-  font-family: var(--font-hebrew);
-  font-size: 14px;
-  font-weight: 800;
-  border: 1.5px solid var(--p-15);
-  background: var(--surface);
-  color: var(--primary);
-  cursor: pointer;
-  transition: transform 0.1s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 2px 8px var(--ink-4);
-  flex-shrink: 0;
-}
-.filter-chip:hover {
-  border-color: var(--p-30);
-}
-.filter-chip:active {
-  transform: scale(0.97);
-}
-.filter-chip.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-  box-shadow: 0 6px 16px var(--ink-22);
-}
-.filter-chip svg {
-  width: 15px;
-  height: 15px;
-}
-
 /* ── Planning card: a place already visited ──
    Done is not an alert. A visited card gives up its surface and its
    shadow instead of gaining a colour: it sinks half a step into the
@@ -2492,29 +2288,6 @@ button.check-circle::before { content: ''; position: absolute; inset: -9px; bord
 }
 /* Ticking a place off pops the check (transform only). */
 .plan-visit-toggle.on svg, .check-circle.on svg { animation: nav-pop 0.45s var(--ease-spring); }
-
-/* Round add button (used next to search) — guaranteed circular */
-.btn-add-circle {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 14px var(--ink-18);
-  flex-shrink: 0;
-  transition: transform 0.1s ease;
-}
-.btn-add-circle:active {
-  transform: scale(0.95);
-}
 
 /* ── Empty state ──
    Reached at the moment someone most needs telling what a screen is for
@@ -2620,29 +2393,6 @@ body[data-fab] .app-content {
   padding-bottom: calc(var(--nav-total) + 74px);
 }
 
-/* ── Dark-mode button overrides ──
-   In dark mode --primary is a LIGHT colour (#c7d2fe) — fine for text, but
-   too bright when used as a button background. Swap to --accent (#818cf8)
-   for all button backgrounds that normally derive from --primary.           */
-[data-theme="dark"] .btn-add-circle {
-  background: var(--accent);
-  box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.25);
-}
-[data-theme="dark"] .filter-chip.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 6px 16px rgba(var(--accent-rgb),0.30);
-}
-[data-theme="dark"] .btn-tab-toggle.active {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-[data-theme="dark"] .custom-checkbox.checked {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-
 /* ── Event status highlights ── */
 .plan-card.event-today {
   /* Today's event: a sky card instead of an orange rail. */
@@ -2652,7 +2402,6 @@ body[data-fab] .app-content {
 [data-theme="dark"] .plan-card.event-today {
   box-shadow: none !important;
 }
-
 
 /* ══════════════════════════════════════════════════════════
    RESPONSIVE — tablet & desktop
@@ -2724,7 +2473,6 @@ body[data-fab] .app-content {
   .hotel-meta-grid {
     grid-template-columns: 1fr 1fr 1fr 1fr !important;
   }
-
 
   /* Glass cards and trip cards get larger padding */
   .glass-card { padding: 22px; border-radius: 20px; }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { missingGlobalItems, copyGlobalItems } from '../lib/checklistSync';
@@ -13,7 +13,7 @@ import {
   arrayUnion,
   arrayRemove
 } from 'firebase/firestore';
-import { Check, Plus, Trash2, Pencil, ChevronDown, X, GripVertical, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
+import { Check, Plus, Trash2, Pencil, X, GripVertical, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
 import { CustomDropdown, CustomDateTimePicker, formatHebrewDateTime } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import ListCard from '../ui/ListCard';
@@ -752,7 +752,7 @@ function SortableCategoryBlock({
 }
 
 
-export default function ChecklistTab({ tripId, globalChecklist = [] }) {
+export default function ChecklistTab({ tripId }) {
   const { canEdit, tripMembers, currentUid, currentUserProfile, memberProfiles, formerMembers } = useTrip();
   const confirm = useConfirm();
 

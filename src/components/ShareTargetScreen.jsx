@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { MapPin, Plane, ChevronLeft, Link2, LogIn } from 'lucide-react';
 import { readCachedTrips } from '../services/shareTarget';
 

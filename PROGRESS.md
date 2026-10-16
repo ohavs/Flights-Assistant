@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.51.2 (`changelog.md`)
+- גרסת ווב: 8.51.3 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -47,7 +47,7 @@
 - `backupTrip.js:39`: עותק מיובא שומר את כל החברים של המקור. לשאול את הבעלים אם זה מכוון.
 - **Blaze פעיל** (אומת 2026-10-16 ב־`firebase-plan.yml`, בדיקה לקריאה בלבד). ה־APIs של Functions עוד כבויים; ה־deploy הראשון מדליק אותם. הקובץ נשמר בצד ויחזור ב־PR של N5.
 
-**קוד מת (בטוח למחיקה, PR ניקוי אחד):** כ־265 שורות CSS (`.filter-chip*`, `.category-select`, `.checklist-row`, `.custom-checkbox`, `.btn-tab-toggle`, `.grid-2/3`, `.btn-add-circle`, בלוק "Dark-mode button overrides", ומשתנים שלא נקראים), `src/App.css`, `import './index.css'` כפול ב־`App.jsx`, `useInstallPrompt.js`, `defaultGironaPlans`, שאריות SheetJS ב־`exportTrip.js`, imports ו־props מתים, החבילה `xlsx`, `src/assets/*`, `public/icons.svg`, ושאריות תבנית באנדרואיד (`ic_launcher_background/foreground` ב־drawable, `activity_main.xml`, `Example*Test.java`).
+**קוד מת:** נוקה ב־8.51.3. נשאר בכוונה: `required` ב־`CustomDatePicker` (הקוראים מעבירים אותו).
 **לא למחוק:** `release-notes.md` (‏`android.yml`), `firebase-android-setup.yml`, `scripts/android-icons.py` (היחיד שמייצר splash). `project_overview.md` מיושן (7.4.0): לעדכן.
 
 **רעיונות (לא להעמיס):** "מי חייב למי" בהוצאות; מסמכים אופליין; רענון טיסה רק סביב מועד הטיסה; "שכחתי קוד מחיקה". עם Blaze: N5 Push; מפתח AeroDataBox מאחורי Function (עכשיו הוא גלוי ב־bundle); רענון טיסה אחד בשרת עם Push על עיכוב או שינוי שער.
