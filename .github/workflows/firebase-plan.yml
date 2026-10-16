@@ -1,0 +1,50 @@
+name: Firebase plan check
+
+# Read-only: says whether the project is on the Blaze plan (billing linked)
+# and which APIs that Cloud Functions and push need are already on. It
+# changes nothing. Logs of this public repo are public: the token is
+# masked, and only yes/no answers are printed (no billing account id).
+# Runs when this file changes (Claude cannot dispatch workflows) or by hand.
+on:
+  workflow_dispatch:
+  push:
+    paths: [.github/workflows/firebase-plan.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROJECT: listify-84018
+    steps:
+      - name: Install Firebase CLI
+        run: npm install --prefix "$RUNNER_TEMP/ft" --no-audit --no-fund firebase-tools@14.27.0 > /dev/null
+
+      - name: Access token from FIREBASE_TOKEN
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          CLIENT=$(node -e "const a=require('$RUNNER_TEMP/ft/node_modules/firebase-tools/lib/api'); console.log(a.clientId() + ' ' + a.clientSecret())")
+          TOKEN=$(curl -sf https://oauth2.googleapis.com/token \
+            -d client_id="${CLIENT% *}" -d client_secret="${CLIENT#* }" -d grant_type=refresh_token \
+            --data-urlencode "refresh_token=$(printf '%s' "$FIREBASE_TOKEN" | tr -d '[:space:]')" | jq -r .access_token)
+          [ -n "$TOKEN" ] && [ "$TOKEN" != null ] || { echo "::error::Could not get an access token from FIREBASE_TOKEN"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Plan and APIs
+        run: |
+          BILLING=$(curl -s -H "Authorization: Bearer $ACCESS_TOKEN" "https://cloudbilling.googleapis.com/v1/projects/$PROJECT/billingInfo")
+          if echo "$BILLING" | jq -e .error > /dev/null; then
+            echo "billing: cannot read ($(echo "$BILLING" | jq -r '.error.status + " " + .error.message' | head -c 300))"
+          else
+            echo "billing enabled (Blaze): $(echo "$BILLING" | jq -r '.billingEnabled // false')"
+          fi
+          for API in cloudfunctions cloudbuild artifactregistry run eventarc pubsub cloudscheduler secretmanager fcm; do
+            STATE=$(curl -s -H "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://serviceusage.googleapis.com/v1/projects/$PROJECT/services/$API.googleapis.com" | jq -r '.state // .error.status')
+            echo "$API: $STATE"
+          done
