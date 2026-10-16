@@ -2,6 +2,8 @@
 <!-- Today's plan, 4x3: as many activities as fit. It draws from the snapshot the app saves (TripWidgetPlugin)
      and redraws every half hour, so it moves on with the app closed. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="com.ohavs.flightsassistant.widget.WidgetTripActivity"
+    android:widgetFeatures="reconfigurable"
     android:description="@string/widget_plan_description"
     android:initialLayout="@layout/widget_message"
     android:previewLayout="@layout/widget_plan_preview"

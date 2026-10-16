@@ -2,6 +2,7 @@ package com.ohavs.flightsassistant.widget;
 
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.os.Build;
 
@@ -17,8 +18,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *   save({ json }): the snapshot (src/lib/widgetData.js), or null when
  *     signed out; every widget redraws at once.
  *   status(): { count, pinSupported }, count of every kind.
- *   pin({ kind }): asks the launcher to add one (TripWidget unless kind
- *     names another, e.g. "PlanWidget").
+ *   pin({ kind, tripId }): asks the launcher to add one (TripWidget unless
+ *     kind names another, e.g. "PlanWidget"), of that trip (WidgetTrips),
+ *     or of the next trip without one.
  *   "open" event: a tap on the widget, { tripId, tab }. A tap that started
  *     the app is kept until the app listens.
  *   auth({ uid, refreshToken, apiKey, projectId } | {}): the sign-in the
@@ -47,13 +49,21 @@ public class TripWidgetPlugin extends Plugin {
     }
 
     @PluginMethod
+    @android.annotation.SuppressLint("InlinedApi")
     public void pin(PluginCall call) {
         boolean asked = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AppWidgetManager m = AppWidgetManager.getInstance(getContext());
             if (m.isRequestPinAppWidgetSupported()) {
                 BaseWidget kind = WidgetKit.byName(call.getString("kind", "TripWidget"));
-                asked = m.requestPinAppWidget(new ComponentName(getContext(), kind.getClass()), null, null);
+                // Asked from inside a trip: the widget is that trip's ("" or none: the next trip).
+                String tripId = call.getString("tripId", "");
+                WidgetTrips.pinning(getContext(), tripId);
+                Intent placed = new Intent(getContext(), WidgetPinReceiver.class).putExtra("tripId", tripId);
+                // Mutable: the launcher adds the new widget's id.
+                PendingIntent cb = PendingIntent.getBroadcast(getContext(), 0, placed,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+                asked = m.requestPinAppWidget(new ComponentName(getContext(), kind.getClass()), null, cb);
             }
         }
         JSObject ret = new JSObject();

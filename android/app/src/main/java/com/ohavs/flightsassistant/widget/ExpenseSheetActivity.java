@@ -64,7 +64,7 @@ public class ExpenseSheetActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle saved) {
         widgetId = getIntent().getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-        WidgetKit.Moment m = WidgetKit.momentOf(this, AppWidgetManager.getInstance(this).getAppWidgetOptions(widgetId));
+        WidgetKit.Moment m = WidgetKit.momentOf(this, widgetId);
         // Light or dark as the app is set, like the widget; else as the phone is.
         if (m != null && m.forced()) {
             getDelegate().setLocalNightMode(m.dark(this) ? AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO);

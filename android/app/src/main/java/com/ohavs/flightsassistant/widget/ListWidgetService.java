@@ -52,7 +52,7 @@ public class ListWidgetService extends RemoteViewsService {
 
         @Override
         public void onDataSetChanged() {
-            m = WidgetKit.momentOf(ctx, AppWidgetManager.getInstance(ctx).getAppWidgetOptions(id));
+            m = WidgetKit.momentOf(ctx, id);
             if (m == null || m.trip == null) {
                 rows = new ArrayList<>();
                 return;

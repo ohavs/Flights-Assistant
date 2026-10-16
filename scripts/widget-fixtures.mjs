@@ -15,6 +15,12 @@ const trip = {
     depAirport: { code: 'CDG', timezone: 'UTC +00:00' }, arrAirport: { code: 'TLV' },
   },
 };
+// A second trip, later: a widget can be set to it (WidgetTrips).
+const rome = {
+  id: 'rome', name: 'רומא עם ההורים',
+  outboundFlightDetails: { date: '2026-12-10', scheduledDep: '09:00', flightNumber: 'LY 383', depAirport: { code: 'TLV', timezone: 'UTC +00:00' }, arrAirport: { code: 'FCO', city: 'רומא', timezone: 'UTC +00:00' } },
+  returnFlightDetails: { date: '2026-12-14' },
+};
 const days = [
   { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין במלון', timeLabel: 'ערב' }] },
   { id: 'd2', order: 1, date: '2026-11-04', title: 'מוזיאונים', activities: [
@@ -53,9 +59,9 @@ const cases = [
   ['plan-app-dark', at('2026-11-04T09:00:00Z'), { palette: 'sand', theme: 'dark' }],
   ['plan-app-light', at('2026-11-04T09:00:00Z'), { palette: 'sand', theme: 'light' }],
   ['return', at('2026-11-06T09:00:00Z'), { palette: 'coral' }],
-  ['ended', at('2026-12-01T09:00:00Z'), { palette: 'green' }],
+  ['ended', at('2027-01-05T09:00:00Z'), { palette: 'green' }],
 ];
 for (const [name, now, opts] of cases) {
-  const s = widgetSnapshot({ trips: [trip], ...data, now, ...opts });
+  const s = widgetSnapshot({ trips: [trip, rome], ...data, now, ...opts });
   console.log(`${name} ${now.getTime()} ${Buffer.from(JSON.stringify(s)).toString('base64')}`);
 }

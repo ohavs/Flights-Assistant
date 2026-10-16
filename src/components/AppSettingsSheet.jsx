@@ -113,7 +113,10 @@ const WIDGETS = [
   { kind: 'ExpenseWidget', label: 'הוצאה מהירה', hint: 'מקלידים סכום, בוחרים קטגוריה ומקום, ונשמר לטיול בלי לפתוח את האפליקציה.' },
 ];
 
-function WidgetSettings() {
+// trip: the trip the settings were opened in. A widget added here is that
+// trip's; from home, it shows the next trip. From the home screen itself,
+// the phone asks which trip (WidgetTripActivity).
+function WidgetSettings({ trip }) {
   const [status, setStatus] = useState(null);
   useEffect(() => {
     const check = () => widgetStatus().then(setStatus);
@@ -128,7 +131,7 @@ function WidgetSettings() {
     <SettingsGroup id="widget" title="ווידג׳טים במסך הבית" Icon={LayoutGrid} meta={placed ? 'במסך הבית' : null}>
       <div className="list-group">
         {WIDGETS.map(w => (
-          <button key={w.kind} type="button" className="list-row" disabled={!pin} onClick={() => pinWidget(w.kind)}>
+          <button key={w.kind} type="button" className="list-row" disabled={!pin} onClick={() => pinWidget(w.kind, trip?.id)}>
             <LayoutGrid size={16} className="list-row-icon" />
             <span className="list-row-label">
               {w.label}
@@ -139,7 +142,9 @@ function WidgetSettings() {
         ))}
       </div>
       <div className="settings-hint">
-        {pin ? 'לחיצה מוסיפה למסך הבית. לחיצה על ווידג׳ט פותחת את הטיול במקום הנכון.' : 'לחיצה ארוכה על מסך הבית ← ווידג׳טים ← עוזר טיסות.'}
+        {pin
+          ? `לחיצה מוסיפה למסך הבית ווידג׳ט ${trip ? `של "${trip.name || trip.destination || 'הטיול'}"` : 'של הטיול הקרוב, שמתחלף לבד'}. לחיצה על ווידג׳ט פותחת את הטיול במקום הנכון.`
+          : 'לחיצה ארוכה על מסך הבית ← ווידג׳טים ← עוזר טיסות, ואז בוחרים טיול.'}
       </div>
     </SettingsGroup>
   );
@@ -530,7 +535,7 @@ export default function AppSettingsSheet({ onClose, initial, onNotifyChange, tri
     <Sheet title="הגדרות" onClose={onClose}>
       <LookSettings />
       {isNative && <NotifySettings onChange={onNotifyChange} />}
-      {isNative && <WidgetSettings />}
+      {isNative && <WidgetSettings trip={activeTab ? (trips || []).find(t => t.id === tripId) : null} />}
       {isNative && <PermissionSettings onChange={onNotifyChange} />}
       {uid && <FileSettings trips={trips || []} uid={uid} tripId={tripId} activeTab={activeTab} />}
       {uid && showDeleteCode && <DeleteCodeSettings uid={uid} />}

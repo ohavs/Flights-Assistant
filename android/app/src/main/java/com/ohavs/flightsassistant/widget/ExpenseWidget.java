@@ -120,6 +120,7 @@ public class ExpenseWidget extends BaseWidget {
 
     @Override
     public void onDeleted(Context ctx, int[] ids) {
+        super.onDeleted(ctx, ids);
         SharedPreferences.Editor e = prefs(ctx).edit();
         for (int id : ids) e.remove("amount_" + id).remove("cur_" + id).remove("status_" + id);
         e.apply();
@@ -147,7 +148,7 @@ public class ExpenseWidget extends BaseWidget {
 
     /** The trip this widget adds to, from the snapshot it draws (null: none). */
     static JSONObject trip(Context ctx, int id) {
-        WidgetKit.Moment m = WidgetKit.momentOf(ctx, AppWidgetManager.getInstance(ctx).getAppWidgetOptions(id));
+        WidgetKit.Moment m = WidgetKit.momentOf(ctx, id);
         return m == null ? null : m.trip;
     }
 

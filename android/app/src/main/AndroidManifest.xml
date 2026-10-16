@@ -134,6 +134,23 @@
             android:noHistory="true"
             android:taskAffinity="${applicationId}.widgetaction"
             android:theme="@android:style/Theme.NoDisplay" />
+        <!-- Which trip a widget shows: asked when one is added from the home
+             screen, or set again with a long press (the widgets' configure
+             screen); the launcher starts it, so it is exported. -->
+        <activity
+            android:name=".widget.WidgetTripActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity="${applicationId}.widgettrip"
+            android:theme="@style/ExpenseSheet">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <!-- A widget the app asked for from inside a trip is that trip's. -->
+        <receiver
+            android:name=".widget.WidgetPinReceiver"
+            android:exported="false" />
         <!-- Wakes the widgets at midnight and around flights (WidgetClock). -->
         <receiver
             android:name=".widget.WidgetClock"

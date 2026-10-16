@@ -15,11 +15,12 @@ adb shell wm size 1080x2400; adb shell wm density 420; sleep 2
 declare -A NOW B64
 while read -r name now b64; do NOW[$name]=$now; B64[$name]=$b64; done < <(TZ=UTC node scripts/widget-fixtures.mjs)
 
-open_widget() {   # <fixture|none> [widthDp heightDp] [provider]; AUTH64 set: a sign-in for the expense widget
+open_widget() {   # <fixture|none> [widthDp heightDp] [provider]; AUTH64: a sign-in for the expense widget; TRIP: the trip it is set to
   local b64=none now auth=()
   now=$(date +%s%3N)
   if [ "$1" != "none" ]; then b64=${B64[$1]}; now=${NOW[$1]}; fi
   if [ -n "${AUTH64:-}" ]; then auth=(--es auth64 "$AUTH64"); fi
+  if [ -n "${TRIP:-}" ]; then auth+=(--es trip "$TRIP"); fi
   adb shell am force-stop "$PKG"
   sleep 2   # the system drops the killed host before a new one registers
   adb shell am start -W -n "$PKG/.widget.WidgetPreviewActivity" --es snapshot64 "$b64" --el nowMs "$now" \
@@ -218,6 +219,16 @@ open_widget plan 360 300 ExpenseWidget; tap_text 7; expect 30-expense-dark "7 �
 tap_text המשך; sleep 1; expect 31-expense-sheet-dark "שמירה"
 adb shell input keyevent KEYCODE_BACK; sleep 1
 adb shell cmd uimode night no; sleep 2
+
+# A widget set to a trip shows it, not the next one.
+TRIP=rome open_widget flight; expect 21f-set-to-rome "רומא עם ההורים" "טיסת הלוך · LY 383" "FCO"
+# Added from the home screen, a widget asks which trip (its configure screen).
+adb logcat -c; open_widget flight
+wid=$(adb logcat -d -s WidgetPreview:I | grep -o 'widget id [0-9]*' | tail -1 | awk '{print $3}')
+adb shell am start -W -n "$PKG/.widget.WidgetTripActivity" --ei appWidgetId "$wid" >/dev/null; sleep 2
+expect 21g-trip-picker "לאיזה טיול הווידג׳ט?" "הטיול הבא" "פריז עם הילדים" "רומא עם ההורים"
+tap_text "רומא עם ההורים"; sleep 2
+expect 21h-picked-rome "רומא עם ההורים" "FCO"
 
 # Nothing ahead any more: the trip has ended.
 open_widget ended;   expect 21-nothing-ahead "אין טיול קרוב"

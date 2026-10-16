@@ -27,7 +27,7 @@ import java.util.Collections;
  * as base64 JSON, since adb cannot pass Hebrew and quotes; "none" for
  * signed out), nowMs (the clock to draw at), widthDp, heightDp, and
  * auth64 (a sign-in for the expense widget, base64 JSON as
- * TripWidgetPlugin.auth takes it).
+ * TripWidgetPlugin.auth takes it), and trip (the trip it is set to).
  * Without the bind grant it just closes. Learned from Payments.
  */
 public class WidgetPreviewActivity extends Activity {
@@ -58,6 +58,9 @@ public class WidgetPreviewActivity extends Activity {
         }
         // The moment under test, kept with this widget (BaseWidget.redraw):
         // the system redraws it right after binding, and must draw the same.
+        // The trip this widget is set to (WidgetTrips), as WidgetTripActivity sets it.
+        WidgetTrips.set(this, id, getIntent().getStringExtra("trip"));
+        android.util.Log.i("WidgetPreview", "widget id " + id);
         String auth64 = getIntent().getStringExtra("auth64");
         if (auth64 != null) {
             try {

@@ -2,6 +2,8 @@
 <!-- The countdown, 2x2: days to the flight, or the day of the trip. It draws from the snapshot the app saves (TripWidgetPlugin)
      and redraws every half hour, so it moves on with the app closed. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="com.ohavs.flightsassistant.widget.WidgetTripActivity"
+    android:widgetFeatures="reconfigurable"
     android:description="@string/widget_countdown_description"
     android:initialLayout="@layout/widget_message"
     android:previewLayout="@layout/widget_big_preview"
