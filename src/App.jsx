@@ -1280,7 +1280,7 @@ function AppInner() {
     if (!isNative || loading) return undefined;
     if (!signedInUid) { import('./lib/native/widget').then(w => w.saveWidget(null)).catch(() => {}); return undefined; }
     const ids = widgetKey ? widgetKey.split(',') : [];
-    const data = { days: {}, checklist: {}, reminders: {}, expenses: {} };
+    const data = { days: {}, checklist: {}, reminders: {}, expenses: {}, planning: {} };
     let timer;
     const sync = () => {
       clearTimeout(timer);
@@ -1294,13 +1294,13 @@ function AppInner() {
         import('./lib/native/widget').then(w => w.saveWidget(widgetSnapshot({
           trips: tripsRef.current,
           daysByTrip: data.days, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
-          expensesByTrip: data.expenses, rates,
+          expensesByTrip: data.expenses, plansByTrip: data.planning, rates,
           palette: current, theme,
         }))).catch(() => {});
       }, 600);
     };
     widgetSync.current = sync;
-    const offs = ids.flatMap(id => ['days', 'checklist', 'reminders', 'expenses'].map(sub => listen(
+    const offs = ids.flatMap(id => ['days', 'checklist', 'reminders', 'expenses', 'planning'].map(sub => listen(
       collection(db, 'trips', id, sub),
       (snap) => { data[sub][id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
       () => {},

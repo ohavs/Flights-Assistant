@@ -53,6 +53,8 @@ function pickAirport(side) {
     lat: (apt.location && apt.location.lat) || 0,
     lng: (apt.location && apt.location.lon) || 0,
     timezone: tzOffsetFromAirport(apt),
+    // ISO country: the expense widget's currency (destinationCurrency.js).
+    country: apt.countryCode || '',
   };
 }
 

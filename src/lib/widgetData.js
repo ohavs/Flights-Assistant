@@ -15,6 +15,7 @@ import { dayActivities } from './dayOrder.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
+import { tripCurrencies, destinationCurrency } from './destinationCurrency.js';
 
 export const WIDGET_TRIPS = 3;      // the current or next trip, and the ones after it
 export const WIDGET_DAYS = 14;      // planner days kept per trip, from today
@@ -106,27 +107,35 @@ function remindersOf(list) {
   };
 }
 
-// The expense widget's choices (ExpenseWidget.java): the currencies and
-// categories the expenses tab offers for this trip, and the currency of its
-// latest expense, which the keypad starts on.
-function spendOf(list) {
+// The expense widget's choices (ExpenseWidget.java): the currencies a new
+// expense offers on this trip (shekels, euros or dollars, the destination's
+// own, then any used), the one the keypad starts on (the destination's,
+// else the latest expense's), the tab's categories, and the trip's places
+// to link an expense to.
+const PLACES = 40;
+function spendOf(trip, list, plans) {
   const latest = [...(list || [])].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
-  const codes = [...new Set([...DEFAULT_CURRENCIES, ...latest.map(e => e.currency).filter(Boolean)])];
+  const codes = [...new Set([...tripCurrencies(trip, DEFAULT_CURRENCIES), ...latest.map(e => e.currency).filter(Boolean)])];
   return {
-    currency: latest.find(e => e.currency)?.currency || DEFAULT_CURRENCIES[0],
+    currency: destinationCurrency(trip) || latest.find(e => e.currency)?.currency || DEFAULT_CURRENCIES[0],
     currencies: codes.map(code => ({ code, symbol: CURRENCY_META[code]?.symbol || code })),
     categories: [...new Set([...DEFAULT_EXPENSE_CATEGORIES, ...latest.map(e => e.category).filter(Boolean)])],
+    // Not yet visited first, then by name.
+    places: (plans || []).filter(p => p?.id && p.title)
+      .sort((a, b) => (!!a.visited - !!b.visited) || String(a.title).localeCompare(String(b.title), 'he'))
+      .slice(0, PLACES)
+      .map(p => ({ id: p.id, title: p.title })),
   };
 }
 
 // trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip /
-// expensesByTrip: { [tripId]: [doc] }. palette: the app's palette key; the
+// expensesByTrip / plansByTrip (the planning tab's places): { [tripId]: [doc] }. palette: the app's palette key; the
 // widget has each one's light and dark colours. theme: the app's setting,
 // 'light' or 'dark' whatever the phone is, else 'system' (the phone's).
 // rates: the expenses tab's (per euro), for the shekel value of an expense
 // the widget saves.
-export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
-  const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(expensesByTrip[trip.id]) }));
+export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
+  const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(trip, expensesByTrip[trip.id], plansByTrip[trip.id]) }));
   const codes = new Set(['ILS', ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
   return {
     v: 1,
