@@ -195,13 +195,27 @@ def pack(prev):
 
 
 # ── A list under a header: today's plan (PlanWidget), reminders ───────────
+# On the home screen the list is a ListView that scrolls (ListWidgetService
+# fills it, one widget_list_item per row). The picker's preview cannot run
+# a service, so it shows sample rows instead.
+def listed(prev, prefix, n, samples, ring_always, show, empty):
+    if prev:
+        return lin('list', 'vertical', h='0dp', layout_weight='1', layout_marginTop='4dp', kids=[
+            *rows(prefix, n, samples, ring_always=ring_always, show=show)])
+    return V('FrameLayout', {'layout_width': 'match_parent', 'layout_height': '0dp', 'layout_weight': '1',
+                             'layout_marginTop': '6dp'}, [
+        V('ListView', {'id': '@+id/list', 'layout_width': 'match_parent', 'layout_height': 'match_parent',
+                       'divider': '@null', 'dividerHeight': '0dp', 'scrollbars': 'none',
+                       'listSelector': '@android:color/transparent'}),
+        text('empty', 'WText.Muted', w='match_parent', h='match_parent', gravity='center', textSize='15sp',
+             visibility='gone', sample=empty),
+    ])
+
+
 def plan(prev):
     return root([
-        header('ic_ws_map', 'היום · יום 2 מתוך 4', 'פריז עם הילדים · מוזיאונים', 'יום ד׳ 4.11'),
-        lin('list', 'vertical', h='0dp', layout_weight='1', layout_marginTop='4dp', kids=[
-            *rows('plan', 8, PLAN_SAMPLES, show=5),
-            text('plan_more', 'WText.Muted', w='match_parent', layout_marginTop='8dp', visibility='gone'),
-        ]),
+        header('ic_ws_map', 'היום · מוזיאונים', 'פריז עם הילדים · יום 2 מתוך 4', 'יום ד׳ 4.11'),
+        listed(prev, 'plan', 8, PLAN_SAMPLES, False, 5, 'אין פעילויות בתוכנית להיום'),
     ])
 
 
@@ -212,10 +226,27 @@ REM_SAMPLES = [('היום 18:00', 'להזמין מונית לשדה'), ('מחר 
 def reminders(prev):
     return root([
         header('ic_ws_bell', 'תזכורות', 'פריז עם הילדים', '3 פתוחות'),
-        lin('list', 'vertical', h='0dp', layout_weight='1', layout_marginTop='4dp', kids=[
-            *rows('rem', 5, REM_SAMPLES, ring_always=True, show=3),
-            text('rem_more', 'WText.Muted', w='match_parent', layout_marginTop='8dp', visibility='gone'),
+        listed(prev, 'rem', 5, REM_SAMPLES, True, 3, 'אין תזכורות פתוחות'),
+    ])
+
+
+def list_item(prev):
+    """A row of a widget list: a box to tick (a ring, or the brand with a
+    tick), the title in two lines at most, a line under it, and a pill."""
+    return V('LinearLayout', {'id': '@+id/item', 'layout_width': 'match_parent', 'layout_height': 'wrap_content',
+                              'layoutDirection': 'rtl', 'orientation': 'horizontal', 'gravity': 'center_vertical',
+                              'paddingTop': '6dp', 'paddingBottom': '6dp'}, [
+        V('FrameLayout', {'id': '@+id/item_box', 'layout_width': '36dp', 'layout_height': '36dp'}, [
+            image('item_ring', 'widget_dot', 22, layout_gravity='center'),
+            V('FrameLayout', {'id': '@+id/item_check', 'layout_width': '24dp', 'layout_height': '24dp',
+                              'layout_gravity': 'center', 'background': '@drawable/widget_check_bg', 'visibility': 'gone'},
+              [image('item_tick', 'widget_tick', 18, layout_gravity='center')]),
         ]),
+        lin(None, 'vertical', w='0dp', layout_weight='1', layout_marginStart='8dp', kids=[
+            text('item_title', 'WText', w='match_parent', textSize='17sp', maxLines='2', sample='הלובר'),
+            text('item_sub', 'WText.Muted', w='match_parent', layout_marginTop='2dp', visibility='gone'),
+        ]),
+        text('item_pill', 'WBold.Pill', layout_marginStart='8dp', textSize='13sp', visibility='gone'),
     ])
 
 
@@ -282,6 +313,7 @@ LAYOUTS = {
     'widget_plan': (plan, 'Today\'s plan (PlanWidget), or the first day\'s before the trip.'),
     'widget_reminders': (reminders, 'Open reminders (RemindersWidget), the soonest first.'),
     'widget_expense': (expense, 'An expense from the home screen (ExpenseWidget): the amount on a keypad, the currency, then "המשך" opens ExpenseSheetActivity.'),
+    'widget_list_item': (list_item, 'A row of the plan and reminders lists (ListWidgetService): a box to tick, the title, a line under it, a pill.'),
     'widget_message': (message, 'In place of any widget\'s content: signed out, nothing ahead, or a snapshot it cannot read.'),
 }
 PREVIEWS = ['widget_trip', 'widget_big', 'widget_pack', 'widget_plan', 'widget_reminders', 'widget_expense']
@@ -297,7 +329,7 @@ HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-l
 RES = 'android/app/src/main/res/'
 THEMES = ('light', 'dark')
 THEMED = ['widget_bg', 'widget_tile', 'widget_soft', 'widget_chip', 'widget_brand', 'widget_dot', 'widget_progress',
-          'widget_route', 'ic_ws_plane', 'ic_ws_map', 'ic_ws_checklist', 'ic_ws_bell', 'ic_ws_wallet']
+          'widget_route', 'widget_check_bg', 'widget_tick', 'ic_ws_plane', 'ic_ws_map', 'ic_ws_checklist', 'ic_ws_bell', 'ic_ws_wallet']
 # The colour (and background) each text style gives, so a copy can say it outright.
 STYLE_COLOR = {'WText': 'w_text', 'WText.Muted': 'w_muted', 'WBold': 'w_text', 'WBold.Title': 'w_text',
                'WBold.Hero': 'w_text', 'WBold.Key': 'w_text', 'WBold.Chip': 'w_accent', 'WBold.Pill': 'w_accent',

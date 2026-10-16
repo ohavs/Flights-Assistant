@@ -223,12 +223,5 @@
                 android:layout_marginStart="8dp"
                 android:visibility="gone" />
         </LinearLayout>
-        <TextView
-            android:id="@+id/rem_more"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            style="@style/WText.Muted"
-            android:layout_marginTop="8dp"
-            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

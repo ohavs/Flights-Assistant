@@ -42,14 +42,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 style="@style/WBold.Title"
-                android:text="היום · יום 2 מתוך 4" />
+                android:text="היום · מוזיאונים" />
             <TextView
                 android:id="@+id/subtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 style="@style/WText.Muted"
                 android:layout_marginTop="3dp"
-                android:text="פריז עם הילדים · מוזיאונים" />
+                android:text="פריז עם הילדים · יום 2 מתוך 4" />
         </LinearLayout>
         <TextView
             android:id="@+id/chip"
@@ -317,12 +317,5 @@
                 android:layout_marginStart="8dp"
                 android:text="מונמארטר" />
         </LinearLayout>
-        <TextView
-            android:id="@+id/plan_more"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            style="@style/WText.Muted"
-            android:layout_marginTop="8dp"
-            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

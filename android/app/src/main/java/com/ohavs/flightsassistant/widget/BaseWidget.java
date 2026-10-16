@@ -11,6 +11,8 @@ import android.util.Log;
 import android.util.SizeF;
 import android.widget.RemoteViews;
 
+import com.ohavs.flightsassistant.R;
+
 import org.json.JSONObject;
 
 import java.util.List;
@@ -36,6 +38,11 @@ public abstract class BaseWidget extends AppWidgetProvider {
     /** Its size (dp) until the launcher reports one: the target cells. */
     abstract float[] defaultSize();
 
+    /** It has a list (ListWidgetService), refilled on every redraw. */
+    boolean hasList() {
+        return false;
+    }
+
     int[] ids(Context ctx) {
         return AppWidgetManager.getInstance(ctx).getAppWidgetIds(new ComponentName(ctx, getClass()));
     }
@@ -43,6 +50,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
     @Override
     public void onUpdate(Context ctx, AppWidgetManager m, int[] ids) {
         for (int id : ids) redraw(ctx, m, id);
+        WidgetClock.schedule(ctx);
     }
 
     @Override
@@ -63,6 +71,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
             now = System.currentTimeMillis();
         }
         m.updateAppWidget(id, views(ctx, json, now, o, id));
+        if (hasList()) m.notifyAppWidgetViewDataChanged(id, R.id.list);
     }
 
     RemoteViews views(Context ctx, String json, long now, Bundle o, int id) {

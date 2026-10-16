@@ -46,22 +46,33 @@ export async function saveWidgetAuth(signIn) {
   try { await TripWidget.auth(signIn || {}); } catch { /* an app from before 8.45.0 */ }
 }
 
-// Expenses the widget could not send (offline, or before the app handed it
-// the sign-in), written through the app's own Firestore: write(tripId, id,
-// doc) resolves once the write is queued. Another account's wait for them.
+// What the widgets could not send (offline, or before the app handed them
+// the sign-in), written through the app's own Firestore:
+//   addExpense(tripId, id, doc): an expense from the home screen;
+//   setField(path, field, value): a tick in the plan or reminders list.
+// Each resolves once the write is queued. Another account's wait for them.
 // Returns how many were sent.
-export async function sendWidgetExpenses(uid, write) {
+export async function sendWidgetWrites(uid, { addExpense, setField }) {
   if (!isNative || !uid) return 0;
   let items;
   try { items = (await TripWidget.pending()).items || []; } catch { return 0; }
   const sent = [];
   for (const it of items) {
-    if (!it?.id || !it.tripId || !it.doc || (it.uid && it.uid !== uid)) continue;
+    if (!it?.id || (it.uid && it.uid !== uid)) continue;
     try {
-      await write(it.tripId, it.id, { ...it.doc, paidBy: it.doc.paidBy || uid });
+      if (it.kind === 'patch') {
+        // Only what the lists tick: a place visited, a reminder done.
+        const ok = /^trips\/[^/]+\/(planning\/[^/]+|reminders\/[^/]+)$/.test(it.path || '')
+          && ['visited', 'completed'].includes(it.field) && typeof it.value === 'boolean';
+        if (!ok) continue;
+        await setField(it.path, it.field, it.value);
+      } else {
+        if (!it.tripId || !it.doc) continue;
+        await addExpense(it.tripId, it.id, { ...it.doc, paidBy: it.doc.paidBy || uid });
+      }
       sent.push(it.id);
     } catch { /* stays queued; the next open tries again */ }
   }
-  if (sent.length) { try { await TripWidget.done({ ids: sent }); } catch { /* sent twice is the same document */ } }
+  if (sent.length) { try { await TripWidget.done({ ids: sent }); } catch { /* sent twice is the same write */ } }
   return sent.length;
 }

@@ -41,7 +41,7 @@ test('flights: the instant, a title, the route and when', () => {
   assert.equal(back.title, 'טיסת חזור');
 });
 
-test('the plan of each coming day, in time-of-day order, eight items and a count', () => {
+test('the plan of each coming day, in time-of-day order, up to twenty items and a count', () => {
   const days = [
     { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין', timeLabel: 'ערב' }] },
     { id: 'd2', order: 1, date: '2026-11-04', activities: [
@@ -55,8 +55,8 @@ test('the plan of each coming day, in time-of-day order, eight items and a count
   assert.deepEqual(t.days['2026-11-03'], { title: 'יום 1 · הגעה', name: 'הגעה', when: 'יום ג׳ 3.11', items: [{ time: 'ערב', title: 'צ׳ק אין' }], more: 0 });
   const d2 = t.days['2026-11-04'];
   assert.deepEqual(d2.items.slice(0, 3), [{ time: 'בוקר', title: 'לובר' }, { time: 'צהריים', title: 'שאנז אליזה' }, { time: 'ערב', title: 'מסעדה' }]);
-  assert.equal(d2.items.length, 8);
-  assert.equal(d2.more, 1);
+  assert.equal(d2.items.length, 9);
+  assert.equal(d2.more, 0);
   assert.deepEqual(t.days['2026-11-05'], { title: 'יום 3', name: '', when: 'יום ה׳ 5.11', items: [], more: 0 });
   // Days already gone are left out.
   const [later] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now: new Date(2026, 10, 5, 8) }).trips;
@@ -69,14 +69,14 @@ test('packing: how much of the list is packed; open reminders, the soonest first
     { completed: true }, { completed: false, assignedTo: ['other'] },
   ];
   const reminders = [
-    { text: 'מונית', createdAt: 1 }, { text: 'כרטיסים', remindAt: '2026-11-02T09:00', createdAt: 2 },
-    { text: 'נעשה', completed: true, createdAt: 0 },
+    { id: 'r1', text: 'מונית', createdAt: 1 }, { id: 'r2', text: 'כרטיסים', remindAt: '2026-11-02T09:00', createdAt: 2 },
+    { id: 'r3', text: 'נעשה', completed: true, createdAt: 0 },
   ];
   const [t] = widgetSnapshot({ trips: [paris], checklistByTrip: { p: checklist }, remindersByTrip: { p: reminders }, now }).trips;
   assert.deepEqual(t.packed, { done: 2, total: 4 });
   assert.deepEqual(t.reminders, {
     open: 2, next: 'כרטיסים',
-    items: [{ text: 'כרטיסים', at: new Date(2026, 10, 2, 9, 0).getTime() }, { text: 'מונית', at: null }],
+    items: [{ id: 'r2', text: 'כרטיסים', at: new Date(2026, 10, 2, 9, 0).getTime() }, { id: 'r1', text: 'מונית', at: null }],
   });
 });
 
@@ -142,4 +142,21 @@ test('the app\'s theme: light or dark whatever the phone is, else the phone\'s',
   assert.equal(widgetSnapshot({ trips: [paris], theme: 'dark', now }).theme, 'dark');
   assert.equal(widgetSnapshot({ trips: [paris], theme: 'light', now }).theme, 'light');
   assert.equal(widgetSnapshot({ trips: [paris], theme: 'sepia', now }).theme, 'system');
+});
+
+test('a day named only "יום 3" has no name of its own; places say whether they were visited', () => {
+  const days = [{ id: 'd1', order: 0, date: '2026-11-03', title: 'יום 1', activities: [
+    { title: 'לובר', placeId: 'pl1' }, { title: 'אורסיי' }, { title: 'גלידה' },
+  ] }];
+  const plans = [{ id: 'pl1', title: 'לובר', visited: true }, { id: 'pl2', title: 'אורסיי' }];
+  const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, plansByTrip: { p: plans }, now }).trips;
+  const d1 = t.days['2026-11-03'];
+  assert.equal(d1.title, 'יום 1');
+  assert.equal(d1.name, '');
+  // By id, by name as the planning tab matches it, or no place at all.
+  assert.deepEqual(d1.items, [
+    { time: '', title: 'לובר', placeId: 'pl1', visited: true },
+    { time: '', title: 'אורסיי', placeId: 'pl2' },
+    { time: '', title: 'גלידה' },
+  ]);
 });

@@ -1327,17 +1327,16 @@ function AppInner() {
     return () => off();
   }, []);
 
-  // Expenses the widget saved offline or before it had the sign-in: written
-  // now, and whenever the app comes back to the front.
+  // What the widgets saved offline or before they had the sign-in (an
+  // expense, a tick in a list): written now, and whenever the app comes back
+  // to the front. Queued in Firestore's own offline store is enough; it sends it.
   useEffect(() => {
     if (!isNative || !signedInUid) return undefined;
-    const send = () => import('./lib/native/widget').then(w => w.sendWidgetExpenses(signedInUid,
-      // Queued in Firestore's own offline store is enough; it sends it.
-      (tripId, id, data) => Promise.race([
-        setDoc(doc(db, 'trips', tripId, 'expenses', id), data),
-        new Promise(resolve => setTimeout(resolve, 3000)),
-      ]),
-    )).catch(() => {});
+    const queued = (write) => Promise.race([write, new Promise(resolve => setTimeout(resolve, 3000))]);
+    const send = () => import('./lib/native/widget').then(w => w.sendWidgetWrites(signedInUid, {
+      addExpense: (tripId, id, data) => queued(setDoc(doc(db, 'trips', tripId, 'expenses', id), data)),
+      setField: (path, field, value) => queued(updateDoc(doc(db, ...path.split('/')), { [field]: value })),
+    })).catch(() => {});
     send();
     let sub;
     let gone = false;

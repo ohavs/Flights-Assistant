@@ -27,6 +27,48 @@ open_widget() {   # <fixture|none> [widthDp heightDp] [provider]; AUTH64 set: a 
   sleep 3
 }
 texts() { adb shell uiautomator dump /sdcard/w.xml >/dev/null 2>&1; adb pull /sdcard/w.xml w.xml >/dev/null 2>&1; grep -o 'text="[^"]*"' w.xml | sed 's/^text="//; s/"$//' | grep -v '^$' || true; }
+descs() { texts >/dev/null; grep -o 'content-desc="[^"]*"' w.xml | sed 's/^content-desc="//; s/"$//' | grep -v '^$' || true; }
+expect_desc() {   # <shot> <content description>...
+  local shot=$1; shift
+  local seen; seen=$(descs)
+  for t in "$@"; do
+    grep -qF -- "$t" <<<"$seen" || { echo "widget $shot: nothing described \"$t\". Described:"; echo "$seen" | head -20; adb exec-out screencap -p > "widget-$shot-FAILED.png"; exit 1; }
+  done
+  adb exec-out screencap -p > "widget-$shot.png"
+  echo "widget $shot: ok"
+}
+tap_desc() {   # <content description>: taps the view it describes
+  texts >/dev/null
+  local xy
+  xy=$(python3 - "$1" <<'PY'
+import html, re, sys
+s = open('w.xml', encoding='utf8').read()
+for m in re.finditer(r'content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', s):
+    if html.unescape(m.group(1)) == sys.argv[1]:
+        x1, y1, x2, y2 = map(int, m.groups()[1:])
+        print((x1 + x2) // 2, (y1 + y2) // 2)
+        break
+PY
+)
+  if [ -z "$xy" ]; then echo "nothing described \"$1\""; descs | head -20; exit 1; fi
+  adb shell input tap $xy
+  sleep 2
+}
+scroll_list() {   # swipes the widget's list up by most of its height
+  texts >/dev/null
+  local box
+  box=$(python3 - <<'PY'
+import re
+s = open('w.xml', encoding='utf8').read()
+m = re.search(r'resource-id="com\.ohavs\.flightsassistant:id/list"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', s)
+x1, y1, x2, y2 = map(int, m.groups())
+print((x1 + x2) // 2, y2 - 20, y1 + 20)
+PY
+)
+  set -- $box
+  adb shell input swipe "$1" "$2" "$1" "$3" 400
+  sleep 1.5
+}
 tap_text() {   # <text>: taps the view that shows exactly it
   texts >/dev/null
   local xy
@@ -94,10 +136,25 @@ open_widget flight 170 190; expect 8-trip-narrow "5 ימים" "טיסת הלוך
 # The other widgets.
 open_widget flight 170 190 CountdownWidget; expect 9-countdown "5 ימים" "טיסת הלוך" "TLV → CDG"
 open_widget plan 170 190 CountdownWidget;   expect 10-countdown-trip "יום 2 מתוך 4" "בוקר · הלובר"
-open_widget plan 360 290 PlanWidget;        expect 11-plan "היום · מוזיאונים" "פריז עם הילדים · יום 2 מתוך 4" "הלובר" "מגדל אייפל בלילה"
+open_widget plan 360 290 PlanWidget;        expect 11-plan "היום · מוזיאונים" "פריז עם הילדים · יום 2 מתוך 4" "הלובר" "גני טווילרי"
+# The plan scrolls, and a place is ticked as visited (queued: nobody is signed in).
+scroll_list; expect 11b-plan-scrolled "מגדל אייפל בלילה"
+open_widget plan 360 290 PlanWidget
+tap_desc "סמן: הלובר"; expect_desc 11c-plan-ticked "בוצע: הלובר"
+queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
+for t in "planning/pl-louvre" "visited"; do
+  grep -qF -- "$t" <<<"$queue" || { echo "the tick is not queued (\"$t\"):"; echo "$queue"; exit 1; }
+done
+echo "widget: a ticked place is queued for Firestore
 open_widget flight 360 290 PlanWidget;      expect 12-plan-before "יום 1 · הגעה" "בעוד 5 ימים" "צ׳ק אין במלון"
 open_widget flight 170 190 PackWidget;      expect 13-pack "12/22" "55%" "נארזו · פריז עם הילדים"
-open_widget flight 360 190 RemindersWidget; expect 14-reminders "תזכורות" "3 פתוחות" "להזמין מונית לשדה" "היום 18:00" "מטען נייד"
+open_widget flight 360 190 RemindersWidget; expect 14-reminders "תזכורות" "5 פתוחות" "להזמין מונית לשדה" "היום 18:00"
+scroll_list; scroll_list; expect 14b-reminders-scrolled "להשאיר מפתח לשכנים"
+open_widget flight 360 190 RemindersWidget
+tap_desc "סמן: להזמין מונית לשדה"; expect_desc 14c-reminder-ticked "בוצע: להזמין מונית לשדה"; expect 14d-reminders-count "4 פתוחות"
+queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
+grep -qF "reminders/r1" <<<"$queue" && grep -qF "completed" <<<"$queue" || { echo "the done reminder is not queued:"; echo "$queue"; exit 1; }
+echo "widget: a done reminder is queued for Firestore
 # The app set to dark on a light phone.
 open_widget plan-app-dark; want_shade 21a-app-dark dark
 open_widget plan-app-dark 360 300 ExpenseWidget; want_shade 21b-expense-app-dark dark

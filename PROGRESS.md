@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.48.0 (`changelog.md`)
+- גרסת ווב: 8.49.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -27,6 +27,9 @@
   - **ווידג'טים בהיר/כהה (8.46.0):** הם הולכים לפי ההגדרה באפליקציה (`theme` בתמונת המצב).
     - לכל פריסה ולכל ציור יש עותקים `_light` ו־`_dark` שנוצרים ב־`scripts/widget-layouts.py`.
     - ציור חדש לווידג'ט צריך להיכנס ל־`THEMED`, וסגנון טקסט חדש ל־`STYLE_COLOR`. אחר כך מריצים שוב את הסקריפט.
+  - **רשימות בווידג'טים (8.49.0):** הלוז והתזכורות נטענים דרך `ListWidgetService`, והלחיצות עוברות דרך `WidgetActionActivity`.
+    - סימון נשמר כ־`patch` בתור של `ExpenseStore`.
+    - `WidgetClock` מעיר את הווידג'טים בחצות וסביב טיסות.
   - **`widgetData.js` ו־`morningAlerts.js` נשארים בלי Firebase.** הסקריפט `widget-fixtures.mjs` רץ ב־smoke של Android ב־node בלי `node_modules`. לכן קוראים את סדר התוכנית מ־`dayOrder.js`, ולא מ־`dayActivities.js` שכותב.
   - צילומי האמולטור (smoke + ווידג'ט) נדחפים לענף `ci-shots` בכל ריצה של Android. כך רואים אותם: `git fetch origin ci-shots && git show origin/ci-shots:widget-1-flight.png > /tmp/x.png`. ההורדה של artifacts חסומה בפרוקסי.
   - **בקשות הבעלים (2026-10-15, אחרי 8.35.0), לפני N4:** (1) ~~צ'קליסט: לחיצה פותחת, החלקה מוחקת, פריט שסומן יורד בתנועה~~ (8.36.0). (2) ~~סמל האפליקציה לא מתחלף~~ (8.37.0). בוטל ב־8.40.0: הסמל קבוע, "מפה". (3) ~~טקסטורות רקע לכל ערכת צבעים~~ (8.38.0, `.app-container::before` ב־`index.css`, נלמד מ־`ohavs/payments-2026`). ב־Payments יש גם ווידג'ט ו־`scripts/widget-shots.sh`: ללמוד משם ל־N4.

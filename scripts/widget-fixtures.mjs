@@ -24,8 +24,9 @@ const days = [
 ];
 const checklist = Array.from({ length: 22 }, (_, i) => ({ id: `c${i}`, completed: i < 12 }));
 const reminders = [
-  { text: 'להזמין מונית לשדה', createdAt: 1, remindAt: '2026-10-29T18:00' },
-  { text: 'להדפיס כרטיסים', createdAt: 2 }, { text: 'מטען נייד', createdAt: 3 },
+  { id: 'r1', text: 'להזמין מונית לשדה', createdAt: 1, remindAt: '2026-10-29T18:00' },
+  { id: 'r2', text: 'להדפיס כרטיסים', createdAt: 2 }, { id: 'r3', text: 'מטען נייד', createdAt: 3 },
+  { id: 'r4', text: 'לקנות מתאם', createdAt: 4 }, { id: 'r5', text: 'להשאיר מפתח לשכנים', createdAt: 5 },
 ];
 // The expense widget: the trip's last expense was in euros, in a category of its own.
 const expenses = [{ amount: 12, currency: 'EUR', category: 'מוזיאונים', createdAt: '2026-11-03T12:00:00.000Z' }];

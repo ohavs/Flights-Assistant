@@ -19,8 +19,8 @@ import { tripCurrencies, destinationCurrency } from './destinationCurrency.js';
 
 export const WIDGET_TRIPS = 3;      // the current or next trip, and the ones after it
 export const WIDGET_DAYS = 14;      // planner days kept per trip, from today
-const PLAN_ITEMS = 8;    // a tall plan widget shows this many
-const REMINDERS = 5;
+const PLAN_ITEMS = 20;   // the plan widget's list scrolls
+const REMINDERS = 30;    // the reminders widget's list scrolls
 
 const LEGS = [
   { field: 'outboundFlightDetails', name: 'טיסת הלוך' },
@@ -74,7 +74,11 @@ function flightsOf(trip) {
   return out;
 }
 
-function daysOf(trip, days, range, now) {
+// "יום 3" is only the default name of the third day (PlanningTab): the
+// widget says the day's number itself, so that name is no name.
+const ownName = (title) => (/^יום \d+$/.test(String(title || '').trim()) ? '' : String(title || '').trim());
+
+function daysOf(trip, days, range, now, plans) {
   const today = isoOf(now);
   const out = {};
   for (const iso of range.filter(d => d >= today).slice(0, WIDGET_DAYS)) {
@@ -82,14 +86,21 @@ function daysOf(trip, days, range, now) {
     const acts = dayActivities(day?.activities).filter(a => a.title)
       .sort((a, b) => activityRank(a) - activityRank(b));
     const n = range.indexOf(iso);
+    const name = ownName(day?.title);
     out[iso] = {
-      title: [`יום ${n + 1}`, day?.title].filter(Boolean).join(' · '),
-      name: day?.title || '',
+      title: [`יום ${n + 1}`, name].filter(Boolean).join(' · '),
+      name,
       when: whenText(iso),
-      // placeId: the planning tab's place, for an expense the widget links to it.
-      items: acts.slice(0, PLAN_ITEMS).map(a => ({
-        time: a.timeLabel?.trim() || '', title: a.title, ...(a.placeId ? { placeId: a.placeId } : {}),
-      })),
+      // placeId: the planning tab's place (by id, or by name as the tab
+      // matches it), to link an expense to and to tick off as visited.
+      items: acts.slice(0, PLAN_ITEMS).map(a => {
+        const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
+        const placeId = a.placeId || place?.id;
+        return {
+          time: a.timeLabel?.trim() || '', title: a.title,
+          ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}),
+        };
+      }),
       more: Math.max(0, acts.length - PLAN_ITEMS),
     };
   }
@@ -103,7 +114,7 @@ function remindersOf(list) {
   return {
     open: open.length,
     next: open[0]?.text || '',
-    items: open.slice(0, REMINDERS).map(r => ({ text: r.text, at: parseLocal(r.remindAt)?.getTime() ?? null })),
+    items: open.slice(0, REMINDERS).map(r => ({ id: r.id, text: r.text, at: parseLocal(r.remindAt)?.getTime() ?? null })),
   };
 }
 
@@ -152,7 +163,7 @@ export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, r
         start: range[0],
         end: range[range.length - 1],
         flights: flightsOf(trip),
-        days: daysOf(trip, daysByTrip[trip.id], range, now),
+        days: daysOf(trip, daysByTrip[trip.id], range, now, plansByTrip[trip.id]),
         packed: { done: items.filter(it => it.completed).length, total: items.length },
         reminders: remindersOf(remindersByTrip[trip.id]),
         spend,
