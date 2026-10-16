@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { addCategory, saveCategory, removeCategory } from '../lib/categorySettings';
 import { dayActivities, addActivities, updateActivity, removeActivity, swapActivities } from '../lib/dayActivities';
+import { localDay, isoDay } from '../lib/dates';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
@@ -858,11 +859,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       name: newOriginName.trim(),
       mapsUrl: newOriginUrl.trim(),
     };
-    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayUnion(newOrigin) });
+    // The form clears first and the write is not awaited: offline it waits
+    // for the network, and a second tap meanwhile added the origin twice.
     setFormOriginId(newOrigin.id);
     setNewOriginName('');
     setNewOriginUrl('');
     setShowAddOriginForm(false);
+    updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayUnion(newOrigin) })
+      .catch(err => console.error('Add origin failed:', err));
   };
 
   // One-shot: walk every place, fetch + persist its travel times and resolve
@@ -896,8 +900,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     if (!tripId) return;
     const origin = distanceOrigins.find(o => o.id === originId);
     if (!origin) return;
-    await updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayRemove(origin) });
     if (formOriginId === originId) setFormOriginId('hotel');
+    updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayRemove(origin) })
+      .catch(err => console.error('Remove origin failed:', err));
   };
 
   /* ══════════════════════════════════════════════════════════
@@ -1528,8 +1533,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     return () => clearTimeout(t);
   }, [arrivedDayId, days]);
 
-  const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-
   /* "ימים מסונכרנים עם הטיסה" is a confirmation, not a status.
    *
    * It used to render from the persisted comparison between the flight
@@ -1561,26 +1564,23 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         danger: true,
       });
       if (!ok) return;
-      const batch = writeBatch(db);
-      days.forEach(d => batch.delete(doc(db, 'trips', tripId, 'days', d.id)));
-      await batch.commit();
     }
-    const start = new Date(tripFlightDates.out);
-    const end = new Date(tripFlightDates.ret);
+    const start = localDay(String(tripFlightDates.out).slice(0, 10));
+    const end = localDay(String(tripFlightDates.ret).slice(0, 10));
+    if (!start || !end) return;
     const maxDays = 30;
+    // One batch, not awaited: the old days go and the new ones come in the
+    // same write. Deleting first and awaiting it lost the days when the app
+    // was closed offline in between.
     const batch = writeBatch(db);
+    days.forEach(d => batch.delete(doc(db, 'trips', tripId, 'days', d.id)));
     let dayNum = 1;
     const cur = new Date(start);
     while (cur <= end && dayNum <= maxDays) {
-      const dayName = HE_DAYS[cur.getDay()];
-      const yyyy = cur.getFullYear();
-      const mm = String(cur.getMonth() + 1).padStart(2, '0');
-      const dd = String(cur.getDate()).padStart(2, '0');
-      const isoDate = `${yyyy}-${mm}-${dd}`;
       const id = 'day-' + Date.now() + '-' + dayNum;
       batch.set(doc(db, 'trips', tripId, 'days', id), {
         title: `יום ${dayNum}`,
-        date: isoDate,
+        date: isoDay(cur),
         order: dayNum,
         activities: [],
       });
@@ -1591,7 +1591,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     batch.update(doc(db, 'trips', tripId), {
       plannerDaysFromFlight: { out: tripFlightDates.out, ret: tripFlightDates.ret },
     });
-    await batch.commit();
+    batch.commit().catch(err => console.error('Make days failed:', err));
     flashSynced();
   };
 
@@ -3803,7 +3803,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)' }}>
                   {(() => {
-                    const d = new Date(hourlyWeatherDate);
+                    const d = localDay(hourlyWeatherDate) || new Date(hourlyWeatherDate);
                     const dow = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][d.getDay()];
                     return `יום ${dow} ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`;
                   })()}
@@ -4029,7 +4029,7 @@ const DayCard = React.memo(function DayCard({
                   <h3 style={{ fontSize: isSummary ? 16 : 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
                   {day.date && (() => {
                     const [, mm, dd] = day.date.split('-');
-                    const dowIdx = new Date(day.date).getDay();
+                    const dowIdx = (localDay(day.date) || new Date(day.date)).getDay();
                     const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
                     const dayW = weatherByDate[day.date];
                     return (<>

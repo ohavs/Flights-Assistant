@@ -494,12 +494,11 @@ function ShareModal({ tripId, currentUid, onClose }) {
     });
     if (!ok) return;
     try {
-      // Build the new members map without that uid
-      const newMembers = { ...(trip?.members || {}) };
-      delete newMembers[uid];
       const gone = members.find(m => m.uid === uid);
+      // Only this uid's key: rewriting the whole map from the state would
+      // drop anyone added meanwhile from `members` (left in memberIds, no role).
       await updateDoc(doc(db, 'trips', tripId), {
-        members: newMembers,
+        [`members.${uid}`]: deleteField(),
         memberIds: arrayRemove(uid),
         // Nothing they added is deleted — the content belongs to the trip,
         // not to the person. But once the uid leaves `members` their
@@ -1684,10 +1683,8 @@ function AppInner() {
     if (!user) return;
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
-    const newMembers = { ...(trip.members || {}) };
-    delete newMembers[user.uid];
     await updateDoc(doc(db, 'trips', tripId), {
-      members: newMembers,
+      [`members.${user.uid}`]: deleteField(),   // see removeMember
       memberIds: arrayRemove(user.uid),
       // See removeMember: leaving takes the person out, never their work.
       // The snapshot is what keeps their name on it afterwards.

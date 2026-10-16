@@ -125,6 +125,25 @@ await step('expenses: tap opens the form; a swipe deletes, and so does the form'
   await card('קפה וקרואסון').waitFor({ state: 'detached' });
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
 });
+// Offline (abroad without roaming), deleting from the form still closes
+// it: the delete waits in the local cache, and the card goes at once.
+await step('expenses: deleting offline closes the form', async () => {
+  await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
+  await page.getByPlaceholder('0.00').fill('18');
+  await page.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill('מונית לשדה');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await card('מונית לשדה').waitFor();
+  await page.context().setOffline(true);
+  try {
+    await card('מונית לשדה').locator('.list-card-title').tap();
+    await page.locator('.sheet-footer button[aria-label="מחיקה"]').tap();
+    await page.locator('.modal-overlay button.btn-primary.danger').click();
+    await page.locator('.modal-overlay').waitFor({ state: 'detached', timeout: 3000 });
+    await card('מונית לשדה').waitFor({ state: 'detached', timeout: 3000 });
+  } finally {
+    await page.context().setOffline(false);
+  }
+});
 
 // ── Important info (the flight tab's card opens it) ──
 await tab('טיסה ומלון');

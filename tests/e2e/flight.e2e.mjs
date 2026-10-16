@@ -183,5 +183,31 @@ await step('saving hotel details offline closes the form', async () => {
   }
 });
 
+// '2026-11-03' was read as midnight UTC: on a phone west of Greenwich, the
+// evening before. Days made from the flight dates came out a day early.
+await step('days made from the flight dates are those dates, in a US time zone too', async () => {
+  await patch(['outboundFlightDetails.date', 'returnFlightDetails.date'], {
+    outboundFlightDetails: { mapValue: { fields: { date: { stringValue: '2026-11-03' } } } },
+    returnFlightDetails: { mapValue: { fields: { date: { stringValue: '2026-11-05' } } } },
+  });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTimezoneOverride', { timezoneId: 'America/Los_Angeles' });
+  try {
+    await page.locator('nav button.nav-item[aria-label="תכנון טיול"]').click();
+    await page.locator('[role="tab"]', { hasText: 'לוח זמנים' }).click();
+    await page.getByRole('button', { name: 'ייצר ימים לפי תאריכי הטיסה' }).click();
+    let dates = [];
+    for (let i = 0; i < 20 && dates.length < 3; i++) {
+      await page.waitForTimeout(250);
+      const list = await (await fetch(`${DB}/trips/${tripId}/days`, { headers: admin })).json();
+      dates = (list.documents || []).map(d => d.fields.date.stringValue).sort();
+    }
+    if (dates.join() !== '2026-11-03,2026-11-04,2026-11-05') throw new Error(`days: ${dates.join() || 'none'}`);
+    await page.getByText('ג׳ 03.11').first().waitFor();   // Tuesday, on the day's card
+  } finally {
+    await cdp.send('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
+  }
+});
+
 await browser.close();
 process.exit(failed ? 1 : 0);

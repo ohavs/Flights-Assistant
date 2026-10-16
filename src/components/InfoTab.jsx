@@ -184,7 +184,8 @@ export default function InfoTab({ tripId, embedded = false }) {
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
     if (!ok) return false;
-    await deleteDoc(doc(db, 'trips', tripId, 'info', item.id));
+    // Not awaited, so the sheet closes offline too (see ExpensesTab).
+    deleteDoc(doc(db, 'trips', tripId, 'info', item.id)).catch(err => console.error('Delete info failed:', err));
     return true;
   };
 
