@@ -44,6 +44,7 @@ import Fab from './Fab';
 import EmptyState from './EmptyState';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
+import { withScheme } from '../lib/links';
 import {
   Search,
   Plus,
@@ -803,7 +804,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const newOrigin = {
       id: 'origin-' + Date.now(),
       name: newOriginName.trim(),
-      mapsUrl: newOriginUrl.trim(),
+      mapsUrl: withScheme(newOriginUrl),
     };
     // The form clears first and the write is not awaited: offline it waits
     // for the network, and a second tap meanwhile added the origin twice.
@@ -959,7 +960,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const handleAddLinkRow = () => {
     const url = newLinkUrl.trim();
     if (!url) return;
-    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const normalized = withScheme(url);
     // An empty name stays empty — the URL is never copied into the name
     // field, so editing the link later shows the two values distinctly.
     setLinks(prev => [...prev, { label: newLinkLabel.trim(), url: normalized }]);
@@ -998,7 +999,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const handleSaveEditLink = () => {
     const url = editLinkUrl.trim();
     if (!url) return;
-    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const normalized = withScheme(url);
     setLinks(prev => prev.map((l, i) => (
       i === editingLinkIdx ? { label: editLinkLabel.trim(), url: normalized } : l
     )));
@@ -2039,7 +2040,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
                                 <input
-                                  type="url"
+                                  type="text"
+                                  inputMode="url"
                                   className="form-control"
                                   placeholder="https://..."
                                   value={editLinkUrl}
@@ -2107,7 +2109,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
                         <input
-                          type="url"
+                          type="text"
+                          inputMode="url"
                           className="form-control"
                           placeholder="https://..."
                           value={newLinkUrl}
@@ -2231,7 +2234,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                   style={{ fontSize: 13 }}
                                 />
                                 <input
-                                  type="url"
+                                  type="text"
+                                  inputMode="url"
                                   className="form-control"
                                   placeholder="קישור לגוגל מפות"
                                   value={newOriginUrl}

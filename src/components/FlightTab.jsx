@@ -11,6 +11,7 @@ import { WeatherChip, InfoCard } from './TripHeaderInfo';
 import Fab from './Fab';
 import Skeleton from './Skeleton';
 import Notice from '../ui/Notice';
+import { withScheme } from '../lib/links';
 import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
 import {
   MapPin,
@@ -685,7 +686,7 @@ export default function FlightTab({ tripId }) {
     hotelDetails: {
       name: v.formHotelName,
       address: v.formHotelAddress,
-      link: v.formHotelLink,
+      link: withScheme(v.formHotelLink),
       checkIn: v.formHotelCheckIn,
       checkOut: v.formHotelCheckOut,
       roomNumber: v.formHotelRoom,
@@ -1039,7 +1040,7 @@ export default function FlightTab({ tripId }) {
             )}
             {hotel.link && (
               <a
-                href={hotel.link}
+                href={withScheme(hotel.link)}
                 target="_blank"
                 rel="noreferrer"
                 style={{
@@ -1319,7 +1320,8 @@ export default function FlightTab({ tripId }) {
                 <div className="form-group">
                   <label>קישור Google Maps</label>
                   <input
-                    type="url"
+                    type="text"
+                    inputMode="url"
                     className="form-control"
                     value={formHotelLink}
                     onChange={(e) => setFormHotelLink(e.target.value)}

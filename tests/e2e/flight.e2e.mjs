@@ -167,6 +167,19 @@ await step("saving the hotel keeps a partner's change made while the form was op
   if (got[0] !== 'שם ששותף נתן' || got[1] !== 'מלון חדש') throw new Error(`after save: ${JSON.stringify(got)}`);
 });
 
+// A link typed without https:// saves (the browser refused a type="url"
+// field), and is kept with it.
+await step('a hotel link without https:// saves, with https:// added', async () => {
+  await page.locator('button[title="ערוך פרטי מלון"]').click();
+  await page.getByText('עריכת פרטי המלון').waitFor();
+  await page.getByPlaceholder('https://maps.google.com/...').fill('maps.app.goo.gl/hotel42');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await page.getByText('עריכת פרטי המלון').waitFor({ state: 'detached', timeout: 3000 });
+  await page.waitForTimeout(1500);
+  const link = (await tripDoc()).hotelDetails.mapValue.fields.link?.stringValue;
+  if (link !== 'https://maps.app.goo.gl/hotel42') throw new Error(`link: ${link}`);
+});
+
 // Offline (no reception at the airport), "שמור" still closes the form;
 // the write waits in the local cache and the card shows it at once.
 await step('saving hotel details offline closes the form', async () => {

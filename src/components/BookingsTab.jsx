@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { changedFields } from '../lib/changes';
+import { withScheme } from '../lib/links';
 import {
   UtensilsCrossed, Compass, Landmark, Ticket, Train, BedDouble, Tag,
   Pencil, Trash2, Phone, MapPin, ExternalLink, Copy, Check, Users, Clock,
@@ -84,7 +85,6 @@ function dateLeaf(date) {
   return { dow: `יום ${DOW[new Date(y, m - 1, d).getDay()]}`, day: d, month: MONTHS[m - 1] };
 }
 
-const normalizeUrl = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 const telHref = (p) => `tel:${String(p).replace(/[^0-9+]/g, '')}`;
 const mapsHref = (a) => (/^https?:\/\//i.test(a) ? a : `https://maps.google.com/?q=${encodeURIComponent(a)}`);
 
@@ -192,7 +192,7 @@ export default function BookingsTab({ tripId }) {
       bookedUnder: f.bookedUnder.trim(),
       address: f.address.trim(),
       phone: f.phone.trim(),
-      url: f.url.trim() ? normalizeUrl(f.url.trim()) : '',
+      url: withScheme(f.url),
       price: f.price.trim(),
       payment: f.payment || null,
       status: f.status || 'confirmed',
