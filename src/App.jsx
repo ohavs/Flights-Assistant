@@ -1249,6 +1249,31 @@ function AppInner() {
     return () => { offs.forEach(off => off()); clearTimeout(timer); };
   }, [tripIdsKey, signedInUid, notifyVersion]);
 
+  // Bookings (Android app): listen to every trip's bookings and notify each
+  // member at the time they picked, on the booking's day or the day before.
+  useEffect(() => {
+    if (!isNative || !signedInUid || !tripIdsKey) return undefined;
+    const byTrip = {};
+    let timer;
+    const sync = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        Promise.all([import('./lib/native/notify'), import('./lib/bookingAlerts')]).then(async ([n, b]) => {
+          const list = tripsRef.current.filter(t => !pendingDelete(t));
+          const alerts = b.bookingAlerts(list, byTrip, n.bookingTime(), n.bookingDay());
+          if (alerts.length && n.notifyPrefs().booking) await n.askPermissionOnce();
+          await n.syncNotifications('booking', alerts);
+        }).catch(() => {});
+      }, 400);
+    };
+    const offs = tripIdsKey.split(',').map(id => listen(
+      collection(db, 'trips', id, 'bookings'),
+      (snap) => { byTrip[id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
+      () => {},
+    ));
+    return () => { offs.forEach(off => off()); clearTimeout(timer); };
+  }, [tripIdsKey, signedInUid, notifyVersion]);
+
   // Morning summary (Android app): for the trips with a day in the coming
   // week, listen to their planner days and schedule each morning with that
   // day's plan and the forecast at scheduling time. The key carries the
