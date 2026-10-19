@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.52.2 (`changelog.md`)
+- גרסת ווב: 8.53.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -29,6 +29,9 @@
     - לכל פריסה ולכל ציור יש עותקים `_light` ו־`_dark` שנוצרים ב־`scripts/widget-layouts.py`.
     - ציור חדש לווידג'ט צריך להיכנס ל־`THEMED`, וסגנון טקסט חדש ל־`STYLE_COLOR`. אחר כך מריצים שוב את הסקריפט.
   - **ווידג'ט לפי טיול (8.51.0):** `WidgetTrips` קובע לאיזה טיול שייך כל ווידג'ט, ו־`WidgetTripActivity` הוא מסך הבחירה. `WidgetKit.momentOf(ctx, widgetId)` מכבד את השיוך.
+  - **מטבעות לווידג'ט ההוצאות (8.53.0):** במסך ההגדרות שלו (`WidgetTripActivity`) בוחרים טיול ומטבעות, ושומרים ב"שמירה".
+    - הרשימה נשמרת לכל ווידג'ט ב־`expense_widget` בשם `curs_<id>` (`ExpenseWidget.own`/`setOwn`). כשהרשימה זהה לזו של הטיול לא שומרים אותה, והיא ממשיכה להתעדכן לפי הטיול.
+    - תמונת המצב מכילה `currencies`, כל המטבעות מ־`CURRENCY_META`, ו־`rates` לכולם.
   - **רשימות בווידג'טים (8.49.0):** הלוז והתזכורות נטענים דרך `ListWidgetService`, והלחיצות עוברות דרך `WidgetActionActivity`.
     - סימון נשמר כ־`patch` בתור של `ExpenseStore`.
     - `WidgetClock` מעיר את הווידג'טים בחצות וסביב טיסות.
