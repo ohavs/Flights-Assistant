@@ -124,6 +124,21 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # The emulator action downloads the system image itself, and once in a
+      # while the download comes back broken ("Error on ZipFile unknown
+      # archive"): the job then dies before any test. Fetched here first,
+      # with retries; the action finds it installed.
+      - name: Fetch the emulator's system image
+        run: |
+          SDKM=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
+          IMG="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+          for i in 1 2 3; do
+            echo y | "$SDKM" --install 'system-images;android-34;google_apis;x86_64' --channel=0 > /dev/null || true
+            [ -f "$IMG/system.img" ] && exit 0
+            echo "system image download $i failed; trying again"
+            rm -rf "$IMG"; sleep 10
+          done
+          exit 1
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
