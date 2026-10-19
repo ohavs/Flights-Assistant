@@ -742,10 +742,10 @@ export default function ExpensesTab({ tripId }) {
                   <label>מי שילם</label>
                   <button type="button"
                     onClick={() => payerUids.length > 1 && setShowPayerDropdown(s => !s)}
-                    className="custom-dropdown-trigger"
+                    className="form-control picker-field custom-dropdown-trigger"
                     aria-haspopup="listbox"
                     aria-expanded={showPayerDropdown}
-                    style={{ cursor: payerUids.length > 1 ? 'pointer' : 'default', paddingTop: 8, paddingBottom: 8 }}
+                    style={{ cursor: payerUids.length > 1 ? 'pointer' : 'default' }}
                   >
                     <MemberAvatar profile={getPayerProfile(paidBy || currentUid)} size={24} />
                     <span style={{ flex: 1, textAlign: 'right' }}>
@@ -753,7 +753,7 @@ export default function ExpensesTab({ tripId }) {
                       {(paidBy || currentUid) === currentUid && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
                     </span>
                     {payerUids.length > 1 && (
-                      <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showPayerDropdown ? 'rotate(180deg)' : 'none' }} />
+                      <span className="picker-field-chev" aria-hidden="true"><ChevronDown size={16} strokeWidth={2.6} /></span>
                     )}
                   </button>
                   {showPayerDropdown && payerUids.length > 1 && (

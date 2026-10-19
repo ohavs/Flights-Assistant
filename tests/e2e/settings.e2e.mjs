@@ -107,8 +107,7 @@ await step("a trip's header opens settings on that trip and tab", async () => {
   await page.locator('.trip-card', { hasText: 'רומא' }).filter({ hasNotText: '(יובא)' }).getByText('פתח טיול').click();
   await page.locator('nav button.nav-item[aria-label="תכנון טיול"]').click();
   await openSettings();
-  const sel = sheet().locator('#settings-trip');
-  const picked = await sel.evaluate(el => el.options[el.selectedIndex].text);
+  const picked = (await sheet().locator('[data-testid="settings-trip"] .picker-field-text').innerText()).trim();
   if (picked !== 'גיבויים') throw new Error(`trip ${picked}`);
   const pressed = await sheet().locator('.chip[aria-pressed="true"]').innerText();
   if (pressed !== 'תכנון') throw new Error(`scope ${pressed}`);

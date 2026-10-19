@@ -79,7 +79,28 @@ await step('bookings: tapping the card opens its form', async () => {
   const min = await smallestField();
   if (min < 16) throw new Error(`a field is ${min}px`);
   await page.locator('.sheet-footer button[aria-label="מחיקה"]').waitFor();
+});
+// The time wheels go round: the picked minute sits in the middle, and
+// scrolling back from 00 reaches 59. Every chooser field shows its icon.
+await step('bookings: the time wheels loop, and the date field has its icon', async () => {
+  const form = page.getByRole('dialog').last();
+  const icons = await form.locator('.picker-field-icon').evaluateAll(els => els.map(e => e.getBoundingClientRect().width));
+  if (icons.length < 2 || icons.some(w => w < 20)) throw new Error(`icons ${JSON.stringify(icons)}`);
+  await form.locator('.picker-field', { hasText: 'בחר שעה' }).click();
+  const readout = page.locator('.picker-readout');
+  const minutes = page.locator('.wheel[aria-label="דקה"]');
+  if ((await minutes.locator('.wheel-row.on').innerText()) !== '00') throw new Error('00 is not in the middle');
+  const box = await minutes.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -44 * 2);
+  await page.waitForFunction(() => document.querySelector('.picker-readout')?.textContent.trim() === '12:58');
+  // A tap picks the number and brings it to the middle.
+  await page.locator('.wheel[aria-label="שעה"] .wheel-row:text-is("13")').nth(4).click();   // the middle copy
+  if ((await readout.innerText()).trim() !== '13:58') throw new Error(`readout ${await readout.innerText()}`);
+  await page.getByRole('button', { name: 'בחירה', exact: true }).click();
+  await form.locator('.picker-field', { hasText: '13:58' }).waitFor();
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
+  await page.getByRole('button', { name: 'צא בלי לשמור' }).click({ timeout: 2000 }).catch(() => {});
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
 });
 await step('bookings: no ⋯ on a phone; a swipe deletes (the tap already edits)', async () => {

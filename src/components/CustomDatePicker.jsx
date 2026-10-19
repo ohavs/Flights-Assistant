@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useBackHandler from '../hooks/useBackHandler';
-import { Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, ChevronDown, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, CalendarClock, Clock, ChevronRight, ChevronLeft, ChevronDown, Check } from 'lucide-react';
+import { Segmented } from '../ui/Sheet';
+import { haptic } from '../lib/platform';
 
 const MONTHS_HE = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -40,6 +42,48 @@ export function formatHebrewDateTime(dateTimeStr) {
   if (!timePart) return formatHebrewDate(datePart);
   const [h, m] = timePart.split(':');
   return `${formatHebrewDate(datePart)} בשעה ${h}:${m}`;
+}
+
+/* ══════════════════════════════════════════════════════════
+   SHARED PIECES
+   ══════════════════════════════════════════════════════════ */
+
+/* The field a picker opens from. A button that wears the field's look,
+   with what it holds at its start (a calendar, a clock) so a chooser
+   never reads as a box to type into. */
+function PickerField({ Icon, filled, onOpen, children }) {
+  return (
+    <button type="button" onClick={onOpen} className="form-control picker-field">
+      <span className="picker-field-icon" aria-hidden="true"><Icon size={16} strokeWidth={2.4} /></span>
+      <span className={`picker-field-text${filled ? '' : ' is-empty'}`}>{children}</span>
+    </button>
+  );
+}
+
+/* The window every picker opens in. Portalled to <body>: these pickers
+   sit inside a .glass-card, and a backdrop-filtered ancestor becomes the
+   containing block for position:fixed children — left in place the
+   overlay is positioned against the card and clipped by it. */
+function PickerDialog({ title, onClose, readout, okLabel, onOk, children }) {
+  return createPortal(
+    <div className="picker-overlay" onClick={onClose}>
+      <div className="picker-card" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className="picker-head">
+          <span className="picker-title">{title}</span>
+          <button type="button" aria-label="סגור" className="btn-close" onClick={onClose}>✕</button>
+        </div>
+        {children}
+        {/* The readout is the anchor: it always says what is selected,
+            and changes the instant anything is picked. */}
+        <div className="picker-readout">{readout}</div>
+        <div className="picker-actions">
+          <button type="button" onClick={onOk} className="btn-primary">{okLabel}</button>
+          <button type="button" onClick={onClose} className="btn-secondary">ביטול</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -87,53 +131,22 @@ function CalendarBody({ selectedDateStr, onSelect }) {
   const todayStr = formatDateISO(new Date());
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', userSelect: 'none' }}>
-      {/* Month Year Selector */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', direction: 'rtl' }}>
-        <button
-          type="button"
-          onClick={handlePrevMonth}
-          aria-label="החודש הקודם"
-          style={{
-            background: 'var(--ink-4)', border: 'none',
-            width: '32px', height: '32px', borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', color: 'var(--primary)'
-          }}
-        >
-          <ChevronRight size={18} />
+    <div className="cal">
+      <div className="cal-head">
+        <button type="button" className="cal-nav" onClick={handlePrevMonth} aria-label="החודש הקודם">
+          <ChevronRight size={18} strokeWidth={2.5} />
         </button>
-
-        <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--primary)' }}>
-          {MONTHS_HE[currentMonth]} {currentYear}
-        </span>
-
-        <button
-          type="button"
-          onClick={handleNextMonth}
-          aria-label="החודש הבא"
-          style={{
-            background: 'var(--ink-4)', border: 'none',
-            width: '32px', height: '32px', borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', color: 'var(--primary)'
-          }}
-        >
-          <ChevronLeft size={18} />
+        <span className="cal-month">{MONTHS_HE[currentMonth]} {currentYear}</span>
+        <button type="button" className="cal-nav" onClick={handleNextMonth} aria-label="החודש הבא">
+          <ChevronLeft size={18} strokeWidth={2.5} />
         </button>
       </div>
 
-      {/* Weekdays header */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', gap: '4px' }}>
-        {DAYS_HE.map((day, idx) => (
-          <span key={idx} style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)' }}>
-            {day}
-          </span>
-        ))}
+      <div className="cal-week">
+        {DAYS_HE.map((day, idx) => <span key={idx}>{day}</span>)}
       </div>
 
-      {/* Days grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+      <div className="cal-grid">
         {daysGrid.map((item, idx) => {
           if (item.isPadding) {
             return <div key={`pad-${idx}`} />;
@@ -147,32 +160,10 @@ function CalendarBody({ selectedDateStr, onSelect }) {
             <button
               key={`day-${item.dayNum}`}
               type="button"
-              className="cal-day"
+              className={`cal-day${isToday ? ' is-today' : ''}`}
               aria-pressed={isSelected}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => onSelect(thisDateStr)}
-              style={{
-                aspectRatio: '1/1',
-                borderRadius: '8px',
-                border: isToday ? '1.5px solid var(--accent)' : 'none',
-                background: isSelected 
-                  ? 'var(--brand)' 
-                  : isToday 
-                    ? 'var(--p-6)' 
-                    : 'var(--ink-2)',
-                color: isSelected 
-                  ? 'var(--brand-fg)' 
-                  : isToday 
-                    ? 'var(--accent)' 
-                    : 'var(--primary)',
-                fontWeight: isSelected || isToday ? '800' : '600',
-                fontSize: '14px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.1s ease'
-              }}
             >
               {item.dayNum}
             </button>
@@ -183,134 +174,129 @@ function CalendarBody({ selectedDateStr, onSelect }) {
   );
 }
 
-/* Scroll a wheel so its selected row sits in the middle.
-
-   Measured from bounding rects on purpose. The obvious `el.offsetTop`
-   is relative to the nearest *positioned* ancestor, and these columns set
-   no position of their own — so offsetTop came back measured from the
-   modal's fixed overlay, hundreds of pixels too large, and the column
-   scrolled to a place that had nothing to do with the selected value.
-   That is what made an open picker show 19-23 while it held 15:00. */
-function centreOnActive(ref, cls) {
-  const wheel = ref.current;
-  if (!wheel) return;
-  const el = wheel.querySelector('.' + cls);
-  if (!el) return;
-  const wheelRect = wheel.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  wheel.scrollTop += (elRect.top - wheelRect.top) - (wheelRect.height - elRect.height) / 2;
-}
-
 /* ══════════════════════════════════════════════════════════
-   TIME PICKER BODY
+   TIME WHEELS
    ══════════════════════════════════════════════════════════ */
-function TimeBody({ hour, minute, onChangeTime }) {
-  const hoursList = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-  const minutesList = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+const pad2 = (s) => String(s ?? '').padStart(2, '0');
+const ROW = 44; // a wheel row's height, px — .wheel-row in index.css
 
-  const hourRef = useRef(null);
-  const minRef = useRef(null);
+/* One wheel. The value is whatever sits in the band in the middle; a
+   scroll that comes to rest there picks it, and a tap scrolls a number
+   there and picks it at once.
 
-  // Open on the value already set, centred in both columns.
+   It goes round: the list is drawn several times over, and when the
+   wheel comes to rest outside the middle copy it is moved back into it —
+   onto the same number, so nothing on screen changes. Scrolling up from
+   00 reaches 59, and down from 59 reaches 00. The middle row's look is
+   switched on the element itself rather than through state, so a scroll
+   does not re-render a few hundred rows on every frame. */
+function Wheel({ values, value, onChange, label }) {
+  const ref = useRef(null);
+  const n = values.length;
+  const copies = Math.max(5, Math.ceil(200 / n)) | 1;   // odd, so there is a middle one
+  const home = Math.floor(copies / 2) * n;               // the middle copy's first row
+  const at = useRef(-1);          // the row in the band now
+  const sent = useRef(value);     // the last value this wheel reported
+  const settle = useRef(null);
+  const report = useRef(onChange);
+  useLayoutEffect(() => { report.current = onChange; });
+
+  const rowAt = () => Math.round(ref.current.scrollTop / ROW);
+  const mark = (row) => {
+    if (row === at.current) return false;
+    const rows = ref.current.children;   // [pad, ...rows, pad]
+    rows[at.current + 1]?.classList.remove('on');
+    rows[row + 1]?.classList.add('on');
+    at.current = row;
+    return true;
+  };
+  const jump = (row) => { ref.current.scrollTop = row * ROW; mark(row); };
+  const send = (v) => { if (v !== sent.current) { sent.current = v; report.current(v); } };
+
+  // Open on the value, in the middle copy.
+  useLayoutEffect(() => {
+    jump(home + Math.max(0, values.indexOf(value)));
+    return () => clearTimeout(settle.current);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A value set from outside, not by this wheel, moves the wheel to it.
   useEffect(() => {
-    requestAnimationFrame(() => {
-      centreOnActive(hourRef, 'active-hour');
-      centreOnActive(minRef, 'active-min');
+    if (value === sent.current) return;
+    sent.current = value;
+    jump(home + Math.max(0, values.indexOf(value)));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rest = () => {
+    if (!ref.current) return;
+    const row = rowAt();
+    const i = ((row % n) + n) % n;
+    if (row < home || row >= home + n) jump(home + i);
+    send(values[i]);
+  };
+
+  const onScroll = () => {
+    if (mark(rowAt())) haptic('select');
+    clearTimeout(settle.current);
+    settle.current = setTimeout(rest, 120);
+  };
+
+  const onClick = (e) => {
+    const b = e.target.closest('.wheel-row');
+    if (!b) return;
+    const row = Number(b.dataset.row);
+    ref.current.scrollTo({ top: row * ROW, behavior: 'smooth' });
+    send(values[row % n]);
+  };
+
+  const onKeyDown = (e) => {
+    const step = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    ref.current.scrollBy({ top: step * ROW, behavior: 'smooth' });
+  };
+
+  const rows = [];
+  for (let c = 0; c < copies; c++) {
+    values.forEach((v, i) => {
+      const row = c * n + i;
+      rows.push(<button key={row} type="button" tabIndex={-1} className="wheel-row" data-row={row}>{v}</button>);
     });
-  }, []);
+  }
 
   return (
-    // Hour left, minute right — the order HH:MM is read in.
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '240px', maxHeight: '240px', direction: 'ltr' }}>
-      {/* Hours Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
-        <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>שעה</span>
+    <div className="wheel-col">
+      <span className="wheel-label">{label}</span>
+      <div className="wheel-frame">
+        <div className="wheel-band" aria-hidden="true" />
         <div
-          ref={hourRef}
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: 'auto',
-            border: '1px solid var(--ink-8)',
-            borderRadius: '12px',
-            background: 'var(--ink-2)',
-            padding: '6px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px'
-          }}
+          ref={ref}
+          className="wheel"
+          role="spinbutton"
+          aria-label={label}
+          aria-valuetext={value}
+          tabIndex={0}
+          onScroll={onScroll}
+          onClick={onClick}
+          onKeyDown={onKeyDown}
         >
-          {hoursList.map(h => {
-            const isActive = h === hour;
-            return (
-              <button
-                key={h}
-                type="button"
-                className={isActive ? 'active-hour' : ''}
-                onClick={() => onChangeTime(h, minute)}
-                style={{
-                  padding: '8px 0',
-                  border: 'none',
-                  borderRadius: '8px',
-                  background: isActive ? 'var(--brand)' : 'transparent',
-                  color: isActive ? 'var(--brand-fg)' : 'var(--text)',
-                  fontWeight: isActive ? '800' : '600',
-                  fontSize: '15px',
-                  cursor: 'pointer',
-                  textAlign: 'center'
-                }}
-              >
-                {h}
-              </button>
-            );
-          })}
+          <div className="wheel-pad" />
+          {rows}
+          <div className="wheel-pad" />
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Minutes Column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0, overflow: 'hidden' }}>
-        <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '4px' }}>דקה</span>
-        <div
-          ref={minRef}
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: 'auto',
-            border: '1px solid var(--ink-8)',
-            borderRadius: '12px',
-            background: 'var(--ink-2)',
-            padding: '6px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px'
-          }}
-        >
-          {minutesList.map(m => {
-            const isActive = m === minute;
-            return (
-              <button
-                key={m}
-                type="button"
-                className={isActive ? 'active-min' : ''}
-                onClick={() => onChangeTime(hour, m)}
-                style={{
-                  padding: '8px 0',
-                  border: 'none',
-                  borderRadius: '8px',
-                  background: isActive ? 'var(--brand)' : 'transparent',
-                  color: isActive ? 'var(--brand-fg)' : 'var(--text)',
-                  fontWeight: isActive ? '800' : '600',
-                  fontSize: '15px',
-                  cursor: 'pointer',
-                  textAlign: 'center'
-                }}
-              >
-                {m}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+// Hours left, minutes right — the order HH:MM is read in, in Hebrew too.
+function TimeWheels({ hour, minute, onHour, onMinute }) {
+  return (
+    <div className="wheels">
+      <Wheel label="שעה" values={HOURS} value={hour} onChange={onHour} />
+      <span className="wheel-colon" aria-hidden="true">:</span>
+      <Wheel label="דקה" values={MINUTES} value={minute} onChange={onMinute} />
     </div>
   );
 }
@@ -331,10 +317,6 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
     }
   }, [value]);
 
-  const handleSelectDate = (dateStr) => {
-    setTempDateStr(dateStr);
-  };
-
   const handleSave = () => {
     onChange(tempDateStr);
     setIsOpen(false);
@@ -343,134 +325,41 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
   const isCompact = variant === 'compact';
 
   return (
-    <div className="date-picker" style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
+    <div className="date-picker field-wrap">
       {label && <label className="field-label">{label}</label>}
-      
-      {/* Trigger Button Input-styled */}
-      <div 
-        onClick={() => setIsOpen(true)}
-        className={isCompact ? '' : 'form-control'}
-        style={isCompact ? {
-          display: 'flex',
-          alignItems: 'center',
-          // Centred: the compact trigger is the whole content of a tile,
-          // and space-between pushed it against the tile's start edge.
-          justifyContent: 'center',
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 'none',
-          padding: '2px 0',
-          width: '100%',
-          boxShadow: 'none'
-        } : {
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          minWidth: 0,
-          cursor: 'pointer',
-        }}
-      >
-        <span className={isCompact ? undefined : 'date-trigger-text'} style={{
-          fontSize: isCompact ? '13px' : '16px',
-          fontWeight: isCompact ? '800' : '600',
-          color: isCompact ? 'var(--primary-color)' : (value ? 'var(--text)' : 'var(--text-muted)'),
-          whiteSpace: 'nowrap',
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
+
+      {isCompact ? (
+        // The compact trigger is the whole content of a tile: just the date.
+        <button type="button" onClick={() => setIsOpen(true)} className="date-compact">
           {value
-            ? (isCompact
-                // The compact trigger sits inside a narrow tile — a full
-                // "27 באוגוסט 2026" wraps to two lines there.
-                ? parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
-                : <>
-                    {/* Two pickers share a row on a phone. When the column is
-                        too narrow for "29 בנובמבר 2026" the month is
-                        abbreviated (container query in index.css). */}
-                    <span className="date-long">{formatHebrewDate(value)}</span>
-                    <span className="date-short">{parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </>)
+            // A full "27 באוגוסט 2026" wraps to two lines in a narrow tile.
+            ? parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
             : 'בחר תאריך...'}
-        </span>
-        {!isCompact && <CalendarIcon className="date-trigger-icon" size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
-      </div>
+        </button>
+      ) : (
+        <PickerField Icon={CalendarIcon} filled={!!value} onOpen={() => setIsOpen(true)}>
+          {value
+            ? <>
+                {/* Two pickers share a row on a phone. When the column is
+                    too narrow for "29 בנובמבר 2026" the month is
+                    abbreviated (container query in index.css). */}
+                <span className="date-long">{formatHebrewDate(value)}</span>
+                <span className="date-short">{parseDateISO(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </>
+            : 'בחר תאריך...'}
+        </PickerField>
+      )}
 
-      {/* Modal overlay — portalled to <body>. Every one of these pickers
-          sits inside a .glass-card, and a backdrop-filtered ancestor becomes
-          the containing block for position:fixed children: left in place the
-          overlay is positioned against the card and clipped by it. */}
-      {isOpen && createPortal(
-        <div 
-          onClick={() => setIsOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'var(--ink-40)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }}
+      {isOpen && (
+        <PickerDialog
+          title={label || 'בחירת תאריך'}
+          onClose={() => setIsOpen(false)}
+          readout={formatHebrewDate(tempDateStr)}
+          okLabel="בחירה"
+          onOk={handleSave}
         >
-          {/* Glass Card content */}
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: '360px',
-              background: 'var(--surface)',
-              borderRadius: '24px',
-              boxShadow: 'var(--shadow-lg)',
-              border: '1px solid var(--ink-8)',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              animation: 'fadeIn 0.2s ease-out'
-            }}
-          >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--ink-6)', paddingBottom: '10px' }}>
-              <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>
-                {label || 'בחירת תאריך'}
-              </span>
-              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
-            </div>
-
-            {/* Calendar grid */}
-            <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
-
-            {/* Selected Value Preview */}
-            <div style={{ background: 'var(--p-6)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
-              {formatHebrewDate(tempDateStr)}
-            </div>
-
-            {/* Confirm Actions */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                type="button" 
-                onClick={handleSave} 
-                className="btn-primary" 
-                style={{ flex: 1 }}
-              >
-                בחירה
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setIsOpen(false)} 
-                className="btn-secondary" 
-                style={{ flex: 1 }}
-              >
-                ביטול
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+          <CalendarBody selectedDateStr={tempDateStr} onSelect={setTempDateStr} />
+        </PickerDialog>
       )}
     </div>
   );
@@ -514,26 +403,7 @@ export function CustomTimePicker({ value, onChange, label, required }) {
     setTempM(p.mm);
   }, [value]);
 
-  const hRef = useRef(null);
-  const mRef = useRef(null);
-
-  /* Centre both columns on the value the picker opened with — and only
-     then. Re-centring on every tap pulled the list out from under the
-     finger: you pressed 19, the column scrolled to put 19 in the middle,
-     and the number left under your finger was a different one. Picking an
-     hour dragged the minute column along with it too. */
-  useEffect(() => {
-    if (!isOpen) return;
-    requestAnimationFrame(() => {
-      centreOnActive(hRef, 'active-h');
-      centreOnActive(mRef, 'active-m');
-    });
-  }, [isOpen]);
-
-  const hours24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
-
-  const displayValue = value ? `${parseTime(value).hh}:${parseTime(value).mm}` : '';
+  const displayValue = value ? formatHebrewTime(value) : '';
 
   const handleSave = () => {
     onChange(`${tempH}:${tempM}`);
@@ -541,88 +411,23 @@ export function CustomTimePicker({ value, onChange, label, required }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+    <div className="field-wrap">
       {label && <label className="field-label">{label}{required && ' *'}</label>}
 
-      <div
-        onClick={() => setIsOpen(true)}
-        className="form-control"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-      >
-        <span style={{ fontSize: '16px', fontWeight: '600', color: displayValue ? 'var(--text)' : 'var(--text-muted)' }}>
-          {displayValue || 'בחר שעה...'}
-        </span>
-        <Clock size={18} style={{ color: 'var(--text-muted)' }} />
-      </div>
+      <PickerField Icon={Clock} filled={!!displayValue} onOpen={() => setIsOpen(true)}>
+        <span className="picker-field-num">{displayValue || 'בחר שעה...'}</span>
+      </PickerField>
 
-      {isOpen && createPortal(
-        <div
-          onClick={() => setIsOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'var(--ink-40)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+      {isOpen && (
+        <PickerDialog
+          title={label || 'בחירת שעה'}
+          onClose={() => setIsOpen(false)}
+          readout={<span className="picker-readout-time">{tempH}:{tempM}</span>}
+          okLabel="בחירה"
+          onOk={handleSave}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '360px', background: 'var(--surface)', borderRadius: '24px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--ink-8)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fadeIn 0.2s ease-out' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--ink-6)', paddingBottom: '10px' }}>
-              <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>{label || 'בחירת שעה'}</span>
-              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
-            </div>
-
-            {/* Hour + Minute columns (24-hour). Laid out left-to-right so
-                they sit in the order the readout below spells them, HH:MM —
-                a clock reads the same way in Hebrew as anywhere else. */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, height: 220, maxHeight: 220, direction: 'ltr' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>שעה</span>
-                <div ref={hRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ink-8)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {hours24.map(h => {
-                    const isActive = h === tempH;
-                    return (
-                      <button
-                        key={h} type="button"
-                        className={isActive ? 'active-h' : ''}
-                        onClick={() => setTempH(h)}
-                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--brand)' : 'transparent', color: isActive ? 'var(--brand-fg)' : 'var(--text)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? 'var(--shadow-sm)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
-                      >{h}</button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, overflow: 'hidden' }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textAlign: 'center' }}>דקה</span>
-                <div ref={mRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ink-8)', borderRadius: 12, background: 'var(--ink-2)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {minutes.map(m => {
-                    const isActive = m === tempM;
-                    return (
-                      <button
-                        key={m} type="button"
-                        className={isActive ? 'active-m' : ''}
-                        onClick={() => setTempM(m)}
-                        style={{ padding: '8px 0', border: 'none', borderRadius: 8, background: isActive ? 'var(--brand)' : 'transparent', color: isActive ? 'var(--brand-fg)' : 'var(--text)', fontWeight: isActive ? 800 : 600, fontSize: 15, cursor: 'pointer', textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxShadow: isActive ? 'var(--shadow-sm)' : 'none', transition: 'background 0.12s ease, color 0.12s ease' }}
-                      >{m}</button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* The readout is the anchor: the columns can be scrolled
-                anywhere, this always says what is actually selected, and it
-                changes the instant a number is tapped. Tabular figures so
-                the digits don't jitter as it counts. */}
-            <div style={{ background: 'var(--p-6)', border: '1px solid var(--p-15)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', direction: 'ltr', fontSize: 24, fontWeight: 900, letterSpacing: 1, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
-              {tempH}:{tempM}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={handleSave} className="btn-primary" style={{ flex: 1 }}>בחירה</button>
-              <button type="button" onClick={() => setIsOpen(false)} className="btn-secondary" style={{ flex: 1 }}>ביטול</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+          <TimeWheels hour={tempH} minute={tempM} onHour={setTempH} onMinute={setTempM} />
+        </PickerDialog>
       )}
     </div>
   );
@@ -648,8 +453,8 @@ export function CustomDateTimePicker({ value, onChange, label, renderTrigger }) 
     if (dPart) defaultDate = dPart;
     if (tPart) {
       const timeParts = tPart.split(':');
-      if (timeParts[0]) defaultH = timeParts[0];
-      if (timeParts[1]) defaultM = timeParts[1];
+      if (timeParts[0]) defaultH = pad2(timeParts[0]);
+      if (timeParts[1]) defaultM = pad2(timeParts[1]);
     }
   }
 
@@ -664,20 +469,13 @@ export function CustomDateTimePicker({ value, onChange, label, renderTrigger }) 
       if (dPart) setTempDateStr(dPart);
       if (tPart) {
         const timeParts = tPart.split(':');
-        if (timeParts[0]) setTempHour(timeParts[0]);
-        if (timeParts[1]) setTempMinute(timeParts[1]);
+        if (timeParts[0]) setTempHour(pad2(timeParts[0]));
+        if (timeParts[1]) setTempMinute(pad2(timeParts[1]));
       }
     }
   }, [value]);
 
-  const handleSelectDate = (dateStr) => {
-    setTempDateStr(dateStr);
-  };
-
-  const handleSelectTime = (h, m) => {
-    setTempHour(h);
-    setTempMinute(m);
-  };
+  const open = () => { setActiveTab('date'); setIsOpen(true); };
 
   const handleSave = () => {
     const formattedDateTime = `${tempDateStr}T${tempHour}:${tempMinute}`;
@@ -686,148 +484,41 @@ export function CustomDateTimePicker({ value, onChange, label, renderTrigger }) 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: renderTrigger ? 'auto' : '100%' }}>
+    <div className="field-wrap" style={renderTrigger ? { width: 'auto' } : undefined}>
       {label && <label className="field-label">{label}</label>}
 
-      {renderTrigger ? renderTrigger(() => { setActiveTab('date'); setIsOpen(true); }) : (
-      /* Trigger Button Input-styled */
-      <div 
-        onClick={() => {
-          setActiveTab('date');
-          setIsOpen(true);
-        }}
-        className="form-control"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer',
-        }}
-      >
-        <span style={{ fontSize: '16px', fontWeight: '600', color: value ? 'var(--text)' : 'var(--text-muted)' }}>
+      {renderTrigger ? renderTrigger(open) : (
+        <PickerField Icon={CalendarClock} filled={!!value} onOpen={open}>
           {value ? formatHebrewDateTime(value) : 'בחר תאריך ושעה...'}
-        </span>
-        <Clock size={18} style={{ color: 'var(--text-muted)' }} />
-      </div>
+        </PickerField>
       )}
 
-      {/* Modal overlay — portalled, same reason as the date picker above. */}
-      {isOpen && createPortal(
-        <div 
-          onClick={() => setIsOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'var(--ink-40)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }}
+      {isOpen && (
+        <PickerDialog
+          title={label || 'בחירת תאריך ושעה'}
+          onClose={() => setIsOpen(false)}
+          readout={`${formatHebrewDate(tempDateStr)} בשעה ${tempHour}:${tempMinute}`}
+          okLabel="אישור"
+          onOk={handleSave}
         >
-          {/* Glass Card content */}
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: '360px',
-              background: 'var(--surface)',
-              borderRadius: '24px',
-              boxShadow: 'var(--shadow-lg)',
-              border: '1px solid var(--ink-8)',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              animation: 'fadeIn 0.2s ease-out'
-            }}
-          >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--ink-6)', paddingBottom: '10px' }}>
-              <span style={{ fontWeight: '900', fontSize: '16px', color: 'var(--primary)' }}>
-                {label || 'בחירת תאריך ושעה'}
-              </span>
-              <button type="button" aria-label="סגור" className="btn-close" onClick={() => setIsOpen(false)}>✕</button>
-            </div>
-
-            {/* Tabs for Date / Time */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--ink-4)', padding: '4px', borderRadius: '12px' }}>
-              <button
-                type="button"
-                onClick={() => setActiveTab('date')}
-                style={{
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 0',
-                  fontSize: '13px',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  background: activeTab === 'date' ? 'var(--card-bg-solid)' : 'transparent',
-                  color: activeTab === 'date' ? 'var(--primary)' : 'var(--text-muted)',
-                  boxShadow: activeTab === 'date' ? '0 2px 6px var(--ink-5)' : 'none',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                תאריך
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('time')}
-                style={{
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 0',
-                  fontSize: '13px',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  background: activeTab === 'time' ? 'var(--card-bg-solid)' : 'transparent',
-                  color: activeTab === 'time' ? 'var(--primary)' : 'var(--text-muted)',
-                  boxShadow: activeTab === 'time' ? '0 2px 6px var(--ink-5)' : 'none',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                שעה
-              </button>
-            </div>
-
-            {/* Tab content */}
-            <div style={{ height: 280, display: 'flex', flexDirection: 'column' }}>
-              {activeTab === 'date' ? (
-                <CalendarBody selectedDateStr={tempDateStr} onSelect={handleSelectDate} />
-              ) : (
-                <TimeBody hour={tempHour} minute={tempMinute} onChangeTime={handleSelectTime} />
-              )}
-            </div>
-
-            {/* Selected Value Preview */}
-            <div style={{ background: 'var(--p-6)', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', fontWeight: '800', color: 'var(--accent)', textAlign: 'center' }}>
-              {formatHebrewDate(tempDateStr)} בשעה {tempHour}:{tempMinute}
-            </div>
-
-            {/* Confirm Actions */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                type="button" 
-                onClick={handleSave} 
-                className="btn-primary" 
-                style={{ flex: 1 }}
-              >
-                אישור
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setIsOpen(false)} 
-                className="btn-secondary" 
-                style={{ flex: 1 }}
-              >
-                ביטול
-              </button>
-            </div>
+          <Segmented
+            label="תאריך או שעה"
+            value={activeTab}
+            onChange={setActiveTab}
+            options={[
+              { key: 'date', label: 'תאריך', Icon: CalendarIcon },
+              { key: 'time', label: 'שעה', Icon: Clock },
+            ]}
+          />
+          {/* One height for both, so switching does not move the buttons. */}
+          <div className="picker-tab-body">
+            {activeTab === 'date' ? (
+              <CalendarBody selectedDateStr={tempDateStr} onSelect={setTempDateStr} />
+            ) : (
+              <TimeWheels hour={tempHour} minute={tempMinute} onHour={setTempHour} onMinute={setTempMinute} />
+            )}
           </div>
-        </div>,
-        document.body
+        </PickerDialog>
       )}
     </div>
   );
@@ -933,29 +624,15 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
         ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(o => !o)}
-        className="custom-dropdown-trigger"
+        className="form-control picker-field custom-dropdown-trigger"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span style={{
-          flex: 1,
-          textAlign: 'right',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          color: current ? 'var(--text)' : 'var(--text-muted)',
-        }}>
+        {current?.icon && <span className="picker-field-icon" aria-hidden="true">{current.icon}</span>}
+        <span className={`picker-field-text${current ? '' : ' is-empty'}`}>
           {current ? current.label : placeholder}
         </span>
-        <ChevronDown
-          size={18}
-          style={{
-            color: 'var(--accent)',
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease',
-            flexShrink: 0
-          }}
-        />
+        <span className="picker-field-chev" aria-hidden="true"><ChevronDown size={16} strokeWidth={2.6} /></span>
       </button>
 
       {isOpen && popupRect && createPortal(
@@ -972,9 +649,8 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
             width: popupRect.width
           }}
         >
-          {normalized.map((opt, optIdx) => {
+          {normalized.map((opt) => {
             const isActive = opt.value === value;
-            const isFirst = optIdx === 0;
             return (
               <button
                 key={String(opt.value)}
@@ -982,13 +658,9 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
                 role="option"
                 aria-selected={isActive}
                 onClick={() => handleSelect(opt.value)}
-                className={`custom-dropdown-option ${isActive ? 'active' : ''}`}
-                style={{
-                  ...((!isFirst) ? { borderTop: '1px solid var(--ink-8)' } : {}),
-                  ...(opt.inUse ? { background: 'var(--p-8)', opacity: 0.75 } : {}),
-                }}
+                className={`custom-dropdown-option${isActive ? ' active' : ''}${opt.inUse ? ' in-use' : ''}`}
               >
-                {opt.icon && <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>{opt.icon}</span>}
+                {opt.icon && <span className="custom-dropdown-option-icon">{opt.icon}</span>}
                 <span style={{ flex: 1, textAlign: 'right', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1002,7 +674,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
                     </span>
                   )}
                 </span>
-                {isActive && <Check size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+                {isActive && <Check size={16} strokeWidth={3} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
               </button>
             );
           })}
@@ -1014,7 +686,6 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
               className="custom-dropdown-option custom-dropdown-add"
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>
-                <ChevronDown size={1} style={{ display: 'none' }} />
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />

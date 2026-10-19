@@ -455,8 +455,7 @@ button:not(:disabled):active,
 /* Hover belongs to devices that actually have a pointer. On touch it
    sticks to whatever you tapped last. */
 @media (hover: none) {
-  .custom-dropdown-trigger:hover,
-  .custom-dropdown-option:hover,
+  .custom-dropdown-option:not(.active):hover { background: transparent; }
   .plan-visit-toggle:hover,
   .check-circle:hover {
     background: inherit;
@@ -973,25 +972,37 @@ button:not(:disabled):active,
 }
 
 /* ── Fields ──
-   Recessed slots rather than white boxes with a grey outline: a filled
-   ground, a hairline that only carries weight on focus, and no drop
-   shadow — a field is a place to type into, not a card sitting on the
-   page. On focus the field lifts to the surface colour and the accent
-   ring does the talking. */
+   One field for everything that takes an answer — typed, picked from a
+   list, a date, a time. A white tile with a hairline and a small hard lip
+   under it: the sticker of the primary button, said quietly. On focus the
+   hairline turns accent and a soft ring does the talking. */
+:root {
+  --field-bg: var(--card-bg-solid);
+  --field-line: var(--ink-12);
+  --field-lip: var(--ink-8);
+}
+[data-theme="dark"] {
+  --field-bg: var(--ink-6);
+  --field-line: var(--ink-12);
+  --field-lip: rgba(0, 0, 0, 0.35);
+}
+
 .form-control {
   width: 100%;
-  min-height: 50px;
+  min-height: 52px;
   padding: 13px 15px;
   border-radius: 16px;
-  border: 1.5px solid transparent;
-  background: var(--surface-2);   /* Payments-2026 field */
+  border: 1.5px solid var(--field-line);
+  background: var(--field-bg);
+  box-shadow: 0 2px 0 var(--field-lip);
   font-family: var(--font-hebrew);
   font-size: 16px; /* >= 16px prevents iOS auto-zoom */
   color: var(--text);
   font-weight: 600;
   transition: background var(--dur-fast) var(--ease-out),
               border-color var(--dur-fast) var(--ease-out),
-              box-shadow var(--dur-fast) var(--ease-out);
+              box-shadow var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
   outline: none;
   -webkit-appearance: none;
   appearance: none;
@@ -1014,31 +1025,16 @@ button:not(:disabled):active,
 }
 
 .form-control:focus,
-.form-control:focus-visible {
-  background: var(--card-bg-solid);
+.form-control:focus-visible,
+.form-control[aria-expanded="true"] {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--p-12);
+  box-shadow: 0 2px 0 var(--p-15), 0 0 0 4px var(--p-12);
   outline: none;
 }
 
 .form-control:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-/* A field that reads as filled-in gets a touch more presence than an
-   empty one, so a long form shows at a glance what is already answered. */
-.form-control:not(:placeholder-shown):not(:focus) {
-  background: var(--ink-3);
-  border-color: var(--ink-8);
-}
-
-[data-theme="dark"] .form-control {
-  background: var(--ink-8);
-}
-[data-theme="dark"] .form-control:not(:placeholder-shown):not(:focus) {
-  background: var(--ink-6);
-  border-color: var(--ink-12);
 }
 
 /* Number fields: the spinners are desktop furniture and break the
@@ -1058,24 +1054,53 @@ textarea.form-control {
   resize: vertical;
 }
 
-select.form-control {
-  appearance: none;
-  background-color: var(--ink-4);
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230b0b30' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: left 12px center;
-  background-size: 14px;
-  padding-left: 36px;
+/* A field that opens a chooser (date, time, list). What it holds sits at
+   its start in a tinted tile, so it never reads as a box to type into;
+   a press sinks it onto its lip, like the buttons. */
+.field-wrap {
+  display: flex; flex-direction: column; gap: 6px;
+  width: 100%; min-width: 0;
+  container-type: inline-size;
+}
+.picker-field {
+  display: flex; align-items: center; gap: 10px;
+  min-width: 0;
+  padding-inline: 8px 14px;
+  text-align: start;
   cursor: pointer;
 }
-[data-theme="dark"] select.form-control {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23c7d2fe' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+.picker-field:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--field-lip); }
+.picker-field-icon {
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 11px;
+  background: var(--p-10);
+  color: var(--accent);
 }
-
-input[type="date"].form-control,
-input[type="datetime-local"].form-control {
-  cursor: pointer;
+.picker-field-icon svg { width: 16px; height: 16px; }
+.picker-field-text {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
 }
+.picker-field-text.is-empty { color: var(--text-muted); font-weight: 500; }
+.picker-field-num { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.picker-field-chev {
+  width: 26px; height: 26px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.picker-field[aria-expanded="true"] .picker-field-chev {
+  transform: rotate(180deg);
+  background: var(--p-10);
+  color: var(--accent);
+}
+/* A dropdown with nothing to show at its start keeps the text's inset. */
+.custom-dropdown-trigger { padding-inline-end: 10px; }
+.custom-dropdown-trigger:not(:has(.picker-field-icon)) { padding-inline-start: 15px; }
 
 /* ── Buttons ── */
 .btn-primary {
@@ -1428,17 +1453,170 @@ input[type="datetime-local"].form-control {
   gap: 12px;
 }
 
-/* Date picker trigger: the full month name when it fits; abbreviated, a
-   little smaller and without the icon when the picker's column is narrow
-   (two pickers side by side on a phone). */
-.date-picker { container-type: inline-size; }
+/* A picker field in a narrow column (two side by side on a phone): the
+   month abbreviated, the text a little smaller, and the icon tile a
+   little tighter — it keeps its icon, every chooser shows what it is. */
 .date-short { display: none; }
 @container (max-width: 200px) {
   .date-long { display: none; }
   .date-short { display: inline; }
-  /* The whole field opens the calendar; the icon gives its room to the date. */
-  .date-trigger-icon { display: none; }
-  .date-trigger-text { font-size: 14px !important; }
+  .picker-field { gap: 8px; padding-inline: 7px 10px; }
+  .picker-field-icon { width: 28px; height: 28px; border-radius: 10px; }
+  .picker-field-text { font-size: 14px !important; }
+}
+
+/* The date in a flight tile: the tile is the field, this is just the date. */
+.date-compact {
+  width: 100%; padding: 2px 0;
+  border: none; background: transparent; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800;
+  color: var(--primary-color);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Picker window (date, time, date and time) ── */
+.picker-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  background: var(--ink-40);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+.picker-card {
+  width: 100%; max-width: 360px;
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 20px;
+  border-radius: 28px;
+  background: var(--surface);
+  border: 1px solid var(--ink-8);
+  box-shadow: var(--shadow-lg);
+  animation: picker-in 0.22s var(--ease-out);
+}
+@keyframes picker-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.picker-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ink-6);
+}
+.picker-title { font-size: 17px; font-weight: 900; color: var(--primary); }
+.picker-readout {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--p-6);
+  border: 1px solid var(--p-15);
+  text-align: center;
+  font-size: 15px; font-weight: 800;
+  color: var(--accent);
+}
+.picker-readout-time {
+  display: inline-block; direction: ltr;
+  font-size: 26px; font-weight: 900; letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.picker-actions { display: flex; gap: 8px; }
+.picker-actions > button { flex: 1; }
+/* Date and time in one window: both tabs the same height, so switching
+   does not move the buttons. */
+.picker-tab-body { height: 300px; display: flex; flex-direction: column; justify-content: center; }
+
+/* ── Calendar ── */
+.cal { display: flex; flex-direction: column; gap: 10px; user-select: none; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; }
+.cal-month { font-size: 16px; font-weight: 900; color: var(--primary); }
+.cal-nav {
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--field-line);
+  background: var(--field-bg);
+  box-shadow: 0 2px 0 var(--field-lip);
+  color: var(--primary);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.cal-nav:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--field-lip); }
+.cal-week {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px; font-weight: 800; color: var(--text-muted);
+}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-day {
+  aspect-ratio: 1 / 1;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: transparent;
+  font-family: var(--font-hebrew);
+  font-size: 15px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+.cal-day:hover { background: var(--p-6); }
+.cal-day.is-today { color: var(--accent); font-weight: 800; border-color: var(--p-15); background: var(--p-6); }
+.cal-day[aria-pressed="true"] {
+  background: var(--brand);
+  color: var(--brand-fg);
+  border-color: var(--stroke);
+  box-shadow: 0 2px 0 var(--stroke);
+  font-weight: 900;
+  transform: translateY(-1px);
+}
+
+/* ── Time wheels ──
+   The middle row is the value: a tinted band sits behind it, and the
+   rows above and below fade out toward the edges. */
+.wheels {
+  display: flex; align-items: flex-end; justify-content: center; gap: 6px;
+  direction: ltr;
+}
+.wheel-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.wheel-label { text-align: center; font-size: 12px; font-weight: 800; color: var(--text-muted); }
+.wheel-frame { position: relative; height: 220px; /* 5 rows of 44px */ }
+.wheel-band {
+  position: absolute; inset-inline: 0; top: 50%;
+  height: 44px; transform: translateY(-50%);
+  border-radius: 14px;
+  background: var(--p-10);
+  border: 1.5px solid var(--p-15);
+}
+.wheel {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  outline: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent);
+}
+.wheel::-webkit-scrollbar { display: none; }
+.wheel-frame:has(.wheel:focus-visible) .wheel-band { border-color: var(--accent); }
+.wheel-pad { height: 88px; /* 2 rows: the first and last can reach the middle */ }
+.wheel-row {
+  display: block; width: 100%; height: 44px;
+  border: none; background: transparent; padding: 0;
+  scroll-snap-align: center;
+  font-family: var(--font-hebrew);
+  font-size: 20px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+.wheel-row.on { color: var(--accent); font-weight: 900; transform: scale(1.22); }
+.wheel-colon {
+  height: 220px; display: grid; place-items: center;
+  font-size: 26px; font-weight: 900; color: var(--accent);
+  padding-bottom: 4px;
 }
 
 /* ── Badges ── */
@@ -2232,40 +2410,10 @@ div.section-header-toggle { cursor: default; }
   gap: 12px;
 }
 
-/* ── Custom dropdown (replaces native <select>) ── */
-/* The dropdown trigger is a field, so it matches the fields exactly —
-   same ground, same radius, same focus ring. */
-.custom-dropdown-trigger {
-  /* The same field as .form-control (a dropdown always holds a value, so
-     it wears the filled look), so a select next to an input matches it. */
-  width: 100%;
-  min-height: 50px;
-  padding: 13px 15px;
-  border-radius: 16px;
-  border: 1.5px solid var(--ink-8);
-  background: var(--ink-3);
-  font-family: var(--font-hebrew);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-align: right;
-  direction: rtl;
-  transition: border-color var(--dur-fast) var(--ease-out),
-              box-shadow var(--dur-fast) var(--ease-out);
-  outline: none;
-}
-[data-theme="dark"] .custom-dropdown-trigger { background: var(--ink-6); border-color: var(--ink-12); }
-.custom-dropdown-trigger:hover,
-.custom-dropdown-trigger:focus-visible,
-.custom-dropdown-trigger[aria-expanded="true"] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--p-12);
-}
-
+/* ── Custom dropdown (replaces native <select>) ──
+   The trigger is a .form-control.picker-field, the same field as the rest.
+   The list opens as a card under it: rows with room to breathe, the
+   chosen one tinted and ticked. */
 .custom-dropdown-popup {
   position: absolute;
   top: calc(100% + 6px);
@@ -2274,29 +2422,34 @@ div.section-header-toggle { cursor: default; }
   z-index: 5000;
   background: var(--dropdown-bg);
   color: var(--text);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--ink-8);
-  box-shadow: 0 12px 32px var(--ink-18);
+  border-radius: 20px;
+  border: 1.5px solid var(--field-line);
+  box-shadow: 0 3px 0 var(--field-lip), 0 18px 40px -12px var(--ink-18);
   padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 280px;
+  max-height: 300px;
   overflow-y: auto;
-  animation: fadeIn 0.15s ease-out;
+  animation: dropdown-in 0.16s var(--ease-out);
+}
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
 }
 
 .custom-dropdown-option {
   width: 100%;
+  min-height: 46px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   background: transparent;
   font-family: var(--font-hebrew);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--primary);
   cursor: pointer;
@@ -2311,6 +2464,15 @@ div.section-header-toggle { cursor: default; }
   background: var(--p-10);
   color: var(--accent);
 }
+.custom-dropdown-option.in-use { opacity: 0.6; }
+.custom-dropdown-option-icon {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.custom-dropdown-option.active .custom-dropdown-option-icon { background: var(--card-bg-solid); }
 .custom-dropdown-add {
   border-top: 1px dashed var(--ink-10);
   margin-top: 4px;

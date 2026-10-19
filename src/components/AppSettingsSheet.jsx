@@ -8,7 +8,7 @@ import { PALETTES } from '../lib/theme';
 import SectionHeader from '../ui/SectionHeader';
 import Notice from '../ui/Notice';
 import { Pill } from '../ui/kit';
-import { CustomTimePicker } from './CustomDatePicker';
+import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime, bookingTime, setBookingTime, bookingDay, setBookingDay } from '../lib/native/notify';
 import { BOOKING_DAYS } from '../lib/bookingAlerts';
 import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
@@ -294,11 +294,13 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
         ) : (
           <div className="settings-card">
             {trips.length > 1 && (
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label htmlFor="settings-trip">טיול</label>
-                <select id="settings-trip" className="form-control" value={trip?.id || ''} onChange={e => { setSelId(e.target.value); setMsg(null); }}>
-                  {trips.map(t => <option key={t.id} value={t.id}>{t.name || 'טיול'}</option>)}
-                </select>
+              <div data-testid="settings-trip">
+                <CustomDropdown
+                  label="טיול"
+                  value={trip?.id || ''}
+                  onChange={id => { setSelId(id); setMsg(null); }}
+                  options={trips.map(t => ({ value: t.id, label: t.name || 'טיול' }))}
+                />
               </div>
             )}
             <div className="field-label">מה לכלול</div>

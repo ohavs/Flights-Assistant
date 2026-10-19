@@ -34,7 +34,7 @@ for (const width of [360, 390, 412]) {
   }
   const filled = await page.evaluate(() => {
     const row = document.querySelector('.modal-content .row-2');   // trip dates
-    const triggers = row ? row.querySelectorAll('.form-control > span') : [];
+    const triggers = row ? row.querySelectorAll('.picker-field-text') : [];
     for (const t of triggers) {
       const long = t.querySelector('.date-long');
       if (long) {
