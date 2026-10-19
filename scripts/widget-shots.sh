@@ -220,6 +220,20 @@ tap_text המשך; sleep 1; expect 31-expense-sheet-dark "שמירה"
 adb shell input keyevent KEYCODE_BACK; sleep 1
 adb shell cmd uimode night no; sleep 2
 
+# The expense widget's settings: its trip, and its keypad's currencies,
+# removed or added from every one the app knows; saved, the keypad goes
+# through those.
+adb logcat -c; open_widget plan 360 300 ExpenseWidget
+wid=$(adb logcat -d -s WidgetPreview:I | grep -o 'widget id [0-9]*' | tail -1 | awk '{print $3}')
+adb shell am start -W -n "$PKG/.widget.WidgetTripActivity" --ei appWidgetId "$wid" >/dev/null; sleep 2
+expect 32-expense-settings "הגדרות הווידג׳ט" "פריז עם הילדים" "מטבעות במקלדת" "ILS ₪  ✕" "EUR €  ✕" "+ הוספת מטבע"
+tap_text "ILS ₪  ✕"; tap_text "+ הוספת מטבע"; tap_text "+ דולר אמריקאי · USD"
+expect 33-expense-currencies "EUR €  ✕" "USD \$  ✕" "כמו בטיול"
+tap_text שמירה; sleep 2
+expect 34-expense-own "0 €" "EUR"
+tap_text EUR; expect 35-expense-usd "0 \$" "USD"
+tap_text USD; expect 36-expense-eur-again "0 €" "EUR"
+
 # A widget set to a trip shows it, not the next one.
 TRIP=rome open_widget flight; expect 21f-set-to-rome "רומא עם ההורים" "טיסת הלוך · LY 383" "FCO"
 # Added from the home screen, a widget asks which trip (its configure screen).

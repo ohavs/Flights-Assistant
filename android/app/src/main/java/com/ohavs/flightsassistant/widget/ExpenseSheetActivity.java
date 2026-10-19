@@ -78,7 +78,7 @@ public class ExpenseSheetActivity extends AppCompatActivity {
             return;
         }
         trip = m.trip;
-        JSONObject cur = ExpenseWidget.currency(trip, p.getString("cur_" + widgetId, null));
+        JSONObject cur = ExpenseWidget.currency(this, widgetId, m);
         currency = cur.optString("code", "ILS");
         symbol = cur.optString("symbol", currency);
         ils = shekels(m.snapshot.optJSONObject("rates"), amount, currency);

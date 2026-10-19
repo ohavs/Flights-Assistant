@@ -157,8 +157,12 @@ final class WidgetKit {
     }
 
     static Moment momentOf(Context ctx, int widgetId) {
-        Moment m = momentOf(ctx, AppWidgetManager.getInstance(ctx).getAppWidgetOptions(widgetId), WidgetTrips.get(ctx, widgetId));
-        return m;
+        return momentOf(ctx, widgetId, WidgetTrips.get(ctx, widgetId));
+    }
+
+    /** As momentOf, on tripId (null: the next trip) rather than the trip the widget is set to. */
+    static Moment momentOf(Context ctx, int widgetId, String tripId) {
+        return momentOf(ctx, AppWidgetManager.getInstance(ctx).getAppWidgetOptions(widgetId), tripId);
     }
 
     private static Moment momentOf(Context ctx, Bundle o, String tripId) {

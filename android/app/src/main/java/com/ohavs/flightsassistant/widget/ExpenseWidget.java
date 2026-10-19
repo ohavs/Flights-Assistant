@@ -16,7 +16,8 @@ import org.json.JSONObject;
 /**
  * An expense from the home screen (4x3): the amount on a keypad and the
  * currency (a tap moves to the next of the trip's: shekels, euros or
- * dollars, the destination's own), then "המשך" opens
+ * dollars, the destination's own; or of the ones set in the widget's
+ * settings, WidgetTripActivity), then "המשך" opens
  * ExpenseSheetActivity over the home screen for the category and the
  * place, and saves (ExpenseStore). A tap anywhere else opens the trip's
  * expenses. What was typed is kept per widget, so
@@ -48,7 +49,7 @@ public class ExpenseWidget extends BaseWidget {
         SharedPreferences p = prefs(ctx);
         String amount = p.getString("amount_" + id, "");
         String status = p.getString("status_" + id, "");
-        JSONObject cur = currency(m.trip, p.getString("cur_" + id, null));
+        JSONObject cur = currency(ctx, id, m);
 
         v.setTextViewText(R.id.title, status.isEmpty() ? "הוצאה · " + m.trip.optString("name") : status);
         v.setTextViewText(R.id.amount, WidgetKit.big("", amount.isEmpty() ? "0" : amount, cur.optString("symbol")));
@@ -105,8 +106,8 @@ public class ExpenseWidget extends BaseWidget {
         } else if (c == '.') {
             if (!a.contains(".")) a = a.isEmpty() ? "0." : a + ".";
         } else if (c == '$') {
-            JSONObject trip = trip(ctx, id);
-            if (trip != null) e.putString("cur_" + id, next(trip, currency(trip, p.getString("cur_" + id, null)).optString("code")));
+            WidgetKit.Moment m = WidgetKit.momentOf(ctx, id);
+            if (m != null && m.trip != null) e.putString("cur_" + id, next(currencies(ctx, id, m), currency(ctx, id, m).optString("code")));
         } else if (c == '=') {
             e.putString("status_" + id, "הקלידו סכום ואז המשך");
         } else if (c >= '0' && c <= '9') {
@@ -122,7 +123,7 @@ public class ExpenseWidget extends BaseWidget {
     public void onDeleted(Context ctx, int[] ids) {
         super.onDeleted(ctx, ids);
         SharedPreferences.Editor e = prefs(ctx).edit();
-        for (int id : ids) e.remove("amount_" + id).remove("cur_" + id).remove("status_" + id);
+        for (int id : ids) e.remove("amount_" + id).remove("cur_" + id).remove("curs_" + id).remove("status_" + id);
         e.apply();
     }
 
@@ -146,26 +147,27 @@ public class ExpenseWidget extends BaseWidget {
         new ExpenseWidget().redraw(ctx, AppWidgetManager.getInstance(ctx), id);
     }
 
-    /** The trip this widget adds to, from the snapshot it draws (null: none). */
-    static JSONObject trip(Context ctx, int id) {
-        WidgetKit.Moment m = WidgetKit.momentOf(ctx, id);
-        return m == null ? null : m.trip;
+    /**
+     * { code, symbol }: the one picked on this widget's keypad, else the
+     * trip's usual one, else the first it offers.
+     */
+    static JSONObject currency(Context ctx, int id, WidgetKit.Moment m) {
+        JSONArray all = currencies(ctx, id, m);
+        JSONObject c = find(all, prefs(ctx).getString("cur_" + id, null));
+        if (c == null) c = find(all, spend(m.trip).optString("currency", "ILS"));
+        if (c == null) c = all.optJSONObject(0);
+        return c != null ? c : WidgetKit.obj("code", "ILS", "symbol", "₪");
     }
 
-    /** { code, symbol }: the one picked on this widget, else the trip's last used, else shekels. */
-    static JSONObject currency(JSONObject trip, String picked) {
-        JSONArray all = currencies(trip);
-        String want = picked != null ? picked : spend(trip).optString("currency", "ILS");
-        for (int i = 0; i < all.length(); i++) {
+    private static JSONObject find(JSONArray all, String code) {
+        for (int i = 0; code != null && i < all.length(); i++) {
             JSONObject c = all.optJSONObject(i);
-            if (c != null && want.equals(c.optString("code"))) return c;
+            if (c != null && code.equals(c.optString("code"))) return c;
         }
-        JSONObject first = all.optJSONObject(0);
-        return first != null ? first : WidgetKit.obj("code", "ILS", "symbol", "₪");
+        return null;
     }
 
-    private static String next(JSONObject trip, String code) {
-        JSONArray all = currencies(trip);
+    private static String next(JSONArray all, String code) {
         for (int i = 0; i < all.length(); i++) {
             JSONObject c = all.optJSONObject(i);
             if (c != null && code.equals(c.optString("code"))) {
@@ -176,9 +178,44 @@ public class ExpenseWidget extends BaseWidget {
         return code;
     }
 
-    private static JSONArray currencies(JSONObject trip) {
+    /** The keypad's currencies, { code, symbol }: the ones set in the widget's settings, else the trip's. */
+    static JSONArray currencies(Context ctx, int id, WidgetKit.Moment m) {
+        java.util.List<String> own = own(ctx, id);
+        if (own == null) return tripCurrencies(m.trip);
+        JSONArray out = new JSONArray();
+        for (String code : own) out.put(WidgetKit.obj("code", code, "symbol", symbol(m, code)));
+        return out;
+    }
+
+    static JSONArray tripCurrencies(JSONObject trip) {
         JSONArray a = spend(trip).optJSONArray("currencies");
         return a == null ? new JSONArray() : a;
+    }
+
+    /** The codes set in this widget's settings, in order; null: it follows the trip. */
+    static java.util.List<String> own(Context ctx, int id) {
+        String s = prefs(ctx).getString("curs_" + id, "");
+        return s.isEmpty() ? null : java.util.Arrays.asList(s.split(","));
+    }
+
+    /** codes null or empty: back to the trip's. */
+    static void setOwn(Context ctx, int id, java.util.List<String> codes) {
+        SharedPreferences.Editor e = prefs(ctx).edit();
+        if (codes == null || codes.isEmpty()) e.remove("curs_" + id); else e.putString("curs_" + id, android.text.TextUtils.join(",", codes));
+        e.apply();
+    }
+
+    /** Every currency the app knows, { code, symbol, name } (the snapshot's). */
+    static JSONArray catalog(JSONObject snapshot) {
+        JSONArray a = snapshot == null ? null : snapshot.optJSONArray("currencies");
+        return a == null ? new JSONArray() : a;
+    }
+
+    /** "€" for EUR: from the app's list, else the trip's, else the code itself. */
+    static String symbol(WidgetKit.Moment m, String code) {
+        JSONObject c = find(catalog(m.snapshot), code);
+        if (c == null) c = find(tripCurrencies(m.trip), code);
+        return c == null ? code : c.optString("symbol", code);
     }
 
     static JSONObject spend(JSONObject trip) {

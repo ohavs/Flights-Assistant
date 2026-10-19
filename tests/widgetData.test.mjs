@@ -110,9 +110,12 @@ test('the expense widget: the destination\'s currencies, categories, places, and
   // No destination known: the tab's defaults, in shekels.
   assert.equal(r.spend.currency, 'ILS');
   assert.deepEqual(r.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD']);
-  // Only the rates the widget can use.
-  assert.deepEqual(s.rates, { ILS: 4.05, EUR: 1, CHF: 0.96, USD: 1.1 });
+  // The rates of every currency the widget can offer: its settings add any the app knows.
+  assert.deepEqual(s.rates, { ILS: 4.05, EUR: 1, CHF: 0.96, USD: 1.1, JPY: 162 });
   assert.equal(widgetSnapshot({ trips: [paris], now }).rates, null);
+  // Those currencies, with their signs and names.
+  assert.ok(s.currencies.length > 30);
+  assert.deepEqual(s.currencies.find(c => c.code === 'HUF'), { code: 'HUF', symbol: 'Ft', name: 'פורינט הונגרי' });
 });
 
 test('the destination\'s currency: Budapest offers shekels, euros and forints, New York dollars', () => {
