@@ -200,3 +200,21 @@ test('offline, the phone keeps the coming trips and those still without dates', 
   ], now);
   assert.deepEqual(list.map(t => t.id), ['now', 'later', 'undated']);
 });
+
+test('the bookings widget: the trip\'s bookings ahead, the soonest first, undated last; never cancelled or past', () => {
+  const now = new Date(2026, 10, 4, 9, 0);   // 4.11.2026, local
+  const paris = { id: 'p', name: 'פריז', outboundFlightDetails: { date: '2026-11-03' }, returnFlightDetails: { date: '2026-11-08' } };
+  const bookings = [
+    { id: 'b1', title: 'ארוחה', date: '2026-11-05', time: '20:30', confirmation: 'XK42', status: 'confirmed' },
+    { id: 'b2', title: 'סיור', date: '2026-11-04', time: '10:00', status: 'pending' },
+    { id: 'b3', title: 'עבר', date: '2026-11-03', time: '10:00' },
+    { id: 'b4', title: 'בוטל', date: '2026-11-06', status: 'cancelled' },
+    { id: 'b5', title: 'מרחצאות' },
+    { id: 'b6', title: '', date: '2026-11-07' },
+  ];
+  const [p] = widgetSnapshot({ trips: [paris], bookingsByTrip: { p: bookings }, now }).trips;
+  assert.deepEqual(p.bookings.map(b => b.id), ['b2', 'b1', 'b5']);
+  assert.deepEqual(p.bookings[1], { id: 'b1', title: 'ארוחה', date: '2026-11-05', time: '20:30', code: 'XK42', pending: false });
+  assert.equal(p.bookings[0].pending, true);
+  assert.equal(p.bookings[2].date, '');
+});

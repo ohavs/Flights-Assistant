@@ -12,6 +12,8 @@ final class WidgetThemes {
         if (base == R.layout.widget_pack) return dark ? R.layout.widget_pack_dark : R.layout.widget_pack_light;
         if (base == R.layout.widget_plan) return dark ? R.layout.widget_plan_dark : R.layout.widget_plan_light;
         if (base == R.layout.widget_reminders) return dark ? R.layout.widget_reminders_dark : R.layout.widget_reminders_light;
+        if (base == R.layout.widget_bookings) return dark ? R.layout.widget_bookings_dark : R.layout.widget_bookings_light;
+        if (base == R.layout.widget_booking_item) return dark ? R.layout.widget_booking_item_dark : R.layout.widget_booking_item_light;
         if (base == R.layout.widget_expense) return dark ? R.layout.widget_expense_dark : R.layout.widget_expense_light;
         if (base == R.layout.widget_list_item) return dark ? R.layout.widget_list_item_dark : R.layout.widget_list_item_light;
         if (base == R.layout.widget_message) return dark ? R.layout.widget_message_dark : R.layout.widget_message_light;
@@ -34,6 +36,7 @@ final class WidgetThemes {
         if (base == R.drawable.ic_ws_checklist) return dark ? R.drawable.ic_ws_checklist_dark : R.drawable.ic_ws_checklist_light;
         if (base == R.drawable.ic_ws_bell) return dark ? R.drawable.ic_ws_bell_dark : R.drawable.ic_ws_bell_light;
         if (base == R.drawable.ic_ws_wallet) return dark ? R.drawable.ic_ws_wallet_dark : R.drawable.ic_ws_wallet_light;
+        if (base == R.drawable.ic_ws_ticket) return dark ? R.drawable.ic_ws_ticket_dark : R.drawable.ic_ws_ticket_light;
         return base;
     }
 }

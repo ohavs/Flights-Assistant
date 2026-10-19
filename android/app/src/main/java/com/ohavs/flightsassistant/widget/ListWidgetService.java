@@ -18,7 +18,7 @@ import java.util.List;
  * through WidgetActionActivity, and a tap on the row opens the app.
  */
 public class ListWidgetService extends RemoteViewsService {
-    static final String PLAN = "plan", REMINDERS = "reminders";
+    static final String PLAN = "plan", REMINDERS = "reminders", BOOKINGS = "bookings";
 
     /** The adapter for widget id's list; a distinct address per widget, or Android shares one. */
     static Intent intent(Context ctx, int id, String kind) {
@@ -57,7 +57,9 @@ public class ListWidgetService extends RemoteViewsService {
                 rows = new ArrayList<>();
                 return;
             }
-            rows = REMINDERS.equals(kind) ? WidgetLists.reminders(ctx, m) : WidgetLists.plan(ctx, m);
+            rows = REMINDERS.equals(kind) ? WidgetLists.reminders(ctx, m)
+                : BOOKINGS.equals(kind) ? WidgetLists.bookings(m)
+                : WidgetLists.plan(ctx, m);
         }
 
         @Override public void onDestroy() {}
@@ -69,6 +71,7 @@ public class ListWidgetService extends RemoteViewsService {
 
         @Override
         public RemoteViews getViewAt(int pos) {
+            if (BOOKINGS.equals(kind)) return booking(pos);
             RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_list_item));
             if (pos >= rows.size()) return v;
             WidgetLists.Row r = rows.get(pos);
@@ -93,6 +96,25 @@ public class ListWidgetService extends RemoteViewsService {
                 .putExtra("value", !r.done)
                 .putExtra("kind", kind)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id));
+            return v;
+        }
+
+        /** A booking: its date leaf, the title and a line under it; a tap opens the bookings. */
+        private RemoteViews booking(int pos) {
+            RemoteViews v = new RemoteViews(ctx.getPackageName(), m.layout(R.layout.widget_booking_item));
+            if (pos >= rows.size()) return v;
+            WidgetLists.Row r = rows.get(pos);
+            v.setTextViewText(R.id.item_title, r.title);
+            v.setTextViewText(R.id.item_sub, r.sub);
+            WidgetKit.visible(v, R.id.item_sub, !r.sub.isEmpty());
+            v.setTextViewText(R.id.item_pill, r.pill);
+            WidgetKit.visible(v, R.id.item_pill, !r.pill.isEmpty());
+            v.setTextViewText(R.id.item_day, r.day);
+            v.setTextViewText(R.id.item_month, r.month);
+            WidgetKit.visible(v, R.id.item_leaf, !r.day.isEmpty());
+            WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().soft(R.id.item_leaf).chip(R.id.item_pill));
+            v.setOnClickFillInIntent(R.id.item, new Intent()
+                .putExtra("action", "open").putExtra("tripId", m.tripId).putExtra("tab", "bookings"));
             return v;
         }
 

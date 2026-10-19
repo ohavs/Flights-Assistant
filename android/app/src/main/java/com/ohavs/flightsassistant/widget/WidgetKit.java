@@ -51,7 +51,8 @@ final class WidgetKit {
 
     /** Every kind of widget; a new snapshot redraws them all. */
     static BaseWidget[] all() {
-        return new BaseWidget[] { new TripWidget(), new CountdownWidget(), new PlanWidget(), new PackWidget(), new RemindersWidget(), new ExpenseWidget() };
+        return new BaseWidget[] { new TripWidget(), new CountdownWidget(), new PlanWidget(), new PackWidget(), new RemindersWidget(),
+            new BookingsWidget(), new ExpenseWidget() };
     }
 
     static BaseWidget byName(String name) {

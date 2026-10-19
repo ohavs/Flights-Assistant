@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by scripts/widget-layouts.py; edit there. widget_booking_item, always light (the app set to light). -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/item"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layoutDirection="rtl"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="5dp"
+    android:paddingBottom="5dp">
+    <LinearLayout
+        android:id="@+id/item_leaf"
+        android:layout_width="44dp"
+        android:layout_height="48dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/widget_soft_light">
+        <TextView
+            android:id="@+id/item_day"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/WBold.Title"
+            android:gravity="center"
+            android:textSize="18sp"
+            android:includeFontPadding="false"
+            android:textColor="@color/w_text_light" />
+        <TextView
+            android:id="@+id/item_month"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/WText.Muted"
+            android:gravity="center"
+            android:textSize="11sp"
+            android:includeFontPadding="false"
+            android:textColor="@color/w_muted_light" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_weight="1"
+        android:layout_marginStart="10dp">
+        <TextView
+            android:id="@+id/item_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/WText"
+            android:textSize="17sp"
+            android:maxLines="2"
+            android:textColor="@color/w_text_light" />
+        <TextView
+            android:id="@+id/item_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/WText.Muted"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            android:textColor="@color/w_muted_light" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/item_pill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        style="@style/WBold.Pill"
+        android:layout_marginStart="8dp"
+        android:textSize="13sp"
+        android:visibility="gone"
+        android:textColor="@color/w_accent_light"
+        android:background="@drawable/widget_chip_light" />
+</LinearLayout>

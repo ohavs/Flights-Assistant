@@ -42,9 +42,17 @@ const plans = [
   { id: 'pl-louvre', title: 'הלובר' }, { id: 'pl-orsay', title: 'מוזיאון אורסיי' },
   { id: 'pl-eiffel', title: 'מגדל אייפל', visited: true },
 ];
+// The bookings widget: the soonest first, a cancelled one left out, one with no date last.
+const bookings = [
+  { id: 'b1', title: 'ארוחת ערב ליד הסיין', date: '2026-11-04', time: '20:30', confirmation: 'XK42Q7', status: 'confirmed' },
+  { id: 'b2', title: 'סיור בלובר', date: '2026-11-04', time: '10:00', confirmation: 'LV-551', status: 'confirmed' },
+  { id: 'b3', title: 'שייט בסיין', date: '2026-11-05', time: '18:00', status: 'pending' },
+  { id: 'b4', title: 'מופע שבוטל', date: '2026-11-05', time: '21:00', status: 'cancelled' },
+  { id: 'b5', title: 'דיסנילנד', confirmation: 'DL-9' },
+];
 const data = {
   daysByTrip: { paris: days }, checklistByTrip: { paris: checklist }, remindersByTrip: { paris: reminders },
-  expensesByTrip: { paris: expenses }, plansByTrip: { paris: plans }, rates,
+  expensesByTrip: { paris: expenses }, plansByTrip: { paris: plans }, bookingsByTrip: { paris: bookings }, rates,
 };
 
 const at = (s) => new Date(s);

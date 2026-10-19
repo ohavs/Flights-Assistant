@@ -24,8 +24,43 @@ final class WidgetLists {
 
     static final class Row {
         String title, sub = "", pill = "";
+        String day = "", month = "";   // a booking's date leaf; "" when it has no date
         boolean done;
         String path, field;   // what a tick changes; null: nothing to tick, a tap opens the app
+    }
+
+    private static final String[] MONTHS = { "ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳" };
+
+    /**
+     * The bookings ahead (BookingsWidget), as the snapshot lists them: the
+     * date as a leaf, the time and the confirmation code under the title,
+     * and "היום" / "מחר" in a pill. Nothing to tick: a tap opens them.
+     */
+    static List<Row> bookings(WidgetKit.Moment m) {
+        List<Row> out = new ArrayList<>();
+        JSONArray items = m.trip.optJSONArray("bookings");
+        for (int i = 0; items != null && i < items.length(); i++) {
+            JSONObject b = items.optJSONObject(i);
+            if (b == null || b.optString("title").isEmpty()) continue;
+            Row r = new Row();
+            r.title = b.optString("title");
+            List<String> sub = new ArrayList<>();
+            if (!b.optString("time").isEmpty()) sub.add(b.optString("time"));
+            if (!b.optString("code").isEmpty()) sub.add("אישור " + b.optString("code"));
+            if (b.optBoolean("pending")) sub.add("ממתינה לאישור");
+            r.sub = android.text.TextUtils.join(" · ", sub);
+            String date = b.optString("date");
+            if (date.length() == 10) {
+                r.day = String.valueOf(Integer.parseInt(date.substring(8, 10)));
+                r.month = MONTHS[Integer.parseInt(date.substring(5, 7)) - 1];
+                int d = WidgetKit.days(m.today, date);
+                r.pill = d == 0 ? "היום" : d == 1 ? "מחר" : "";
+            } else {
+                r.pill = "בלי תאריך";
+            }
+            out.add(r);
+        }
+        return out;
     }
 
     /** The day the plan widget shows: today during the trip, else its first. */

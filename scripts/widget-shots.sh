@@ -171,6 +171,10 @@ expect 14f-reminder-added "Buy adapter" "להזמין מונית לשדה"
 queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
 grep -qF "Buy adapter" <<<"$queue" && grep -qF "reminders" <<<"$queue" || { echo "the new reminder is not queued:"; echo "$queue"; exit 1; }
 echo "widget: a reminder added on the widget is queued for Firestore"
+# Bookings: the soonest first, the date as a leaf, time and code under the
+# title; a cancelled one left out, one with no date last.
+open_widget plan 360 190 BookingsWidget; expect 14g-bookings "הזמנות" "4 קרובות" "סיור בלובר" "10:00 · אישור LV-551" "היום" "נוב׳"
+scroll_list; scroll_list; expect 14h-bookings-scrolled "דיסנילנד" "בלי תאריך"
 # The app set to dark on a light phone.
 open_widget plan-app-dark; want_shade 21a-app-dark dark
 open_widget plan-app-dark 360 300 ExpenseWidget; want_shade 21b-expense-app-dark dark
@@ -185,6 +189,7 @@ open_widget plan-violet 360 290 PlanWidget; expect 17-plan-widget-dark "הלוב
 open_widget flight 170 190 PackWidget;      expect 18-pack-dark "12/22"
 open_widget soon 170 190 CountdownWidget;   expect 19-countdown-dark "3 שעות"
 open_widget flight 360 190 RemindersWidget; expect 20-reminders-dark "להדפיס כרטיסים"
+open_widget plan 360 190 BookingsWidget; expect 20b-bookings-dark "סיור בלובר"
 adb shell cmd uimode night no; sleep 2
 
 # The expense widget: a keypad, the trip's currencies, then the sheet over
