@@ -195,6 +195,9 @@ await step('offline: an expense edited offline keeps what a partner changed mean
   await page.getByPlaceholder('0.00').fill('45');
   await page.locator('.sheet-footer button[type="submit"]').click();
   await closed();
+  // The list shows the new amount once it is saved on the phone; only then
+  // does the next step close the app.
+  await card('קפה ברשת').locator('.list-card-title', { hasText: /\D45(\D|$)/ }).waitFor();
 });
 
 await step('offline: a trip never opened on this phone is all there', async () => {
