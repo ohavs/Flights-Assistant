@@ -15,20 +15,27 @@ const PREFS_KEY = 'notify.prefs';
 export const NOTIFY_KINDS = [
   { key: 'flight', label: 'טיסות', hint: "24 שעות לפני (צ'ק־אין) ו־3 שעות לפני ההמראה", default: true },
   { key: 'reminder', label: 'תזכורות', hint: 'בשעה שקבעתם לתזכורת שלכם', default: true },
+  { key: 'booking', label: 'הזמנות', hint: 'לפני כל הזמנה: השעה ומספר האישור', default: true },
   { key: 'morning', label: 'סיכום בוקר', hint: 'בכל בוקר בטיול: התוכנית של היום ומזג האוויר', default: true },
   // Sent by the server, not scheduled here: see push.js.
   { key: 'partners', label: 'שינויים של שותפים', hint: 'הוצאה, מקום או פעילות חדשים, הצטרפות לטיול, ושינוי בטיסה או במלון', default: true },
 ];
 
-// The morning summary's time, 'HH:MM' in the phone's own time. Kept apart
-// from the switches, which are all booleans.
-const MORNING_KEY = 'notify.morningTime';
-export function morningTime() {
-  try { return localStorage.getItem(MORNING_KEY) || '08:00'; } catch { return '08:00'; }
-}
-export function setMorningTime(t) {
-  try { localStorage.setItem(MORNING_KEY, t); } catch { /* private mode */ }
-}
+// When the morning summary and the bookings are notified, in the phone's
+// own time. Kept apart from the switches, which are all booleans.
+const readPref = (key, fallback) => {
+  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
+};
+const writePref = (key, value) => {
+  try { localStorage.setItem(key, value); } catch { /* private mode */ }
+};
+export const morningTime = () => readPref('notify.morningTime', '08:00');
+export const setMorningTime = (t) => writePref('notify.morningTime', t);
+export const bookingTime = () => readPref('notify.bookingTime', '08:00');
+export const setBookingTime = (t) => writePref('notify.bookingTime', t);
+// 'same' (the booking's day) | 'before' (the day before)
+export const bookingDay = () => readPref('notify.bookingDay', 'same');
+export const setBookingDay = (d) => writePref('notify.bookingDay', d);
 
 // The first time there is something to notify about, ask, once per phone.
 export async function askPermissionOnce() {

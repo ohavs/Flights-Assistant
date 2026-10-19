@@ -9,7 +9,8 @@ import SectionHeader from '../ui/SectionHeader';
 import Notice from '../ui/Notice';
 import { Pill } from '../ui/kit';
 import { CustomTimePicker } from './CustomDatePicker';
-import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime } from '../lib/native/notify';
+import { NOTIFY_KINDS, notifyPrefs, setNotifyPref, notifyPermission, morningTime, setMorningTime, bookingTime, setBookingTime, bookingDay, setBookingDay } from '../lib/native/notify';
+import { BOOKING_DAYS } from '../lib/bookingAlerts';
 import { PERMISSIONS, permissionStatus, openPermission } from '../lib/native/permissions';
 import { widgetStatus, pinWidget } from '../lib/native/widget';
 import { appVersion, isNative } from '../lib/platform';
@@ -61,11 +62,11 @@ function NotifySettings({ onChange }) {
   const [perm, setPerm] = useState(null);
   const [time, setTime] = useState(morningTime);
   useEffect(() => { notifyPermission().then(setPerm); }, []);
-  const changeTime = (t) => {
-    setMorningTime(t);
-    setTime(t);
-    onChange?.();
-  };
+  const [bTime, setBTime] = useState(bookingTime);
+  const [bDay, setBDay] = useState(bookingDay);
+  // Save, show, and reschedule.
+  const pick = (save, show) => (v) => { save(v); show(v); onChange?.(); };
+  const changeTime = pick(setMorningTime, setTime);
   const toggle = async (key) => {
     const on = !prefs[key];
     if (on) setPerm(await notifyPermission({ ask: true }));
@@ -88,6 +89,17 @@ function NotifySettings({ onChange }) {
           </button>
         ))}
       </div>
+      {prefs.booking && (
+        <div className="settings-time" data-testid="booking-time">
+          <CustomTimePicker label="שעת ההתראה על הזמנות" value={bTime} onChange={pick(setBookingTime, setBTime)} />
+          <div className="chip-wrap" role="group" aria-label="מתי להתריע על הזמנות">
+            {BOOKING_DAYS.map(d => (
+              <button key={d.value} type="button" className="chip" aria-pressed={bDay === d.value}
+                onClick={() => pick(setBookingDay, setBDay)(d.value)}>{d.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {prefs.morning && (
         <div className="settings-time" data-testid="morning-time">
           <CustomTimePicker label="שעת סיכום הבוקר" value={time} onChange={changeTime} />
