@@ -6,7 +6,7 @@ import { changedFields } from '../lib/changes';
 import {
   UtensilsCrossed, Compass, Landmark, Ticket, Train, BedDouble, Tag,
   Pencil, Trash2, Phone, MapPin, ExternalLink, Copy, Check, Users, Clock,
-  CalendarCheck,
+  CalendarCheck, UserRound,
 } from 'lucide-react';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Sheet from '../ui/Sheet';
@@ -14,11 +14,12 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
-import ListCard from '../ui/ListCard';
+import { CardShell } from '../ui/ListCard';
+import ActionsMenu from '../ui/ActionsMenu';
 import SheetDelete from '../ui/SheetDelete';
 import SectionHeader from '../ui/SectionHeader';
 import { Segmented } from '../ui/Sheet';
-import { Pill, CategoryDisc } from '../ui/kit';
+import { Pill } from '../ui/kit';
 import EmptyState from './EmptyState';
 
 /* ══════════════════════════════════════════════════════════
@@ -29,6 +30,11 @@ import EmptyState from './EmptyState';
    Stored in trips/{tripId}/bookings. A booking can point at a place
    from the planner (placeId); the planner then shows that place as
    booked instead of "to book".
+
+   Each booking reads as a ticket, not a row: a band in its type's
+   colour with the status, the date as a calendar leaf beside the title,
+   and below a perforated line the stub, the confirmation code (a tap
+   copies it) and the ways to call, navigate and open the link.
    ══════════════════════════════════════════════════════════ */
 
 const BOOKING_TYPES = [
@@ -43,10 +49,11 @@ const BOOKING_TYPES = [
 const typeOf = (v) => BOOKING_TYPES.find(t => t.value === v) || BOOKING_TYPES[BOOKING_TYPES.length - 1];
 
 const STATUSES = [
-  { value: 'confirmed', label: 'מאושרת' },
-  { value: 'pending',   label: 'ממתינה לאישור' },
-  { value: 'cancelled', label: 'בוטלה' },
+  { value: 'confirmed', label: 'מאושרת',        tone: 'mint', Icon: Check },
+  { value: 'pending',   label: 'ממתינה לאישור', tone: 'butter' },
+  { value: 'cancelled', label: 'בוטלה',         tone: 'muted' },
 ];
+const statusOf = (v) => STATUSES.find(st => st.value === v) || STATUSES[0];
 
 const PAYMENTS = [
   { value: null,      label: 'לא צוין' },
@@ -70,11 +77,11 @@ const todayISO = () => {
 };
 
 const DOW = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-function formatWhen(date, time) {
-  if (!date) return time || '';
+const MONTHS = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני', 'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'];
+// The ticket's calendar leaf: "יום ה׳", 14, "נוב׳".
+function dateLeaf(date) {
   const [y, m, d] = date.split('-').map(Number);
-  const dow = DOW[new Date(y, m - 1, d).getDay()];
-  return `יום ${dow} ${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}${time ? ` · ${time}` : ''}`;
+  return { dow: `יום ${DOW[new Date(y, m - 1, d).getDay()]}`, day: d, month: MONTHS[m - 1] };
 }
 
 const normalizeUrl = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
@@ -253,74 +260,98 @@ export default function BookingsTab({ tripId }) {
   const renderCard = (b) => {
     const t = typeOf(b.type);
     const cancelled = b.status === 'cancelled';
-    const meta = [
-      formatWhen(b.date, b.time),
-      b.people ? `${b.people} אנשים` : null,
-      b.bookedUnder ? `על שם ${b.bookedUnder}` : null,
-    ].filter(Boolean).join(' · ');
+    const status = statusOf(b.status);
+    const leaf = b.date ? dateLeaf(b.date) : null;
+    const facts = [
+      b.time && { key: 'time', Icon: Clock, text: b.time },
+      b.people && { key: 'people', Icon: Users, text: `${b.people} אנשים` },
+      b.bookedUnder && { key: 'name', Icon: UserRound, text: `על שם ${b.bookedUnder}` },
+    ].filter(Boolean);
     const quick = [
       b.phone && { key: 'tel', href: telHref(b.phone), Icon: Phone, label: 'התקשר' },
       b.address && { key: 'map', href: mapsHref(b.address), Icon: MapPin, label: 'ניווט', external: true },
       b.url && { key: 'url', href: b.url, Icon: ExternalLink, label: 'קישור', external: true },
     ].filter(Boolean);
+    const actions = canEdit ? [
+      { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(b) },
+      { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(b), danger: true, swipe: true },
+    ] : [];
+    const stub = !!b.confirmation || quick.length > 0;
 
     return (
-      <ListCard
+      <CardShell
         key={b.id}
-        icon={<CategoryDisc color={t.color} size={42}><t.Icon size={19} /></CategoryDisc>}
-        title={b.title}
-        meta={meta}
-        metaIcon={meta ? (b.date || b.time ? <Clock size={12} /> : <Users size={12} />) : null}
-        tags={[
-          b.status === 'pending' && <Pill key="pending" size="sm" tone="butter">ממתינה לאישור</Pill>,
-          cancelled && <Pill key="cancelled" size="sm" tone="muted">בוטלה</Pill>,
-        ]}
+        className={`booking-ticket${stub ? ' has-stub' : ''}`}
+        style={{ '--t': cancelled ? 'var(--text-muted)' : t.color }}
         muted={cancelled}
         onOpen={canEdit ? () => startEdit(b) : undefined}
-        actions={canEdit ? [
-          { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(b) },
-          { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(b), danger: true, swipe: true },
-        ] : []}
+        actions={actions}
       >
-        {(b.confirmation || b.price || b.payment) && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        <div className="ticket-main">
+          <div className="ticket-band">
+            <span className="ticket-type"><t.Icon size={14} strokeWidth={2.4} />{t.label}</span>
+            <Pill size="sm" tone={status.tone} icon={status.Icon && <status.Icon size={12} strokeWidth={3} />}>{status.label}</Pill>
+            {actions.length > 0 && <ActionsMenu title={b.title} actions={actions} className="list-card-more" />}
+          </div>
+          <div className="ticket-body">
+            <div className="ticket-leaf">
+              {leaf ? (
+                <>
+                  <span className="ticket-leaf-dow">{leaf.dow}</span>
+                  <span className="ticket-leaf-day">{leaf.day}</span>
+                  <span className="ticket-leaf-month">{leaf.month}</span>
+                </>
+              ) : <t.Icon size={24} />}
+            </div>
+            <div className="ticket-info">
+              <h3 className="list-card-title">{b.title}</h3>
+              {facts.length > 0 && (
+                <div className="ticket-facts">
+                  {facts.map(f => <span key={f.key} className={`ticket-fact ${f.key}`}><f.Icon size={13} />{f.text}</span>)}
+                </div>
+              )}
+              {(b.price || b.payment) && (
+                <div className="ticket-pills">
+                  {b.price && <Pill size="sm">{b.price}</Pill>}
+                  {b.payment && <Pill size="sm" tone={b.payment === 'paid' ? 'mint' : 'muted'}>{PAYMENT_LABEL[b.payment]}</Pill>}
+                </div>
+              )}
+            </div>
+          </div>
+          {b.notes && <p className="ticket-notes">{b.notes}</p>}
+        </div>
+
+        {stub && (
+          <div className="ticket-stub">
             {b.confirmation && (
-              <button type="button" className="booking-code" onClick={(e) => { e.stopPropagation(); copyCode(b); }}
-                aria-label="העתק מספר הזמנה">
-                <span style={{ fontWeight: 700, color: 'var(--text-muted)' }}>אישור</span>
-                <span dir="ltr" style={{ fontWeight: 900, letterSpacing: 0.3 }}>{b.confirmation}</span>
-                {copiedId === b.id ? <Check size={13} /> : <Copy size={13} style={{ opacity: 0.6 }} />}
+              <button type="button" className="ticket-code" onClick={(e) => { e.stopPropagation(); copyCode(b); }}
+                aria-label={`העתק מספר הזמנה ${b.confirmation}`}>
+                <span className="ticket-code-label">מספר אישור</span>
+                <span className="ticket-code-value">
+                  <span dir="ltr">{b.confirmation}</span>
+                  {copiedId === b.id ? <Check size={14} /> : <Copy size={14} className="ticket-code-copy" />}
+                </span>
               </button>
             )}
-            {b.price && <Pill size="sm">{b.price}</Pill>}
-            {b.payment && (
-              <Pill size="sm" tone={b.payment === 'paid' ? 'mint' : 'muted'}>{PAYMENT_LABEL[b.payment]}</Pill>
+            {quick.length > 0 && (
+              <div className="ticket-actions">
+                {quick.map(q => (
+                  <a key={q.key} href={q.href} className="ticket-action" aria-label={q.label} title={q.label}
+                    target={q.external ? '_blank' : undefined} rel={q.external ? 'noreferrer' : undefined}
+                    onClick={e => e.stopPropagation()}>
+                    <q.Icon size={18} />
+                  </a>
+                ))}
+              </div>
             )}
           </div>
         )}
-
-        {b.notes && (
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.45, fontWeight: 500, whiteSpace: 'pre-wrap' }}>{b.notes}</p>
-        )}
-
-        {quick.length > 0 && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            {quick.map(q => (
-              <a key={q.key} href={q.href} className="booking-action"
-                target={q.external ? '_blank' : undefined} rel={q.external ? 'noreferrer' : undefined}
-                onClick={e => e.stopPropagation()}>
-                <q.Icon size={14} />
-                <span>{q.label}</span>
-              </a>
-            ))}
-          </div>
-        )}
-      </ListCard>
+      </CardShell>
     );
   };
 
   const section = (title, list) => list.length > 0 && (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <SectionHeader title={title} count={list.length} />
       {list.map(renderCard)}
     </div>
@@ -340,7 +371,7 @@ export default function BookingsTab({ tripId }) {
             {section('קרובות', upcoming)}
             {section('בלי תאריך', undated)}
             {past.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <SectionHeader title="עברו" count={past.length} collapsed={!showPast} onToggle={() => setShowPast(v => !v)} />
                 {showPast && past.map(renderCard)}
               </div>
@@ -456,7 +487,7 @@ export default function BookingsTab({ tripId }) {
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>קישור להזמנה</label>
-                  <input type="url" inputMode="url" className="form-control" dir="ltr" value={form.url} onChange={setFromInput('url')}
+                  <input type="text" inputMode="url" className="form-control" dir="ltr" value={form.url} onChange={setFromInput('url')}
                     placeholder="https://..." />
                 </div>
               </div>

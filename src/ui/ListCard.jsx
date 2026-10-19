@@ -45,16 +45,11 @@ export default function ListCard({
   children,
 }) {
   const live = actions.filter(Boolean);
-  const swipe = live.filter(a => a.swipe).map(a => ({
-    key: a.key, label: a.label, Icon: a.Icon,
-    tone: a.danger ? 'danger' : undefined,
-    onAction: a.run,
-  }));
   const name = menuTitle || (typeof title === 'string' ? title : '');
   const tagList = (Array.isArray(tags) ? tags : [tags]).filter(Boolean);
 
-  const content = (
-    <>
+  return (
+    <CardShell onOpen={onOpen} actions={live} muted={muted} className={className} style={style}>
       <div className="list-card-row">
         {lead}
         {icon}
@@ -77,9 +72,20 @@ export default function ListCard({
       </div>
       {/* Below the row, lined up under the title. */}
       {children && <div className={`list-card-body${icon || lead ? ' indent' : ''}`}>{children}</div>}
-    </>
+    </CardShell>
   );
+}
 
+/* The card itself, without its layout: a tap opens it, a swipe uncovers
+   the actions marked `swipe`. ListCard's, and a card drawn its own way
+   (a booking's ticket, BookingsTab) that answers a finger the same way;
+   such a card draws its own ⋯ (ActionsMenu, class list-card-more). */
+export function CardShell({ onOpen, actions = [], muted = false, className = '', style, children }) {
+  const swipe = actions.filter(a => a && a.swipe).map(a => ({
+    key: a.key, label: a.label, Icon: a.Icon,
+    tone: a.danger ? 'danger' : undefined,
+    onAction: a.run,
+  }));
   const cls = `glass-card list-card${muted ? ' muted' : ''}${className ? ' ' + className : ''}`;
   const open = onOpen ? {
     role: 'button',
@@ -89,11 +95,11 @@ export default function ListCard({
 
   return swipe.length > 0 ? (
     <SwipeRow actions={swipe} onClick={onOpen} className={cls} style={style} {...open}>
-      {content}
+      {children}
     </SwipeRow>
   ) : (
     <div className={cls} style={style} onClick={onOpen} {...open}>
-      {content}
+      {children}
     </div>
   );
 }
