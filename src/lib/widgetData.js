@@ -53,6 +53,19 @@ export function widgetTrips(trips, now = new Date()) {
     .map(({ t }) => t);
 }
 
+// The trips whose data the phone keeps for offline (App.jsx): the coming
+// and current ones, and those without dates yet (still being planned).
+export const OFFLINE_TRIPS = 12;
+export function offlineTrips(trips, now = new Date()) {
+  const today = isoOf(now);
+  const live = (trips || []).filter(t => typeof t?.deleteAt !== 'number').map(t => ({ t, range: tripRange(t) }));
+  return [
+    ...live.filter(({ range }) => range.length && range[range.length - 1] >= today)
+      .sort((a, b) => (a.range[0] < b.range[0] ? -1 : a.range[0] > b.range[0] ? 1 : 0)),
+    ...live.filter(({ range }) => !range.length),
+  ].slice(0, OFFLINE_TRIPS).map(({ t }) => t);
+}
+
 function flightsOf(trip) {
   const out = [];
   for (const leg of LEGS) {

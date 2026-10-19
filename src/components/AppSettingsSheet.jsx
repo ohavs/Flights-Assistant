@@ -222,13 +222,17 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
   // A trip that appeared after the sheet opened (the first one, imported) counts too.
   const trip = trips.find(t => t.id === selId) || trips[0];
   const savedText = isNative ? null : 'הקובץ ירד למכשיר';
+  // A file made offline holds what this phone has (src/lib/readFresh.js).
+  const FROM_PHONE = 'נוצר בלי חיבור, מהעותק שבטלפון: מה שלא נפתח בטלפון הזה לא נכלל. אפשר ליצור שוב כשיש חיבור.';
 
   const exportAs = async (f) => {
     if (busy || !trip) return;
     setBusy(f.kind); setMsg(null);
     try {
-      await f.run(await loadTripExportData(trip.id, trip), scope);
-      if (savedText) setMsg({ tone: 'success', text: savedText, for: 'export' });
+      const data = await loadTripExportData(trip.id, trip);
+      await f.run(data, scope);
+      if (data.fromPhone) setMsg({ tone: 'offline', text: FROM_PHONE, for: 'export' });
+      else if (savedText) setMsg({ tone: 'success', text: savedText, for: 'export' });
     } catch (err) {
       console.error('Export failed:', err);
       setMsg({ tone: 'error', text: 'הייצוא נכשל: ' + (err?.message || err), for: 'export' });
@@ -239,10 +243,12 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
     if (busy || !trip) return;
     setBusy('backup'); setMsg(null);
     try {
-      await saveBackupFile(await exportTripBackup(trip.id, trip), trip.name);
+      const data = await exportTripBackup(trip.id, trip);
+      await saveBackupFile(data, trip.name);
       try { localStorage.setItem(`lastExport_${trip.id}`, new Date().toISOString()); } catch { /* private mode */ }
       setTick(t => t + 1);
-      if (savedText) setMsg({ tone: 'success', text: savedText, for: 'backup' });
+      if (data.fromPhone) setMsg({ tone: 'offline', text: FROM_PHONE, for: 'backup' });
+      else if (savedText) setMsg({ tone: 'success', text: savedText, for: 'backup' });
     } catch (err) {
       console.error('Backup failed:', err);
       setMsg({ tone: 'error', text: 'הגיבוי נכשל: ' + (err?.message || err), for: 'backup' });
@@ -257,7 +263,8 @@ function FileSettings({ trips, uid, tripId, activeTab }) {
     try {
       const data = JSON.parse(await file.text());
       await importTripBackup(data, uid);
-      setMsg({ tone: 'success', text: `"${data.trip?.name || 'טיול'} (יובא)" נוסף לרשימת הטיולים`, for: 'backup' });
+      setMsg({ tone: 'success', text: `"${data.trip?.name || 'טיול'} (יובא)" נוסף לרשימת הטיולים`
+        + (navigator.onLine ? '' : '. הוא יעלה לשרת כשיחזור החיבור'), for: 'backup' });
     } catch (err) {
       console.error('Import failed:', err);
       const text = err instanceof SyntaxError ? 'זה לא קובץ גיבוי של עוזר טיסות' : (err?.message || 'הייבוא נכשל. ודא שהקובץ תקין');

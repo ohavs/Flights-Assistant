@@ -83,6 +83,32 @@ async function openTrip() {
   await page.getByText('טיסת הלוך').first().waitFor();
 }
 
+// A second trip, never opened on this phone, with an expense in it.
+const ownerUid = (await (await fetch(`${DB}/trips/${tripId}`, { headers: admin })).json())
+  .fields.memberIds.arrayValue.values[0].stringValue;
+const TRIP2 = 'שוק בלי רשת';
+await fetch(`${DB}/trips?documentId=trip_offline_2`, {
+  method: 'POST', headers: { ...admin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ fields: {
+    name: { stringValue: TRIP2 }, destination: { stringValue: 'רומא' },
+    members: { mapValue: { fields: { [ownerUid]: { stringValue: 'owner' } } } },
+    memberIds: { arrayValue: { values: [{ stringValue: ownerUid }] } },
+    createdAt: { stringValue: new Date().toISOString() },
+  } }),
+});
+await fetch(`${DB}/trips/trip_offline_2/expenses?documentId=exp-market`, {
+  method: 'POST', headers: { ...admin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ fields: {
+    amount: { integerValue: '7' }, currency: { stringValue: 'EUR' }, category: { stringValue: 'כללי' },
+    description: { stringValue: 'מזכרת מהשוק' }, createdAt: { stringValue: new Date().toISOString() },
+  } }),
+});
+// The list shows it: the app now keeps its data on the phone (App.jsx, offlineTrips).
+await page.locator('.trip-card', { hasText: TRIP2 }).waitFor({ timeout: 20000 });
+await page.waitForTimeout(3000);
+const expenseId = ((await (await fetch(`${DB}/trips/${tripId}/expenses?pageSize=50`, { headers: admin })).json()).documents || [])
+  .find(d => d.fields?.description?.stringValue === 'קפה ברשת').name.split('/').pop();
+
 stopServer();
 await new Promise(r => setTimeout(r, 500));
 if (await fetch(APP).then(() => true, () => false)) throw new Error('the app server is still up');
@@ -157,6 +183,36 @@ await step('offline, closing and opening the app again keeps all of it', async (
   await page.getByText('מבצר בלי רשת').first().waitFor();
 });
 
+// A partner changes the expense's category (on the server) while this phone,
+// offline, changes its amount: both must survive.
+await step('offline: an expense edited offline keeps what a partner changed meanwhile', async () => {
+  await fetch(`${DB}/trips/${tripId}/expenses/${expenseId}?updateMask.fieldPaths=category`, {
+    method: 'PATCH', headers: { ...admin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { category: { stringValue: 'תחבורה' } } }),
+  });
+  await tab('הוצאות');
+  await card('קפה ברשת').locator('.list-card-title').tap();
+  await page.getByPlaceholder('0.00').fill('45');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await closed();
+  // The list shows the new amount once it is saved on the phone; only then
+  // does the next step close the app.
+  await card('קפה ברשת').locator('.list-card-title', { hasText: /\D45(\D|$)/ }).waitFor();
+});
+
+await step('offline: a trip never opened on this phone is all there', async () => {
+  await page.reload();
+  const open = page.locator('.trip-card', { hasText: TRIP2 }).getByText('פתח טיול');
+  const back = page.locator('button[aria-label="חזרה לרשימת הטיולים"]');
+  await open.or(page.getByText('טיסת הלוך').first()).first().waitFor({ timeout: 20000 });
+  if (!(await open.count()) && await back.count()) await back.click();
+  await open.click();
+  await tab('הוצאות');
+  await card('מזכרת מהשוק').waitFor();
+  await page.reload();
+  await openTrip();
+});
+
 await step('offline: refreshing the flight says there is no connection and keeps the saved one', async () => {
   await tab('טיסה ומלון');
   await page.locator('button[title="רענן מידע טיסה"]').first().click();
@@ -201,6 +257,17 @@ await step('back online, everything reaches the server', async () => {
     }
   }
   if (missing.size) throw new Error(`not on the server: ${[...missing].join(', ')}`);
+});
+
+await step('back online, the offline edit and the partner\'s change are both on the server', async () => {
+  let f = {};
+  for (let i = 0; i < 40; i++) {
+    f = (await (await fetch(`${DB}/trips/${tripId}/expenses/${expenseId}`, { headers: admin })).json()).fields || {};
+    if (Number(f.amount?.integerValue ?? f.amount?.doubleValue) === 45) break;
+    await page.waitForTimeout(500);
+  }
+  const amount = Number(f.amount?.integerValue ?? f.amount?.doubleValue);
+  if (amount !== 45 || f.category?.stringValue !== 'תחבורה') throw new Error(`amount ${amount}, category ${f.category?.stringValue}`);
 });
 
 await browser.close();

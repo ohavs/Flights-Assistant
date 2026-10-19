@@ -180,3 +180,20 @@ test('a flight carries its landing, local clocks, gate and status, for the widge
   assert.equal(back.arriveAt, null);
   assert.deepEqual([back.dep, back.arr, back.gate], ['', '', '']);
 });
+
+test('offline, the phone keeps the coming trips and those still without dates', async () => {
+  const { offlineTrips } = await import('../src/lib/widgetData.js');
+  const now = new Date(2026, 9, 16);
+  const trip = (id, out, ret, extra = {}) => ({
+    id, ...extra,
+    outboundFlightDetails: { date: out || '' }, returnFlightDetails: { date: ret || '' },
+  });
+  const list = offlineTrips([
+    trip('past', '2026-09-01', '2026-09-05'),
+    trip('later', '2026-12-01', '2026-12-05'),
+    trip('now', '2026-10-14', '2026-10-20'),
+    trip('undated'),
+    trip('going', '2026-11-01', '2026-11-03', { deleteAt: Date.now() }),
+  ], now);
+  assert.deepEqual(list.map(t => t.id), ['now', 'later', 'undated']);
+});

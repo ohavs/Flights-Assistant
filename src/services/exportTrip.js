@@ -1,7 +1,8 @@
 // Trip export to PDF / Word / Excel — Hebrew, RTL.
 // Heavy libraries are dynamic-imported so they don't bloat the main bundle.
 
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc } from 'firebase/firestore';
+import { readAll } from '../lib/readFresh';
 import { db } from '../firebase';
 import { saveFile } from '../lib/saveFile';
 import { dayActivities } from '../lib/dayActivities';
@@ -13,21 +14,22 @@ import { toTime24 } from './flightTime';
 // ──────────────────────────────────────────────────────────────────────
 
 export async function loadTripExportData(tripId, trip) {
-  const planningSnap = await getDocs(collection(db, 'trips', tripId, 'planning'));
+  const mark = {};
+  const planningSnap = await readAll(collection(db, 'trips', tripId, 'planning'), mark);
   const planning = planningSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const daysSnap = await getDocs(collection(db, 'trips', tripId, 'days'));
+  const daysSnap = await readAll(collection(db, 'trips', tripId, 'days'), mark);
   const days = daysSnap.docs
     .map(d => ({ id: d.id, ...d.data(), activities: dayActivities(d.data().activities) }))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-  const checklistSnap = await getDocs(collection(db, 'trips', tripId, 'checklist'));
+  const checklistSnap = await readAll(collection(db, 'trips', tripId, 'checklist'), mark);
   const checklist = checklistSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const infoSnap = await getDocs(collection(db, 'trips', tripId, 'info'));
+  const infoSnap = await readAll(collection(db, 'trips', tripId, 'info'), mark);
   const info = infoSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const expensesSnap = await getDocs(collection(db, 'trips', tripId, 'expenses'));
+  const expensesSnap = await readAll(collection(db, 'trips', tripId, 'expenses'), mark);
   const expenses = expensesSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -57,7 +59,7 @@ export async function loadTripExportData(tripId, trip) {
     if (snap.exists()) categorySettings = snap.data() || {};
   } catch { /* the defaults will do */ }
 
-  return { trip, planning, days, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1), categorySettings };
+  return { trip, planning, days, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1), categorySettings, fromPhone: !!mark.fromPhone };
 }
 
 // Build a full expense report (totals, breakdowns, statistics) for export.
