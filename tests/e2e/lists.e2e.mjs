@@ -90,6 +90,27 @@ await step('bookings: no ⋯ on a phone; a swipe deletes (the tap already edits)
   await page.locator('.modal-overlay button.btn-primary.danger').click();
   await card('ארוחה בלה מארה').waitFor({ state: 'detached' });
 });
+await step('bookings: a booking is a ticket, with its code to copy and the ways to call, navigate and open it', async () => {
+  await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();
+  await page.getByPlaceholder('למשל: ארוחת ערב ב-Costes').fill('מופע בגלריה');
+  await page.getByPlaceholder('2', { exact: true }).fill('4');
+  await page.getByPlaceholder('שם המזמין').fill('אוהב');
+  await page.getByPlaceholder('ABC123').fill('XK42Q');
+  await page.getByPlaceholder('כתובת או קישור למפה').fill('Andrássy út 22, Budapest');
+  await page.getByPlaceholder('+36 1 234 5678').fill('+36 1 555 0100');
+  await page.getByPlaceholder('https://...').fill('example.com/t/42');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  const ticket = card('מופע בגלריה');
+  await ticket.locator('.ticket-stub .ticket-code', { hasText: 'XK42Q' }).waitFor();
+  await ticket.getByText('4 אנשים').waitFor();
+  await ticket.getByText('על שם אוהב').waitFor();
+  for (const name of ['התקשר', 'ניווט', 'קישור']) await ticket.getByRole('link', { name }).waitFor();
+  // A tap on the code copies it, and does not open the booking.
+  await ticket.locator('.ticket-code').tap();
+  await page.waitForTimeout(400);
+  if (await page.locator('.modal-overlay').count()) throw new Error('a tap on the code opened the booking');
+  await page.screenshot({ path: '.e2e/lists-bookings-ticket.png' });
+});
 
 // ── Expenses ──
 await tab('הוצאות');
