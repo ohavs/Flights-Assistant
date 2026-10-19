@@ -58,6 +58,17 @@
             style="@style/WBold.Chip"
             android:layout_marginStart="8dp"
             android:text="3 פתוחות" />
+        <TextView
+            android:id="@+id/add"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            style="@style/WBold.Key.Save"
+            android:gravity="center"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_brand"
+            android:text="+"
+            android:textSize="22sp"
+            android:contentDescription="תזכורת חדשה" />
     </LinearLayout>
     <LinearLayout
         android:id="@+id/list"

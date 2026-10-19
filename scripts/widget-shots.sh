@@ -160,6 +160,17 @@ tap_desc "סמן: להזמין מונית לשדה"; expect_desc 14c-reminder-ti
 queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
 grep -qF "reminders" <<<"$queue" && grep -qF "r1&quot;" <<<"$queue" && grep -qF "completed" <<<"$queue" || { echo "the done reminder is not queued:"; echo "$queue"; exit 1; }
 echo "widget: a done reminder is queued for Firestore"
+# "+" adds a reminder over the home screen: it is in the list at once, and
+# waits for Firestore (in CI nobody is signed in).
+open_widget flight 360 190 RemindersWidget
+tap_desc "תזכורת חדשה"; sleep 1
+expect 14e-reminder-sheet "תזכורת חדשה" "מה להזכיר?" "שמירה"
+adb shell input text "Buy%sadapter"; sleep 1
+tap_text שמירה; sleep 3
+expect 14f-reminder-added "Buy adapter" "להזמין מונית לשדה"
+queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
+grep -qF "Buy adapter" <<<"$queue" && grep -qF "reminders" <<<"$queue" || { echo "the new reminder is not queued:"; echo "$queue"; exit 1; }
+echo "widget: a reminder added on the widget is queued for Firestore"
 # The app set to dark on a light phone.
 open_widget plan-app-dark; want_shade 21a-app-dark dark
 open_widget plan-app-dark 360 300 ExpenseWidget; want_shade 21b-expense-app-dark dark

@@ -23,10 +23,11 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *     or of the next trip without one.
  *   "open" event: a tap on the widget, { tripId, tab }. A tap that started
  *     the app is kept until the app listens.
- *   auth({ uid, refreshToken, apiKey, projectId } | {}): the sign-in the
- *     expense widget saves with (ExpenseStore); {} when signed out.
- *   pending(): { items: [{ id, tripId, uid, doc }] }, expenses the widget
- *     could not send; done({ ids }) once the app has written them.
+ *   auth({ uid, refreshToken, apiKey, projectId, name, photo } | {}): the
+ *     sign-in the expense and reminders widgets save with (ExpenseStore);
+ *     {} when signed out.
+ *   pending(): { items: [{ id, tripId, uid, coll?, doc } | patch] }, what
+ *     the widgets could not send; done({ ids }) once the app has written them.
  */
 @CapacitorPlugin(name = "TripWidget")
 public class TripWidgetPlugin extends Plugin {

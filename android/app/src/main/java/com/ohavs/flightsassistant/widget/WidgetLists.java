@@ -4,16 +4,20 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The rows of the plan and reminders lists (ListWidgetService), and the
  * ticks made on them. A tick shows at once: it is kept here until a
  * snapshot saved after it says the same (the app saves one when Firestore
- * has the change), while ExpenseStore sends it.
+ * has the change), while ExpenseStore sends it. So does a reminder added
+ * on the widget (ReminderSheetActivity), first in the list.
  */
 final class WidgetLists {
     private WidgetLists() {}
@@ -54,6 +58,19 @@ final class WidgetLists {
         List<Row> out = new ArrayList<>();
         JSONObject rem = m.trip.optJSONObject("reminders");
         JSONArray items = rem == null ? null : rem.optJSONArray("items");
+        Set<String> inSnapshot = new HashSet<>();
+        for (int i = 0; items != null && i < items.length(); i++) {
+            JSONObject it = items.optJSONObject(i);
+            if (it != null) inSnapshot.add(it.optString("id"));
+        }
+        for (JSONObject a : added(ctx, m, inSnapshot)) {
+            Row r = new Row();
+            r.title = a.optString("text");
+            r.path = "trips/" + m.tripId + "/reminders/" + a.optString("id");
+            r.field = "completed";
+            r.done = ticked(ctx, m, r, false);
+            out.add(r);
+        }
         for (int i = 0; items != null && i < items.length(); i++) {
             JSONObject it = items.optJSONObject(i);
             if (it == null || it.optString("text").isEmpty()) continue;
@@ -76,6 +93,58 @@ final class WidgetLists {
         int n = 0;
         for (Row r : reminders(ctx, m)) if (!r.done) n++;
         return n;
+    }
+
+    // ── Reminders added here, not yet in a snapshot ─────────────────────
+
+    private static final String ADDED = "widget_added";
+
+    /** A reminder added on the widget of a snapshot saved at savedAt: shown at once. */
+    static void added(Context ctx, String tripId, String id, String text, long savedAt) {
+        SharedPreferences p = ctx.getSharedPreferences(ADDED, Context.MODE_PRIVATE);
+        try {
+            JSONArray a = new JSONArray(p.getString("reminders", "[]"));
+            a.put(new JSONObject().put("id", id).put("tripId", tripId).put("text", text)
+                .put("at", Math.max(System.currentTimeMillis(), savedAt + 1)));
+            p.edit().putString("reminders", a.toString()).apply();
+        } catch (JSONException ignored) {
+            // the ids and texts are plain strings
+        }
+    }
+
+    /**
+     * The trip's reminders added here that its snapshot does not have yet:
+     * still waiting to be sent, or newer than the snapshot. The rest (the
+     * snapshot has them, or has caught up) are let go.
+     */
+    private static List<JSONObject> added(Context ctx, WidgetKit.Moment m, Set<String> inSnapshot) {
+        SharedPreferences p = ctx.getSharedPreferences(ADDED, Context.MODE_PRIVATE);
+        List<JSONObject> out = new ArrayList<>();
+        JSONArray all;
+        try {
+            all = new JSONArray(p.getString("reminders", "[]"));
+        } catch (JSONException x) {
+            return out;
+        }
+        Set<String> waiting = new HashSet<>();
+        JSONArray q = ExpenseStore.pending(ctx);
+        for (int i = 0; i < q.length(); i++) {
+            JSONObject e = q.optJSONObject(i);
+            if (e != null) waiting.add(e.optString("id"));
+        }
+        JSONArray keep = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject a = all.optJSONObject(i);
+            if (a == null) continue;
+            String id = a.optString("id");
+            boolean current = !inSnapshot.contains(id)
+                && (waiting.contains(id) || a.optLong("at") > m.snapshot.optLong("savedAt"));
+            if (!current) continue;
+            keep.put(a);
+            if (m.tripId.equals(a.optString("tripId"))) out.add(0, a);   // the newest first
+        }
+        if (keep.length() != all.length()) p.edit().putString("reminders", keep.toString()).apply();
+        return out;
     }
 
     // ── Ticks not yet in a snapshot ──────────────────────────────────────

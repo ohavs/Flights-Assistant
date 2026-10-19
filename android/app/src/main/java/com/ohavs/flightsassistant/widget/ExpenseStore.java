@@ -36,7 +36,8 @@ import java.util.TimeZone;
 
 /**
  * What the widgets write without opening the app: expenses added on the
- * home screen (ExpenseWidget, ExpenseSheetActivity), and the ticks in the
+ * home screen (ExpenseWidget, ExpenseSheetActivity), reminders added on the
+ * reminders widget (ReminderSheetActivity), and the ticks in the
  * plan and reminders lists (patch, WidgetActionActivity). The app hands over its
  * sign-in (TripWidgetPlugin.auth: the user's refresh token and the web
  * config); this trades it for an ID token and commits the same document the
@@ -77,7 +78,7 @@ final class ExpenseStore {
         return ctx.getSharedPreferences(AUTH, Context.MODE_PRIVATE);
     }
 
-    /** { uid, refreshToken, apiKey, projectId }, or null when signed out. */
+    /** { uid, refreshToken, apiKey, projectId, name, photo }, or null when signed out. */
     static void setAuth(Context ctx, JSONObject a) {
         SharedPreferences p = auth(ctx);
         if (a == null || a.optString("uid").isEmpty() || a.optString("refreshToken").isEmpty()) {
@@ -90,11 +91,22 @@ final class ExpenseStore {
             .putString("refreshToken", a.optString("refreshToken"))
             .putString("apiKey", a.optString("apiKey"))
             .putString("projectId", a.optString("projectId"))
+            .putString("name", a.optString("name"))
+            .putString("photo", a.optString("photo"))
             .apply();
     }
 
     static String uid(Context ctx) {
         return auth(ctx).getString("uid", null);
+    }
+
+    /** The signed-in person's name and picture, for a reminder they add ("" when not known). */
+    static String name(Context ctx) {
+        return auth(ctx).getString("name", "");
+    }
+
+    static String photo(Context ctx) {
+        return auth(ctx).getString("photo", "");
     }
 
     // ── The document ─────────────────────────────────────────────────────
@@ -121,6 +133,22 @@ final class ExpenseStore {
             .put("paidBy", uid)
             .put("createdAt", iso.format(new Date(now)));
         return new JSONObject().put("id", "exp-" + now).put("tripId", tripId).put("uid", uid).put("doc", doc);
+    }
+
+    /**
+     * A queued reminder, from the reminders widget, as the checklist tab
+     * writes it: { id, tripId, uid, coll: "reminders", doc }.
+     */
+    static JSONObject reminder(String uid, String name, String photo, String tripId, String text, long now) throws JSONException {
+        JSONObject doc = new JSONObject()
+            .put("text", text.trim())
+            .put("createdAt", now)
+            .put("completed", false)
+            .put("addedByUid", uid)
+            .put("addedByName", name == null ? "" : name)
+            .put("addedByPhoto", photo == null ? "" : photo);
+        return new JSONObject().put("id", "rem-" + now).put("tripId", tripId).put("uid", uid)
+            .put("coll", "reminders").put("doc", doc);
     }
 
     static final String PATCH = "patch";
@@ -322,7 +350,7 @@ final class ExpenseStore {
             }
             write = new JSONObject()
                 .put("update", new JSONObject()
-                    .put("name", base + "/trips/" + e.getString("tripId") + "/expenses/" + e.getString("id"))
+                    .put("name", base + "/trips/" + e.getString("tripId") + "/" + e.optString("coll", "expenses") + "/" + e.getString("id"))
                     .put("fields", fields))
                 // Never over another document: a retry finds its own already there.
                 .put("currentDocument", new JSONObject().put("exists", false));

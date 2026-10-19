@@ -40,8 +40,9 @@ export function onWidgetOpen(handler) {
   return () => { gone = true; sub?.remove?.(); };
 }
 
-// The sign-in the expense widget saves with: { uid, refreshToken, apiKey,
-// projectId }, or null when signed out. It stays on the phone, out of backups.
+// The sign-in the expense and reminders widgets save with: { uid,
+// refreshToken, apiKey, projectId, name, photo }, or null when signed out.
+// It stays on the phone, out of backups.
 export async function saveWidgetAuth(signIn) {
   if (!isNative) return;
   try { await TripWidget.auth(signIn || {}); } catch { /* an app from before 8.45.0 */ }
@@ -50,10 +51,11 @@ export async function saveWidgetAuth(signIn) {
 // What the widgets could not send (offline, or before the app handed them
 // the sign-in), written through the app's own Firestore:
 //   addExpense(tripId, id, doc): an expense from the home screen;
+//   addReminder(tripId, id, doc): a reminder from the reminders widget;
 //   setField(path, field, value): a tick in the plan or reminders list.
 // Each resolves once the write is queued. Another account's wait for them.
 // Returns how many were sent.
-export async function sendWidgetWrites(uid, { addExpense, setField }) {
+export async function sendWidgetWrites(uid, { addExpense, addReminder, setField }) {
   if (!isNative || !uid) return 0;
   let items;
   try { items = (await TripWidget.pending()).items || []; } catch { return 0; }
@@ -67,6 +69,9 @@ export async function sendWidgetWrites(uid, { addExpense, setField }) {
           && ['visited', 'completed'].includes(it.field) && typeof it.value === 'boolean';
         if (!ok) continue;
         await setField(it.path, it.field, it.value);
+      } else if (it.coll === 'reminders') {
+        if (!it.tripId || typeof it.doc?.text !== 'string' || !it.doc.text.trim()) continue;
+        await addReminder(it.tripId, it.id, { ...it.doc, addedByUid: it.doc.addedByUid || uid });
       } else {
         if (!it.tripId || !it.doc) continue;
         await addExpense(it.tripId, it.id, { ...it.doc, paidBy: it.doc.paidBy || uid });

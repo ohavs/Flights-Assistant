@@ -8,7 +8,8 @@ import com.ohavs.flightsassistant.R;
 
 /**
  * Open reminders (4x2 and up), the soonest first, in a list that scrolls
- * (ListWidgetService), each with a box to tick it done.
+ * (ListWidgetService), each with a box to tick it done; "+" adds one
+ * (ReminderSheetActivity).
  */
 public class RemindersWidget extends BaseWidget {
 
@@ -39,8 +40,9 @@ public class RemindersWidget extends BaseWidget {
         v.setPendingIntentTemplate(R.id.list, WidgetActionActivity.template(ctx, id));
         v.setEmptyView(R.id.list, R.id.empty);
         v.setTextViewText(R.id.empty, "אין תזכורות פתוחות");
-        WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip));
+        WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().card(R.id.root).soft(R.id.icon_tile).chip(R.id.chip).fill(R.id.add));
         v.setOnClickPendingIntent(R.id.root, WidgetKit.open(ctx, m.tripId, "checklist"));
+        v.setOnClickPendingIntent(R.id.add, ReminderSheetActivity.open(ctx, id));
         return v;
     }
 }

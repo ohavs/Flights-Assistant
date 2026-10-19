@@ -226,8 +226,13 @@ REM_SAMPLES = [('היום 18:00', 'להזמין מונית לשדה'), ('מחר 
 
 
 def reminders(prev):
+    # "+" at the end of the header: a new reminder (ReminderSheetActivity).
+    head = header('ic_ws_bell', 'תזכורות', 'פריז עם הילדים', '3 פתוחות')
+    head.kids.append(text('add', 'WBold.Key.Save', w='36dp', h='36dp', gravity='center', layout_marginStart='8dp',
+                          background='@drawable/widget_brand', text='+', textSize='22sp',
+                          contentDescription='תזכורת חדשה'))
     return root([
-        header('ic_ws_bell', 'תזכורות', 'פריז עם הילדים', '3 פתוחות'),
+        head,
         listed(prev, 'rem', 5, REM_SAMPLES, True, 3, 'אין תזכורות פתוחות'),
     ])
 
