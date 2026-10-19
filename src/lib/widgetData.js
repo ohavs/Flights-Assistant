@@ -169,15 +169,18 @@ function spendOf(trip, list, plans) {
 // 'light' or 'dark' whatever the phone is, else 'system' (the phone's).
 // rates: the expenses tab's (per euro), for the shekel value of an expense
 // the widget saves.
+// currencies: every one the app knows, for the expense widget's settings
+// (WidgetTripActivity), where its keypad's currencies are set.
 export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
   const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(trip, expensesByTrip[trip.id], plansByTrip[trip.id]) }));
-  const codes = new Set(['ILS', ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
+  const codes = new Set(['ILS', ...Object.keys(CURRENCY_META), ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
   return {
     v: 1,
     savedAt: now.getTime(),
     palette,
     theme: theme === 'light' || theme === 'dark' ? theme : 'system',
     rates: rates ? Object.fromEntries([...codes].filter(c => Number(rates[c]) > 0).map(c => [c, Number(rates[c])])) : null,
+    currencies: Object.entries(CURRENCY_META).map(([code, m]) => ({ code, symbol: m.symbol, name: m.name })),
     trips: shown.map(({ trip, spend }) => {
       const range = tripRange(trip);
       const items = checklistByTrip[trip.id] || [];

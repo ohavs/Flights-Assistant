@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Which trip a widget shows (WidgetTripActivity): over the home screen,
-     when a widget is added there or set again. Colours per palette in code. -->
+     when a widget is added there or set again; the expense widget also sets
+     its keypad's currencies here, and saves. Colours per palette in code.
+     A long list scrolls inside the sheet, which stays below the status bar. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/scrim"
     android:layout_width="match_parent"
@@ -13,6 +15,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
+        android:layout_marginTop="56dp"
         android:clickable="true"
         android:focusable="true"
         android:orientation="vertical"
@@ -28,6 +31,7 @@
             android:layout_gravity="center_horizontal" />
 
         <TextView
+            android:id="@+id/title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
@@ -49,7 +53,8 @@
         <ScrollView
             android:id="@+id/rows_scroll"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:layout_marginTop="12dp"
             android:scrollbars="none">
             <LinearLayout
@@ -58,5 +63,17 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
         </ScrollView>
+
+        <TextView
+            android:id="@+id/done"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="14dp"
+            android:fontFamily="@font/rubik_extrabold"
+            android:gravity="center"
+            android:text="שמירה"
+            android:textColor="@color/w_on_brand"
+            android:textSize="18sp"
+            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>
