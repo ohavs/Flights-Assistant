@@ -1460,8 +1460,9 @@ textarea.form-control {
 @container (max-width: 200px) {
   .date-long { display: none; }
   .date-short { display: inline; }
-  .picker-field { gap: 8px; padding-inline: 7px 10px; }
-  .picker-field-icon { width: 28px; height: 28px; border-radius: 10px; }
+  .picker-field { gap: 6px; padding-inline: 6px 8px; }
+  .picker-field-icon { width: 24px; height: 24px; border-radius: 8px; }
+  .picker-field-icon svg { width: 14px; height: 14px; }
   .picker-field-text { font-size: 14px !important; }
 }
 

@@ -823,11 +823,11 @@ export default function ExpensesTab({ tripId }) {
                   <>
                     <button type="button"
                       onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); }}
-                      className="form-control"
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-muted)', background: 'var(--surface)' }}
+                      className="form-control picker-field custom-dropdown-trigger"
+                      aria-expanded={showPlanDropdown}
                     >
-                      <span>{showPlanDropdown ? 'סגור רשימה' : 'בחר מהרשימה...'}</span>
-                      <ChevronDown size={15} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: showPlanDropdown ? 'rotate(180deg)' : 'none' }} />
+                      <span className="picker-field-text is-empty">{showPlanDropdown ? 'סגור רשימה' : 'בחר מהרשימה...'}</span>
+                      <span className="picker-field-chev" aria-hidden="true"><ChevronDown size={16} strokeWidth={2.6} /></span>
                     </button>
 
                     {showPlanDropdown && (
