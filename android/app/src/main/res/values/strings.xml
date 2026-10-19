@@ -14,6 +14,8 @@
     <string name="widget_pack_description">כמה מהציוד כבר נארז</string>
     <string name="widget_rem_label">תזכורות</string>
     <string name="widget_rem_description">התזכורות הפתוחות של הטיול, הקרובה קודם</string>
+    <string name="widget_bookings_label">הזמנות</string>
+    <string name="widget_bookings_description">ההזמנות הקרובות של הטיול: תאריך, שעה ומספר אישור</string>
     <string name="widget_expense_label">הוצאה מהירה</string>
     <string name="widget_expense_description">מקלידים סכום ושומרים הוצאה לטיול, בלי לפתוח את האפליקציה</string>
 </resources>

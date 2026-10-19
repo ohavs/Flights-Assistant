@@ -122,6 +122,7 @@ const WIDGETS = [
   { kind: 'PlanWidget', label: 'התוכנית של היום', hint: 'הפעילויות של היום לפי השעות. לפני הטיול: היום הראשון.' },
   { kind: 'PackWidget', label: 'אריזה', hint: 'כמה מהציוד כבר נארז.' },
   { kind: 'RemindersWidget', label: 'תזכורות', hint: 'התזכורות הפתוחות, הקרובה קודם.' },
+  { kind: 'BookingsWidget', label: 'הזמנות', hint: 'ההזמנות הקרובות: תאריך, שעה ומספר אישור.' },
   { kind: 'ExpenseWidget', label: 'הוצאה מהירה', hint: 'מקלידים סכום, בוחרים קטגוריה ומקום, ונשמר לטיול בלי לפתוח את האפליקציה.' },
 ];
 

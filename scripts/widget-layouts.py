@@ -237,6 +237,36 @@ def reminders(prev):
     ])
 
 
+BOOKING_SAMPLES = [('10:00', 'סיור בלובר'), ('20:30', 'ארוחת ערב ליד הסיין'), ('', 'שייט בסיין')]
+
+
+def bookings(prev):
+    return root([
+        header('ic_ws_ticket', 'הזמנות', 'פריז עם הילדים', '4 קרובות'),
+        listed(prev, 'bk', 3, BOOKING_SAMPLES, True, 3, 'אין הזמנות קרובות'),
+    ])
+
+
+def booking_item(prev):
+    """A row of the bookings list: the date as a leaf (the day over the
+    month; gone when there is no date), the title, a line under it (the
+    time, the confirmation code), and a pill (today, tomorrow)."""
+    return V('LinearLayout', {'id': '@+id/item', 'layout_width': 'match_parent', 'layout_height': 'wrap_content',
+                              'layoutDirection': 'rtl', 'orientation': 'horizontal', 'gravity': 'center_vertical',
+                              'paddingTop': '5dp', 'paddingBottom': '5dp'}, [
+        lin('item_leaf', 'vertical', w='44dp', h='48dp', gravity='center', background='@drawable/widget_soft', kids=[
+            text('item_day', 'WBold.Title', gravity='center', textSize='18sp', includeFontPadding='false', sample='4'),
+            text('item_month', 'WText.Muted', gravity='center', textSize='11sp', includeFontPadding='false',
+                 sample='נוב׳'),
+        ]),
+        lin(None, 'vertical', w='0dp', layout_weight='1', layout_marginStart='10dp', kids=[
+            text('item_title', 'WText', w='match_parent', textSize='17sp', maxLines='2', sample='סיור בלובר'),
+            text('item_sub', 'WText.Muted', w='match_parent', layout_marginTop='2dp', visibility='gone'),
+        ]),
+        text('item_pill', 'WBold.Pill', layout_marginStart='8dp', textSize='13sp', visibility='gone'),
+    ])
+
+
 def list_item(prev):
     """A row of a widget list: a box to tick (a ring, or the brand with a
     tick), the title in two lines at most, a line under it, and a pill."""
@@ -319,11 +349,13 @@ LAYOUTS = {
     'widget_pack': (pack, 'Packing (PackWidget): how much of the checklist is packed.'),
     'widget_plan': (plan, 'Today\'s plan (PlanWidget), or the first day\'s before the trip.'),
     'widget_reminders': (reminders, 'Open reminders (RemindersWidget), the soonest first.'),
+    'widget_bookings': (bookings, 'The bookings ahead (BookingsWidget), the soonest first.'),
+    'widget_booking_item': (booking_item, 'A row of the bookings list (ListWidgetService): the date as a leaf, the title, a line under it, a pill.'),
     'widget_expense': (expense, 'An expense from the home screen (ExpenseWidget): the amount on a keypad, the currency, then "המשך" opens ExpenseSheetActivity.'),
     'widget_list_item': (list_item, 'A row of the plan and reminders lists (ListWidgetService): a box to tick, the title, a line under it, a pill.'),
     'widget_message': (message, 'In place of any widget\'s content: signed out, nothing ahead, or a snapshot it cannot read.'),
 }
-PREVIEWS = ['widget_trip', 'widget_big', 'widget_pack', 'widget_plan', 'widget_reminders', 'widget_expense']
+PREVIEWS = ['widget_trip', 'widget_big', 'widget_pack', 'widget_plan', 'widget_reminders', 'widget_bookings', 'widget_expense']
 
 HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-layouts.py; edit there. {} -->\n'
 
@@ -336,7 +368,8 @@ HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Written by scripts/widget-l
 RES = 'android/app/src/main/res/'
 THEMES = ('light', 'dark')
 THEMED = ['widget_bg', 'widget_tile', 'widget_soft', 'widget_chip', 'widget_brand', 'widget_dot', 'widget_progress',
-          'widget_route', 'widget_check_bg', 'widget_tick', 'ic_ws_plane', 'ic_ws_map', 'ic_ws_checklist', 'ic_ws_bell', 'ic_ws_wallet']
+          'widget_route', 'widget_check_bg', 'widget_tick', 'ic_ws_plane', 'ic_ws_map', 'ic_ws_checklist', 'ic_ws_bell', 'ic_ws_wallet',
+          'ic_ws_ticket']
 # The colour (and background) each text style gives, so a copy can say it outright.
 STYLE_COLOR = {'WText': 'w_text', 'WText.Muted': 'w_muted', 'WBold': 'w_text', 'WBold.Title': 'w_text',
                'WBold.Hero': 'w_text', 'WBold.Key': 'w_text', 'WBold.Chip': 'w_accent', 'WBold.Pill': 'w_accent',

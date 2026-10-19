@@ -21,6 +21,7 @@ export const WIDGET_TRIPS = 8;      // the current or next trip, and the ones af
 export const WIDGET_DAYS = 14;      // planner days kept per trip, from today
 const PLAN_ITEMS = 20;   // the plan widget's list scrolls
 const REMINDERS = 30;    // the reminders widget's list scrolls
+const BOOKINGS = 20;     // the bookings widget's list scrolls
 
 const LEGS = [
   { field: 'outboundFlightDetails', name: 'טיסת הלוך' },
@@ -142,6 +143,25 @@ function remindersOf(list) {
   };
 }
 
+// The bookings widget (BookingsWidget.java): the trip's bookings still
+// ahead, the soonest first, then those with no date; never a cancelled one
+// or one already past. today: 'YYYY-MM-DD', the phone's own day.
+function bookingsOf(list, today) {
+  const key = (b) => `${b.date || '9999-99-99'}T${b.time || '99:99'}`;
+  return (list || [])
+    .filter(b => b?.title && b.status !== 'cancelled' && (!b.date || b.date >= today))
+    .sort((a, b) => key(a).localeCompare(key(b)) || String(a.title).localeCompare(String(b.title), 'he'))
+    .slice(0, BOOKINGS)
+    .map(b => ({
+      id: b.id,
+      title: b.title,
+      date: /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : '',
+      time: b.time || '',
+      code: b.confirmation || '',
+      pending: b.status === 'pending',
+    }));
+}
+
 // The expense widget's choices (ExpenseWidget.java): the currencies a new
 // expense offers on this trip (shekels, euros or dollars, the destination's
 // own, then any used), the one the keypad starts on (the destination's,
@@ -164,14 +184,15 @@ function spendOf(trip, list, plans) {
 }
 
 // trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip /
-// expensesByTrip / plansByTrip (the planning tab's places): { [tripId]: [doc] }. palette: the app's palette key; the
+// expensesByTrip / plansByTrip (the planning tab's places) /
+// bookingsByTrip: { [tripId]: [doc] }. palette: the app's palette key; the
 // widget has each one's light and dark colours. theme: the app's setting,
 // 'light' or 'dark' whatever the phone is, else 'system' (the phone's).
 // rates: the expenses tab's (per euro), for the shekel value of an expense
 // the widget saves.
 // currencies: every one the app knows, for the expense widget's settings
 // (WidgetTripActivity), where its keypad's currencies are set.
-export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
+export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, bookingsByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
   const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(trip, expensesByTrip[trip.id], plansByTrip[trip.id]) }));
   const codes = new Set(['ILS', ...Object.keys(CURRENCY_META), ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
   return {
@@ -193,6 +214,7 @@ export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, r
         days: daysOf(trip, daysByTrip[trip.id], range, now, plansByTrip[trip.id]),
         packed: { done: items.filter(it => it.completed).length, total: items.length },
         reminders: remindersOf(remindersByTrip[trip.id]),
+        bookings: bookingsOf(bookingsByTrip[trip.id], isoOf(now)),
         spend,
       };
     }),
