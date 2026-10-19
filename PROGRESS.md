@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.55.2 (`changelog.md`)
+- גרסת ווב: 8.56.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -33,6 +33,7 @@
   - **מטבעות לווידג'ט ההוצאות (8.53.0):** במסך ההגדרות שלו (`WidgetTripActivity`) בוחרים טיול ומטבעות, ושומרים ב"שמירה".
     - הרשימה נשמרת לכל ווידג'ט ב־`expense_widget` בשם `curs_<id>` (`ExpenseWidget.own`/`setOwn`). כשהרשימה זהה לזו של הטיול לא שומרים אותה, והיא ממשיכה להתעדכן לפי הטיול.
     - תמונת המצב מכילה `currencies`, כל המטבעות מ־`CURRENCY_META`, ו־`rates` לכולם.
+  - **תזכורת מהווידג'ט (8.56.0):** "+" פותח את `ReminderSheetActivity`. הוא כותב דרך `ExpenseStore.reminder` (`coll: "reminders"`, מזהה `rem-<זמן>`), ו־`sendWidgetWrites` (‏`addReminder`) שולח מהאפליקציה. `WidgetLists.added` מציג את התזכורת עד שהיא נשלחה ומופיעה בתמונת המצב. השם והתמונה עוברים עם ההתחברות (`saveWidgetAuth`).
   - **רשימות בווידג'טים (8.49.0):** הלוז והתזכורות נטענים דרך `ListWidgetService`, והלחיצות עוברות דרך `WidgetActionActivity`.
     - סימון נשמר כ־`patch` בתור של `ExpenseStore`.
     - `WidgetClock` מעיר את הווידג'טים בחצות וסביב טיסות.

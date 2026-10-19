@@ -1371,8 +1371,9 @@ function AppInner() {
     return () => offs.forEach(off => off());
   }, [offlineKey, signedInUid]);
 
-  // The expense widget saves on its own with the user's sign-in (the
-  // refresh token, kept on the phone); signed out, it is taken back.
+  // The expense and reminders widgets save on their own with the user's
+  // sign-in (the refresh token, kept on the phone; the name and picture go
+  // on a reminder); signed out, it is taken back.
   useEffect(() => {
     if (!isNative) return undefined;
     let off = () => {};
@@ -1380,7 +1381,7 @@ function AppInner() {
       off = onIdTokenChanged(auth, (u) => {
         const { apiKey, projectId } = auth.app.options;
         import('./lib/native/widget').then(w => w.saveWidgetAuth(
-          u ? { uid: u.uid, refreshToken: u.refreshToken, apiKey, projectId } : null,
+          u ? { uid: u.uid, refreshToken: u.refreshToken, apiKey, projectId, name: u.displayName || u.email || '', photo: u.photoURL || '' } : null,
         )).catch(() => {});
       });
     }).catch(() => {});
@@ -1395,6 +1396,7 @@ function AppInner() {
     const queued = (write) => Promise.race([write, new Promise(resolve => setTimeout(resolve, 3000))]);
     const send = () => import('./lib/native/widget').then(w => w.sendWidgetWrites(signedInUid, {
       addExpense: (tripId, id, data) => queued(setDoc(doc(db, 'trips', tripId, 'expenses', id), data)),
+      addReminder: (tripId, id, data) => queued(setDoc(doc(db, 'trips', tripId, 'reminders', id), data)),
       setField: (path, field, value) => queued(updateDoc(doc(db, ...path.split('/')), { [field]: value })),
     })).catch(() => {});
     send();
