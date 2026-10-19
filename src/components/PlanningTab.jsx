@@ -2338,18 +2338,17 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             </Sheet>
           )}
 
-          {/* Filter chips row + sort button — sticky. Frosted and bled out to
-              the content edges so cards scroll *under* it instead of showing
-              through, now that section headers stick beneath it too. */}
+          {/* Filter pill + search and options buttons — sticky. The row
+              itself has no background (the owner's ask): stuck below the
+              content's padding, a band left a strip of the cards showing
+              above it. Each control carries its own colour, and the cards
+              scroll under them. */}
           <div style={{
             position: 'sticky',
             top: 0,
             zIndex: 5,
-            marginInline: -16,
-            paddingInline: 16,
             paddingTop: '6px',
             paddingBottom: '10px',
-            background: 'var(--body-bg)',
           }}>
           {/* The owner's ask: the category filter as a pill on its own, and
               search and options as two round white buttons. Search opens
@@ -2470,7 +2469,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
                           color: 'var(--text-muted)',
                           background: 'var(--card-bg-solid)',
-                          position: 'sticky', top: 0,
+                          // Up into the list's 4px padding: at 0 the options
+                          // showed through above it as they scrolled.
+                          position: 'sticky', top: -4,
                         }}>סינון לפי קטגוריה</div>
                         {options.map(opt => {
                           const active = opt.key === selectedFilter;
@@ -2748,12 +2749,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       count={plan.count}
                       collapsed={collapsed}
                       onToggle={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
-                      // On the page's own background so it stays legible when
-                      // it sticks; 64px ≈ the sticky toolbar's height, so a
-                      // stuck header lands just below it.
+                      // A pill of its own, like the toolbar's controls, so it
+                      // stays legible when it sticks with no band behind it;
+                      // 64px ≈ the sticky toolbar's height, so a stuck header
+                      // lands just below it.
                       style={{
                         position: 'sticky', top: 64, zIndex: 4,
-                        background: 'var(--body-bg)',
+                        background: 'var(--card-bg)',
+                        borderRadius: 999,
+                        paddingInline: 12,
+                        boxShadow: 'var(--shadow-sm)',
+                        justifySelf: 'start',
+                        alignSelf: 'flex-start',
+                        maxWidth: '100%',
                         gridColumn: '1 / -1',
                         marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 10,
                       }}

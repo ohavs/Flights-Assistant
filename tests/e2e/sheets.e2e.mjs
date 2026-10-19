@@ -251,6 +251,26 @@ const openExpense = async () => {
 await check('expense form', openExpense, closeAll);
 await dragClose('expense form', openExpense);
 await guardsUnsaved('expense form', openExpense, () => page.getByPlaceholder('0.00').fill('12'));
+// Scrolled, a sheet's title bar sits at the very top of the sheet, edge to
+// edge: nothing scrolling under it shows above or beside it (with top: 0
+// it stuck inside the sheet's padding).
+try {
+  await openExpense();
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { document.querySelector('.modal-content').scrollTop = 300; });
+  await page.waitForTimeout(300);
+  const [sheet, head] = await page.evaluate(() => ['.modal-content', '.modal-header'].map(sel => {
+    const r = document.querySelector(sel).getBoundingClientRect();
+    return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right) };
+  }));
+  const ok = Math.abs(head.top - sheet.top) <= 1 && Math.abs(head.left - sheet.left) <= 1 && Math.abs(head.right - sheet.right) <= 1;
+  console.log(`  ${ok ? 'ok   ' : 'FAIL '} expense form: scrolled, its title bar is at the sheet's top, edge to edge (${JSON.stringify(head)} in ${JSON.stringify(sheet)})`);
+  if (!ok) { failed++; await page.screenshot({ path: '.e2e/sheet-fail-sticky-header.png' }); }
+} catch (e) {
+  failed++; console.log(`  FAIL  sticky title bar: ${e.message.split('\n')[0]}`);
+}
+await closeAll().catch(() => {});
+await page.waitForTimeout(400);
 
 await tab('הזמנות');
 const openBooking = async () => {

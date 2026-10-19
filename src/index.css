@@ -1514,7 +1514,9 @@ input[type="datetime-local"].form-control {
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
   padding: 20px 16px;
-  /* The padding again, for .sheet-footer to bleed out to the edges. */
+  /* The padding again, for .sheet-footer and .modal-header to bleed out
+     to the edges. */
+  --sheet-pad-t: 20px;
   --sheet-pad-x: 16px;
   --sheet-pad-b: 20px;
   overflow-y: auto;
@@ -1561,14 +1563,19 @@ input[type="datetime-local"].form-control {
   to   { transform: translateY(0); }
 }
 
+/* A sheet's title bar sticks to the very top of the sheet, edge to edge.
+   With top: 0 it stuck inside the sheet's padding, and what scrolled
+   under it showed through above and beside it. The negative margins take
+   it out to the edges and the padding puts its content back in place. */
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1.5px solid var(--ink-6);
-  padding-bottom: 12px;
+  margin: -12px calc(-1 * var(--sheet-pad-x, 16px)) 0;
+  padding: 12px var(--sheet-pad-x, 16px);
   position: sticky;
-  top: 0;
+  top: calc(-1 * var(--sheet-pad-t, 20px));
   background: var(--modal-header-bg);
   z-index: 10;
 }
@@ -2579,6 +2586,7 @@ body[data-fab] .app-content {
     border-radius: var(--radius-xl);
     margin: 24px;
     padding: 28px;
+    --sheet-pad-t: 28px;
     --sheet-pad-x: 28px;
     --sheet-pad-b: 28px;
   }
