@@ -4,6 +4,24 @@
 set -euo pipefail
 APK=$1
 PKG=com.ohavs.flightsassistant
+# A slow emulator sometimes puts "<app> isn't responding" (the launcher's,
+# not ours) over everything: answer "Wait", so the screen is the app's
+# again. Reads the ui.xml just pulled; true when it dismissed one.
+dismiss_anr() {
+  grep -q "isn't responding" ui.xml || return 1
+  local xy
+  xy=$(python3 - <<'PY'
+import re
+s = open('ui.xml', encoding='utf8').read()
+m = re.search(r'text="Wait"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', s)
+if m:
+    x1, y1, x2, y2 = map(int, m.groups())
+    print((x1 + x2) // 2, (y1 + y2) // 2)
+PY
+)
+  if [ -n "$xy" ]; then adb shell input tap $xy; else adb shell input keyevent KEYCODE_BACK; fi
+  echo "dismissed a system \"isn't responding\" dialog"
+}
 adb install -r "$APK"
 adb shell dumpsys package "$PKG" | grep -E "versionCode|versionName" | head -2
 adb logcat -c
@@ -22,6 +40,7 @@ for i in $(seq 1 20); do
   sleep 3
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
   adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
+  if dismiss_anr; then continue; fi
   if grep -q "התחבר עם Google" ui.xml; then
     echo "sign-in screen rendered after $((i * 3))s"
     adb exec-out screencap -p > android-smoke.png
@@ -58,6 +77,7 @@ for i in $(seq 1 15); do
   fi
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
   adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
+  if dismiss_anr; then continue; fi
   if grep -qE "נכשלה|אין חשבון Google" ui.xml; then
     echo "sign-in ended with a message after $((i * 2))s:"
     grep -oE 'text="[^"]*(נכשלה|אין חשבון Google)[^"]*"' ui.xml | head -2
@@ -91,6 +111,7 @@ for i in $(seq 1 15); do
   sleep 2
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
   adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
+  if dismiss_anr; then continue; fi
   if grep -q "לאיזה טיול להוסיף" ui.xml && grep -q "Louvre Museum" ui.xml; then
     echo "a shared place opens the trip picker after $((i * 2))s"
     adb exec-out screencap -p > android-share.png
