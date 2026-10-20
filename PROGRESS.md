@@ -47,7 +47,7 @@
     - סימון נשמר כ־`patch` בתור של `ExpenseStore`.
     - `WidgetClock` מעיר את הווידג'טים בחצות וסביב טיסות.
   - **`widgetData.js` ו־`morningAlerts.js` נשארים בלי Firebase.** הסקריפט `widget-fixtures.mjs` רץ ב־smoke של Android ב־node בלי `node_modules`. לכן קוראים את סדר התוכנית מ־`dayOrder.js`, ולא מ־`dayActivities.js` שכותב.
-  - `android-smoke.sh` עונה "Wait" להודעת מערכת "isn't responding" של האמולטור (`dismiss_anr`). ב־2026-10-19 הודעה כזו של ה־launcher כיסתה את האפליקציה, ה־smoke נכשל על master ו־Release של 8.54.0 לא יצא.
+  - `android-smoke.sh` עונה "Wait" להודעת מערכת "isn't responding" של האמולטור (`dismiss_anr`). ב־2026-10-19 הודעה כזו של ה־launcher כיסתה את האפליקציה, ה־smoke נכשל על master ו־Release של 8.54.0 לא יצא. ב־2026-10-20 (PR #100) נכשלה הבדיקה "חזור במסך הראשון יוצא מהאפליקציה" אחרי 3 שניות קבועות. עכשיו היא בודקת כל שנייה, עד 10 שניות.
   - צילומי האמולטור (smoke + ווידג'ט) נדחפים לענף `ci-shots` בכל ריצה של Android. כך רואים אותם: `git fetch origin ci-shots && git show origin/ci-shots:widget-1-flight.png > /tmp/x.png`. ההורדה של artifacts חסומה בפרוקסי.
   - **בקשות הבעלים (2026-10-15, אחרי 8.35.0), לפני N4:** (1) ~~צ'קליסט: לחיצה פותחת, החלקה מוחקת, פריט שסומן יורד בתנועה~~ (8.36.0). (2) ~~סמל האפליקציה לא מתחלף~~ (8.37.0). בוטל ב־8.40.0: הסמל קבוע, "מפה". (3) ~~טקסטורות רקע לכל ערכת צבעים~~ (8.38.0, `.app-container::before` ב־`index.css`, נלמד מ־`ohavs/payments-2026`). ב־Payments יש גם ווידג'ט ו־`scripts/widget-shots.sh`: ללמוד משם ל־N4.
   - בכל בקשה לכתוב לבעלים אם השינוי לווב, לאפליקציה או לשניהם (ראו "ווב ואפליקציה" למטה).

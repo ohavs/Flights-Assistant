@@ -93,10 +93,19 @@ if [ -z "${reached:-}" ]; then
 fi
 
 # The hardware back button on the first screen leaves the app (nothing open).
+# Polled, not a fixed wait: on a slow emulator 3 seconds were not always
+# enough (2026-10-20, a run with nothing changed near this screen).
 adb shell input keyevent KEYCODE_BACK
-sleep 3
-if adb shell pidof "$PKG" >/dev/null && adb shell dumpsys activity activities | grep -q "topResumedActivity.*$PKG"; then
-  echo "back on the first screen did not leave the app"; exit 1
+for i in $(seq 1 10); do
+  sleep 1
+  # grep without -q reads to the end, so dumpsys never dies of SIGPIPE
+  # (pipefail would read that as "gone").
+  if ! { adb shell pidof "$PKG" >/dev/null && adb shell dumpsys activity activities | grep "topResumedActivity.*$PKG" >/dev/null; }; then
+    left=1; break
+  fi
+done
+if [ -z "${left:-}" ]; then
+  echo "back on the first screen did not leave the app in 10s"; exit 1
 fi
 echo "back on the first screen leaves the app"
 
