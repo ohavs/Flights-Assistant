@@ -384,6 +384,18 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // The "from where" picker over the details sheet: the place it measures to.
   const [originPickerFor, setOriginPickerFor] = useState(null);
   const [originQuery, setOriginQuery] = useState('');
+  // Categories folded in that picker, per trip on this device.
+  const [originFolded, setOriginFolded] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`origin_folded_${tripId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`origin_folded_${tripId}`, JSON.stringify([...originFolded]));
+    } catch { /* ignore */ }
+  }, [originFolded, tripId]);
 
   // Category customisation (icon + color), synced with Firestore
   const [categorySettings, setCategorySettings] = useState({});
@@ -3464,6 +3476,23 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           .sort((a, b) =>
             (a.meters ?? Infinity) - (b.meters ?? Infinity)
             || a.plan.title.localeCompare(b.plan.title, 'he'));
+        // One foldable group per category, in the list's category order;
+        // nearest first inside each.
+        const byCat = new Map();
+        places.forEach(e => {
+          const cat = e.plan.category || 'ללא קטגוריה';
+          if (!byCat.has(cat)) byCat.set(cat, []);
+          byCat.get(cat).push(e);
+        });
+        const groups = [
+          ...categories.filter(c => byCat.has(c)),
+          ...[...byCat.keys()].filter(c => !categories.includes(c)),
+        ].map(cat => ({ cat, items: byCat.get(cat) }));
+        const toggleFold = (cat) => setOriginFolded(prev => {
+          const next = new Set(prev);
+          if (next.has(cat)) next.delete(cat); else next.add(cat);
+          return next;
+        });
         const fmtMeters = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} מ'` : `${(m / 1000).toFixed(1)} ק"מ`);
         const hasHotel = hasPreciseOrigin(hotelDetails, null);
         const hotelName = hotelDetails?.name || hotelDetails?.address || '';
@@ -3533,18 +3562,36 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, padding: '4px 2px 12px' }}>
                       {q ? 'אף מקום לא נמצא' : 'אין עוד מקומות ברשימה'}
                     </div>
-                  ) : (
-                    <div className="list-group" role="radiogroup" aria-label="מקומות מהרשימה">
-                      {places.map(({ plan: p, meters }) => row(
-                        `${PLACE_ORIGIN}${p.id}`,
-                        <span className="list-row-icon" style={{ color: getCategoryColor(p.category) }}>
-                          {getCategoryIcon(p.category, 16)}
-                        </span>,
-                        p.title,
-                        [p.category, meters != null ? fmtMeters(meters) : null].filter(Boolean).join(' · '),
-                      ))}
-                    </div>
-                  )}
+                  ) : groups.map(({ cat, items }) => {
+                    // A search shows every match, folded or not.
+                    const folded = !q && originFolded.has(cat);
+                    const color = getCategoryColor(cat);
+                    return (
+                      <section key={cat} className="origin-picker-group">
+                        <SectionHeader
+                          title={cat}
+                          icon={getCategoryIcon(cat, 14)}
+                          color={color}
+                          count={items.length}
+                          collapsed={folded}
+                          onToggle={q ? undefined : () => toggleFold(cat)}
+                          meta={folded && items.some(e => `${PLACE_ORIGIN}${e.plan.id}` === current) ? 'נבחר מכאן' : null}
+                        />
+                        {!folded && (
+                          <div className="list-group" role="radiogroup" aria-label={cat}>
+                            {items.map(({ plan: p, meters }) => row(
+                              `${PLACE_ORIGIN}${p.id}`,
+                              <span className="list-row-icon" style={{ color }}>
+                                {getCategoryIcon(p.category, 16)}
+                              </span>,
+                              p.title,
+                              meters != null ? fmtMeters(meters) : '',
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
                 </div>
               );
             }}

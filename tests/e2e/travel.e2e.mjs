@@ -162,6 +162,22 @@ await step('picker: centre pinned on top, nearest places first, search', async (
   if (!names[0].includes('כנסיית מתיאש')) throw new Error(`nearest first, got: ${names[0]}`);
   if (names.some(t => t.includes('מבצר הדייגים'))) throw new Error('the place itself is listed');
   await shot('picker');
+  // One group per category, in the list's order; each folds.
+  const heads = await picker.locator('.origin-picker-group .section-header-title').allInnerTexts();
+  if (heads.join('|') !== 'אטרקציות ודברים לעשות|מסעדות ומקומות אכילה|מקומות לבקר|מידע כללי וטיפים') {
+    throw new Error(`category groups: ${heads.join('|')}`);
+  }
+  const food = picker.locator('.origin-picker-group', { hasText: 'מסעדות ומקומות אכילה' });
+  await food.locator('.section-header-toggle').click();
+  await food.getByRole('radio').first().waitFor({ state: 'detached' });
+  await shot('picker-folded');
+  // A search shows every match, folded or not.
+  await picker.getByPlaceholder('חיפוש מקום ברשימה').fill('Szimpla');
+  await picker.getByRole('radio', { name: /Szimpla/ }).waitFor();
+  await picker.getByPlaceholder('חיפוש מקום ברשימה').fill('');
+  await food.getByRole('radio').first().waitFor({ state: 'detached' });
+  await food.locator('.section-header-toggle').click();
+  await food.getByRole('radio', { name: /Mazel Tov/ }).waitFor();
   await picker.getByPlaceholder('חיפוש מקום ברשימה').fill('ארמון');
   await picker.getByRole('radio', { name: /כנסיית מתיאש/ }).waitFor({ state: 'detached' });
   await shot('picker-search');
