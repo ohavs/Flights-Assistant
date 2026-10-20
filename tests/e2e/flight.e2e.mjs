@@ -116,6 +116,27 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
+// On a phone the app draws under the status bar (--safe-top, here 30px):
+// the bar's colour reaches the top of the screen, scrolled or not, and the
+// page's background never shows between the bar and the top.
+await step('under the status bar, the top bar\'s colour, not the page', async () => {
+  await page.evaluate(() => document.documentElement.style.setProperty('--safe-top', '30px'));
+  try {
+    await page.evaluate(() => { document.querySelector('.app-content').scrollTop = 400; });
+    await page.waitForTimeout(400);
+    // The bar starts 30px down; its ::before fills the 30px above it.
+    const got = await page.evaluate(() => {
+      const head = document.querySelector('.app-header');
+      const strip = getComputedStyle(head, '::before');
+      return { top: Math.round(head.getBoundingClientRect().top), h: strip.height, bottom: strip.bottom,
+        barHeight: `${head.clientHeight}px`, strip: strip.backgroundColor, bar: getComputedStyle(head).backgroundColor };
+    });
+    if (got.top !== 30 || got.h !== '30px' || got.bottom !== got.barHeight || got.strip !== got.bar) throw new Error(JSON.stringify(got));
+  } finally {
+    await page.evaluate(() => { document.documentElement.style.removeProperty('--safe-top'); document.querySelector('.app-content').scrollTop = 0; });
+  }
+});
+
 await step('the edit button opens everything at once', async () => {
   await page.getByRole('button', { name: 'עריכת פרטים' }).click();
   await page.getByText('עריכת כל פרטי הנסיעה').waitFor();

@@ -26,6 +26,9 @@
   --shadow-lg: 0 16px 40px rgba(20, 20, 20, 0.12);
   --font-hebrew: 'Rubik Variable', 'Rubik', system-ui, -apple-system, sans-serif;
   --header-height: 60px;
+  /* The status bar's height over the page: the Android app draws edge to
+     edge; 0 on the web. A variable so a test can stand in for a phone. */
+  --safe-top: env(safe-area-inset-top, 0px);
 
   /* ── Type ladder ──
      Eleven steps, and every size in the app is one of them. Sizes are
@@ -505,7 +508,7 @@ button:not(:disabled):active,
   overflow: hidden;
   isolation: isolate;      /* clean stacking/compositing root for children */
   /* Android app draws under the status bar (edge-to-edge); 0 on the web. */
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--safe-top);
 }
 
 /* ── Palette textures ──────────────────────────────────────────────────
@@ -572,6 +575,21 @@ button:not(:disabled):active,
   border-bottom: 1px solid transparent;
   z-index: 100;
   flex-shrink: 0;
+  position: relative;
+}
+/* Under the status bar, the bar's own colour: it reaches the top of the
+   screen. Without it the page's background showed there, a strip between
+   the bar and the top that stood out once the bar took its shadow. */
+.app-header::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 100%;
+  height: var(--safe-top);
+  background: var(--header-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
 }
 
 /* Set once the content below has scrolled — gives the bar an edge so it
