@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.59.0 (`changelog.md`)
+- גרסת ווב: 8.60.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -40,6 +40,7 @@
     - **רק החלונית** (`sheetOriginKey`) משתמשת בו. הכרטיס, המיון והלוז נשארים על `distanceOriginId || 'hotel'` (החלטת הבעלים).
     - שדה חדש ולא ערך חדש ב־`distanceOriginId`, כי APK ישן היה מודד מהמלון וכותב לאותו מפתח.
     - קואורדינטות בלי רשת: `knownPlaceCoords` ב־`distanceApi.js`.
+    - **קבוצות לפי קטגוריה (8.60.0):** באותו סדר כמו `categories` ברשימה, הקרובים קודם בכל קבוצה. קבוצה נסגרת מהכותרת (`SectionHeader`), והמצב נשמר ב־`localStorage` בשם `origin_folded_<tripId>`. בחיפוש כל הקבוצות פתוחות.
   - **כותרות קבוצה בתכנון (8.59.0):** כל קבוצה היא `<section className="plan-group">`, והכותרת דביקה בתוכה בלבד, כך שהבאה דוחפת אותה. לפני כן כל הכותרות היו אחיות באותה רשימה ונערמו ב־`top: 64`.
   - **מפות ב־e2e:** ב־build של emulators, `window.__e2eGmapsKey` (‏`addInitScript`) נותן מפתח מזויף, והבדיקה עונה ל־`routes.googleapis.com` ול־`places.googleapis.com` עם `ctx.route` (ראו `travel.e2e.mjs`).
   - **ווידג'ט הזמנות (8.57.0):** `BookingsWidget`, רשימה ב־`ListWidgetService` (‏`BOOKINGS`, שורה `widget_booking_item`), נתונים מ־`bookingsOf` ב־`widgetData.js` (‏`bookings` בכל טיול בתמונת המצב).

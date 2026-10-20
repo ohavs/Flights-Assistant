@@ -3034,3 +3034,4 @@ button.travel-from:active { background: var(--p-8); }
 }
 .origin-picker-search .form-control { min-height: 46px; padding-block: 10px; padding-inline-start: 42px; }
 .origin-picker-search .form-control::-webkit-search-cancel-button { display: none; }
+.origin-picker-group { display: flex; flex-direction: column; gap: 6px; }
