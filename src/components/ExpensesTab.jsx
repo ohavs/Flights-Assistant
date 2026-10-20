@@ -4,11 +4,13 @@ import { listen } from '../lib/listen';
 import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { changedFields } from '../lib/changes';
 import {
-  Plus, Trash2, Search, X, Check, TrendingUp,
-  Wallet, Receipt, Pencil, ChevronDown, Link2, MapPin,
-  Utensils, Bus, BedDouble, Ticket, ShoppingBag,
+  Plus, Trash2, Search, X, Check,
+  Wallet, Pencil, ChevronDown, Link2, MapPin,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
+import { expenseSummary } from '../lib/expenseSummary';
+import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
+import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
 import { useConfirm } from '../ConfirmContext';
 import Sheet from '../ui/Sheet';
@@ -24,49 +26,11 @@ import { Pill, CategoryDisc } from '../ui/kit';
 const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
 
-// An icon and a colour per category, so a row reads at a glance like a
-// place in the planning tab. A category the trip added gets the receipt.
-const EXPENSE_CATEGORY_STYLE = {
-  'אוכל ושתייה': { Icon: Utensils, color: '#F97316' },
-  'תחבורה': { Icon: Bus, color: '#3B82F6' },
-  'לינה': { Icon: BedDouble, color: '#8B5CF6' },
-  'בידור ותיירות': { Icon: Ticket, color: '#EC4899' },
-  'קניות': { Icon: ShoppingBag, color: '#14B8A6' },
-};
-const expenseCategoryStyle = (cat) => EXPENSE_CATEGORY_STYLE[cat] || { Icon: Receipt, color: '#64748B' };
-
-const getCurrencyInfo = (code) => {
-  const meta = CURRENCY_META[code];
-  return meta ? { code, ...meta } : { code, symbol: code, name: code, flag: '' };
-};
-
-function MemberAvatar({ profile, size = 22 }) {
-  if (profile?.photoURL) {
-    return (
-      <img src={profile.photoURL} alt="" referrerPolicy="no-referrer"
-        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-    );
-  }
-  const name = profile?.displayName || profile?.email || '?';
-  const initials = name.charAt(0).toUpperCase();
-  const hue = name.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},55%,82%)`, color: `hsl(${hue},55%,28%)`,
-      fontSize: Math.round(size * 0.46), fontWeight: 800,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    }}>
-      {initials}
-    </div>
-  );
-}
-
 export default function ExpensesTab({ tripId }) {
   const [expenses, setExpenses] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showSummary, setShowSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);   // the full summary sheet
   const [showForm, setShowForm] = useState(false);
 
   // Form state
@@ -85,9 +49,6 @@ export default function ExpensesTab({ tripId }) {
   const [showNewCatInput, setShowNewCatInput] = useState(false);
   const [newCatDraft, setNewCatDraft] = useState('');
   const [sessionCategories, setSessionCategories] = useState([]);
-
-  // Detailed statistics section inside summary
-  const [showStats, setShowStats] = useState(false);
 
   // Currency selector in form
   const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
@@ -123,10 +84,12 @@ export default function ExpensesTab({ tripId }) {
     if (memberProfiles?.[uid]) return memberProfiles[uid];
     const gone = formerMembers?.[uid];
     if (gone) return { ...gone, former: true };
+    // Still on the trip, the profile not read yet (offline, loading).
+    if (tripMembers?.[uid]) return { displayName: 'משתתף' };
     // Left before the snapshot existed: the name is gone, the expense is
     // not. Naming the gap beats an avatar with nothing beside it.
     return { displayName: 'משתתף שעזב', former: true };
-  }, [currentUid, currentUserProfile, memberProfiles, formerMembers]);
+  }, [currentUid, currentUserProfile, memberProfiles, formerMembers, tripMembers]);
 
   const memberUids = useMemo(() => Object.keys(tripMembers), [tripMembers]);
   // Effective payer list: trip members or, for new trips, just the current user
@@ -282,11 +245,6 @@ export default function ExpensesTab({ tripId }) {
     return true;
   };
 
-  const ilsTotal = useMemo(() => {
-    if (!rates) return null;
-    return expenses.reduce((sum, e) => sum + convert(e.amount, e.currency, 'ILS', rates), 0);
-  }, [expenses, rates]);
-
   // All categories: defaults + used in expenses + all planning item categories
   const expenseCategories = useMemo(() => Array.from(new Set([
     ...DEFAULT_EXPENSE_CATEGORIES,
@@ -309,62 +267,12 @@ export default function ExpensesTab({ tripId }) {
   const toggleCategory = (cat) =>
     setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
-  const summary = useMemo(() => {
-    const totals = {};
-    expenses.forEach(e => {
-      totals[e.currency] = (totals[e.currency] || 0) + e.amount;
-    });
-    return Object.entries(totals).map(([code, total]) => ({
-      ...getCurrencyInfo(code), total,
-    })).sort((a, b) => b.total - a.total);
-  }, [expenses]);
-
-  // Per-payer ILS totals for the summary breakdown
-  const summaryByPayer = useMemo(() => {
-    if (!rates) return [];
-    const totals = {};
-    expenses.forEach(e => {
-      const uid = e.paidBy || currentUid || 'unknown';
-      totals[uid] = (totals[uid] || 0) + convert(e.amount, e.currency, 'ILS', rates);
-    });
-    return Object.entries(totals)
-      .map(([uid, total]) => ({ uid, total, profile: getPayerProfile(uid) }))
-      .sort((a, b) => b.total - a.total);
-  }, [expenses, rates, currentUid, getPayerProfile]);
-
-  // ── Statistics breakdowns (all in ILS) ──────────────────────────────────
-  const statsByCategory = useMemo(() => {
-    if (!rates) return [];
-    const totals = {};
-    expenses.forEach(e => {
-      const cat = e.category || 'כללי';
-      totals[cat] = (totals[cat] || 0) + convert(e.amount, e.currency, 'ILS', rates);
-    });
-    const grand = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
-    return Object.entries(totals)
-      .map(([cat, total]) => ({ cat, total, pct: Math.round((total / grand) * 100) }))
-      .sort((a, b) => b.total - a.total);
-  }, [expenses, rates]);
-
-  const topExpenses = useMemo(() => {
-    if (!rates) return [];
-    return expenses
-      .map(e => ({ ...e, ils: convert(e.amount, e.currency, 'ILS', rates) }))
-      .sort((a, b) => b.ils - a.ils)
-      .slice(0, 3);
-  }, [expenses, rates]);
-
-  const dailyAvg = useMemo(() => {
-    if (ilsTotal == null || expenses.length === 0) return null;
-    // createdAt is written as an ISO string, but a document from an older
-    // version (or a hand edit) can hold a number — coerce rather than crash.
-    const days = new Set(
-      expenses.map(e => String(e.createdAt ?? '').slice(0, 10)).filter(Boolean)
-    ).size || 1;
-    return { avg: ilsTotal / days, days };
-  }, [expenses, ilsTotal]);
-
-  const memberCount = Math.max(memberUids.length, 1);
+  // The total, per person, per day, by category and currency, who paid
+  // and who owes whom (src/lib/expenseSummary.js).
+  const summary = useMemo(
+    () => expenseSummary(expenses, { rates, members: memberUids, currentUid }),
+    [expenses, rates, memberUids, currentUid]
+  );
 
   // Currencies available to add (not yet in formQuickCurrencies)
   const addableCurrencies = useMemo(
@@ -388,173 +296,19 @@ export default function ExpensesTab({ tripId }) {
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>מעקב הוצאות</span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {expenses.length > 0 && (
-            <button
-              type="button"
-              className="chip"
-              aria-pressed={showSummary}
-              onClick={() => setShowSummary(s => !s)}
-            >
-              <TrendingUp size={14} />
-              סיכום
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Summary panel — condensed: total → per person → per payer → stats */}
-      {showSummary && expenses.length > 0 && (
-        <div className="glass-card animate-fade" style={{ padding: 16 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-
-            {/* 1. Grand total in ILS */}
-            {ilsTotal !== null ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 14px', background: 'var(--c-green-7)', borderRadius: 12 }}>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--c-green)' }}>סה"כ בשקלים</span>
-                <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--c-green)' }}>
-                  ₪{ilsTotal.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                </span>
-              </div>
-            ) : (
-              summary.map(({ code, symbol, name, total }) => (
-                <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--p-4)', borderRadius: 10 }}>
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>{name}</span>
-                  <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--accent)' }}>
-                    {symbol}{total.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))
-            )}
-
-            {/* 2. Per person */}
-            {ilsTotal !== null && memberCount >= 2 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: 'var(--c-green-7)', borderRadius: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-green)', opacity: 0.85 }}>לאדם (÷{memberCount})</span>
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--c-green)', opacity: 0.85 }}>
-                  ₪{(ilsTotal / memberCount).toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                </span>
-              </div>
-            )}
-
-            {/* 3. Per payer */}
-            {summaryByPayer.length > 0 && expenses.some(e => e.paidBy) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {summaryByPayer.map(({ uid, total, profile }) => (
-                  <div key={uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--p-4)', borderRadius: 9 }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
-                      ₪{total.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                    </span>
-                    <div
-                      className={profile?.former ? 'person-former' : undefined}
-                      style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
-                        {profile?.displayName || profile?.email || uid}
-                        {uid === currentUid && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
-                        {/* Their share still counts — the money was spent. */}
-                        {profile?.former && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>(כבר לא בטיול)</span>}
-                      </span>
-                      <MemberAvatar profile={profile} size={20} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* 4. Statistics toggle */}
-            <button
-              type="button"
-              onClick={() => setShowStats(s => !s)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '9px 0', borderRadius: 10, border: '1.5px dashed var(--p-30)',
-                background: showStats ? 'var(--p-6)' : 'transparent', color: 'var(--accent)',
-                fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 2,
-              }}
-            >
-              <TrendingUp size={14} />
-              סטטיסטיקות
-              <ChevronDown size={14} style={{ transition: 'transform 0.2s', transform: showStats ? 'rotate(180deg)' : 'none' }} />
-            </button>
-
-            {showStats && (
-              <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 8 }}>
-
-                {/* By category — bar per category */}
-                {statsByCategory.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0 }}>לפי קטגוריות</p>
-                    {statsByCategory.map(({ cat, total, pct }) => (
-                      <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>{cat}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
-                            ₪{total.toLocaleString('he-IL', { maximumFractionDigits: 0 })} · {pct}%
-                          </span>
-                        </div>
-                        <div style={{ height: 6, borderRadius: 3, background: 'var(--ink-6)', overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 3, transition: 'width 0.4s ease' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Daily average */}
-                {dailyAvg && dailyAvg.days > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--p-4)', borderRadius: 10 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>ממוצע ליום ({dailyAvg.days} ימים)</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>
-                      ₪{dailyAvg.avg.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                )}
-
-                {/* Top expenses */}
-                {topExpenses.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0 }}>ההוצאות הגדולות</p>
-                    {topExpenses.map(e => {
-                      const linked = plans.find(p => p.id === e.linkedPlanId);
-                      const label = e.description || linked?.title || e.customPlace || e.category || 'הוצאה';
-                      return (
-                        <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--ink-3)', borderRadius: 9, gap: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'right' }}>{label}</span>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
-                            ₪{e.ils.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Original currency totals — only when foreign currencies used */}
-                {ilsTotal !== null && summary.some(s => s.code !== 'ILS') && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)', margin: 0 }}>לפי מטבע מקורי</p>
-                    {summary.map(({ code, symbol, name, total }) => (
-                      <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--ink-3)', borderRadius: 9 }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>{name}</span>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>
-                          {symbol}{total.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--ink-7)' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>סה"כ רשומות</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary)' }}>{expenses.length}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      {/* The total, big, over the list; a tap opens the full summary. */}
+      {expenses.length > 0 && (
+        <ExpenseHero summary={summary} currentUid={currentUid} onOpen={() => setShowSummary(true)} />
+      )}
+      {showSummary && (
+        <ExpenseSummarySheet
+          summary={summary}
+          expenses={expenses}
+          plans={plans}
+          currentUid={currentUid}
+          getPayerProfile={getPayerProfile}
+          onClose={() => setShowSummary(false)}
+        />
       )}
 
       {/* Expense list — grouped by category */}
@@ -583,7 +337,7 @@ export default function ExpensesTab({ tripId }) {
                       icon={<st.Icon size={15} />}
                       color={st.color}
                       count={catExpenses.length}
-                      meta={catIlsTotal !== null ? `₪${catIlsTotal.toLocaleString('he-IL', { maximumFractionDigits: 0 })}` : null}
+                      meta={catIlsTotal !== null ? shekels(catIlsTotal) : null}
                       collapsed={isCollapsed}
                       onToggle={() => toggleCategory(cat)}
                     />
@@ -594,9 +348,10 @@ export default function ExpensesTab({ tripId }) {
                 {!isCollapsed && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {catExpenses.map(expense => {
-                      const curr = getCurrencyInfo(expense.currency);
                       const linked = plans.find(p => p.id === expense.linkedPlanId);
                       const placeLabel = linked?.title || expense.customPlace || null;
+                      const label = expenseLabel(expense, plans);
+                      const day = expenseDay(expense.createdAt);
                       const style = expenseCategoryStyle(expense.category || cat);
                       const ils = expense.currency !== 'ILS'
                         ? (expense.ilsSnapshot != null
@@ -609,22 +364,11 @@ export default function ExpensesTab({ tripId }) {
                         <ListCard
                           key={expense.id}
                           icon={<CategoryDisc color={style.color} size={42}><style.Icon size={19} /></CategoryDisc>}
-                          title={
-                            <>
-                              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                {curr.symbol}{expense.amount.toLocaleString('he-IL', { maximumFractionDigits: 2 })}
-                              </span>
-                              {ils != null && (
-                                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', marginInlineStart: 6 }}>
-                                  ≈ ₪{ils.toLocaleString('he-IL', { maximumFractionDigits: 0 })}
-                                </span>
-                              )}
-                            </>
-                          }
-                          menuTitle={expense.description || `${curr.symbol}${expense.amount}`}
-                          meta={expense.description || null}
+                          title={label}
+                          menuTitle={expense.description || money(expense.amount, expense.currency)}
+                          meta={day}
                           tags={[
-                            placeLabel && (
+                            placeLabel && placeLabel !== label && (
                               <Pill key="place" size="sm" tone="lavender" icon={<Link2 size={11} />}>{placeLabel}</Pill>
                             ),
                             payer && (
@@ -634,6 +378,12 @@ export default function ExpensesTab({ tripId }) {
                               </span>
                             ),
                           ]}
+                          trailing={
+                            <span className="expense-amount">
+                              <span className="expense-amount-main">{money(expense.amount, expense.currency)}</span>
+                              {ils != null && <span className="expense-amount-ils">≈ {shekels(ils)}</span>}
+                            </span>
+                          }
                           onOpen={canEdit ? () => openForm(expense) : undefined}
                           actions={canEdit ? [
                             { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => openForm(expense) },

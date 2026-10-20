@@ -48,7 +48,8 @@
        18  screen title (mobile)
        20  screen title (desktop), big numbers in a card
        22  desktop header
-       26  display — a temperature, a converted amount, the sign-in title */
+       26  display — a temperature, a converted amount, the sign-in title
+       40  hero — the one big number of a screen (the trip's spend), once */
 
   /* ── Bottom nav geometry ──
      The bar floats over the content, so every docked control and the
@@ -1973,6 +1974,94 @@ textarea.form-control {
 .list-card-chevron { flex-shrink: 0; color: var(--ink-20); }
 .list-card-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .list-card-body.indent { padding-inline-start: 54px; }   /* 42px disc + 12px gap */
+
+/* ── Expenses ──
+   ExpenseHero: the total over the list, big; the split by category in one
+   bar with its legend; up to three figures in tiles. A tap opens the full
+   summary (ExpenseSummarySheet), whose sections are rows of the same kind. */
+.glass-card.expense-hero {
+  width: 100%; gap: 10px; padding: 18px 18px 16px;
+  text-align: start; font-family: var(--font-hebrew); color: var(--text); cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.glass-card.expense-hero:active { transform: scale(0.985); }
+.expense-hero-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.expense-hero-label { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.expense-hero-more {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 5px 8px 5px 10px; border-radius: 999px; background: var(--surface-2);
+  font-size: 12px; font-weight: 700; color: var(--text);
+}
+.expense-hero-total { font-size: 40px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; }
+.expense-hero-currencies { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 26px; font-weight: 900; line-height: 1.1; }
+.expense-hero-sub { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-top: -2px; }
+.expense-hero-split { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+/* One bar, a segment per category, 2px apart, rounded at its two ends. */
+.expense-bar { display: flex; gap: 2px; width: 100%; border-radius: 999px; overflow: hidden; }
+.expense-bar > span { flex-basis: 0; min-width: 4px; height: 100%; }
+.expense-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.expense-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.expense-legend-item b { color: var(--text); font-weight: 800; }
+.expense-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.expense-tiles {
+  display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; margin-top: 4px;
+  container-type: inline-size;
+}
+.expense-tile {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-2);
+}
+.expense-tile-label { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.expense-tile-value { font-size: 20px; font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.expense-tile-value.up { color: var(--c-green); }
+.expense-tile-value.down { color: var(--c-red); }
+.expense-tiles.big .expense-tile { padding: 12px 14px; }
+.expense-tiles.big .expense-tile-value { font-size: 26px; }
+/* Three tiles on a narrow phone: "₪12,345" still fits. */
+@container (max-width: 320px) {
+  .expense-tile { padding: 9px 10px; }
+  .expense-tile-value { font-size: 16px; }
+}
+
+/* A row's amount, at its end: what was paid, big, and its shekels. */
+.expense-amount { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; text-align: end; }
+.expense-amount-main { font-size: 20px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.expense-amount-ils { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.expense-summary { display: flex; flex-direction: column; gap: 22px; padding-bottom: 8px; }
+.expense-section { display: flex; flex-direction: column; gap: 10px; }
+.expense-section-title { margin: 0; font-size: 15px; font-weight: 800; color: var(--text); }
+.expense-section-hint { margin: -6px 0 0; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.expense-rows { display: flex; flex-direction: column; gap: 8px; }
+.expense-row {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-2);
+}
+.expense-row.muted { color: var(--text-muted); }
+.expense-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.expense-row-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expense-row-main .expense-row-name { flex: none; }
+.expense-row-end { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.expense-row-value { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
+.expense-row-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.expense-meter { display: block; height: 6px; border-radius: 999px; background: var(--ink-6); overflow: hidden; }
+.expense-meter > span { display: block; height: 100%; border-radius: 999px; }
+.expense-cur-disc {
+  width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); font-size: 15px; font-weight: 800;
+}
+.expense-person { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.expense-person-name { min-width: 0; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expense-person-note { margin-inline-start: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.expense-transfer-to {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding-inline-start: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted);
+}
+.expense-transfer-to > svg { flex-shrink: 0; }
+.expense-transfer-to .expense-person-name { font-size: 13px; color: var(--text); }
 
 /* ⋯ (src/ui/ActionsMenu.jsx): an item's actions, on a card or a header. */
 .actions-more { background: var(--surface-2); color: var(--text-muted); flex-shrink: 0; }

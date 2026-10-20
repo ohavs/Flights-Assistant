@@ -271,6 +271,14 @@ try {
 }
 await closeAll().catch(() => {});
 await page.waitForTimeout(400);
+// The full summary opens from the card over the list, once there is an expense.
+await openExpense();
+await page.getByPlaceholder('0.00').fill('12');
+await page.locator('.sheet-footer button[type="submit"]').click();
+await dragClose('expense summary', async () => {
+  await page.locator('.expense-hero').click();
+  await page.getByRole('dialog', { name: 'סיכום הוצאות' }).waitFor();
+});
 
 await tab('הזמנות');
 const openBooking = async () => {
