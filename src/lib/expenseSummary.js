@@ -3,10 +3,23 @@
 // Firebase (tests/expenseSummary.test.mjs). Shekel values are at today's
 // rates, like the total; with no rates there are only the totals per
 // currency.
+//
+// Who owes whom comes only from what the payer split (the owner's ask): an
+// expense with splitWith is shared evenly by the payer and those chosen,
+// or, with splitSelf false ("רק הם"), by those chosen alone. An id there is
+// a uid, or GUEST + a name for someone not on the trip.
 import { convert } from '../services/currency.js';
 
 const TOP = 3;
 const EVEN = 0.5;   // under half a shekel is settled: it shows as ₪0
+export const GUEST = 'name:';
+
+// The people an expense is split among, payer first; [] when it is not.
+export function splitGroup(e, payer) {
+  const others = [...new Set((e.splitWith || []).filter(id => id && id !== payer))];
+  if (!payer || !others.length) return [];
+  return e.splitSelf === false ? others : [payer, ...others];
+}
 
 // expenses: the trip's expense documents. rates: per euro, or null.
 // members: the trip's uids now. currentUid: whoever is looking.
@@ -32,7 +45,7 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
     byCurrency,
     people,
     ils: null, perPerson: null, daily: null,
-    byCategory: [], top: [], byPayer: [], transfers: [], unassigned: 0, share: null,
+    byCategory: [], top: [], byPayer: [], transfers: [], unassigned: 0, splits: 0, mine: null,
   };
   if (!rates || !list.length) return base;
 
@@ -65,10 +78,24 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
     if (uid) paid[uid] = (paid[uid] || 0) + v;
     else unassigned += v;
   }
-  // An equal share of what has a payer. What has none is shared already.
-  const share = (ils - unassigned) / people;
+  // Who owes whom: each split expense's share, from everyone in it but the
+  // payer, to the payer.
+  const owed = {};
+  let splits = 0;
+  for (const { e, ils: v } of valued) {
+    const payer = e.paidBy || solo;
+    const group = splitGroup(e, payer);
+    if (!group.length) continue;
+    splits++;
+    const each = v / group.length;
+    for (const id of group) {
+      if (id === payer) continue;
+      owed[id] = (owed[id] || 0) - each;
+      owed[payer] = (owed[payer] || 0) + each;
+    }
+  }
   const byPayer = Object.entries(paid)
-    .map(([uid, total]) => ({ uid, total, balance: total - share }))
+    .map(([uid, total]) => ({ uid, total, balance: owed[uid] || 0 }))
     .sort((a, b) => b.total - a.total || (a.uid === currentUid ? -1 : b.uid === currentUid ? 1 : 0));
 
   return {
@@ -79,9 +106,10 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
     byCategory,
     top,
     byPayer,
-    share: participants.length >= 2 ? share : null,
     unassigned,
-    transfers: participants.length >= 2 ? settle(byPayer) : [],
+    splits,
+    mine: currentUid && currentUid in owed ? owed[currentUid] : null,
+    transfers: settle(Object.entries(owed).map(([uid, balance]) => ({ uid, balance }))),
   };
 }
 

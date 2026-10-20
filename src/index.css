@@ -2032,7 +2032,6 @@ textarea.form-control {
 
 .expense-summary { display: flex; flex-direction: column; gap: 22px; padding-bottom: 8px; }
 .expense-section { display: flex; flex-direction: column; gap: 10px; }
-.expense-section-title { margin: 0; font-size: 15px; font-weight: 800; color: var(--text); }
 .expense-section-hint { margin: -6px 0 0; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .expense-rows { display: flex; flex-direction: column; gap: 8px; }
 .expense-row {
@@ -2485,6 +2484,10 @@ div.section-header-toggle { cursor: default; }
   border-color: transparent;
   color: var(--brand-fg);
 }
+/* The expense form's split (ExpensesTab): who shares it, and how. */
+.split-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.split-chips + .split-chips { margin-top: 10px; }
+.split-note { margin: 8px 0 0; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
 .chip.add {
   border-style: dashed;
   color: var(--text-muted);

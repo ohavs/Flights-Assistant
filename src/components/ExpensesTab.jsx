@@ -5,10 +5,10 @@ import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestor
 import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Search, X, Check,
-  Wallet, Pencil, ChevronDown, Link2, MapPin,
+  Wallet, Pencil, ChevronDown, Link2, MapPin, Users,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
-import { expenseSummary } from '../lib/expenseSummary';
+import { expenseSummary, splitGroup, GUEST } from '../lib/expenseSummary';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
@@ -74,6 +74,15 @@ export default function ExpensesTab({ tripId }) {
   const [paidBy, setPaidBy] = useState('');
   const [showPayerDropdown, setShowPayerDropdown] = useState(false);
 
+  // Split: who shares it with the payer (uids, or GUEST + a name), and
+  // whether the payer is in it ("רק הם" when not). Nothing chosen: no one
+  // owes anyone for it.
+  const [splitWith, setSplitWith] = useState([]);
+  const [splitSelf, setSplitSelf] = useState(true);
+  const [showNewName, setShowNewName] = useState(false);
+  const [newNameDraft, setNewNameDraft] = useState('');
+  const [sessionNames, setSessionNames] = useState([]);
+
   /* An expense keeps its payer even after that person leaves the trip.
      Their uid drops out of `members`, so `memberProfiles` stops carrying
      them — without the `formerMembers` snapshot the row would show an
@@ -90,6 +99,12 @@ export default function ExpensesTab({ tripId }) {
     // not. Naming the gap beats an avatar with nothing beside it.
     return { displayName: 'משתתף שעזב', former: true };
   }, [currentUid, currentUserProfile, memberProfiles, formerMembers, tripMembers]);
+
+  // Someone named on a split, not on the trip: their name is all there is.
+  const personProfile = useCallback(
+    (id) => (id?.startsWith(GUEST) ? { displayName: id.slice(GUEST.length), guest: true } : getPayerProfile(id)),
+    [getPayerProfile]
+  );
 
   const memberUids = useMemo(() => Object.keys(tripMembers), [tripMembers]);
   // Effective payer list: trip members or, for new trips, just the current user
@@ -132,7 +147,7 @@ export default function ExpensesTab({ tripId }) {
   // What the form held when it opened: closing it unchanged is free.
   const [formBaseline, setFormBaseline] = useState(null);
   const [openedWith, setOpenedWith] = useState(null);   // the form's values when it opened
-  const expenseKey = (f) => JSON.stringify([f.amount, f.currency, f.category, f.description, f.linkedPlanId, f.customPlace, f.paidBy]);
+  const expenseKey = (f) => JSON.stringify([f.amount, f.currency, f.category, f.description, f.linkedPlanId, f.customPlace, f.paidBy, f.splitWith, f.splitSelf]);
 
   const openForm = (expense = null) => {
     const base = [...new Set([...persistentQuickCurrencies])];
@@ -144,6 +159,8 @@ export default function ExpensesTab({ tripId }) {
       linkedPlanId: expense.linkedPlanId || '',
       customPlace: expense.customPlace || '',
       paidBy: expense.paidBy || currentUid || '',
+      splitWith: expense.splitWith || [],
+      splitSelf: expense.splitSelf !== false,
     } : {
       amount: '',
       currency: persistentQuickCurrencies[0] || 'ILS',
@@ -152,6 +169,8 @@ export default function ExpensesTab({ tripId }) {
       linkedPlanId: '',
       customPlace: '',
       paidBy: currentUid || '',
+      splitWith: [],
+      splitSelf: true,
     };
     if (expense && !base.includes(expense.currency)) base.push(expense.currency);
     setEditingId(expense ? expense.id : null);
@@ -162,6 +181,10 @@ export default function ExpensesTab({ tripId }) {
     setLinkedPlanId(f.linkedPlanId);
     setCustomPlace(f.customPlace);
     setPaidBy(f.paidBy);
+    setSplitWith(f.splitWith);
+    setSplitSelf(f.splitSelf);
+    setShowNewName(false);
+    setNewNameDraft('');
     setFormBaseline(expenseKey(f));
     setOpenedWith(f);
     setFormQuickCurrencies(base);
@@ -175,7 +198,7 @@ export default function ExpensesTab({ tripId }) {
     setShowForm(true);
   };
 
-  const formDirty = () => expenseKey({ amount, currency, category, description, linkedPlanId, customPlace, paidBy }) !== formBaseline;
+  const formDirty = () => expenseKey({ amount, currency, category, description, linkedPlanId, customPlace, paidBy, splitWith, splitSelf }) !== formBaseline;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -208,8 +231,10 @@ export default function ExpensesTab({ tripId }) {
       linkedPlanId: f.linkedPlanId || null,
       customPlace: f.customPlace.trim() || null,
       paidBy: f.paidBy || currentUid || null,
+      splitWith: (f.splitWith || []).filter(id => id !== (f.paidBy || currentUid)),
+      splitSelf: f.splitSelf !== false,
     });
-    const fields = fieldsOf({ amount, currency, category, description, linkedPlanId, customPlace, paidBy });
+    const fields = fieldsOf({ amount, currency, category, description, linkedPlanId, customPlace, paidBy, splitWith, splitSelf });
     const ref = doc(db, 'trips', tripId, 'expenses', id);
     // A new expense; an edit of one a partner deleted meanwhile stays deleted
     // (its update fails), rather than coming back.
@@ -267,6 +292,24 @@ export default function ExpensesTab({ tripId }) {
   const toggleCategory = (cat) =>
     setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
+  // Names of people not on the trip, from the splits so far: once used, a
+  // name is there to pick again.
+  const guestNames = useMemo(() => [...new Set([
+    ...expenses.flatMap(e => (e.splitWith || []).filter(id => id.startsWith(GUEST))),
+    ...sessionNames,
+  ])], [expenses, sessionNames]);
+
+  const toggleSplit = (id) => setSplitWith(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  const addGuest = () => {
+    const name = newNameDraft.trim();
+    if (!name) return;
+    const id = GUEST + name;
+    setSessionNames(prev => (prev.includes(id) ? prev : [...prev, id]));
+    setSplitWith(prev => (prev.includes(id) ? prev : [...prev, id]));
+    setNewNameDraft('');
+    setShowNewName(false);
+  };
+
   // The total, per person, per day, by category and currency, who paid
   // and who owes whom (src/lib/expenseSummary.js).
   const summary = useMemo(
@@ -298,7 +341,7 @@ export default function ExpensesTab({ tripId }) {
 
       {/* The total, big, over the list; a tap opens the full summary. */}
       {expenses.length > 0 && (
-        <ExpenseHero summary={summary} currentUid={currentUid} onOpen={() => setShowSummary(true)} />
+        <ExpenseHero summary={summary} onOpen={() => setShowSummary(true)} />
       )}
       {showSummary && (
         <ExpenseSummarySheet
@@ -306,7 +349,7 @@ export default function ExpensesTab({ tripId }) {
           expenses={expenses}
           plans={plans}
           currentUid={currentUid}
-          getPayerProfile={getPayerProfile}
+          getPayerProfile={personProfile}
           onClose={() => setShowSummary(false)}
         />
       )}
@@ -360,6 +403,7 @@ export default function ExpensesTab({ tripId }) {
                         : null;
                       const payer = expense.paidBy ? getPayerProfile(expense.paidBy) : null;
                       const payerName = payer?.displayName || payer?.email || '';
+                      const group = splitGroup(expense, expense.paidBy || (payerUids.length === 1 ? payerUids[0] : null));
                       return (
                         <ListCard
                           key={expense.id}
@@ -376,6 +420,12 @@ export default function ExpensesTab({ tripId }) {
                                 title={payer.former ? `${payerName} — כבר לא בטיול` : undefined}>
                                 <Pill size="sm" icon={<MemberAvatar profile={payer} size={14} />}>{payerName || 'שילם'}</Pill>
                               </span>
+                            ),
+                            group.length > 0 && (
+                              <Pill key="split" size="sm" tone="sky" icon={<Users size={11} />}
+                                title={group.map(id => personProfile(id)?.displayName || '').join(', ')}>
+                                {`מתחלק ל־${group.length}`}
+                              </Pill>
                             ),
                           ]}
                           trailing={
@@ -512,7 +562,7 @@ export default function ExpensesTab({ tripId }) {
                         const profile = getPayerProfile(uid);
                         return (
                           <button key={uid} type="button"
-                            onClick={() => { setPaidBy(uid); setShowPayerDropdown(false); }}
+                            onClick={() => { setPaidBy(uid); setSplitWith(prev => prev.filter(id => id !== uid)); setShowPayerDropdown(false); }}
                             role="option"
                             aria-selected={uid === (paidBy || currentUid)}
                             className={`custom-dropdown-option${uid === (paidBy || currentUid) ? ' active' : ''}`}
@@ -536,6 +586,78 @@ export default function ExpensesTab({ tripId }) {
                   )}
                 </div>
               )}
+
+              {/* ── Split: who shares it. Who owes whom comes only from
+                  here (the owner's ask); nothing chosen, no one owes. ── */}
+              {(() => {
+                const payer = paidBy || currentUid;
+                const people = [...payerUids.filter(uid => uid !== payer), ...guestNames];
+                const chosen = splitWith.filter(id => id !== payer);
+                const n = chosen.length + (splitSelf ? 1 : 0);
+                const each = chosen.length && parseFloat(amount) > 0 ? parseFloat(amount) / n : null;
+                const payerName = payer === currentUid ? 'אותי' : (personProfile(payer)?.displayName || 'המשלם');
+                return (
+                  <div className="form-group">
+                    <label>חלוקה</label>
+                    <div className="split-chips" role="group" aria-label="עם מי מתחלקים">
+                      {people.map(id => {
+                        const prof = personProfile(id);
+                        return (
+                          <button key={id} type="button" className="chip" aria-pressed={chosen.includes(id)}
+                            onClick={() => toggleSplit(id)}>
+                            <MemberAvatar profile={prof} size={18} />
+                            {prof?.displayName || prof?.email || ''}
+                          </button>
+                        );
+                      })}
+                      {showNewName ? (
+                        <div style={{ display: 'flex', gap: 6, width: '100%', alignItems: 'center' }}>
+                          <input
+                            type="text" autoFocus className="form-control"
+                            value={newNameDraft}
+                            onChange={e => setNewNameDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); addGuest(); }
+                              if (e.key === 'Escape') { setShowNewName(false); setNewNameDraft(''); }
+                            }}
+                            placeholder="שם של מי שלא בטיול"
+                            style={{ flex: 1, minHeight: 38, fontSize: 13 }}
+                          />
+                          <button type="button" onClick={addGuest} className="round-btn on" aria-label="הוסף שם" title="הוסף שם">
+                            <Check size={16} />
+                          </button>
+                          <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setShowNewName(false); setNewNameDraft(''); }}>
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => { setShowNewName(true); setNewNameDraft(''); }} className="chip add">
+                          <Plus size={13} /> שם
+                        </button>
+                      )}
+                    </div>
+                    {chosen.length > 0 ? (
+                      <>
+                        <div className="split-chips" role="radiogroup" aria-label="מי בחלוקה">
+                          <button type="button" role="radio" className="chip" aria-checked={splitSelf} aria-pressed={splitSelf}
+                            onClick={() => setSplitSelf(true)}>
+                            שווה בשווה, כולל {payerName}
+                          </button>
+                          <button type="button" role="radio" className="chip" aria-checked={!splitSelf} aria-pressed={!splitSelf}
+                            onClick={() => setSplitSelf(false)}>
+                            רק הם
+                          </button>
+                        </div>
+                        <p className="split-note">
+                          {n === 1 ? 'אדם אחד' : `${n} אנשים`}{each != null ? ` · ${money(each, currency)} כל אחד` : ''}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="split-note">בלי חלוקה, אף אחד לא חייב על ההוצאה הזאת.</p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── Section A: link to planning item ─────────────────── */}
               <div style={{
