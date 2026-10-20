@@ -1,7 +1,9 @@
 // The expenses tab on a full trip: two members, three currencies, six
-// categories, a linked place. The card over the list (total, per person,
-// per day, what you get back), the full summary with who owes whom, and
-// the rows with their amount at the end. Rates are fixed: €1 = $1 = ₪4.
+// categories, a linked place, three expenses split (one with someone not
+// on the trip). The card over the list (total, per person, per day, what
+// you get back), the full summary with who owes whom from the splits only,
+// its sections folding, the rows with their amount at the end, and the
+// form's split. Rates are fixed: €1 = $1 = ₪4.
 //   bash scripts/run-e2e.sh tests/e2e/expenses.e2e.mjs
 // Screenshots, light and dark: .e2e/expenses/
 import { chromium } from 'playwright';
@@ -25,6 +27,7 @@ async function step(name, fn) {
 const DB = 'http://127.0.0.1:8080/v1/projects/demo-flights/databases/(default)/documents';
 const admin = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
 const value = (v) => v === null ? { nullValue: null }
+  : typeof v === 'boolean' ? { booleanValue: v }
   : typeof v === 'string' ? { stringValue: v }
   : typeof v === 'number' ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v })
   : Array.isArray(v) ? { arrayValue: { values: v.map(value) } }
@@ -54,15 +57,19 @@ const ex = (id, amount, currency, category, description, day, paidBy, extra = {}
   put(`trips/exp/expenses/${id}`, { amount, currency, category, description, paidBy, linkedPlanId: null, customPlace: null,
     ilsSnapshot: null, createdAt: `2026-11-${day}T12:00:00.000Z`, ...extra });
 // Mine: 170 + 1450 + 39.2 + 480 = 2139.2. Dana's: 72 + 60 + 256 + 230 + 109.6 = 727.6.
-// Total 2866.8, a share 1433.4: Dana owes me 705.8.
+// Total 2866.8. Who owes whom, from the splits only:
+//   e3 ₪1450 mine, with Dana: she owes me 725.
+//   e8 ₪230 Dana's, with me and Roni (not on the trip): we owe her 76.67 each.
+//   e5 ₪256 Dana's, "רק הם", Roni alone: he owes her 256.
+// Me +648.33, Dana -315.67, Roni -332.67: Roni → me 332.67, Dana → me 315.67.
 await ex('e1', 42.5, 'EUR', 'אוכל ושתייה', 'ארוחת ערב באלפמה', 13, me);
 await ex('e2', 18, 'EUR', 'תחבורה', 'כרטיס יומי', 13, dana);
-await ex('e3', 1450, 'ILS', 'לינה', 'מקדמה למלון', 12, me);
+await ex('e3', 1450, 'ILS', 'לינה', 'מקדמה למלון', 12, me, { splitWith: [dana] });
 await ex('e4', 15, 'EUR', 'בידור ותיירות', '', 14, dana, { linkedPlanId: 'p1' });
-await ex('e5', 64, 'EUR', 'קניות', 'מגנטים ואריחים', 14, dana);
+await ex('e5', 64, 'EUR', 'קניות', 'מגנטים ואריחים', 14, dana, { splitWith: ['name:רוני'], splitSelf: false });
 await ex('e6', 9.8, 'EUR', 'אוכל ושתייה', 'פסטל דה נאטה', 14, me);
 await ex('e7', 120, 'USD', 'תחבורה', 'מונית מהשדה', 12, me);
-await ex('e8', 230, 'ILS', 'כללי', 'ביטוח נסיעות', 12, dana);
+await ex('e8', 230, 'ILS', 'כללי', 'ביטוח נסיעות', 12, dana, { splitWith: [me, 'name:רוני'] });
 await ex('e9', 27.4, 'EUR', 'אוכל ושתייה', 'Time Out Market', 15, dana, { customPlace: 'שוק' });
 
 const shot = async (name) => { await page.waitForTimeout(600); await page.screenshot({ path: `${out}/${name}.png` }); };
@@ -89,7 +96,7 @@ for (const theme of ['light', 'dark']) {
     await has(hero, '₪1,433');   // per person
     await has(hero, '₪717');     // a day, over 4
     await has(hero, 'מגיע לך');
-    await has(hero, '₪706');
+    await has(hero, '₪648');
     if (await hero.locator('.expense-bar > span').count() !== 6) throw new Error('not a segment per category');
     await shot(`${theme}-1-list`);
   });
@@ -107,17 +114,19 @@ for (const theme of ['light', 'dark']) {
     await page.mouse.wheel(0, -3000);
   });
 
-  await step(`${theme}: the full summary: who paid, who owes whom, categories, currencies, the biggest`, async () => {
+  await step(`${theme}: the full summary: who paid, who owes whom from the splits, categories, currencies, the biggest`, async () => {
     await hero.click();
     await sheet.waitFor();
     await sheet.locator('.expense-row.transfer', { hasText: 'דנה' }).waitFor();
-    await has(sheet, 'חלק שווה לכל אחד: ₪1,433');
     const transfer = sheet.locator('.expense-row.transfer');
-    if (await transfer.count() !== 1) throw new Error(`${await transfer.count()} transfers`);
-    await has(transfer, 'דנה');
-    await has(transfer, '₪706');
-    await has(sheet, '+₪706');
-    await has(sheet, '−₪706');
+    if (await transfer.count() !== 2) throw new Error(`${await transfer.count()} transfers`);
+    await has(transfer.nth(0), 'רוני');
+    await has(transfer.nth(0), '₪333');
+    await has(transfer.nth(1), 'דנה');
+    await has(transfer.nth(1), '₪316');
+    await has(sheet, 'רק מהוצאות שחולקו');
+    await has(sheet, '+₪648');
+    await has(sheet, '−₪316');
     for (const t of ['לפי קטגוריה', 'לינה', '51%', 'לפי מטבע מקורי', '€176.7', '≈ ₪707', 'ההוצאות הגדולות', 'מקדמה למלון']) await has(sheet, t);
     await shot(`${theme}-3-summary`);
     for (const k of [4, 5, 6]) {
@@ -130,6 +139,26 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
+await step('a summary section folds, and stays folded the next time', async () => {
+  await hero.click();
+  await sheet.waitFor();
+  const toggle = sheet.locator('.section-header-toggle', { hasText: 'לפי קטגוריה' });
+  await toggle.click();
+  const rows = sheet.locator('.expense-section', { has: page.locator('.section-header-toggle', { hasText: 'לפי קטגוריה' }) })
+    .locator('.expense-rows');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'false') throw new Error('did not fold');
+  if (await rows.count()) throw new Error('the section did not fold');
+  await sheet.getByRole('button', { name: 'סגור' }).click();
+  await sheet.waitFor({ state: 'detached' });
+  await hero.click();
+  await sheet.waitFor();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'false') throw new Error('folded, then open again');
+  await toggle.click();
+  await rows.waitFor();
+  await sheet.getByRole('button', { name: 'סגור' }).click();
+  await sheet.waitFor({ state: 'detached' });
+});
+
 await step('a narrow phone: the card fits, nothing scrolls sideways', async () => {
   await page.setViewportSize({ width: 340, height: 740 });
   await hero.getByText('₪2,867').waitFor();
@@ -139,6 +168,41 @@ await step('a narrow phone: the card fits, nothing scrolls sideways', async () =
   if (wide.length) throw new Error(`cut: ${wide.join(' | ')}`);
   if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) throw new Error('scrolls sideways');
   await shot('dark-7-narrow');
+});
+
+await step('the form: a split with Dana and a new name; the name is there to pick next time', async () => {
+  await page.setViewportSize({ width: 400, height: 860 });
+  await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
+  const form = page.locator('.modal-content');
+  await page.getByPlaceholder('0.00').fill('90');
+  await page.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill('ארוחה משותפת');
+  await has(form, 'בלי חלוקה, אף אחד לא חייב');
+  // Roni is there already: a name from an earlier split.
+  await form.locator('.split-chips button.chip', { hasText: 'רוני' }).waitFor();
+  await form.locator('.split-chips button.chip', { hasText: 'דנה' }).click();
+  await form.locator('.split-chips button.chip.add', { hasText: 'שם' }).click();
+  await page.getByPlaceholder('שם של מי שלא בטיול').fill('יואב');
+  await form.getByRole('button', { name: 'הוסף שם' }).click();
+  await has(form, '3 אנשים');
+  await has(form, '30 כל אחד');
+  await shot('dark-8-split');
+  await form.getByRole('radio', { name: 'רק הם' }).click();
+  await has(form, '2 אנשים');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').waitFor({ state: 'detached' });
+  let doc;
+  for (let i = 0; i < 20 && !doc; i++) {
+    const list = await (await fetch(`${DB}/trips/exp/expenses?pageSize=50`, { headers: admin })).json();
+    doc = (list.documents || []).find(d => d.fields?.description?.stringValue === 'ארוחה משותפת');
+    if (!doc) await page.waitForTimeout(300);
+  }
+  const split = (doc?.fields?.splitWith?.arrayValue?.values || []).map(v => v.stringValue).sort();
+  if (JSON.stringify(split) !== JSON.stringify([dana, 'name:יואב'].sort()) || doc.fields.splitSelf?.booleanValue !== false) {
+    throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
+  }
+  await page.locator('.list-card', { hasText: 'ארוחה משותפת' }).getByText('מתחלק ל־2').waitFor();
+  await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
+  await page.locator('.modal-content .split-chips button.chip', { hasText: 'יואב' }).waitFor();
 });
 
 console.log(failed ? `${failed} failed` : 'all passed');

@@ -1,12 +1,14 @@
+import { useState } from 'react';
 import { ChevronLeft, ArrowLeft, Check } from 'lucide-react';
 import Sheet from '../ui/Sheet';
+import SectionHeader from '../ui/SectionHeader';
 import { Pill, CategoryDisc } from '../ui/kit';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 
 /* The expenses tab's numbers (src/lib/expenseSummary.js), twice:
    ExpenseHero, the card over the list — the total, big, the split by
    category, and a few figures; and ExpenseSummarySheet, everything, which
-   the card opens. */
+   the card opens, in sections that fold (kept on the phone). */
 
 export function MemberAvatar({ profile, size = 22 }) {
   if (profile?.photoURL) {
@@ -70,11 +72,6 @@ function Tile({ label, value, tone }) {
 
 const plural = (n, one, many) => (n === 1 ? one : `${n.toLocaleString('he-IL')} ${many}`);
 
-// What the one looking gets back or owes: what they paid less their share.
-function myBalance(s, currentUid) {
-  if (s.share == null) return null;
-  return s.byPayer.find(p => p.uid === currentUid)?.balance ?? null;
-}
 
 function BalanceTile({ balance }) {
   if (Math.abs(balance) < 0.5) return <Tile label="ההתחשבנות שלך" value="מאוזן" />;
@@ -83,8 +80,10 @@ function BalanceTile({ balance }) {
     : <Tile label="עליך להעביר" value={shekels(balance)} tone="down" />;
 }
 
-export function ExpenseHero({ summary: s, currentUid, onOpen }) {
-  const mine = myBalance(s, currentUid);
+// What the one looking gets back or owes, from the expenses split with
+// them (src/lib/expenseSummary.js); null when none was.
+export function ExpenseHero({ summary: s, onOpen }) {
+  const mine = s.mine;
   const tiles = [];
   if (s.perPerson != null) tiles.push(<Tile key="person" label={`לאדם (÷${s.people})`} value={shekels(s.perPerson)} />);
   if (s.daily && s.daily.days > 1) tiles.push(<Tile key="day" label="ממוצע ליום" value={shekels(s.daily.avg)} />);
@@ -120,12 +119,26 @@ export function ExpenseHero({ summary: s, currentUid, onOpen }) {
   );
 }
 
-function Section({ title, hint, children }) {
+// Which sections of the summary are folded, on this phone.
+const FOLDED = 'expenses.summaryFolded';
+function useFolded() {
+  const [folded, setFolded] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(FOLDED)) || {}; } catch { return {}; }
+  });
+  const toggle = (id) => setFolded(prev => {
+    const next = { ...prev, [id]: !prev[id] };
+    try { localStorage.setItem(FOLDED, JSON.stringify(next)); } catch { /* private mode */ }
+    return next;
+  });
+  return [folded, toggle];
+}
+
+function Section({ title, hint, count, folded, onToggle, children }) {
   return (
     <section className="expense-section">
-      <h4 className="expense-section-title">{title}</h4>
-      {hint && <p className="expense-section-hint">{hint}</p>}
-      <div className="expense-rows">{children}</div>
+      <SectionHeader title={title} count={count} collapsed={folded} onToggle={onToggle} />
+      {!folded && hint && <p className="expense-section-hint">{hint}</p>}
+      {!folded && <div className="expense-rows">{children}</div>}
     </section>
   );
 }
@@ -147,6 +160,8 @@ function PersonName({ uid, profile, currentUid, size = 28 }) {
 export default function ExpenseSummarySheet({ summary: s, expenses, plans, currentUid, getPayerProfile, onClose }) {
   const anyPayer = expenses.some(e => e.paidBy);
   const foreign = s.byCurrency.some(c => c.code !== 'ILS');
+  const [folded, toggle] = useFolded();
+  const fold = (id) => ({ folded: !!folded[id], onToggle: () => toggle(id) });
   return (
     <Sheet title="סיכום הוצאות" onClose={onClose}>
       <div className="expense-summary">
@@ -158,7 +173,7 @@ export default function ExpenseSummarySheet({ summary: s, expenses, plans, curre
             {s.daily && s.daily.days > 1 && <Tile label={`ממוצע ליום (${s.daily.days} ימים)`} value={shekels(s.daily.avg)} />}
           </div>
         ) : (
-          <Section title='סה"כ לפי מטבע' hint="ההמרה לשקלים, החלוקה וההתחשבנות יופיעו כשיהיו שערי המרה.">
+          <Section title='סה"כ לפי מטבע' hint="ההמרה לשקלים, החלוקה וההתחשבנות יופיעו כשיהיו שערי המרה." {...fold('currency')}>
             {s.byCurrency.map(c => (
               <div key={c.code} className="expense-row">
                 <span className="expense-cur-disc">{getCurrencyInfo(c.code).symbol}</span>
@@ -169,34 +184,39 @@ export default function ExpenseSummarySheet({ summary: s, expenses, plans, curre
           </Section>
         )}
 
-        {s.byPayer.length > 0 && (anyPayer || s.share != null) && (
-          <Section title="מי שילם"
-            hint={s.share != null ? `חלק שווה לכל אחד: ${shekels(s.share)}` : null}>
+        {s.byPayer.length > 0 && (anyPayer || s.people >= 2) && (
+          <Section title="מי שילם" {...fold('payers')}>
             {s.byPayer.map(({ uid, total, balance }) => (
               <div key={uid} className="expense-row">
                 <PersonName uid={uid} profile={getPayerProfile(uid)} currentUid={currentUid} />
                 <span className="expense-row-end">
                   <span className="expense-row-value">{shekels(total)}</span>
-                  {s.share != null && (Math.abs(balance) < 0.5
-                    ? <Pill size="sm" tone="muted">מאוזן</Pill>
-                    : <Pill size="sm" tone={balance > 0 ? 'mint' : 'red'}>
-                        <span dir="ltr">{balance > 0 ? '+' : '−'}{shekels(balance)}</span>
-                      </Pill>)}
+                  {/* Owed or owing, from the split expenses only. */}
+                  {Math.abs(balance) >= 0.5 && (
+                    <Pill size="sm" tone={balance > 0 ? 'mint' : 'red'}>
+                      <span dir="ltr">{balance > 0 ? '+' : '−'}{shekels(balance)}</span>
+                    </Pill>
+                  )}
                 </span>
               </div>
             ))}
             {s.unassigned >= 0.5 && (
               <div className="expense-row muted">
-                <span className="expense-row-name">בלי משלם · לא נכלל בהתחשבנות</span>
+                <span className="expense-row-name">בלי משלם</span>
                 <span className="expense-row-value">{shekels(s.unassigned)}</span>
               </div>
             )}
           </Section>
         )}
 
-        {s.share != null && (
-          <Section title="מי מעביר למי">
-            {s.transfers.length ? s.transfers.map(t => (
+        {s.ils != null && (s.splits > 0 || s.people >= 2) && (
+          <Section title="מי מעביר למי" count={s.splits || null} {...fold('transfers')}
+            hint={s.splits ? 'רק מהוצאות שחולקו: בכל הוצאה, המשלם בוחר עם מי היא מתחלקת.' : null}>
+            {!s.splits ? (
+              <div className="expense-row muted">
+                <span className="expense-row-name">עוד אין הוצאות שחולקו. בטופס ההוצאה, ב"חלוקה", בוחרים עם מי מתחלקים, וכאן יופיע מי חייב למי.</span>
+              </div>
+            ) : s.transfers.length ? s.transfers.map(t => (
               <div key={`${t.from}-${t.to}`} className="expense-row transfer">
                 <span className="expense-row-main">
                   <PersonName uid={t.from} profile={getPayerProfile(t.from)} currentUid={currentUid} />
@@ -218,7 +238,7 @@ export default function ExpenseSummarySheet({ summary: s, expenses, plans, curre
         )}
 
         {s.byCategory.length > 0 && (
-          <Section title="לפי קטגוריה">
+          <Section title="לפי קטגוריה" count={s.byCategory.length} {...fold('categories')}>
             <CategoryBar items={s.byCategory} height={12} />
             {s.byCategory.map(c => {
               const st = expenseCategoryStyle(c.cat);
@@ -240,7 +260,7 @@ export default function ExpenseSummarySheet({ summary: s, expenses, plans, curre
         )}
 
         {s.ils != null && foreign && (
-          <Section title="לפי מטבע מקורי">
+          <Section title="לפי מטבע מקורי" {...fold('currencies')}>
             {s.byCurrency.map(c => (
               <div key={c.code} className="expense-row">
                 <span className="expense-cur-disc">{getCurrencyInfo(c.code).symbol}</span>
@@ -255,7 +275,7 @@ export default function ExpenseSummarySheet({ summary: s, expenses, plans, curre
         )}
 
         {s.top.length > 0 && (
-          <Section title="ההוצאות הגדולות">
+          <Section title="ההוצאות הגדולות" {...fold('top')}>
             {s.top.map(e => {
               const st = expenseCategoryStyle(e.category || 'כללי');
               const day = expenseDay(e.createdAt);
