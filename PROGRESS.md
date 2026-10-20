@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.58.0 (`changelog.md`)
+- גרסת ווב: 8.59.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -35,17 +35,24 @@
     - תמונת המצב מכילה `currencies`, כל המטבעות מ־`CURRENCY_META`, ו־`rates` לכולם.
   - **תזכורת מהווידג'ט (8.56.0):** "+" פותח את `ReminderSheetActivity`. הוא כותב דרך `ExpenseStore.reminder` (`coll: "reminders"`, מזהה `rem-<זמן>`), ו־`sendWidgetWrites` (‏`addReminder`) שולח מהאפליקציה. `WidgetLists.added` מציג את התזכורת עד שהיא נשלחה ומופיעה בתמונת המצב. השם והתמונה עוברים עם ההתחברות (`saveWidgetAuth`).
   - **שדות ובוררים (8.58.0, בקשת הבעלים: "אין אלמנט שלא מעוצב"):** כל שדה הוא `.form-control` (אריח עם קו ושפה, טוקנים `--field-*` ב־`index.css`). אין `<select>` או `input type=date/time` של הדפדפן: רשימה = `CustomDropdown`, תאריך/שעה = הבוררים ב־`CustomDatePicker.jsx`. שדה שפותח בורר הוא `PickerField` (אייקון באריח בתחילתו, גם בעמודה צרה). בורר השעה הוא `Wheel`: הרשימה מצוירת כמה פעמים, וכשהגלגל נעצר מחוץ לעותק האמצעי הוא קופץ לאותו מספר בעותק האמצעי (לופ). הערך = השורה בפס האמצעי.
+  - **זמני הגעה מכל מקום (8.59.0, בקשת הבעלים 2026-10-20):** בחלונית מקום, `.travel-from` פותח "יוצאים מ…" (המלון מוצמד, שאר המקומות לפי קרבה בקו אווירי, חיפוש).
+    - השדה החדש `travelFrom` במסמך המקום: `'hotel'`, מזהה של `distanceOrigins`, או `place_<id>`. הזמנים נשמרים ב־`distances[<אותו מפתח>]`. בלי השדה, החלונית מודדת מ־`distanceOriginId`.
+    - **רק החלונית** (`sheetOriginKey`) משתמשת בו. הכרטיס, המיון והלוז נשארים על `distanceOriginId || 'hotel'` (החלטת הבעלים).
+    - שדה חדש ולא ערך חדש ב־`distanceOriginId`, כי APK ישן היה מודד מהמלון וכותב לאותו מפתח.
+    - קואורדינטות בלי רשת: `knownPlaceCoords` ב־`distanceApi.js`.
+  - **כותרות קבוצה בתכנון (8.59.0):** כל קבוצה היא `<section className="plan-group">`, והכותרת דביקה בתוכה בלבד, כך שהבאה דוחפת אותה. לפני כן כל הכותרות היו אחיות באותה רשימה ונערמו ב־`top: 64`.
+  - **מפות ב־e2e:** ב־build של emulators, `window.__e2eGmapsKey` (‏`addInitScript`) נותן מפתח מזויף, והבדיקה עונה ל־`routes.googleapis.com` ול־`places.googleapis.com` עם `ctx.route` (ראו `travel.e2e.mjs`).
   - **ווידג'ט הזמנות (8.57.0):** `BookingsWidget`, רשימה ב־`ListWidgetService` (‏`BOOKINGS`, שורה `widget_booking_item`), נתונים מ־`bookingsOf` ב־`widgetData.js` (‏`bookings` בכל טיול בתמונת המצב).
   - **רשימות בווידג'טים (8.49.0):** הלוז והתזכורות נטענים דרך `ListWidgetService`, והלחיצות עוברות דרך `WidgetActionActivity`.
     - סימון נשמר כ־`patch` בתור של `ExpenseStore`.
     - `WidgetClock` מעיר את הווידג'טים בחצות וסביב טיסות.
   - **`widgetData.js` ו־`morningAlerts.js` נשארים בלי Firebase.** הסקריפט `widget-fixtures.mjs` רץ ב־smoke של Android ב־node בלי `node_modules`. לכן קוראים את סדר התוכנית מ־`dayOrder.js`, ולא מ־`dayActivities.js` שכותב.
-  - `android-smoke.sh` עונה "Wait" להודעת מערכת "isn't responding" של האמולטור (`dismiss_anr`). ב־2026-10-19 הודעה כזו של ה־launcher כיסתה את האפליקציה, ה־smoke נכשל על master ו־Release של 8.54.0 לא יצא.
+  - `android-smoke.sh` עונה "Wait" להודעת מערכת "isn't responding" של האמולטור (`dismiss_anr`). ב־2026-10-19 הודעה כזו של ה־launcher כיסתה את האפליקציה, ה־smoke נכשל על master ו־Release של 8.54.0 לא יצא. ב־2026-10-20 (PR #100) נכשלה הבדיקה "חזור במסך הראשון יוצא מהאפליקציה" אחרי 3 שניות קבועות. עכשיו היא בודקת כל שנייה, עד 10 שניות.
   - צילומי האמולטור (smoke + ווידג'ט) נדחפים לענף `ci-shots` בכל ריצה של Android. כך רואים אותם: `git fetch origin ci-shots && git show origin/ci-shots:widget-1-flight.png > /tmp/x.png`. ההורדה של artifacts חסומה בפרוקסי.
   - **בקשות הבעלים (2026-10-15, אחרי 8.35.0), לפני N4:** (1) ~~צ'קליסט: לחיצה פותחת, החלקה מוחקת, פריט שסומן יורד בתנועה~~ (8.36.0). (2) ~~סמל האפליקציה לא מתחלף~~ (8.37.0). בוטל ב־8.40.0: הסמל קבוע, "מפה". (3) ~~טקסטורות רקע לכל ערכת צבעים~~ (8.38.0, `.app-container::before` ב־`index.css`, נלמד מ־`ohavs/payments-2026`). ב־Payments יש גם ווידג'ט ו־`scripts/widget-shots.sh`: ללמוד משם ל־N4.
   - בכל בקשה לכתוב לבעלים אם השינוי לווב, לאפליקציה או לשניהם (ראו "ווב ואפליקציה" למטה).
   - המצב בכל הרשימות (8.36.0): לחיצה פותחת חלונית (עריכה, שיוך, מחיקה עם `SheetDelete`), עיגול מסמן, החלקה רק מוחקת, ובטלפון אין ⋯. בצ'קליסט פריט שסומן יורד לתחתית בתנועה (`useFlip`). סינון משולב ב־`ChecklistFilter.jsx`.
-- הרצת e2e מקומית: `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome bash scripts/run-e2e.sh tests/e2e/<name>.e2e.mjs`. בלי ארגומנטים רצות כל הבדיקות של CI: smoke, layout, planning, flight, sheets, contrast.
+- הרצת e2e מקומית: `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome bash scripts/run-e2e.sh tests/e2e/<name>.e2e.mjs`. בלי ארגומנטים רצות כל הבדיקות של CI (הרשימה ב־`scripts/run-e2e.sh`).
 
 ## בלי אינטרנט (בקשת הבעלים, 2026-10-16)
 **הכל זמין בלי אינטרנט, בווב ובאפליקציה, נשמר בטלפון ומסונכרן כשהחיבור חוזר, בלי לאבד כלום.** כלל קבוע לכל שינוי.

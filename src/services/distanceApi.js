@@ -7,7 +7,10 @@
 // 3. Follow the short URL (maps.app.goo.gl) via CORS proxy → extract coords
 // 4. Places Text Search by title + location context (last resort)
 
-const GMAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+// Browser tests run an emulator build with a fake key (`__e2eGmapsKey`, set
+// before the app loads) and answer the Maps calls themselves.
+const GMAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY
+  || (import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true' && globalThis.__e2eGmapsKey) || '';
 const ROUTES_URL  = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const PLACES_URL  = 'https://places.googleapis.com/v1/places:searchText';
 const SHORT_CACHE = 'gmaps_short_v1_';  // short-URL expansion results
@@ -338,6 +341,19 @@ export async function buildOriginCandidates(hotelDetails, customOrigin, fallback
   // 3. City centre, so something is always shown.
   push(fallbackText, 'city');
   return out;
+}
+
+// Where a place is, from what this phone already knows: coordinates in its
+// links, an expanded short link or an earlier lookup. No network. Used to
+// order places by distance; null when only a lookup could tell.
+export function knownPlaceCoords(plan) {
+  const urls = [plan.address, ...(Array.isArray(plan.links) ? plan.links.map(l => l?.url) : [])]
+    .filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
+  for (const url of urls) {
+    const c = parseLatLng(extractCoordsFromMapsUrl(url) || readShortUrlCache(url));
+    if (c) return c;
+  }
+  try { return parseLatLng(localStorage.getItem(PLACE_CACHE + plan.id)); } catch { return null; }
 }
 
 // Sync fast-path: text address or embedded coords in URL
