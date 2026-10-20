@@ -37,6 +37,7 @@ import {
   resolveDestinationAsync,
   resolvePlanCoords,
   fetchTravelTimes,
+  knownPlaceCoords,
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Skeleton from './Skeleton';
@@ -153,6 +154,12 @@ const EVENTS_CATEGORY = 'אירועים';
 // Two places within this many metres of each other are treated as "near" and
 // grouped into the same area in the proximity-grouping view.
 const PROXIMITY_THRESHOLD_M = 800;
+
+// The details sheet can show travel times from another place on the list
+// (`travelFrom: 'place_<id>'` on the place). The times are saved under the
+// same key in `distances`. The card and the distance sort keep the place's
+// own origin (`distanceOriginId`, the hotel by default).
+const PLACE_ORIGIN = 'place_';
 
 // Local today date (YYYY-MM-DD) evaluated once on module load.
 // Used for event-status badges; stale by at most one day if tab is left open overnight.
@@ -374,6 +381,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // Tapping a place card opens a details sheet instead of expanding the card
   // in place — the card itself stays plain text, every action lives here.
   const [detailPlanId, setDetailPlanId] = useState(null);
+  // The "from where" picker over the details sheet: the place it measures to.
+  const [originPickerFor, setOriginPickerFor] = useState(null);
+  const [originQuery, setOriginQuery] = useState('');
 
   // Category customisation (icon + color), synced with Firestore
   const [categorySettings, setCategorySettings] = useState({});
@@ -673,16 +683,42 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   /* ══════════════════════════════════════════════════════════
      DISTANCE HELPERS
      ══════════════════════════════════════════════════════════ */
-  const fetchPlanDistances = async (plan) => {
+  // The place an origin key points at, when it is one from the list.
+  const originPlanOf = (originId) =>
+    originId?.startsWith(PLACE_ORIGIN) ? plans.find(p => p.id === originId.slice(PLACE_ORIGIN.length)) || null : null;
+
+  // Where the details sheet measures from: the place's own choice there,
+  // as long as what it points at still exists, else the card's origin.
+  const sheetOriginKey = (plan) => {
+    const base = plan.distanceOriginId || 'hotel';
+    const k = plan.travelFrom;
+    if (!k || k === plan.distanceOriginId) return base;
+    if (k.startsWith(PLACE_ORIGIN)) {
+      const from = originPlanOf(k);
+      return from && from.id !== plan.id ? k : base;
+    }
+    return k === 'hotel' || distanceOrigins.some(o => o.id === k) ? k : base;
+  };
+
+  // Times measured from another place go stale when that place moves.
+  const placeOriginFingerprint = (from) => [
+    PLACE_ORIGIN, from.address || '',
+    ...(Array.isArray(from.links) ? from.links.map(l => l?.url || '') : []),
+  ].join('|');
+
+  const fetchPlanDistances = async (plan, originId = plan.distanceOriginId || 'hotel') => {
     if (!hasGmapsKey()) return;
-    const originId = plan.distanceOriginId || 'hotel';
     const cacheKey = `${plan.id}_${originId}`;
     const existing = distanceCache[cacheKey];
 
-    const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
+    const fromPlan = originPlanOf(originId);
+    if (originId.startsWith(PLACE_ORIGIN) && !fromPlan) return;
+    const customOrigin = fromPlan ? null : (distanceOrigins.find(o => o.id === originId) || null);
     // Fingerprint of every input the origin derives from. If the user edits
     // the hotel address/link, this changes and the cached numbers are stale.
-    const fp = originFingerprint(hotelDetails, customOrigin, tripDestination);
+    const fp = fromPlan
+      ? placeOriginFingerprint(fromPlan)
+      : originFingerprint(hotelDetails, customOrigin, tripDestination);
 
     // Decide against the value saved on the plan document as well as the
     // runtime cache. The hydration effect and this one both run off the same
@@ -724,13 +760,23 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const region = { coords: regionCoords, text: tripDestination };
     const [candidates, dest] = await Promise.all([
       // Ordered origin options: custom → hotel coords → hotel address →
-      // expanded hotel link → hotel name → city centre.
-      buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online }),
+      // expanded hotel link → hotel name → city centre. Another place:
+      // where it was located, else resolved the way a destination is.
+      fromPlan
+        ? (async () => {
+          const c = coordsCache[fromPlan.id] || fromPlan.coords;
+          const at = c ? `${c.lat},${c.lng}` : await resolveDestinationAsync(fromPlan, originHint, region);
+          return at ? [{ value: at, kind: 'place' }] : [];
+        })()
+        : buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online }),
       resolveDestinationAsync(plan, originHint, region),
     ]);
 
     if (candidates.length === 0) {
-      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
+      setDistanceCache(prev => ({
+        ...prev,
+        [cacheKey]: (fromPlan && !online) ? { offline: true } : { noLocation: true, noOrigin: !!fromPlan },
+      }));
       return;
     }
     if (!dest) {
@@ -1006,10 +1052,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     handleCancelEditLink();
   };
 
+  // The sheet measures its travel times itself (see the effect on
+  // detailOriginKey), from whatever origin the place shows there.
   const openPlanDetail = (id) => {
     setDetailPlanId(id);
-    const plan = plans.find(p => p.id === id);
-    if (plan) setTimeout(() => fetchPlanDistances(plan), 0);
+  };
+
+  // Where the details sheet measures from, saved on the place for everyone
+  // in the trip. Picking the card's own origin clears the choice.
+  const chooseTravelFrom = (plan, key) => {
+    if (!tripId) return;
+    const base = plan.distanceOriginId || 'hotel';
+    updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+      travelFrom: key === base ? deleteField() : key,
+    }).catch(err => console.error('Travel origin failed:', err));
   };
 
   const handleToggleVisited = async (plan) => {
@@ -1261,18 +1317,21 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   // Travel time from the hotel / chosen origin, rendered inside the details
   // sheet. Lives here (rather than inline) so the card stays free of it.
+  // Tapping it picks where to measure from (the owner's ask): the hotel,
+  // or any other place on the list.
   const renderDistanceBlock = (plan) => {
     if (!hasGmapsKey()) return null;
     if (!hotelDetails && distanceOrigins.length === 0 && !tripDestination) return null;
 
-    const originId = plan.distanceOriginId || 'hotel';
+    const originId = sheetOriginKey(plan);
     const cacheKey = `${plan.id}_${originId}`;
     const cache = distanceCache[cacheKey];
+    const fromPlan = originPlanOf(originId);
     const customOrigin = distanceOrigins.find(o => o.id === originId) || null;
     // Label from what the SHOWN numbers were actually computed from, so a
     // city-centre result is never labelled "from hotel". Older cached entries
     // have no originKind — fall back to resolving the current origin.
-    const kind = cache?.originKind || (
+    const kind = fromPlan ? 'place' : cache?.originKind || (
       (customOrigin && hasPreciseOrigin(null, customOrigin))
         ? 'custom'
         : (hasPreciseOrigin(hotelDetails, null) ? 'hotel' : 'city')
@@ -1280,43 +1339,61 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const cityName = (tripDestination || '').split(',')[0].trim();
     const cityLabel = cityName ? `ממרכז ${cityName}` : 'מהמיקום';
     const originLabel =
-      kind === 'custom' ? (customOrigin?.name || cityLabel)
+      kind === 'place' ? `מ־${fromPlan.title}`
+      : kind === 'custom' ? (customOrigin?.name || cityLabel)
       : kind === 'hotel' ? (hotelDetails?.name ? `מהמלון (${hotelDetails.name})` : 'מהמלון')
       : cityLabel;
 
-    if (!cache || cache.loading) return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+    const note = { fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 };
+    let times;
+    if (!cache || cache.loading) times = (
+      <span style={{ ...note, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         <Loader2 size={13} className="spinning" />
         <span>מחשב מרחק...</span>
-      </div>
+      </span>
     );
-    if (cache.offline) return (
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
+    else if (cache.offline) times = (
+      <span style={note}>
         <WifiOff size={12} aria-hidden="true" style={{ verticalAlign: -2, marginInlineEnd: 4 }} />אין חיבור — זמני ההגעה יחושבו כשתהיה מחובר
-      </div>
+      </span>
     );
-    if (cache.noLocation) return (
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, opacity: 0.7 }}>
-        <MapPinOff size={12} aria-hidden="true" style={{ verticalAlign: -2, marginInlineEnd: 4 }} />לא נמצא מיקום לחישוב זמן הגעה
-      </div>
+    else if (cache.noLocation || cache.error || (!cache.walk && !cache.transit)) times = (
+      <span style={note}>
+        <MapPinOff size={12} aria-hidden="true" style={{ verticalAlign: -2, marginInlineEnd: 4 }} />
+        {cache.noOrigin ? `לא נמצא המיקום של ${fromPlan?.title || 'המקום'}` : 'לא נמצא מיקום לחישוב זמן הגעה'}
+      </span>
     );
-    if (cache.error || (!cache.walk && !cache.transit)) return null;
-    return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--p-4)', borderRadius: 12, border: '1px solid var(--p-10)' }}>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>
-          {originLabel}:
+    else times = (<>
+      {cache.walk && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--c-green)', background: 'var(--c-green-10)', padding: '4px 10px', borderRadius: 8 }}>
+          <Footprints size={13} aria-hidden="true" /> {cache.walk.duration}
         </span>
-        {cache.walk && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--c-green)', background: 'var(--c-green-10)', padding: '4px 10px', borderRadius: 8 }}>
-            <Footprints size={13} aria-hidden="true" /> {cache.walk.duration}
-          </span>
-        )}
-        {cache.transit && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'var(--p-10)', padding: '4px 10px', borderRadius: 8 }}>
-            <Bus size={13} aria-hidden="true" /> {cache.transit.duration}
-          </span>
-        )}
-      </div>
+      )}
+      {cache.transit && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800, color: 'var(--accent)', background: 'var(--p-10)', padding: '4px 10px', borderRadius: 8 }}>
+          <Bus size={13} aria-hidden="true" /> {cache.transit.duration}
+        </span>
+      )}
+    </>);
+    const inner = (<>
+      <span className="travel-from-head">
+        <span>{originLabel}</span>
+        {canEdit && <ChevronDown size={14} aria-hidden="true" />}
+      </span>
+      <span className="travel-from-times">{times}</span>
+    </>);
+    // The choice is saved on the place, so only an editor can change it.
+    if (!canEdit) return <div className="travel-from">{inner}</div>;
+    return (
+      <button
+        type="button"
+        className="travel-from"
+        aria-haspopup="dialog"
+        title="בחירת נקודת יציאה אחרת"
+        onClick={() => { setOriginQuery(''); setOriginPickerFor(plan.id); }}
+      >
+        {inner}
+      </button>
     );
   };
 
@@ -1387,6 +1464,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // Small enough that two tiles still fit on a ~360px phone; auto-fill adds
   // more columns on wider screens.
   const gridMinCol = 148;
+  const bindItemRef = (id) => (node) => {
+    if (node) itemRefs.current.set(id, node);
+    else itemRefs.current.delete(id);
+  };
+  const planListStyle = LO.columns > 1 ? {
+    display: 'grid',
+    gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinCol}px, 1fr))`,
+    gap: LO.listGap,
+    // Tiles in the same row share a height, so a two-line name next to
+    // a one-line name doesn't leave a ragged edge.
+    alignItems: 'stretch',
+  } : {
+    display: 'flex', flexDirection: 'column', gap: LO.listGap,
+  };
 
   // Proximity-grouping view: flatten filteredPlans into a single render list
   // interleaved with area-header sentinels ({ __header: true }). Places without
@@ -1619,6 +1710,15 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       if (plan) fetchPlanDistances(plan);
     });
   }, [days, plans, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The open details sheet: measure from its origin when it opens, when
+  // another origin is picked there, and again once back online.
+  const detailOriginKey = detailPlan ? sheetOriginKey(detailPlan) : null;
+  useEffect(() => {
+    if (!detailPlan || !detailOriginKey) return;
+    const t = setTimeout(() => fetchPlanDistances(detailPlan, detailOriginKey), 0);
+    return () => clearTimeout(t);
+  }, [detailPlanId, detailOriginKey, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const daySensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -2698,17 +2798,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           {/* Planning Cards List — density and column count come from the
               selected layout. Grid falls back to one column on narrow phones,
               and an expanded card spans the full width so its contents stay
-              readable. Area headers always span all columns. */}
-          <div style={LO.columns > 1 ? {
-            display: 'grid',
-            gridTemplateColumns: `repeat(auto-fill, minmax(${gridMinCol}px, 1fr))`,
-            gap: LO.listGap,
-            // Tiles in the same row share a height, so a two-line name next to
-            // a one-line name doesn't leave a ragged edge.
-            alignItems: 'stretch',
-          } : {
-            display: 'flex', flexDirection: 'column', gap: LO.listGap,
-          }}>
+              readable. Grouped, each group is a section of its own that
+              spans all columns (see renderItems). */}
+          <div style={planListStyle}>
             {filteredPlans.length === 0 ? (
               /* An empty pool and a filter that matched nothing are two
                  different problems. The old copy said "nothing matches the
@@ -2735,7 +2827,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 )}
               </div>
             ) : (
-              renderItems.map((plan) => {
+              (() => {
+              const renderEntry = (plan) => {
                 // Section header rows (area clusters / category sections)
                 if (plan.__header) {
                   const collapsed = !!collapsedAreas[plan.id];
@@ -2752,18 +2845,17 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       // A pill of its own, like the toolbar's controls, so it
                       // stays legible when it sticks with no band behind it;
                       // 64px ≈ the sticky toolbar's height, so a stuck header
-                      // lands just below it.
+                      // lands just below it. It sticks inside its own section
+                      // only, so the next group's header pushes it out
+                      // instead of landing on top of it.
                       style={{
                         position: 'sticky', top: 64, zIndex: 4,
                         background: 'var(--card-bg)',
                         borderRadius: 999,
                         paddingInline: 12,
                         boxShadow: 'var(--shadow-sm)',
-                        justifySelf: 'start',
                         alignSelf: 'flex-start',
                         maxWidth: '100%',
-                        gridColumn: '1 / -1',
-                        marginTop: (plan.id === '__h0' || plan.id === `__cat:${categories[0]}`) ? 0 : 10,
                       }}
                     />
                   );
@@ -2812,10 +2904,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     : null;
 
                 const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
-                const cardRef = (node) => {
-                  if (node) itemRefs.current.set(plan.id, node);
-                  else itemRefs.current.delete(plan.id);
-                };
+                const cardRef = bindItemRef(plan.id);
                 const openOnKey = (e) => {
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlanDetail(plan.id); }
                 };
@@ -2991,7 +3080,32 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <ChevronLeft size={18} style={{ color: 'var(--ink-20)', flexShrink: 0 }} />
                   </div>
                 );
-              })
+              };
+              if (!renderItems.some(item => item.__header)) return renderItems.map(renderEntry);
+              // One section per group: its header, then its places in the
+              // layout's own list. A sticky element sticks only within its
+              // parent, so a stuck header leaves with the last place of its
+              // group, and the headers never pile up under the toolbar.
+              const sections = [];
+              renderItems.forEach(item => {
+                if (item.__header) sections.push({ header: item, items: [] });
+                else sections[sections.length - 1]?.items.push(item);
+              });
+              return sections.map(({ header, items }, i) => (
+                <section
+                  key={header.id}
+                  className="plan-group"
+                  style={{
+                    gridColumn: '1 / -1',
+                    display: 'flex', flexDirection: 'column', gap: LO.listGap,
+                    marginTop: i === 0 ? 0 : 10,
+                  }}
+                >
+                  {renderEntry(header)}
+                  {items.length > 0 && <div style={planListStyle}>{items.map(renderEntry)}</div>}
+                </section>
+              ));
+              })()
             )}
           </div>
         </>
@@ -3328,6 +3442,115 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           </>)}
         </Sheet>
       )}
+
+      {/* ── "From where" picker, over the details sheet ──────────────────
+          The hotel (and any saved starting point) stays pinned on top for
+          a quick tap; below it every other place on the list, nearest
+          first, with a search. The choice is saved on the place. */}
+      {originPickerFor && (() => {
+        const target = plans.find(p => p.id === originPickerFor);
+        if (!target) return null;
+        const current = sheetOriginKey(target);
+        const coordsOf = (p) => coordsCache[p.id] || p.coords || knownPlaceCoords(p);
+        const at = coordsOf(target);
+        const q = originQuery.trim().toLowerCase();
+        const places = plans
+          .filter(p => p.id !== target.id)
+          .filter(p => !q || [p.title, p.category, p.address].some(v => (v || '').toLowerCase().includes(q)))
+          .map(p => {
+            const c = coordsOf(p);
+            return { plan: p, meters: at && c ? haversineMeters(at, c) : null };
+          })
+          .sort((a, b) =>
+            (a.meters ?? Infinity) - (b.meters ?? Infinity)
+            || a.plan.title.localeCompare(b.plan.title, 'he'));
+        const fmtMeters = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} מ'` : `${(m / 1000).toFixed(1)} ק"מ`);
+        const hasHotel = hasPreciseOrigin(hotelDetails, null);
+        const hotelName = hotelDetails?.name || hotelDetails?.address || '';
+        const cityName = (tripDestination || '').split(',')[0].trim();
+        return (
+          <Sheet
+            label="יוצאים מ…"
+            onClose={() => setOriginPickerFor(null)}
+            header={({ close }) => (
+              <div className="modal-header origin-picker-head">
+                <div className="origin-picker-title">
+                  <div style={{ minWidth: 0 }}>
+                    <h2>יוצאים מ…</h2>
+                    <div className="origin-picker-sub">זמני ההגעה אל {target.title}</div>
+                  </div>
+                  <button type="button" aria-label="סגור" className="btn-close" onClick={close}>✕</button>
+                </div>
+                <div className="origin-picker-search">
+                  <Search size={18} aria-hidden="true" />
+                  <input
+                    type="search"
+                    enterKeyHint="search"
+                    className="form-control"
+                    placeholder="חיפוש מקום ברשימה"
+                    aria-label="חיפוש מקום ברשימה"
+                    value={originQuery}
+                    onChange={(e) => setOriginQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          >
+            {({ close }) => {
+              const pick = (key) => { if (key !== current) chooseTravelFrom(target, key); close(); };
+              const row = (key, icon, label, hint) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={current === key}
+                  className="list-row"
+                  onClick={() => pick(key)}
+                >
+                  {icon}
+                  <span className="list-row-label">
+                    {label}
+                    {hint && <span className="list-row-hint">{hint}</span>}
+                  </span>
+                  {current === key && <Check size={16} aria-hidden="true" />}
+                </button>
+              );
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {(hasHotel || tripDestination || distanceOrigins.length > 0) && (
+                    <div className="list-group" role="radiogroup" aria-label="נקודות קבועות">
+                      {(hasHotel || tripDestination) && row(
+                        'hotel',
+                        hasHotel ? <Hotel size={16} className="list-row-icon" /> : <MapPin size={16} className="list-row-icon" />,
+                        hasHotel ? 'המלון' : (cityName ? `מרכז ${cityName}` : 'מרכז העיר'),
+                        hasHotel ? hotelName : '',
+                      )}
+                      {distanceOrigins.map(o => row(o.id, <MapPin size={16} className="list-row-icon" />, o.name, ''))}
+                    </div>
+                  )}
+                  <span style={sheetSectionLabel}>{at ? 'מקומות מהרשימה, הקרובים קודם' : 'מקומות מהרשימה'}</span>
+                  {places.length === 0 ? (
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, padding: '4px 2px 12px' }}>
+                      {q ? 'אף מקום לא נמצא' : 'אין עוד מקומות ברשימה'}
+                    </div>
+                  ) : (
+                    <div className="list-group" role="radiogroup" aria-label="מקומות מהרשימה">
+                      {places.map(({ plan: p, meters }) => row(
+                        `${PLACE_ORIGIN}${p.id}`,
+                        <span className="list-row-icon" style={{ color: getCategoryColor(p.category) }}>
+                          {getCategoryIcon(p.category, 16)}
+                        </span>,
+                        p.title,
+                        [p.category, meters != null ? fmtMeters(meters) : null].filter(Boolean).join(' · '),
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }}
+          </Sheet>
+        );
+      })()}
 
       {locationsModal && (
         <Sheet title={locationsModal.title} onClose={() => setLocationsModal(null)}>

@@ -2996,3 +2996,41 @@ body[data-fab] .app-content {
 }
 .plan-search-field input::-webkit-search-cancel-button { display: none; }
 .plan-search-field input::placeholder { color: var(--text-muted); opacity: 0.7; font-weight: 500; }
+
+/* Travel times in a place's details sheet. A button: tapping it picks
+   where to measure from (the hotel or another place on the list). */
+.travel-from {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--p-10);
+  background: var(--p-4);
+  color: var(--text);
+  font-family: var(--font-hebrew);
+  text-align: start;
+}
+button.travel-from { cursor: pointer; }
+button.travel-from:active { background: var(--p-8); }
+.travel-from-head {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+}
+.travel-from-head > svg { flex-shrink: 0; color: var(--accent); }
+.travel-from-times { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* The "from where" picker: title and search stay on top while the
+   places scroll under them. */
+.origin-picker-head { flex-direction: column; align-items: stretch; gap: 10px; }
+.origin-picker-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.origin-picker-sub {
+  margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.origin-picker-search { position: relative; }
+.origin-picker-search > svg {
+  position: absolute; inset-inline-start: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); pointer-events: none;
+}
+.origin-picker-search .form-control { min-height: 46px; padding-block: 10px; padding-inline-start: 42px; }
+.origin-picker-search .form-control::-webkit-search-cancel-button { display: none; }
