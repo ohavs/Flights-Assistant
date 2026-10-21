@@ -3066,6 +3066,42 @@ body[data-fab] .app-content {
   background: var(--card-bg-solid); border-top: 1px solid var(--ink-6);
 }
 .filter-menu-footer .btn-primary { flex: 1; }
+/* Rows you tick several of (the planning pool's categories): a disc in
+   the row's colour (--c), and a box that fills with it. */
+.filter-menu-pick { --c: var(--accent); }
+.filter-menu-pick[aria-checked="true"] { background: color-mix(in srgb, var(--c) 9%, transparent); color: var(--text); }
+.filter-menu-disc {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c);
+}
+.filter-menu-box {
+  width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--ink-20); color: #FFFFFF;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.filter-menu-pick[aria-checked="true"] .filter-menu-box { background: var(--c); border-color: var(--c); }
+/* Several categories on the pill: their colours, overlapping. */
+.plan-filter-dots { display: inline-flex; align-items: center; padding-inline-start: 2px; }
+.plan-filter-dots i {
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 2px solid var(--card-bg-solid); margin-inline-start: -4px;
+}
+
+/* A section of the planning pool: a category (or an area) under a header
+   that stays in the list — not sticky — with a rule in its colour. */
+.plan-group-head {
+  --c: var(--accent);
+  padding: 2px 2px 8px;
+  border-bottom: 2px solid color-mix(in srgb, var(--c) 30%, transparent);
+}
+.plan-group-head .section-header-toggle { font-size: 17px; font-weight: 900; }
+.plan-group-head .section-header-icon {
+  width: 32px; height: 32px; border-radius: 50%;
+  align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c);
+}
 
 .plan-search-field {
   flex: 1;
