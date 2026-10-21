@@ -4,8 +4,10 @@ import { createContext, useContext } from 'react';
 // edit-only UI can hide/disable for viewers without prop-drilling.
 const TripContext = createContext({
   tripId: null,
-  role: null,      // 'owner' | 'editor' | 'member' | 'viewer'
-  canEdit: false,
+  role: null,      // 'owner' | 'editor' | 'member' | 'contributor' | 'viewer'
+  canEdit: false,  // everything (src/lib/roles.js)
+  canAdd: false,   // adds and ticks — an editor, or "הוספה"
+  mayChange: () => false,   // (item) → may change or delete this one
   formerMembers: {},   // uid -> { displayName, email, photoURL, leftAt }
   isOwner: false,
   ownerProfile: null,

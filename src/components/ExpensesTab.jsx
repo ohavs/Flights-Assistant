@@ -68,7 +68,8 @@ export default function ExpensesTab({ tripId }) {
   });
 
   const confirm = useConfirm();
-  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canEdit } = useTrip();
+  // "הוספה" adds expenses, and changes only the ones they added.
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canAdd, mayChange } = useTrip();
 
   // Payer state
   const [paidBy, setPaidBy] = useState('');
@@ -239,7 +240,7 @@ export default function ExpensesTab({ tripId }) {
     // A new expense; an edit of one a partner deleted meanwhile stays deleted
     // (its update fails), rather than coming back.
     if (!editingId) {
-      setDoc(ref, { ...fields, ilsSnapshot, createdAt: new Date().toISOString() })
+      setDoc(ref, { ...fields, ilsSnapshot, createdAt: new Date().toISOString(), createdBy: currentUid || null })
         .catch(err => console.error('Expense save error:', err));
       return;
     }
@@ -442,8 +443,8 @@ export default function ExpensesTab({ tripId }) {
                               {ils != null && <span className="expense-amount-ils">≈ {shekels(ils)}</span>}
                             </span>
                           }
-                          onOpen={canEdit ? () => openForm(expense) : undefined}
-                          actions={canEdit ? [
+                          onOpen={mayChange(expense) ? () => openForm(expense) : undefined}
+                          actions={mayChange(expense) ? [
                             { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => openForm(expense) },
                             { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(expense.id), danger: true, swipe: true },
                           ] : []}
@@ -882,7 +883,7 @@ export default function ExpensesTab({ tripId }) {
       )}
 
       {/* Adding lives in the app-wide floating button, same as every tab. */}
-      {canEdit && <Fab label="הוצאה חדשה" onClick={() => openForm()} />}
+      {canAdd && <Fab label="הוצאה חדשה" onClick={() => openForm()} />}
 
     </div>
   );

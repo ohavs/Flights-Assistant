@@ -32,7 +32,10 @@ function commit(db, tripId, dayId, out, put) {
 // Everything that changes when the activities in `touched` (ids) are taken
 // out: their copies, and the activities with no `order` yet, which would
 // otherwise shift place. Those come back with their place written down.
-function settle(all, touched) {
+// `onlyOwn` ("הוספה", which may change only its own activities, see
+// firestore.rules): just the copies of `touched`, the others left as they are.
+function settle(all, touched, onlyOwn = false) {
+  if (onlyOwn) return { out: all.filter(r => touched.has(r.act?.id)).map(r => r.act), put: [] };
   const out = all.filter(r => touched.has(r.act?.id) || !hasOrder(r.act));
   const keep = shownRows(all).filter(r => !touched.has(r.act?.id) && !hasOrder(r.act));
   return { out: out.map(r => r.act), put: keep.map(r => ({ ...r.act, order: r.rank })) };
@@ -48,16 +51,16 @@ export function addActivities(db, tripId, dayId, raw, acts) {
 }
 
 // Replaces the activity with id `next.id` by `next`, in the same place.
-export function updateActivity(db, tripId, dayId, raw, next) {
+export function updateActivity(db, tripId, dayId, raw, next, onlyOwn = false) {
   const all = rows(raw);
   const was = shownRows(all).find(r => r.act?.id === next.id);
   if (!was) return Promise.resolve();
-  const { out, put } = settle(all, new Set([next.id]));
+  const { out, put } = settle(all, new Set([next.id]), onlyOwn);
   return commit(db, tripId, dayId, out, [...put, { ...next, order: was.rank, updatedAt: Date.now() }]);
 }
 
-export function removeActivity(db, tripId, dayId, raw, id) {
-  const { out, put } = settle(rows(raw), new Set([id]));
+export function removeActivity(db, tripId, dayId, raw, id, onlyOwn = false) {
+  const { out, put } = settle(rows(raw), new Set([id]), onlyOwn);
   return commit(db, tripId, dayId, out, put);
 }
 

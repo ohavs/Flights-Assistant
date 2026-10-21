@@ -1952,6 +1952,18 @@ textarea.form-control {
 }
 .segmented > button:disabled { opacity: .45; cursor: default; }
 
+/* A member's role, set by the owner in the share sheet: three small pills. */
+.member-role {
+  display: inline-flex; gap: 3px; margin-top: 6px; padding: 3px;
+  border-radius: 999px; background: var(--surface-2);
+}
+.member-role > button {
+  min-height: 28px; padding: 0 11px; border: none; border-radius: 999px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 12px; font-weight: 800;
+}
+.member-role > button[aria-checked="true"] { background: var(--brand); color: var(--brand-fg); }
+
 .list-group {
   display: flex; flex-direction: column;
   border-radius: 16px; background: var(--surface-2); overflow: hidden;

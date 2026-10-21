@@ -131,6 +131,7 @@ final class ExpenseStore {
                 ? place.trim() : JSONObject.NULL)
             .put("ilsSnapshot", "ILS".equals(currency) || ils == null ? JSONObject.NULL : ils)
             .put("paidBy", uid)
+            .put("createdBy", uid)   // who added it: a "הוספה" member must say so (firestore.rules)
             .put("createdAt", iso.format(new Date(now)));
         return new JSONObject().put("id", "exp-" + now).put("tripId", tripId).put("uid", uid).put("doc", doc);
     }
@@ -145,6 +146,7 @@ final class ExpenseStore {
             .put("createdAt", now)
             .put("completed", false)
             .put("addedByUid", uid)
+            .put("createdBy", uid)
             .put("addedByName", name == null ? "" : name)
             .put("addedByPhoto", photo == null ? "" : photo);
         return new JSONObject().put("id", "rem-" + now).put("tripId", tripId).put("uid", uid)

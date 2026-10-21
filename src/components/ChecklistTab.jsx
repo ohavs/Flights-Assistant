@@ -191,8 +191,9 @@ function shortWhen(at) {
   return t ? `${day} · ${t.slice(0, 5)}` : day;
 }
 
-function RemindersCard({ tripId, canEdit }) {
-  const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
+function RemindersCard({ tripId }) {
+  // "הוספה" adds and ticks; edits and deletes only what they wrote.
+  const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
   const confirm = useConfirm();
 
   const [reminders, setReminders] = useState([]);
@@ -268,7 +269,7 @@ function RemindersCard({ tripId, canEdit }) {
     resetComposer();
     setFilter('open');
     setOpen(true);
-    if (focus && canEdit) setTimeout(() => inputRef.current?.focus(), 260);
+    if (focus && canAdd) setTimeout(() => inputRef.current?.focus(), 260);
   };
 
   const closeSheet = () => { setOpen(false); resetComposer(); };
@@ -279,11 +280,12 @@ function RemindersCard({ tripId, canEdit }) {
     : !!draft.trim() || !!draftAt;
 
   const toggleDone = (r) => {
-    if (!canEdit) return;
+    if (!canAdd) return;
     updateDoc(doc(db, 'trips', tripId, 'reminders', r.id), { completed: !r.completed });
   };
 
   const startEdit = (r) => {
+    if (!mayChange(r)) return;
     setEditingId(r.id);
     setDraft(r.text || '');
     setDraftUid(r.addedByUid || currentUid || '');
@@ -295,7 +297,7 @@ function RemindersCard({ tripId, canEdit }) {
   const submit = (e) => {
     e?.preventDefault?.();
     const text = draft.trim();
-    if (!text || !canEdit) return;
+    if (!text || !canAdd) return;
 
     /* A reminder always carries an owner — the avatar on the row depends on
        it — so fall back to the signed-in user when the picker is hidden on a
@@ -321,7 +323,7 @@ function RemindersCard({ tripId, canEdit }) {
       }
     } else {
       setDoc(doc(collection(db, 'trips', tripId, 'reminders')), {
-        text, createdAt: Date.now(), completed: false, ...ownerFields,
+        text, createdAt: Date.now(), completed: false, ...ownerFields, createdBy: currentUid || null,
         ...(draftAt ? { remindAt: draftAt } : {}),
       });
       if (filter === 'done') setFilter('open');
@@ -465,7 +467,7 @@ function RemindersCard({ tripId, canEdit }) {
                   : filter === 'open' && reminders.length > 0 ? 'אין תזכורות פתוחות, הכל בוצע'
                     : 'אין תזכורות'}
                 hint={filter === 'all' || reminders.length === 0
-                  ? (canEdit ? 'כתבו תזכורת בשדה שלמטה. כל מי שבטיול יראה אותה.' : null)
+                  ? (canAdd ? 'כתבו תזכורת בשדה שלמטה. כל מי שבטיול יראה אותה.' : null)
                   : null}
               />
             ) : visible.map(r => {
@@ -478,7 +480,7 @@ function RemindersCard({ tripId, canEdit }) {
                   lead={(
                     <CheckCircle
                       checked={done}
-                      onToggle={canEdit ? () => toggleDone(r) : undefined}
+                      onToggle={canAdd ? () => toggleDone(r) : undefined}
                       label={done ? 'בטל סימון' : 'סמן כבוצע'}
                     />
                   )}
@@ -486,13 +488,13 @@ function RemindersCard({ tripId, canEdit }) {
                   meta={r.remindAt ? formatHebrewDateTime(r.remindAt) : undefined}
                   metaIcon={r.remindAt ? <Bell size={13} aria-hidden="true" /> : undefined}
                   muted={done && !editing}
-                  onOpen={canEdit ? () => startEdit(r) : undefined}
+                  onOpen={mayChange(r) ? () => startEdit(r) : undefined}
                   trailing={(r.addedByPhoto || r.addedByName) && (
                     <span title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.4 : 0.9 }}>
                       <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
                     </span>
                   )}
-                  actions={canEdit ? [
+                  actions={mayChange(r) ? [
                     { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => remove(r), danger: true, swipe: true },
                   ] : []}
                 />
@@ -506,7 +508,7 @@ function RemindersCard({ tripId, canEdit }) {
               One box, as in a chat: the text and send on top, under them
               whose it is and when to ring. Nothing in it scrolls sideways,
               so no avatar's ring is ever cut off. */}
-          {canEdit && (
+          {canAdd && (
             <form onSubmit={submit} className="sheet-footer reminder-footer">
               {editingId && (
                 <div className="reminder-editing">
@@ -595,7 +597,7 @@ function RemindersCard({ tripId, canEdit }) {
 
 /* ── SortableCategoryBlock ──────────────────────────────────────────────── */
 function SortableCategoryBlock({
-  category, categoryItems, isOpen, doneCount, canEdit,
+  category, categoryItems, isOpen, doneCount, canEdit, canAdd, mayChange,
   editingCat, editCatText, setEditCatText, setEditingCat, handleRenameCategory,
   toggleCategory, handleDeleteCategory,
   handleToggle, handleStartEdit, handleDeleteItem,
@@ -669,7 +671,7 @@ function SortableCategoryBlock({
                 lead={(
                   <CheckCircle
                     checked={!!item.completed}
-                    onToggle={canEdit ? () => handleToggle(item) : undefined}
+                    onToggle={canAdd ? () => handleToggle(item) : undefined}
                     label={item.completed ? 'בטל סימון' : 'סמן כבוצע'}
                   />
                 )}
@@ -677,7 +679,7 @@ function SortableCategoryBlock({
                 muted={!!item.completed}
                 // The circle ticks; the rest of the row opens the item's
                 // sheet: its text, category, who it is for, and delete.
-                onOpen={canEdit ? () => handleStartEdit(item) : undefined}
+                onOpen={mayChange(item) ? () => handleStartEdit(item) : undefined}
                 trailing={assigned.length > 0 && (
                   <span aria-label={`שייך ל: ${assigned.map(uid => allMembers.find(x => x.uid === uid)?.displayName).filter(Boolean).join(', ')}`}
                     style={{ padding: 2, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
@@ -705,7 +707,7 @@ function SortableCategoryBlock({
                           </div>
                   </span>
                 )}
-                actions={canEdit ? [
+                actions={mayChange(item) ? [
                   { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDeleteItem(item.id), danger: true, swipe: true },
                 ] : []}
               />
@@ -714,7 +716,7 @@ function SortableCategoryBlock({
           })}
 
           {/* Quick-add inside open category */}
-          {canEdit && (
+          {canAdd && (
             quickAddCat === category ? (
               <form onSubmit={e => handleQuickAdd(e, category)}
                 style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
@@ -751,7 +753,7 @@ function SortableCategoryBlock({
 
 
 export default function ChecklistTab({ tripId }) {
-  const { canEdit, tripMembers, currentUid, currentUserProfile, memberProfiles, formerMembers } = useTrip();
+  const { canEdit, canAdd, mayChange, tripMembers, currentUid, currentUserProfile, memberProfiles, formerMembers } = useTrip();
   const confirm = useConfirm();
 
   const [items, setItems] = useState([]);
@@ -1043,7 +1045,7 @@ export default function ChecklistTab({ tripId }) {
       }
     } else {
       setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
-        text, completed: false, category: cat, assignedTo: assigned,
+        text, completed: false, category: cat, assignedTo: assigned, createdBy: currentUid || null,
       });
     }
     // Saving dismisses the sheet. Adding several items in a row is what the
@@ -1071,7 +1073,7 @@ export default function ChecklistTab({ tripId }) {
     setQuickAddText('');
     setQuickAddCat(null);
     setDoc(doc(db, 'trips', tripId, 'checklist', 'custom-' + Date.now()), {
-      text, completed: false, category: cat,
+      text, completed: false, category: cat, createdBy: currentUid || null,
     });
   };
 
@@ -1085,7 +1087,7 @@ export default function ChecklistTab({ tripId }) {
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* Reminders — compact strip; add/edit happen in a sheet */}
-      <RemindersCard tripId={tripId} canEdit={canEdit} />
+      <RemindersCard tripId={tripId} />
 
       {/* One row: the filter (category and member, combined) and how much
           of what it shows is packed. */}
@@ -1101,10 +1103,10 @@ export default function ChecklistTab({ tripId }) {
         />
       )}
 
-      {canEdit && <Fab label="פריט חדש" onClick={openAddSheet} />}
+      {canAdd && <Fab label="פריט חדש" onClick={openAddSheet} />}
 
       {/* Add / edit one item */}
-      {canEdit && showAddForm && (
+      {canAdd && showAddForm && (
         <Sheet
           title={editingItemId ? 'עריכת פריט' : 'פריט חדש לרשימה'}
           onClose={closeAddSheet}
@@ -1127,10 +1129,12 @@ export default function ChecklistTab({ tripId }) {
                         <div key={s.id} className="dup-row">
                           <span className="dup-row-text">{s.text}</span>
                           <span className="dup-row-cat">{s.category}</span>
-                          <button type="button" className="btn-x danger" aria-label={`מחיקת ${s.text}`} title="מחיקה"
-                            onClick={() => handleDeleteItem(s.id, s.text)}>
-                            <Trash2 size={15} />
-                          </button>
+                          {mayChange(s) && (
+                            <button type="button" className="btn-x danger" aria-label={`מחיקת ${s.text}`} title="מחיקה"
+                              onClick={() => handleDeleteItem(s.id, s.text)}>
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1139,7 +1143,9 @@ export default function ChecklistTab({ tripId }) {
                 <CustomDropdown
                   label="קטגוריה" value={newItemCategory} onChange={setNewItemCategory}
                   options={categories} addable addLabel="הוסף קטגוריה חדשה"
-                  onCommit={cat => saveExtraCategory(cat)}
+                  // A new category is kept in the trip's settings, an
+                  // editor's to change; for "הוספה" it lives on the item.
+                  onCommit={cat => { if (canEdit) saveExtraCategory(cat); }}
                 />
                 {allMembers.length > 1 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1191,7 +1197,7 @@ export default function ChecklistTab({ tripId }) {
         <EmptyState
           icon={ClipboardList}
           title="הרשימה ריקה"
-          hint={canEdit
+          hint={canAdd
             ? 'כל פריט נכנס לקטגוריה ואפשר לשייך אותו למי שאחראי עליו. הרשימה הקבועה שלכם נטענת לכאן אוטומטית בטיול חדש.'
             : 'עוד לא נוספו פריטים לרשימת הציוד של הטיול.'}
         />
@@ -1225,6 +1231,8 @@ export default function ChecklistTab({ tripId }) {
                   isOpen={isOpen}
                   doneCount={doneCount}
                   canEdit={canEdit}
+                  canAdd={canAdd}
+                  mayChange={mayChange}
                   editingCat={editingCat}
                   editCatText={editCatText}
                   setEditCatText={setEditCatText}

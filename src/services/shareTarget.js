@@ -5,6 +5,8 @@
    drop straight into the add-place form, and keeps a light copy of the trip
    list around so the trip picker can render before Firestore answers.      */
 
+import { canAddRole } from '../lib/roles';
+
 const URL_RE = /https?:\/\/[^\s]+/i;
 const TRIPS_CACHE_KEY = 'shareTargetTrips';
 const PENDING_KEY = 'shareTargetPending';
@@ -106,7 +108,7 @@ export function cacheTripsForShare(trips, uid) {
       destination: t.destination || '',
       // Remembered too, so the picker can grey out a trip you only view
       // before Firestore has answered with the live roles.
-      canEdit: ['owner', 'editor', 'member'].includes(t.members?.[uid]),
+      canEdit: canAddRole(t.members?.[uid]),
     }));
     localStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(slim));
   } catch { /* storage full / disabled — the picker just waits for Firestore */ }

@@ -42,6 +42,7 @@ import {
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
 import { categoryTheme, THEMES } from '../lib/categoryTheme';
+import { creatorOf } from '../lib/roles';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
@@ -383,7 +384,9 @@ function planFormKey(v) {
 }
 
 export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceHandled }) {
-  const { canEdit, currentUid, currentUserProfile, memberProfiles } = useTrip();
+  // "הוספה" (canAdd without canEdit) adds places and activities, ticks
+  // visited, and changes only what they added (src/lib/roles.js).
+  const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles } = useTrip();
   const confirm = useConfirm();
 
   // Profile of whoever added a place, for the little avatar on the card.
@@ -702,8 +705,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
   // Each of these writes one category only (src/lib/categorySettings.js).
   // The listener above shows the change at once, offline too.
+  // An editor's: "הוספה" may name a new category on a place (it shows from
+  // the place), but the trip's category settings are not theirs.
   const categoryWrite = (write) => {
-    if (!tripId) return;
+    if (!tripId || !canEdit) return;
     write().catch(err => console.error('Category save error:', err));
   };
 
@@ -1066,7 +1071,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     if (!sharedPlace) return;
     // Nothing to fill in a trip this user can only view — release it rather
     // than leaving it pending forever.
-    if (!canEdit) { onSharedPlaceHandled?.(); return; }
+    if (!canAdd) { onSharedPlaceHandled?.(); return; }
     setSubTab('pool');
     handleOpenAdd();
     if (sharedPlace.name) setTitle(sharedPlace.name);
@@ -1213,7 +1218,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   };
 
   const cyclePriority = async (plan) => {
-    if (!tripId || !canEdit) return;
+    if (!tripId || !mayChange(plan)) return;
     const next = !plan.priority ? 'must' : plan.priority === 'must' ? 'optional' : null;
     await updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { priority: next });
   };
@@ -1352,6 +1357,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         priority: formPriority || null,
         needsReservation: formNeedsReservation,
         addedBy: currentUid || null,
+        createdBy: currentUid || null,
         addedAt: new Date().toISOString(),
       }).catch(err => console.error('Planning add error:', err));
     }
@@ -1527,12 +1533,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     const inner = (<>
       <span className="travel-from-head">
         <span>{originLabel}</span>
-        {canEdit && <ChevronDown size={14} aria-hidden="true" />}
+        {mayChange(plan) && <ChevronDown size={14} aria-hidden="true" />}
       </span>
       <span className="travel-from-times">{times}</span>
     </>);
-    // The choice is saved on the place, so only an editor can change it.
-    if (!canEdit) return <div className="travel-from">{inner}</div>;
+    // The choice is saved on the place, so only who may change it can.
+    if (!mayChange(plan)) return <div className="travel-from">{inner}</div>;
     return (
       <button
         type="button"
@@ -2066,7 +2072,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     });
     if (!ok) return;
 
-    removeActivity(db, tripId, dayId, day.rawActivities, activityId)
+    removeActivity(db, tripId, dayId, day.rawActivities, activityId, !canEdit)
       .catch(err => console.error('Activity delete error:', err));
   };
 
@@ -2109,9 +2115,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         placeId: firstSel?.placeId || null,
         address: place ? (place.address || '') : activityAddress.trim(),
         description: activityDescription.trim(),
-        category: place ? place.category : activityCategory
+        category: place ? place.category : activityCategory,
+        // Whose it is stays with it (firestore.rules).
+        createdBy: (day.activities || []).find(a => a.id === editingActivityId)?.createdBy || null,
       };
-      write = () => updateActivity(db, tripId, selectedDayId, day.rawActivities, activityObj);
+      write = () => updateActivity(db, tripId, selectedDayId, day.rawActivities, activityObj, !canEdit);
     } else {
       const added = [];
       for (const sel of savedPlaceSelections) {
@@ -2125,7 +2133,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               placeId: place.id,
               address: place.address || '',
               description: place.description || '',
-              category: place.category
+              category: place.category,
+              createdBy: currentUid || null,
             });
           }
         }
@@ -2138,7 +2147,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           placeId: null,
           address: activityAddress.trim(),
           description: activityDescription.trim(),
-          category: activityCategory
+          category: activityCategory,
+          createdBy: currentUid || null,
         });
       }
       write = () => addActivities(db, tripId, selectedDayId, day.rawActivities, added);
@@ -2204,7 +2214,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           {/* Adding a place is a whole-tab action, so it gets the floating
               button. Adding an activity in the daily sub-tab is not — it
               belongs to one specific day, and stays on that day's card. */}
-          {canEdit && <Fab label="יעד חדש" onClick={handleOpenAdd} />}
+          {canAdd && <Fab label="יעד חדש" onClick={handleOpenAdd} />}
 
           {/* Add/Edit Plan Slide-Up Modal */}
           {showAddForm && (
@@ -3226,10 +3236,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         <div className="pstub-main" data-ct={theme || undefined}>
                           <div className="pstub-body">
                           <div className="pstub-head">
-                            {(canEdit || plan.visited) && (
+                            {(canAdd || plan.visited) && (
                               <CheckCircle
                                 checked={!!plan.visited}
-                                onToggle={canEdit ? () => handleToggleVisited(plan) : undefined}
+                                onToggle={canAdd ? () => handleToggleVisited(plan) : undefined}
                                 label={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
                               />
                             )}
@@ -3320,10 +3330,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     {ornament}
                     {/* Visited toggle — the one action that stays on the card,
                         so places can be ticked off without opening anything. */}
-                    {(canEdit || plan.visited) && (
+                    {(canAdd || plan.visited) && (
                       <CheckCircle
                         checked={!!plan.visited}
-                        onToggle={canEdit ? () => handleToggleVisited(plan) : undefined}
+                        onToggle={canAdd ? () => handleToggleVisited(plan) : undefined}
                         label={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
                       />
                     )}
@@ -3512,6 +3522,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   plans={plans}
                   bookedPlaceIds={bookedPlaceIds}
                   canEdit={canEdit}
+                  canAdd={canAdd}
+                  currentUid={currentUid}
                   isSummary={isSummary}
                   // The chevron reports whether the body is on screen, which
                   // in summary mode is a different question from "collapsed".
@@ -3702,7 +3714,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     else setLocationsModal(detailPlan);
                   },
                 });
-                if (canEdit) {
+                if (mayChange(detailPlan)) {
                   actions.push({
                     key: 'edit', label: 'עריכה', Icon: Pencil, tone: 'neutral',
                     onClick: () => { close(); handleStartEdit(detailPlan); },
@@ -3751,7 +3763,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 );
               })()}
 
-              {canEdit && (
+              {canAdd && (
                 <button
                   type="button"
                   onClick={() => handleToggleVisited(detailPlan)}
@@ -4430,7 +4442,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           const actions = [];
           if (navUrl) actions.push({ key: 'nav', label: 'ניווט', Icon: Navigation, tone: 'mint', run: () => window.open(navUrl, '_blank', 'noreferrer') });
           if (linked) actions.push({ key: 'place', label: 'פרטי המקום', Icon: MapPin, tone: 'lavender', run: () => { close(); openPlanDetail(linked.id); } });
-          if (canEdit && actDayId) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); handleStartEditActivity(actDayId, act); } });
+          if (actDayId && (canEdit || (canAdd && creatorOf(act) === currentUid))) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); handleStartEditActivity(actDayId, act); } });
           return (
             <Sheet label={act.title} onClose={close} header={({ close: closeSheet }) => (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -4475,7 +4487,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                 {!act.description && !act.address && !linked && (
                   <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>
-                    אין עוד פרטים לפעילות הזו.{canEdit ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
+                    אין עוד פרטים לפעילות הזו.{actDayId && (canEdit || (canAdd && creatorOf(act) === currentUid)) ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
                   </p>
                 )}
 
@@ -4520,7 +4532,7 @@ const DragHandleContext = React.createContext(null);
  * and the setters come from useState, which React keeps stable.
  */
 const DayCard = React.memo(function DayCard({
-  day, plans, bookedPlaceIds, canEdit,
+  day, plans, bookedPlaceIds, canEdit, canAdd, currentUid,
   /* Booleans, not the Sets they come from. Passing `collapsedDays` itself
      meant every card got a brand-new Set on every toggle and the memo
      never held — which is exactly what the first attempt measured: no
@@ -4536,6 +4548,8 @@ const DayCard = React.memo(function DayCard({
 }) {
   // The activity whose ⋯ actions sheet is open (with its neighbours, for moving).
   const [actMenu, setActMenu] = useState(null);
+  // "הוספה": adds activities, and changes only their own (firestore.rules).
+  const mine = (act) => canEdit || (canAdd && creatorOf(act) === currentUid);
         return (
         <SortableDayCard
           key={day.id}
@@ -4834,7 +4848,7 @@ const DayCard = React.memo(function DayCard({
 
                             {/* One ⋯ instead of four small icons: the name gets the
                                 row, and the actions open in a sheet (below). */}
-                            {canEdit && (
+                            {mine(act) && (
                               <button
                                 type="button"
                                 aria-label={`פעולות: ${act.title}`}
@@ -4955,7 +4969,7 @@ const DayCard = React.memo(function DayCard({
           </div>
 
           {/* Add Activity Button */}
-          {canEdit && (
+          {canAdd && (
           <button
             onClick={() => handleOpenAddActivity(day.id)}
             className="btn-secondary"
@@ -4986,10 +5000,13 @@ const DayCard = React.memo(function DayCard({
             <Sheet title={actMenu.act.title} onClose={() => setActMenu(null)}>
               <div className="list-group">
                 {[
+                  // Moving reorders the others too: an editor's.
+                  ...(canEdit ? [
                   { key: 'up', label: 'הזז למעלה', Icon: ArrowUp, disabled: actMenu.isFirst,
                     run: () => moveActivity(day.id, actMenu.act.id, -1, actMenu.prevActId) },
                   { key: 'down', label: 'הזז למטה', Icon: ArrowDown, disabled: actMenu.isLast,
                     run: () => moveActivity(day.id, actMenu.act.id, 1, actMenu.nextActId) },
+                  ] : []),
                   { key: 'edit', label: 'עריכה', Icon: Pencil,
                     run: () => handleStartEditActivity(day.id, actMenu.act) },
                   { key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
