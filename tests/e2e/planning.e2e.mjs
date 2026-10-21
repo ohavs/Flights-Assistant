@@ -219,6 +219,60 @@ await step('a category takes an emoji from the keyboard, of any kind, and an ico
   if (await card.locator('.cat-emoji').count()) throw new Error('the emoji stayed on the card');
 });
 
+await step('a place with a date and time: optional, and the loudest thing on its card in every layout', async () => {
+  const title = 'סיור לילה בפרלמנט';
+  await page.locator('button.fab', { hasText: 'יעד חדש' }).click();
+  await modal().getByPlaceholder('למשל: תצפית שקיעה בגבעה').fill(title);
+  const when = modal().locator('.place-when');
+  await when.getByText('מתי? (לא חובה)').waitFor();
+  // A time alone is not saved: it asks for a day.
+  await when.locator('.picker-field', { hasText: 'בחר שעה' }).click();
+  const time = (await page.locator('.picker-readout').innerText()).trim();
+  await page.getByRole('button', { name: 'בחירה', exact: true }).click();
+  await modal().locator('.sheet-footer button[type="submit"]').click();
+  await when.getByText('בחרו תאריך לשעה הזאת').waitFor();
+  await when.locator('.picker-field', { hasText: 'בחר תאריך' }).click();
+  await page.getByRole('button', { name: 'בחירה', exact: true }).click();     // today
+  await shot('place-form-when');
+  await modal().locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  const card = page.locator('.plan-card', { hasText: title }).first();
+  await card.scrollIntoViewIfNeeded();
+  // The stub: when, solid.
+  const stub = card.locator('.pstub-stub.when');
+  const text = (await stub.innerText()).replace(/\s+/g, ' ');
+  if (!text.includes('היום') || !text.includes(time)) throw new Error(`stub says "${text}", not today ${time}`);
+  const look = await stub.evaluate(el => ({ bg: getComputedStyle(el).backgroundColor, fg: getComputedStyle(el).color }));
+  if (look.fg !== 'rgb(255, 255, 255)' || /rgba\(.*, 0\)|transparent/.test(look.bg)) throw new Error(`the stub is not solid: ${JSON.stringify(look)}`);
+  await shot('pool-when-stub');
+  // Compact: a leaf at the row's end.
+  await page.locator('[title="מיון ותצוגה"]').click();
+  await page.getByText('קומפקטי', { exact: true }).click();
+  await page.mouse.click(5, 5);
+  const leaf = page.locator('.plan-card', { hasText: title }).first().locator('.plan-when-leaf');
+  if (!(await leaf.innerText()).includes(time)) throw new Error(`leaf says ${await leaf.innerText()}`);
+  await shot('pool-when-compact');
+  // Grid: a solid line under the name.
+  await page.locator('[title="מיון ותצוגה"]').click();
+  await page.getByText('רשת', { exact: true }).click();
+  await page.mouse.click(5, 5);
+  const chip = page.locator('.plan-card', { hasText: title }).first().locator('.plan-when-chip');
+  if (!(await chip.innerText()).includes(`היום`) || !(await chip.innerText()).includes(time)) throw new Error(`chip says ${await chip.innerText()}`);
+  await shot('pool-when-grid');
+  await page.locator('[title="מיון ותצוגה"]').click();
+  await page.getByText('עמודת זמן', { exact: true }).click();
+  await page.mouse.click(5, 5);
+  // The details sheet says it too; the edit form clears it.
+  await page.locator('.plan-card', { hasText: title }).first().locator('.pstub-title').click();
+  await modal().locator('.modal-header').getByText(time, { exact: false }).waitFor();
+  await modal().getByText('עריכה', { exact: true }).click();
+  await modal().getByRole('button', { name: 'בלי תאריך ושעה' }).click();
+  await modal().locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  await page.waitForTimeout(300);
+  if (await page.locator('.plan-card', { hasText: title }).first().locator('.pstub-stub.when').count()) throw new Error('the date stayed');
+});
+
 await step('daily plan: empty', async () => {
   await page.getByRole('tab', { name: /לוח זמנים/ }).click();
   await page.getByText('עוד אין ימי טיול').first().waitFor();

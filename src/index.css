@@ -2768,6 +2768,67 @@ button.pstub-stub:active { background: color-mix(in srgb, var(--c) 22%, var(--ca
 .plan-card.pstub.visited .pstub-go { background: var(--ink-6); }
 .plan-card.pstub.event-today .pstub-stub { background: color-mix(in srgb, var(--c) 14%, transparent); }
 
+/* ── A place with a date (and time) ──
+   A fixed appointment, so it is the loudest thing on its card in every
+   layout: solid in the category's colour (--c), white type. Over, or
+   visited: quiet grey. --c-solid darkens the colour a touch so white
+   stays readable on the lighter category colours. */
+.pstub-stub.when, .plan-when-leaf, .plan-when-chip {
+  --c-solid: color-mix(in srgb, var(--c) 86%, black);
+}
+.plan-card.pstub .pstub-stub.when,
+.plan-card.pstub.event-today .pstub-stub.when {
+  background: var(--c-solid); color: #fff;
+  border-inline-start-color: transparent;
+}
+button.pstub-stub.when:active { background: color-mix(in srgb, var(--c) 70%, black); }
+.pstub-stub.when .pstub-num { font-size: 21px; letter-spacing: -0.01em; }
+.pstub-when-top { font-size: 12px; font-weight: 800; margin-bottom: 3px; }
+.pstub-stub.when .pstub-alt { opacity: 0.9; }
+.pstub-stub.when .pstub-go { background: rgba(255, 255, 255, 0.2); }
+.plan-card.pstub .pstub-stub.when.past {
+  background: var(--ink-6); color: var(--text-muted); border-inline-start-color: var(--ink-10);
+}
+.pstub-stub.when.past .pstub-go { background: var(--ink-6); }
+
+/* Compact row: a leaf off a calendar at the row's end. */
+.plan-when-leaf {
+  width: 54px; min-height: 54px; flex-shrink: 0; align-self: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 5px 2px; border-radius: 14px; line-height: 1;
+  background: var(--c-solid); color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.plan-when-leaf-top { font-size: 10.5px; font-weight: 800; }
+.plan-when-leaf-main { margin: 3px 0 2px; font-size: 16px; font-weight: 900; }
+.plan-when-leaf-sub { font-size: 10.5px; font-weight: 700; opacity: 0.9; }
+
+/* Grid tile: one solid line under the name. */
+.plan-when-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  margin-top: -2px; padding: 4px 9px; border-radius: 999px;
+  background: var(--c-solid); color: #fff;
+  font-size: 12px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.plan-when-chip > span { overflow: hidden; text-overflow: ellipsis; }
+.plan-when-leaf.past, .plan-when-chip.past { background: var(--ink-6); color: var(--text-muted); }
+
+/* The place form's "when" block. */
+.place-when {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px 14px; border-radius: 14px;
+  background: var(--surface-2);
+}
+.place-when[data-set] { background: color-mix(in srgb, var(--accent) 9%, var(--surface-2)); }
+.place-when-head {
+  display: flex; align-items: center; gap: 6px; min-height: 28px;
+  font-size: 13px; font-weight: 800; color: var(--accent);
+}
+.place-when-head > span { flex: 1; }
+.place-when-head .btn-x { width: 28px; height: 28px; min-width: 28px; }
+.place-when-hint { margin-top: -6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.place-when-error { font-size: 12.5px; font-weight: 700; color: var(--c-red); }
+
 /* The one control that stays on the card. A circle, not a form
    checkbox: it reports a state rather than collecting an answer. */
 .plan-visit-toggle, .check-circle {
