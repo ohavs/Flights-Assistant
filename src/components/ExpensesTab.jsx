@@ -8,7 +8,7 @@ import {
   Wallet, Pencil, ChevronDown, Link2, MapPin, Users,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
-import { expenseSummary, splitGroup, GUEST } from '../lib/expenseSummary';
+import { expenseSummary, personalExpenses, splitGroup, GUEST } from '../lib/expenseSummary';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
@@ -310,11 +310,18 @@ export default function ExpensesTab({ tripId }) {
     setShowNewName(false);
   };
 
-  // The total, per person, per day, by category and currency, who paid
-  // and who owes whom (src/lib/expenseSummary.js).
+  // The total, by category and currency, each one's part, who paid and
+  // who owes whom; and the same for the looker's own part ("שלי"), only
+  // while the summary is open (src/lib/expenseSummary.js).
   const summary = useMemo(
     () => expenseSummary(expenses, { rates, members: memberUids, currentUid }),
     [expenses, rates, memberUids, currentUid]
+  );
+  const ownSummary = useMemo(
+    () => (showSummary && currentUid
+      ? expenseSummary(personalExpenses(expenses, currentUid, { members: memberUids }), { rates, members: memberUids, currentUid })
+      : null),
+    [showSummary, expenses, rates, memberUids, currentUid]
   );
 
   // Currencies available to add (not yet in formQuickCurrencies)
@@ -346,6 +353,7 @@ export default function ExpensesTab({ tripId }) {
       {showSummary && (
         <ExpenseSummarySheet
           summary={summary}
+          own={ownSummary}
           expenses={expenses}
           plans={plans}
           currentUid={currentUid}
