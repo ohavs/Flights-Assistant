@@ -179,6 +179,18 @@ function CycleRing({ index, count, animate, size = 44 }) {
   );
 }
 
+/* The reminder's time on its chip, short enough to sit beside the
+   avatars: "היום · 09:00", "מחר · 18:30", "24.10 · 08:00". */
+function shortWhen(at) {
+  const [d, t = ''] = String(at).split('T');
+  const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const now = new Date();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const [, mm, dd] = d.split('-');
+  const day = d === iso(now) ? 'היום' : d === iso(tomorrow) ? 'מחר' : `${Number(dd)}.${Number(mm)}`;
+  return t ? `${day} · ${t.slice(0, 5)}` : day;
+}
+
 function RemindersCard({ tripId, canEdit }) {
   const { currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
   const confirm = useConfirm();
@@ -411,7 +423,9 @@ function RemindersCard({ tripId, canEdit }) {
           label="תזכורות"
           onClose={closeSheet}
           dirty={composerDirty}
-          style={{ maxHeight: 'min(88vh, 100vh - 32px)' }}
+          // One height for every filter: the sheet no longer jumps as
+          // "פתוחות", "בוצעו" and "הכל" show more or fewer rows.
+          style={{ height: 'min(88vh, 100vh - 32px)' }}
           header={({ cancel }) => (
             <div className="modal-header" style={{ gap: 10 }}>
               <h2 style={{ flex: 1 }}>תזכורות</h2>
@@ -441,7 +455,9 @@ function RemindersCard({ tripId, canEdit }) {
             />
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* Fills the sheet, so the composer sits at its foot however
+              few rows there are. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 0 auto' }}>
             {visible.length === 0 ? (
               <EmptyState
                 icon={filter === 'open' && reminders.length > 0 ? Check : Bell}
@@ -486,119 +502,88 @@ function RemindersCard({ tripId, canEdit }) {
 
           {/* ── Composer ──────────────────────────────────────────────────
               Add and edit live in the same field. Editing never opens a
-              second sheet, so the list stays visible behind the keyboard. */}
+              second sheet, so the list stays visible behind the keyboard.
+              One box, as in a chat: the text and send on top, under them
+              whose it is and when to ring. Nothing in it scrolls sideways,
+              so no avatar's ring is ever cut off. */}
           {canEdit && (
-            <form
-              onSubmit={submit}
-              className="sheet-footer"
-              style={{ flexDirection: 'column', gap: 8, marginTop: 0 }}
-            >
+            <form onSubmit={submit} className="sheet-footer reminder-footer">
               {editingId && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
-                  background: 'var(--p-10)', color: 'var(--accent)', borderRadius: 20,
-                  padding: '3px 6px 3px 12px', fontSize: 12, fontWeight: 800,
-                }}>
-                  <Pencil size={12} />
+                <div className="reminder-editing">
+                  <Pencil size={12} aria-hidden="true" />
                   <span>עריכת תזכורת</span>
-                  <button
-                    type="button" onClick={resetComposer} aria-label="בטל עריכה"
-                    style={{
-                      background: 'var(--p-15)', border: 'none', cursor: 'pointer', color: 'var(--accent)',
-                      width: 20, height: 20, borderRadius: '50%', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', padding: 0,
-                    }}
-                  >
+                  <button type="button" className="btn-x" onClick={resetComposer} aria-label="בטל עריכה">
                     <X size={12} />
                   </button>
                   {editingOne && (
-                    <button
-                      type="button" onClick={() => remove(editingOne)} aria-label="מחיקת התזכורת" title="מחיקה"
-                      style={{
-                        background: 'var(--c-red-8)', border: 'none', cursor: 'pointer', color: 'var(--c-red)',
-                        width: 20, height: 20, borderRadius: '50%', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', padding: 0,
-                      }}
-                    >
+                    <button type="button" className="danger" onClick={() => remove(editingOne)} aria-label="מחיקת התזכורת" title="מחיקה">
                       <Trash2 size={12} />
                     </button>
                   )}
                 </div>
               )}
 
-              {allMembers.length > 1 && (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', overflowX: 'auto', paddingBottom: 2 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>של מי:</span>
-                  {allMembers.map(m => {
-                    const active = draftUid === m.uid;
-                    return (
-                      <button
-                        key={m.uid} type="button" onClick={() => setDraftUid(m.uid)}
-                        title={m.displayName}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0,
-                          borderRadius: '50%', display: 'flex',
-                          outline: active ? '2px solid var(--accent)' : '2px solid transparent',
-                          opacity: active ? 1 : 0.45, transition: 'opacity 0.15s, outline-color 0.15s',
-                        }}
-                      >
-                        <Avatar photoURL={m.photoURL} name={m.displayName} size={28} />
-                      </button>
-                    );
-                  })}
+              <div className="reminder-composer">
+                <div className="reminder-composer-row">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Escape') resetComposer(); }}
+                    enterKeyHint={editingId ? 'done' : 'send'}
+                    placeholder={editingId ? 'עדכן את התזכורת...' : 'כתוב תזכורת ושלח...'}
+                    aria-label="טקסט התזכורת"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!draft.trim()}
+                    aria-label={editingId ? 'שמור תזכורת' : 'הוסף תזכורת'}
+                    className={`round-btn${draft.trim() ? ' on' : ''}`}
+                    style={{ width: 40, height: 40, minWidth: 40 }}
+                  >
+                    {editingId ? <Check size={19} strokeWidth={3} /> : <ArrowUp size={19} strokeWidth={3} />}
+                  </button>
                 </div>
-              )}
 
-              {/* An optional time: the owner's phone (Android app) is
-                  notified then. */}
-              <div style={{ display: 'flex', alignSelf: 'flex-start' }}>
-                <CustomDateTimePicker
-                  value={draftAt}
-                  onChange={setDraftAt}
-                  renderTrigger={(openPicker) => draftAt ? (
-                    <span className="chip" aria-pressed="true" style={{ paddingInlineEnd: 4 }}>
-                      <button type="button" onClick={openPicker} aria-label="שינוי שעת התזכורת"
-                        style={{ all: 'unset', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <Bell size={14} aria-hidden="true" /> {formatHebrewDateTime(draftAt)}
-                      </button>
-                      <button type="button" className="btn-x" aria-label="בלי שעה" onClick={() => setDraftAt('')}
-                        style={{ width: 28, height: 28, minWidth: 28, color: 'inherit' }}>
-                        <X size={14} />
-                      </button>
-                    </span>
-                  ) : (
-                    <button type="button" className="chip add" onClick={openPicker}>
-                      <Bell size={14} aria-hidden="true" /> שעה להתראה
-                    </button>
+                <div className="reminder-tools">
+                  {allMembers.length > 1 && (
+                    <div className="reminder-owners" role="radiogroup" aria-label="של מי">
+                      {allMembers.map(m => (
+                        <button
+                          key={m.uid} type="button" role="radio"
+                          aria-checked={draftUid === m.uid}
+                          onClick={() => setDraftUid(m.uid)}
+                          title={m.displayName}
+                          aria-label={m.displayName}
+                        >
+                          <Avatar photoURL={m.photoURL} name={m.displayName} size={28} />
+                        </button>
+                      ))}
+                    </div>
                   )}
-                />
-              </div>
 
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Escape') resetComposer(); }}
-                  enterKeyHint={editingId ? 'done' : 'send'}
-                  placeholder={editingId ? 'עדכן את התזכורת...' : 'כתוב תזכורת ושלח...'}
-                  style={{
-                    flex: 1, minWidth: 0, minHeight: 46, borderRadius: 23,
-                    border: '1px solid var(--ink-10)', background: 'var(--ink-2)',
-                    padding: '0 16px', fontFamily: 'var(--font-hebrew)', fontSize: 15,
-                    color: 'var(--text-main)', outline: 'none',
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={!draft.trim()}
-                  aria-label={editingId ? 'שמור תזכורת' : 'הוסף תזכורת'}
-                  className={`round-btn${draft.trim() ? ' on' : ''}`}
-                  style={{ width: 46, height: 46, minWidth: 46 }}
-                >
-                  {editingId ? <Check size={20} strokeWidth={3} /> : <ArrowUp size={20} strokeWidth={3} />}
-                </button>
+                  {/* An optional time: the owner's phone (Android app) is
+                      notified then. */}
+                  <CustomDateTimePicker
+                    value={draftAt}
+                    onChange={setDraftAt}
+                    renderTrigger={(openPicker) => draftAt ? (
+                      <span className="chip reminder-when" aria-pressed="true">
+                        <button type="button" onClick={openPicker} aria-label={`שעת ההתראה: ${formatHebrewDateTime(draftAt)}. שינוי`}>
+                          <Bell size={14} aria-hidden="true" /> {shortWhen(draftAt)}
+                        </button>
+                        <button type="button" className="btn-x" aria-label="בלי שעה" onClick={() => setDraftAt('')}>
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ) : (
+                      <button type="button" className="chip add reminder-when" onClick={openPicker}>
+                        <Bell size={14} aria-hidden="true" /> שעה להתראה
+                      </button>
+                    )}
+                  />
+                </div>
               </div>
             </form>
           )}
@@ -649,6 +634,10 @@ function SortableCategoryBlock({
         </div>
       ) : (
         <SectionHeader
+          // The planning pool's group header (8.63.0); its rule fills with
+          // the accent as the category gets packed.
+          className="plan-group-head group-progress"
+          style={{ '--done': `${categoryItems.length ? Math.round((doneCount / categoryItems.length) * 100) : 0}%` }}
           title={category}
           count={`${doneCount}/${categoryItems.length}`}
           collapsed={!isOpen}
@@ -994,9 +983,13 @@ export default function ChecklistTab({ tripId }) {
     });
   };
 
-  const handleDeleteItem = async (id) => {
+  const handleDeleteItem = async (id, text) => {
     if (!tripId) return;
-    const ok = await confirm({ message: 'למחוק את הפריט?', confirmText: 'מחק', cancelText: 'בטל', danger: true });
+    const ok = await confirm({
+      title: text ? 'מחיקת פריט' : undefined,
+      message: text ? <span>למחוק את <strong>{text}</strong> מהרשימה?</span> : 'למחוק את הפריט?',
+      confirmText: 'מחק', cancelText: 'בטל', danger: true,
+    });
     if (!ok) return false;
     // Optimistically update deletedGlobalIds BEFORE deleteDoc so the re-sync
     // effect (which runs when items changes) doesn't immediately re-add the item.
@@ -1125,13 +1118,19 @@ export default function ChecklistTab({ tripId }) {
                   <label>מה להביא?</label>
                   <input type="text" className="form-control" placeholder="למשל: סוודר, מטען"
                     value={newItemText} onChange={e => setNewItemText(e.target.value)} required />
+                  {/* Already on the list: each one can go from here, after
+                      a confirmation, without leaving the form. */}
                   {duplicateSuggestions.length > 0 && (
-                    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 10, background: 'var(--butter)', border: 'none', direction: 'rtl' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>פריטים דומים כבר ברשימה:</span>
+                    <div className="dup-box" role="group" aria-label="פריטים דומים כבר ברשימה">
+                      <span className="dup-box-title">פריטים דומים כבר ברשימה:</span>
                       {duplicateSuggestions.slice(0, 4).map(s => (
-                        <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 13, color: 'var(--text-main)' }}>
-                          <span style={{ flex: 1, textAlign: 'right' }}>{s.text}</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 8, flexShrink: 0 }}>{s.category}</span>
+                        <div key={s.id} className="dup-row">
+                          <span className="dup-row-text">{s.text}</span>
+                          <span className="dup-row-cat">{s.category}</span>
+                          <button type="button" className="btn-x danger" aria-label={`מחיקת ${s.text}`} title="מחיקה"
+                            onClick={() => handleDeleteItem(s.id, s.text)}>
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       ))}
                     </div>

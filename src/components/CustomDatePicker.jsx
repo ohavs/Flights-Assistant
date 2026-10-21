@@ -484,7 +484,10 @@ export function CustomDateTimePicker({ value, onChange, label, renderTrigger }) 
   };
 
   return (
-    <div className="field-wrap" style={renderTrigger ? { width: 'auto' } : undefined}>
+    // A trigger of your own sizes to its content. The field's inline-size
+    // container has no width of its own, so it would squeeze the chip to a
+    // circle with its words spilling out.
+    <div className="field-wrap" style={renderTrigger ? { width: 'auto', containerType: 'normal' } : undefined}>
       {label && <label className="field-label">{label}</label>}
 
       {renderTrigger ? renderTrigger(open) : (

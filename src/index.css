@@ -1756,6 +1756,72 @@ textarea.form-control {
   .reminder-swap { animation: none; }
 }
 
+/* ── Reminder composer (ChecklistTab): one box at the sheet's foot ──
+   The text and send on top; under them whose it is (avatars, a ring on
+   the chosen one) and when to ring. It wraps rather than scrolls, so a
+   ring is never cut off by an edge. */
+.reminder-footer { flex-direction: column; gap: 8px; margin-top: 0; }
+.reminder-editing {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 3px 6px 3px 12px; border-radius: 20px;
+  background: var(--p-10); color: var(--accent);
+  font-size: 12px; font-weight: 800;
+}
+.reminder-editing > button {
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--p-15); color: var(--accent); cursor: pointer;
+}
+.reminder-editing > button.danger { background: var(--c-red-8); color: var(--c-red); }
+.reminder-composer {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px 6px 8px; padding-inline-start: 14px;
+  border-radius: 22px;
+  border: 1px solid var(--ink-10);
+  background: var(--surface-2);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.reminder-composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--p-10); }
+.reminder-composer-row { display: flex; align-items: center; gap: 8px; }
+.reminder-composer-row > input {
+  flex: 1; min-width: 0; min-height: 40px; padding: 0;
+  border: none; outline: none; background: transparent;
+  font-family: var(--font-hebrew); font-size: 16px; font-weight: 500; color: var(--text-main);
+}
+.reminder-tools {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px; padding-inline-end: 2px;
+}
+.reminder-owners { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 3px; margin-inline-start: -3px; }
+.reminder-owners > button {
+  display: flex; padding: 0; border: none; border-radius: 50%;
+  background: none; cursor: pointer; opacity: 0.5;
+  transition: opacity var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.reminder-owners > button[aria-checked="true"] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--accent);
+}
+.chip.reminder-when { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.chip.add.reminder-when { background: var(--card-bg-solid); }
+.chip.reminder-when[aria-pressed="true"] { padding-inline-end: 2px; gap: 0; }
+.chip.reminder-when > button:first-child {
+  all: unset; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip.reminder-when .btn-x { width: 30px; height: 30px; min-width: 30px; color: inherit; }
+
+/* The add-item form's "already on the list" box (ChecklistTab). */
+.dup-box {
+  margin-top: 6px; padding: 8px 0 6px; padding-inline: 12px 4px;
+  border-radius: 12px; background: var(--butter);
+}
+.dup-box-title { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.dup-row { display: flex; align-items: center; gap: 8px; min-height: 34px; font-size: 13px; color: var(--text-main); }
+.dup-row-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dup-row-cat { flex-shrink: 0; font-size: 11px; color: var(--text-muted); }
+
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
@@ -3097,6 +3163,16 @@ body[data-fab] .app-content {
   border-bottom: 2px solid color-mix(in srgb, var(--c) 30%, transparent);
 }
 .plan-group-head .section-header-toggle { font-size: 17px; font-weight: 900; }
+/* The checklist's categories wear the same header, and its rule fills
+   with the colour as the category gets packed (--done, 0–100%). */
+.group-progress { position: relative; }
+.group-progress::after {
+  content: ''; position: absolute; bottom: -2px; inset-inline-start: 0;
+  width: var(--done, 0%); height: 2px; border-radius: 2px;
+  background: var(--c);
+  transition: width var(--dur-base) var(--ease-out);
+}
+
 .plan-group-head .section-header-icon {
   width: 32px; height: 32px; border-radius: 50%;
   align-items: center; justify-content: center;
