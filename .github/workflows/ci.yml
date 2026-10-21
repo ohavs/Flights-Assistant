@@ -42,3 +42,6 @@ jobs:
           name: e2e-output
           path: .e2e/*.png
           if-no-files-found: ignore
+          # .e2e is a dot-directory, which upload-artifact skips by default:
+          # without this the fail-*.png screenshots never reach the artifact.
+          include-hidden-files: true
