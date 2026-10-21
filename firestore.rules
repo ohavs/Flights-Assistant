@@ -24,6 +24,9 @@ service cloud.firestore {
     // Trips: role-based access.
     //   owner  — full control: edit content, change member roles, delete
     //   editor — edit content (cannot change membership)
+    //   contributor ("הוספה", 8.70.0) — adds anything; changes and deletes
+    //            only what they added (createdBy); ticks anyone's item
+    //            (visited, packed, done); adds activities to the days
     //   viewer — read-only
     // memberIds is the canonical array used by the trip-list query.
     // members is a map {uid: role}.
@@ -98,11 +101,44 @@ service cloud.firestore {
       // Delete: only owner
       allow delete: if request.auth != null && isOwner(request.auth.uid);
 
-      // Subcollections — read for any member, write for editors+owners.
+      // Subcollections — read for any member, write for editors+owners;
+      // a contributor writes what is theirs (below).
       match /{subcollection}/{docId} {
         function parent() { return get(/databases/$(database)/documents/trips/$(tripId)).data; }
         function pRole(uid) {
           return parent().members[uid] is string ? parent().members[uid] : null;
+        }
+        function isEditor() {
+          return pRole(request.auth.uid) == 'owner'
+            || pRole(request.auth.uid) == 'editor'
+            || pRole(request.auth.uid) == 'member';
+        }
+        function isContributor() { return pRole(request.auth.uid) == 'contributor'; }
+        // Who added it. Places and bookings said so as addedBy before
+        // createdBy; a reminder's addedByUid is whose it is, not who wrote it.
+        function creatorOf(d) { return d.get('createdBy', d.get('addedBy', null)); }
+        function addsHere() {
+          return subcollection in ['planning', 'checklist', 'reminders', 'info', 'expenses', 'bookings'];
+        }
+        function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+        // A tick on anyone's item. A place also keeps its measured travel
+        // times and position, which any phone fills in.
+        function ticks() {
+          return (subcollection == 'planning' && changed().hasOnly(['visited', 'distances', 'coords']))
+            || ((subcollection == 'checklist' || subcollection == 'reminders') && changed().hasOnly(['completed']));
+        }
+        // A day's plan is its activities array (src/lib/dayActivities.js):
+        // whatever went in or came out must be the contributor's own.
+        function ownAct(list, i) { return list.size() <= i || list[i].get('createdBy', null) == request.auth.uid; }
+        function ownActs(list) {
+          return list.size() <= 8 && ownAct(list, 0) && ownAct(list, 1) && ownAct(list, 2) && ownAct(list, 3)
+            && ownAct(list, 4) && ownAct(list, 5) && ownAct(list, 6) && ownAct(list, 7);
+        }
+        function ownActivities() {
+          let before = resource.data.get('activities', []);
+          let after = request.resource.data.get('activities', []);
+          return changed().hasOnly(['activities'])
+            && ownActs(after.removeAll(before)) && ownActs(before.removeAll(after));
         }
 
         allow read: if request.auth != null
@@ -111,10 +147,21 @@ service cloud.firestore {
             || (parent().members != null && parent().members[request.auth.uid] != null)
           );
 
-        allow write: if request.auth != null
-          && (pRole(request.auth.uid) == 'owner'
-              || pRole(request.auth.uid) == 'editor'
-              || pRole(request.auth.uid) == 'member');
+        allow create: if request.auth != null && (
+          isEditor()
+          || (isContributor() && addsHere() && request.resource.data.get('createdBy', null) == request.auth.uid)
+        );
+        allow update: if request.auth != null && (
+          isEditor()
+          || (isContributor() && addsHere() && (
+                (creatorOf(resource.data) == request.auth.uid && creatorOf(request.resource.data) == request.auth.uid)
+                || ticks()))
+          || (isContributor() && subcollection == 'days' && ownActivities())
+        );
+        allow delete: if request.auth != null && (
+          isEditor()
+          || (isContributor() && addsHere() && creatorOf(resource.data) == request.auth.uid)
+        );
       }
     }
   }

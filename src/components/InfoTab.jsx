@@ -62,7 +62,8 @@ function hrefFor(item) {
    rather than as a tab of its own — the add button sits inline instead of
    being the app-wide floating one, which would paint over the sheet. */
 export default function InfoTab({ tripId, embedded = false }) {
-  const { canEdit } = useTrip();
+  // "הוספה" adds, and changes only what they added (src/lib/roles.js).
+  const { canEdit, canAdd, mayChange, currentUid } = useTrip();
   const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -181,7 +182,7 @@ export default function InfoTab({ tripId, embedded = false }) {
         updateDoc(doc(db, 'trips', tripId, 'info', id), updates).catch(err => console.error('Info save error:', err));
       }
     } else {
-      setDoc(doc(db, 'trips', tripId, 'info', id), payload).catch(err => console.error('Info save error:', err));
+      setDoc(doc(db, 'trips', tripId, 'info', id), { ...payload, createdBy: currentUid || null }).catch(err => console.error('Info save error:', err));
     }
   };
 
@@ -226,7 +227,7 @@ export default function InfoTab({ tripId, embedded = false }) {
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Add/edit form (modal-style inline) */}
-      {showForm && canEdit && (
+      {showForm && canAdd && (
         <Sheet
           title={editingId ? 'עריכת פריט' : 'הוספת פריט חדש'}
           onClose={() => { setShowForm(false); setEditingId(null); }}
@@ -339,7 +340,7 @@ export default function InfoTab({ tripId, embedded = false }) {
         </Sheet>
       )}
 
-      {embedded && canEdit && (
+      {embedded && canAdd && (
         <button type="button" className="btn-secondary" onClick={() => openAdd()}
           style={{ width: '100%', gap: 6, border: '1.5px dashed var(--p-30)', color: 'var(--accent)', background: 'var(--p-4)' }}>
           <Plus size={15} />
@@ -378,6 +379,8 @@ export default function InfoTab({ tripId, embedded = false }) {
                 list={list}
                 isOpen={isOpen}
                 canEdit={canEdit}
+                canAdd={canAdd}
+                mayChange={mayChange}
                 toggleCategory={toggleCategory}
                 openAdd={openAdd}
                 startEdit={startEdit}
@@ -395,13 +398,13 @@ export default function InfoTab({ tripId, embedded = false }) {
     {/* The full-width docked bar became the app-wide floating button; the
         "load defaults" shortcut moved into the empty state, which is the
         only time it was offered anyway. */}
-    {canEdit && !embedded && <Fab label="פריט חדש" onClick={() => openAdd()} />}
+    {canAdd && !embedded && <Fab label="פריט חדש" onClick={() => openAdd()} />}
     </>
   );
 }
 
 /* ── InfoSortableCategory ────────────────────────────────────────────────── */
-function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory, openAdd, startEdit, handleDelete, iconFor, hrefFor }) {
+function InfoSortableCategory({ category, list, isOpen, canEdit, canAdd, mayChange, toggleCategory, openAdd, startEdit, handleDelete, iconFor, hrefFor }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
@@ -434,8 +437,8 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                 key={item.id}
                 icon={<CategoryDisc color={emergency ? '#E5484D' : '#2DBE6C'} size={42}><Icon size={19} /></CategoryDisc>}
                 title={item.title}
-                onOpen={canEdit ? () => startEdit(item) : undefined}
-                actions={canEdit ? [
+                onOpen={mayChange(item) ? () => startEdit(item) : undefined}
+                actions={mayChange(item) ? [
                   { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(item) },
                   { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(item), danger: true, swipe: true },
                 ] : []}
@@ -453,7 +456,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
                     )
                   ) : (
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      לא הוגדר{canEdit ? ' — הקישו על הכרטיס כדי להוסיף' : ''}
+                      לא הוגדר{mayChange(item) ? ' — הקישו על הכרטיס כדי להוסיף' : ''}
                     </div>
                   )}
                   {item.extraFields && item.extraFields.length > 0 && (
@@ -488,7 +491,7 @@ function InfoSortableCategory({ category, list, isOpen, canEdit, toggleCategory,
               </ListCard>
             );
           })}
-          {canEdit && (
+          {canAdd && (
             <button type="button" className="chip add" style={{ alignSelf: 'flex-start' }}
               onClick={() => openAdd(category)} aria-label={`הוסף פריט ל${category}`}>
               <Plus size={14} /> פריט

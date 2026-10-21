@@ -71,10 +71,11 @@ export async function sendWidgetWrites(uid, { addExpense, addReminder, setField 
         await setField(it.path, it.field, it.value);
       } else if (it.coll === 'reminders') {
         if (!it.tripId || typeof it.doc?.text !== 'string' || !it.doc.text.trim()) continue;
-        await addReminder(it.tripId, it.id, { ...it.doc, addedByUid: it.doc.addedByUid || uid });
+        await addReminder(it.tripId, it.id, { ...it.doc, addedByUid: it.doc.addedByUid || uid, createdBy: it.doc.createdBy || uid });
       } else {
         if (!it.tripId || !it.doc) continue;
-        await addExpense(it.tripId, it.id, { ...it.doc, paidBy: it.doc.paidBy || uid });
+        // createdBy: who added it, which "הוספה" must say (firestore.rules).
+        await addExpense(it.tripId, it.id, { ...it.doc, paidBy: it.doc.paidBy || uid, createdBy: it.doc.createdBy || uid });
       }
       sent.push(it.id);
     } catch { /* stays queued; the next open tries again */ }

@@ -95,7 +95,8 @@ const EMPTY_FORM = {
 };
 
 export default function BookingsTab({ tripId }) {
-  const { canEdit, currentUid } = useTrip();
+  // "הוספה" adds bookings, and changes only the ones they added.
+  const { canAdd, mayChange, currentUid } = useTrip();
   const confirm = useConfirm();
   const [bookings, setBookings] = useState([]);
   const [places, setPlaces] = useState([]);
@@ -212,7 +213,7 @@ export default function BookingsTab({ tripId }) {
     if (!editingId || Object.keys(updates).length) {
       (editingId
         ? updateDoc(ref, updates)
-        : setDoc(ref, { ...payload, addedBy: currentUid || null, addedAt: new Date().toISOString() })
+        : setDoc(ref, { ...payload, addedBy: currentUid || null, createdBy: currentUid || null, addedAt: new Date().toISOString() })
       ).catch(err => console.error('Booking save error:', err));
     }
     setShowForm(false);
@@ -272,7 +273,7 @@ export default function BookingsTab({ tripId }) {
       b.address && { key: 'map', href: mapsHref(b.address), Icon: MapPin, label: 'ניווט', external: true },
       b.url && { key: 'url', href: b.url, Icon: ExternalLink, label: 'קישור', external: true },
     ].filter(Boolean);
-    const actions = canEdit ? [
+    const actions = mayChange(b) ? [
       { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => startEdit(b) },
       { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => handleDelete(b), danger: true, swipe: true },
     ] : [];
@@ -284,7 +285,7 @@ export default function BookingsTab({ tripId }) {
         className={`booking-ticket${stub ? ' has-stub' : ''}`}
         style={{ '--t': cancelled ? 'var(--text-muted)' : t.color }}
         muted={cancelled}
-        onOpen={canEdit ? () => startEdit(b) : undefined}
+        onOpen={mayChange(b) ? () => startEdit(b) : undefined}
         actions={actions}
       >
         <div className="ticket-main">
@@ -380,9 +381,9 @@ export default function BookingsTab({ tripId }) {
         )}
       </div>
 
-      {canEdit && <Fab label="הזמנה חדשה" onClick={openAdd} />}
+      {canAdd && <Fab label="הזמנה חדשה" onClick={openAdd} />}
 
-      {showForm && canEdit && (
+      {showForm && canAdd && (
         <Sheet
           title={editingId ? 'עריכת הזמנה' : 'הזמנה חדשה'}
           onClose={() => setShowForm(false)}

@@ -17,6 +17,7 @@ import { widgetTrips, widgetSnapshot, offlineTrips } from './lib/widgetData';
 import { loadWeather } from './hooks/useWeather';
 import { NavIcon } from './ui/icons';
 import { CustomDropdown } from './components/CustomDatePicker';
+import { EDIT_ROLES, canAddRole, mayChange, ROLE_LABEL, ROLE_CHOICES } from './lib/roles';
 import { defaultChecklist, defaultInfoItems } from './data/seedData';
 
 /* The five tabs are loaded on demand.
@@ -348,7 +349,7 @@ function Homepage({ trips, currentUid, memberProfiles, currentUserProfile, onOpe
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                 טיול של {ownerProfile.displayName || ownerProfile.email || ''}
                 {' · '}
-                {myRole === 'viewer' ? 'צפייה' : 'עריכה'}
+                {ROLE_LABEL[myRole] || 'צפייה'}
               </span>
             </div>
           )}
@@ -415,7 +416,7 @@ function ShareModal({ tripId, currentUid, onClose }) {
   const confirm = useConfirm();
   const [trip, setTrip] = useState(null);
   const [email, setEmail] = useState('');
-  const [newRole, setNewRole] = useState('viewer'); // viewer | editor
+  const [newRole, setNewRole] = useState('viewer'); // viewer | contributor | editor (src/lib/roles.js)
   const [status, setStatus] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -558,11 +559,8 @@ function ShareModal({ tripId, currentUid, onClose }) {
                 dir="ltr"
               />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, background: 'var(--surface-2)', padding: 4, borderRadius: 16 }}>
-                {[
-                  { val: 'viewer', label: 'צפייה בלבד', desc: 'יראה את הטיול אבל לא יוכל לערוך' },
-                  { val: 'editor', label: 'עריכה', desc: 'יוכל לערוך טיסות, מלון, תכנון וצ\'קליסט' },
-                ].map(opt => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, background: 'var(--surface-2)', padding: 4, borderRadius: 16 }}>
+                {ROLE_CHOICES.map(opt => (
                   <button
                     key={opt.val}
                     type="button"
@@ -641,21 +639,27 @@ function ShareModal({ tripId, currentUid, onClose }) {
                     {isSelf && <span style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>(אתה)</span>}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-                    {isOwnerRow ? 'בעלים' : (role === 'editor' || role === 'member') ? 'עריכה' : 'צפייה'}
+                    {ROLE_LABEL[role] || 'צפייה'}
                   </div>
+                  {/* The owner sets each member's role here: three choices
+                      (src/lib/roles.js), the current one marked. */}
+                  {isOwner && !isOwnerRow && (
+                    <div className="member-role" role="radiogroup" aria-label={`הרשאה של ${profile?.displayName || profile?.email || ''}`}>
+                      {ROLE_CHOICES.map(opt => {
+                        const on = opt.val === (role === 'member' ? 'editor' : role);
+                        return (
+                          <button key={opt.val} type="button" role="radio" aria-checked={on} title={opt.desc}
+                            onClick={() => { if (!on) changeRole(uid, opt.val); }}>
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {isOwner && !isOwnerRow && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <button
-                      type="button"
-                      onClick={() => changeRole(uid, (role === 'editor' || role === 'member') ? 'viewer' : 'editor')}
-                      className="btn-secondary"
-                      style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
-                      title={(role === 'editor' || role === 'member') ? 'הפוך לצפייה בלבד' : 'אפשר עריכה'}
-                    >
-                      {(role === 'editor' || role === 'member') ? 'הפוך לצופה' : 'אפשר עריכה'}
-                    </button>
                     <button
                       type="button"
                       onClick={() => removeMember(uid)}
@@ -1938,7 +1942,8 @@ function AppInner() {
           id: t.id,
           name: t.name || '',
           destination: t.destination || '',
-          canEdit: ['owner', 'editor', 'member'].includes(t.members?.[user?.uid]),
+          // A place can be added by anyone who adds ("הוספה" too).
+          canEdit: canAddRole(t.members?.[user?.uid]),
         }))}
         signedIn={!!user}
         onPickTrip={(tripId) => {
@@ -2183,7 +2188,10 @@ function AppInner() {
       <TripProvider value={{
         tripId: selectedTripId,
         role: selectedTrip?.members?.[user.uid] || null,
-        canEdit: ['owner', 'editor', 'member'].includes(selectedTrip?.members?.[user.uid]),
+        canEdit: EDIT_ROLES.includes(selectedTrip?.members?.[user.uid]),
+        // "הוספה": adds, ticks, and changes only what is theirs (src/lib/roles.js).
+        canAdd: canAddRole(selectedTrip?.members?.[user.uid]),
+        mayChange: (item) => mayChange(selectedTrip?.members?.[user.uid], user.uid, item),
         isOwner: selectedTrip?.members?.[user.uid] === 'owner',
         ownerProfile: (() => {
           const ownerUid = Object.keys(selectedTrip?.members || {}).find(uid => selectedTrip?.members?.[uid] === 'owner');

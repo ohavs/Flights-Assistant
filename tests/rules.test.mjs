@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import {
-  getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayRemove, onSnapshot,
+  getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayRemove, arrayUnion,
+  onSnapshot, writeBatch,
 } from 'firebase/firestore';
 
 const apps = [];
@@ -28,6 +29,7 @@ const owner = await client('owner@example.com');
 const editor = await client('editor@example.com');
 const viewer = await client('viewer@example.com');
 const stranger = await client('stranger@example.com');
+const adder = await client('adder@example.com');
 
 after(() => Promise.all(apps.map(app => deleteApp(app))));
 
@@ -178,4 +180,97 @@ test('a trip opened before the server has it arrives once it is created (no perm
     }).catch(reject), 300);
   });
   assert.deepEqual(seen, [false, true]);
+});
+
+/* ── "הוספה" (contributor, 8.70.0) ─────────────────────────────────── */
+
+// A trip with a contributor besides the owner and the editor.
+async function createTripWithAdder() {
+  const tripId = `trip_adder_${Date.now()}_${tripCount++}`;
+  await setDoc(doc(owner.db, 'trips', tripId), {
+    name: 'Trip', members: { [owner.uid]: 'owner', [editor.uid]: 'editor', [adder.uid]: 'contributor' },
+    memberIds: [owner.uid, editor.uid, adder.uid],
+  });
+  return tripId;
+}
+const item = (who, tripId, coll, id) => doc(who.db, 'trips', tripId, coll, id);
+
+test('a contributor adds in every list, as themselves', async () => {
+  const tripId = await createTripWithAdder();
+  for (const coll of ['planning', 'checklist', 'reminders', 'info', 'expenses', 'bookings']) {
+    await setDoc(item(adder, tripId, coll, 'mine'), { title: 'x', createdBy: adder.uid });
+    // Not without saying so, and not in someone else's name.
+    await assert.rejects(setDoc(item(adder, tripId, coll, 'anon'), { title: 'x' }), denied);
+    await assert.rejects(setDoc(item(adder, tripId, coll, 'forged'), { title: 'x', createdBy: owner.uid }), denied);
+  }
+  // Not the trip's settings, nor a day, nor the trip itself.
+  await assert.rejects(setDoc(item(adder, tripId, 'settings', 'categories'), { x: { color: '#000' }, createdBy: adder.uid }), denied);
+  await assert.rejects(setDoc(item(adder, tripId, 'days', 'd1'), { title: 'Day', createdBy: adder.uid }), denied);
+  await assert.rejects(updateDoc(trip(adder, tripId), { name: 'Mine' }), denied);
+});
+
+test('a contributor changes and deletes only what they added', async () => {
+  const tripId = await createTripWithAdder();
+  await setDoc(item(adder, tripId, 'planning', 'mine'), { title: 'Mine', createdBy: adder.uid });
+  await setDoc(item(owner, tripId, 'planning', 'theirs'), { title: 'Theirs', createdBy: owner.uid });
+  await setDoc(item(owner, tripId, 'planning', 'old'), { title: 'Old', addedBy: owner.uid });
+  await updateDoc(item(adder, tripId, 'planning', 'mine'), { title: 'Mine, edited' });
+  await assert.rejects(updateDoc(item(adder, tripId, 'planning', 'theirs'), { title: 'Hacked' }), denied);
+  await assert.rejects(updateDoc(item(adder, tripId, 'planning', 'old'), { title: 'Hacked' }), denied);
+  // Nor passes their own to someone else.
+  await assert.rejects(updateDoc(item(adder, tripId, 'planning', 'mine'), { createdBy: owner.uid }), denied);
+  await assert.rejects(deleteDoc(item(adder, tripId, 'planning', 'theirs')), denied);
+  await deleteDoc(item(adder, tripId, 'planning', 'mine'));
+  // A place added before createdBy, by them (addedBy), is theirs too.
+  await setDoc(item(owner, tripId, 'planning', 'byAdder'), { title: 'x', addedBy: adder.uid });
+  await updateDoc(item(adder, tripId, 'planning', 'byAdder'), { title: 'y' });
+  // The editor still changes anything.
+  await setDoc(item(adder, tripId, 'expenses', 'e1'), { amount: 5, createdBy: adder.uid });
+  await updateDoc(item(editor, tripId, 'expenses', 'e1'), { amount: 6 });
+  await deleteDoc(item(editor, tripId, 'expenses', 'e1'));
+});
+
+test('a contributor ticks anyone\'s item, and nothing else on it', async () => {
+  const tripId = await createTripWithAdder();
+  await setDoc(item(owner, tripId, 'planning', 'p'), { title: 'P', visited: false, createdBy: owner.uid });
+  await setDoc(item(owner, tripId, 'checklist', 'c'), { text: 'C', completed: false, createdBy: owner.uid });
+  await setDoc(item(owner, tripId, 'reminders', 'r'), { text: 'R', completed: false, createdBy: owner.uid, addedByUid: adder.uid });
+  await updateDoc(item(adder, tripId, 'planning', 'p'), { visited: true });
+  await updateDoc(item(adder, tripId, 'planning', 'p'), { 'distances.hotel': { walk: 1 }, coords: { lat: 1, lng: 2 } });
+  await updateDoc(item(adder, tripId, 'checklist', 'c'), { completed: true });
+  await updateDoc(item(adder, tripId, 'reminders', 'r'), { completed: true });
+  await assert.rejects(updateDoc(item(adder, tripId, 'planning', 'p'), { visited: false, title: 'x' }), denied);
+  await assert.rejects(updateDoc(item(adder, tripId, 'checklist', 'c'), { text: 'x' }), denied);
+  // A reminder for them, written by someone else, is still not theirs to edit.
+  await assert.rejects(updateDoc(item(adder, tripId, 'reminders', 'r'), { text: 'x' }), denied);
+  await assert.rejects(deleteDoc(item(adder, tripId, 'reminders', 'r')), denied);
+});
+
+test('a day: a contributor adds activities, and changes only their own', async () => {
+  const tripId = await createTripWithAdder();
+  const theirs = { id: 'a1', title: 'Museum', order: 1, createdBy: owner.uid };
+  await setDoc(item(owner, tripId, 'days', 'd1'), { title: 'Day 1', activities: [theirs] });
+  const day = item(adder, tripId, 'days', 'd1');
+  const mine = { id: 'a2', title: 'Coffee', order: 2, createdBy: adder.uid };
+  await updateDoc(day, { activities: arrayUnion(mine) });
+  // An edit of their own: out with the old copy, in with the new, in one batch.
+  const edited = { ...mine, title: 'Coffee & cake' };
+  const b = writeBatch(adder.db);
+  b.update(day, { activities: arrayRemove(mine) });
+  b.update(day, { activities: arrayUnion(edited) });
+  await b.commit();
+  await assert.rejects(updateDoc(day, { activities: arrayRemove(theirs) }), denied);
+  await assert.rejects(updateDoc(day, { activities: arrayUnion({ id: 'a3', title: 'x' }) }), denied);
+  await assert.rejects(updateDoc(day, { activities: arrayUnion({ id: 'a3', title: 'x', createdBy: owner.uid }) }), denied);
+  await assert.rejects(updateDoc(day, { title: 'Renamed' }), denied);
+  await assert.rejects(deleteDoc(day), denied);
+  await updateDoc(day, { activities: arrayRemove(edited) });
+  assert.deepEqual((await getDoc(item(owner, tripId, 'days', 'd1'))).data().activities, [theirs]);
+});
+
+test('a viewer still adds nothing', async () => {
+  const tripId = await createTrip();
+  await assert.rejects(setDoc(item(viewer, tripId, 'planning', 'v'), { title: 'x', createdBy: viewer.uid }), denied);
+  await setDoc(item(owner, tripId, 'checklist', 'c'), { text: 'C', completed: false });
+  await assert.rejects(updateDoc(item(viewer, tripId, 'checklist', 'c'), { completed: true }), denied);
 });
