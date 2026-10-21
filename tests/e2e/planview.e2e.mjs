@@ -74,7 +74,7 @@ for (const [cat, names] of Object.entries(CATS)) {
     n++;
     const extra = {};
     if (title === 'גלגל ענק' || title === 'Advent Basilica') extra.priority = 'must';
-    if (title === 'Advent Basilica') extra.event = { startDate: '2026-11-13', startTime: '11:00' };
+    if (title === 'Advent Basilica') extra.event = { startDate: '2026-11-13', endDate: '2027-01-01', startTime: '11:00', endTime: '22:00' };
     if (title === 'קונצרט באופרה') extra.event = { startDate: '2026-11-14', startTime: '19:30', endTime: '22:00' };
     await put(`trips/pv/planning/p${n}`, { title, category: cat, address: '', ...extra });
   }
@@ -165,6 +165,15 @@ await step('"טווח": a first and a last day, a start and an end time, saved a
   const ev = await saved();
   const got = ev && ['startDate', 'endDate', 'startTime', 'endTime'].map(k => ev[k]?.stringValue || '').join(' ');
   if (!/^\d{4}-\d\d-13 \d{4}-\d\d-16 12:00 17:00$/.test(got || '')) throw new Error(`saved ${got}`);
+  // The card: every day in those hours, and the days as a tag (not one stretch from 13 12:00 to 16 17:00).
+  const rangeCard = page.locator('.pstub-wrap', { hasText: 'יריד הסתיו' });
+  await rangeCard.scrollIntoViewIfNeeded();
+  const stubText = (await rangeCard.locator('.pstub-stub.when').innerText()).replace(/\s+/g, ' ');
+  if (!/כל יום 12:00 עד 17:00/.test(stubText)) throw new Error(`stub says "${stubText}"`);
+  if (!/^13\.\d\d–16\.\d\d$/.test((await rangeCard.locator('.pstub-tags > *').first().innerText()).trim())) {
+    throw new Error(`tags say "${await rangeCard.locator('.pstub-tags').innerText()}"`);
+  }
+  await shot('8b-card-range');
   // Off again: back to one day and one time, and the end is not saved.
   await page.locator('.plan-card', { hasText: 'יריד הסתיו' }).click();
   await page.locator('.modal-content').last().getByRole('button', { name: 'עריכה' }).first().click();

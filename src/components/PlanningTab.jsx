@@ -275,8 +275,13 @@ function stubTime(leg) {
 const DOW_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
 // A place's date and time (`event`, any category since 8.66.0) as its card
-// shows it: "היום" / "מחר" or the weekday, the date, the time, an end when
-// it has one, and whether it is over.
+// shows it: a top line, the big value and a small one under it (the stub
+// and the leaf), a tag for what doesn't fit there (`until`), the whole of
+// it in one line, and whether it is over.
+// A date range with hours is open every day in those hours (a Christmas
+// market), as the sheet says: "כל יום", the hours, and the dates as a tag.
+// Before 8.70.1 the card read it as one stretch from the first day's
+// opening to the last day's closing.
 function placeWhen(ev) {
   if (!ev?.startDate) return null;
   const [y, m, d] = ev.startDate.split('-').map(Number);
@@ -285,18 +290,25 @@ function placeWhen(ev) {
   const now = new Date();
   const diff = Math.round((day - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
   const dm = (iso) => { const [, mm, dd] = iso.split('-'); return `${dd}.${mm}`; };
-  const until = ev.endDate && ev.endDate !== ev.startDate
-    ? `עד ${dm(ev.endDate)}${ev.endTime ? ` ${ev.endTime}` : ''}`
-    : ev.endTime ? `עד ${ev.endTime}` : '';
-  return {
-    rel: diff === 0 ? 'היום' : diff === 1 ? 'מחר' : null,
-    dow: DOW_HE[day.getDay()],
-    dm: dm(ev.startDate),
-    time: ev.startTime || '',
-    until,
-    today: diff === 0,
-    past: todayISO > (ev.endDate || ev.startDate),
-  };
+  const rel = diff === 0 ? 'היום' : diff === 1 ? 'מחר' : null;
+  const dow = DOW_HE[day.getDay()];
+  const time = ev.startTime || '';
+  const range = !!ev.endDate && ev.endDate !== ev.startDate;
+  const base = { dm: dm(ev.startDate), today: diff === 0, past: todayISO > (ev.endDate || ev.startDate) };
+  if (range && time) {
+    const hours = `${time}${ev.endTime ? `–${ev.endTime}` : ''}`;
+    const dates = `${dm(ev.startDate)}–${dm(ev.endDate)}`;
+    return { ...base, daily: true, top: 'כל יום', main: time, sub: ev.endTime ? `עד ${ev.endTime}` : '',
+      until: dates, hours: `כל יום ${hours}`, dates, line: `כל יום ${hours} · ${dates}` };
+  }
+  const top = rel || dow;
+  if (range) {
+    return { ...base, top, main: dm(ev.startDate), sub: `עד ${dm(ev.endDate)}`, until: '',
+      line: `${top} ${dm(ev.startDate)} עד ${dm(ev.endDate)}` };
+  }
+  return { ...base, top, main: time || dm(ev.startDate), sub: time ? dm(ev.startDate) : '',
+    until: ev.endTime ? `עד ${ev.endTime}` : '',
+    line: `${top} ${dm(ev.startDate)}${time ? ` · ${time}${ev.endTime ? `–${ev.endTime}` : ''}` : ''}` };
 }
 
 // Card layouts for the places list. Each entry drives the density of the
@@ -3042,8 +3054,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   ? { text: 'כפילות', title: `כפילות של: ${dupNames(plan.id).join(', ')}` }
                   : null;
                 // The date as one solid block, in the category's colour.
-                const whenTop = when && (when.rel || when.dow);
-                const whenLine = when && `${when.rel || when.dow} ${when.dm}${when.time ? ` · ${when.time}` : ''}`;
+                const whenLine = when && when.line;
 
                 const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
                 // The category's theme; a visited card gives up its surface.
@@ -3116,9 +3127,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       </h3>
 
                       {when && (
-                        <span className={`plan-when-chip${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
+                        <span className={`plan-when-chip${when.daily ? ' daily' : ''}${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
                           <CalendarClock size={12} aria-hidden="true" />
-                          <span>{whenLine}</span>
+                          {/* Every day: the hours, and the dates on a line of their own when the tile is narrow. */}
+                          {when.daily
+                            ? <span><span className="nb">{when.hours} ·</span> <span className="nb">{when.dates}</span></span>
+                            : <span>{whenLine}</span>}
                         </span>
                       )}
 
@@ -3202,9 +3216,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   // time small under it. Solid in the category's colour, so
                   // a fixed appointment is the first thing the eye finds.
                   const stubBody = when ? (<>
-                    <span className="pstub-when-top">{whenTop}</span>
-                    <span className="pstub-num">{when.time || when.dm}</span>
-                    {when.time && <span className="pstub-unit">{when.dm}</span>}
+                    <span className="pstub-when-top">{when.top}</span>
+                    <span className="pstub-num">{when.main}</span>
+                    {when.sub && <span className="pstub-unit">{when.sub}</span>}
                     {main && <span className="pstub-alt"><main.Icon size={11} aria-hidden="true" />{main.num} {main.unit}</span>}
                   </>) : main ? (<>
                     <span className="pstub-num">{main.num}</span>
@@ -3406,9 +3420,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         colour, where the quiet chevron is otherwise. */}
                     {when ? (
                       <span className={`plan-when-leaf${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
-                        <span className="plan-when-leaf-top">{whenTop}</span>
-                        <span className="plan-when-leaf-main">{when.time || when.dm}</span>
-                        {when.time && <span className="plan-when-leaf-sub">{when.dm}</span>}
+                        <span className="plan-when-leaf-top">{when.top}</span>
+                        <span className="plan-when-leaf-main">{when.main}</span>
+                        {when.sub && <span className="plan-when-leaf-sub">{when.sub}</span>}
                       </span>
                     ) : (
                       /* Quiet "opens a panel" affordance (RTL: points inward) */

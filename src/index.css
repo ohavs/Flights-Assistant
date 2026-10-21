@@ -2907,6 +2907,10 @@ button.pstub-stub.when:active { background: color-mix(in srgb, var(--c) 70%, bla
   font-size: 12px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .plan-when-chip > span { overflow: hidden; text-overflow: ellipsis; }
+/* Every day: the hours and the dates may part onto two lines, never inside either. */
+.plan-when-chip.daily { border-radius: 12px; }
+.plan-when-chip.daily > span { white-space: normal; }
+.plan-when-chip .nb { white-space: nowrap; }
 .plan-when-leaf.past, .plan-when-chip.past { background: var(--ink-6); color: var(--text-muted); }
 
 /* The place form's "when" block. */
