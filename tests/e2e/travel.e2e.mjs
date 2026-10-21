@@ -110,6 +110,16 @@ await step('add places in several categories', async () => {
   await addPlace({ title: 'שוק הפשפשים', category: 'מידע כללי וטיפים', address: at(47.4870, 19.0580) });
 });
 
+await step('new default (8.69.0): stub cards in category sections', async () => {
+  if (!(await page.locator('.plan-group').count())) throw new Error('not in sections');
+  if (!(await page.locator('.plan-card.pstub').count())) throw new Error('not stub cards');
+  // The rest of this test reads a plain list when nothing is picked.
+  await page.locator('[title="מיון ותצוגה"]').click();
+  await page.getByText('רשימה', { exact: true }).first().click();
+  await page.mouse.click(5, 5);
+  await page.locator('.plan-group').first().waitFor({ state: 'detached' });
+});
+
 await step('two categories picked: one section each; the header stays on top while its places scroll, and folds', async () => {
   const pill = page.locator('button.plan-filter-pill');
   const menu = page.getByRole('dialog', { name: 'סינון לפי קטגוריה' });
@@ -134,15 +144,16 @@ await step('two categories picked: one section each; the header stays on top whi
     throw new Error('a card still shows its category icon');
   }
   await shot('two-categories');
-  // Scrolled into the first section: its header is stuck under the toolbar.
+  // Scrolled into the first section: its header is glued to the top, and
+  // the toolbar right under it (8.69.0, the owner's ask).
   const content = page.locator('.app-content');
   const firstHead = page.locator('.plan-group .section-header').first();
   await content.evaluate(el => el.scrollBy(0, 330));
   await page.waitForTimeout(200);
   const [box, top] = [await firstHead.boundingBox(), (await content.boundingBox()).y];
-  // Stuck right under the toolbar: the content's 16px padding, then the
-  // toolbar's 60.
-  if (Math.abs(box.y - (top + 76)) > 3) throw new Error(`the header is at ${Math.round(box.y - top)}, not stuck at 76`);
+  if (Math.abs(box.y - top) > 1) throw new Error(`the header is at ${Math.round(box.y - top)}, not at the top`);
+  const pillBox = await pill.boundingBox();
+  if (pillBox.y < box.y + box.height || pillBox.y > box.y + box.height + 10) throw new Error(`the toolbar is ${Math.round(pillBox.y - box.y - box.height)}px under the header`);
   if (!(await firstHead.innerText()).includes('מסעדות')) throw new Error('the stuck header is not the section being read');
   await shot('header-stuck');
   await content.evaluate(el => el.scrollTo(0, 0));
@@ -166,18 +177,19 @@ await step('two categories picked: one section each; the header stays on top whi
   await page.locator('.plan-group').nth(3).waitFor();
   if ((await heads()).length !== 4) throw new Error(`sections: ${(await heads()).join('|')}`);
   // Past the first section, its header leaves with it, and the next one's
-  // is the one stuck under the toolbar.
+  // is the one stuck at the top.
   const scroller = page.locator('.app-content');
   const second = page.locator('.plan-group').nth(1);
   await second.evaluate(el => {
     const sc = document.querySelector('.app-content');
-    sc.scrollBy(0, el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 76 + 120);
+    sc.scrollBy(0, el.getBoundingClientRect().top - sc.getBoundingClientRect().top + 120);
   });
   await page.waitForTimeout(250);
   const y0 = (await scroller.boundingBox()).y;
   const [first, next] = [await page.locator('.plan-group .section-header').first().boundingBox(), await second.locator('.section-header').boundingBox()];
-  if (first.y > y0 + 30) throw new Error(`the first header is still at ${Math.round(first.y - y0)}`);
-  if (Math.abs(next.y - (y0 + 76)) > 3) throw new Error(`the next header is at ${Math.round(next.y - y0)}, not stuck at 76`);
+  if (first.y + first.height > y0 + 1) throw new Error(`the first header is still at ${Math.round(first.y - y0)}`);
+  if (Math.abs(next.y - y0) > 1) throw new Error(`the next header is at ${Math.round(next.y - y0)}, not at the top`);
+  if (await second.locator('.section-header[data-stuck]').count() !== 1) throw new Error('the stuck header has no background');
   await shot('grouped-scrolled');
 });
 

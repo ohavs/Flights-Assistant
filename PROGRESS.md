@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.68.0 (`changelog.md`)
+- גרסת ווב: 8.69.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
@@ -49,8 +49,11 @@
     - שדה חדש ולא ערך חדש ב־`distanceOriginId`, כי APK ישן היה מודד מהמלון וכותב לאותו מפתח.
     - קואורדינטות בלי רשת: `knownPlaceCoords` ב־`distanceApi.js`.
     - **קבוצות לפי קטגוריה (8.60.0):** באותו סדר כמו `categories` ברשימה, הקרובים קודם בכל קבוצה. קבוצה נסגרת מהכותרת (`SectionHeader`), והמצב נשמר ב־`localStorage` בשם `origin_folded_<tripId>`. בחיפוש כל הקבוצות פתוחות.
-  - **קבוצות בתכנון (8.63.0, בקשת הבעלים 2026-10-21):** כל קבוצה היא `<section className="plan-group">`. **מ־8.67.0 (בקשה חדשה של הבעלים) כותרת של קטגוריה דביקה** (`.plan-group-head.stuck`, `top: 60px`, מתחת לשורת הכלים; בפועל 76 מראש האזור בגלל ה־padding), עד סוף הסעיף. כשמחולק לקטגוריות (`catGrouped`) הכרטיס בלי שם הקטגוריה ובלי האייקון. קיפול קטגוריות נשמר ב־`plan_cats_folded_{tripId}`.
-  - **"חובה"/"להזמין" (8.67.0):** בראש הכרטיס, ליד הספח (`.pstub-flags` בתוך `.pstub-head`, flex ולכן אין חפיפה). "להזמין" אדום מלא.
+  - **קבוצות בתכנון (8.63.0, בקשת הבעלים 2026-10-21):** כל קבוצה היא `<section className="plan-group">`. **מ־8.69.0 (בקשת הבעלים) כותרת של קטגוריה צמודה לראש האזור** (`.plan-group-head.stuck`, `top: -16px` מבטל את ה־padding של `.app-content`, גובה `--plan-head-h`), והסרגל (`.plan-toolbar-dock.under-head`) מתחתיה. כשהיא צמודה `PlanningTab` שם עליה `data-stuck` ו־`--tex-at` (בגלילה), וה־CSS מצייר את רקע האפליקציה ואת הטקסטורה מיושרת לזו של `.app-container::before`. בתוך הרשימה אין לה רקע. כשמחולק לקטגוריות (`catGrouped`) הכרטיס בלי שם הקטגוריה ובלי האייקון. קיפול קטגוריות נשמר ב־`plan_cats_folded_{tripId}`.
+  - **"חובה"/"להזמין" (8.67.0):** בראש הכרטיס, ליד הספח. "להזמין" אדום מלא. **מ־8.69.0** `.pstub-main` הוא grid (שורות `1fr auto 1fr`): `.pstub-body` (השם, הסימון והשאר) באמצע הגובה, ו־`.pstub-flags` בעמודה משלו לאורך כל השורות, למעלה.
+  - **ערכות נושא לקטגוריות (8.69.0, בקשת הבעלים):** `src/lib/categoryTheme.js` (טהור, `tests/categoryTheme.test.mjs`) מחזיר מפתח לפי שם הקטגוריה ואז האימוג'י. `data-ct` על החלק שנושא את הרקע (`.pstub-main`, שורה, אריח), והטקסטורות ב־`index.css` (`[data-ct="…"]`, מסכה בצבע `--c`). קישוט: `THEMES[k].ornament` → `.ct-ornament.ct-santa` (על `.pstub-wrap`, כי הכרטיס עם mask). `getCategoryColor` נופל ל־`hue` של הנושא לפני הסגול. לא על כרטיס שביקרו בו. נושא חדש: כלל ב־`RULES` + טקסטורה ב־CSS.
+  - **ברירת מחדל לתצוגה (8.69.0, בקשת הבעלים):** מפתחות חדשים `planLayout2_{tripId}`/`planGroupBy2_{tripId}` כדי שכולם יתחילו ב"עמודת זמן" + קטגוריה; הישנים נמחקים.
+  - **"טווח" בטופס (8.69.0, בקשת הבעלים):** `whenRange` בטופס; `CustomDateRangePicker`/`CustomTimeRangePicker` ב־`CustomDatePicker.jsx`. הסיום נשמר רק כשהמתג דלוק (`endDateOn`/`endTimeOn`), לכל קטגוריה. סוף = התחלה לא נשמר.
   - **כפילויות (8.67.0):** `src/lib/placeDuplicates.js` (טהור, `tests/placeDuplicates.test.mjs`): אותו שם (`nameKey`) או אותו `address` (`placeKey`), union-find. סימון "כפילות" בכל הפריסות. `.plan-dup-notice` מעל הרשימה, ולחיצה עליה מפעילה `dupOnly`, שמציג סעיף לכל קבוצה. בדיקה: `tests/e2e/places.e2e.mjs`.
     - הסינון הוא `PlanCategoryFilter.jsx`: תיבות סימון לכמה קטגוריות (`pickedCats`, ריק = הכל) ומתג "רק חובה" (`mustOnly`). לא נשמר במכשיר, כמו קודם.
     - החלטות הבעלים: 2+ קטגוריות שנבחרו תמיד מחולקות לקבוצות; ב"הכל" החלוקה לפי `groupBy`. כותרת קטגוריה לא מתקפלת (מסתירים מהתפריט); כותרת איזור מתקפלת.
