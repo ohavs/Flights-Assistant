@@ -1756,6 +1756,72 @@ textarea.form-control {
   .reminder-swap { animation: none; }
 }
 
+/* ── Reminder composer (ChecklistTab): one box at the sheet's foot ──
+   The text and send on top; under them whose it is (avatars, a ring on
+   the chosen one) and when to ring. It wraps rather than scrolls, so a
+   ring is never cut off by an edge. */
+.reminder-footer { flex-direction: column; gap: 8px; margin-top: 0; }
+.reminder-editing {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 3px 6px 3px 12px; border-radius: 20px;
+  background: var(--p-10); color: var(--accent);
+  font-size: 12px; font-weight: 800;
+}
+.reminder-editing > button {
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--p-15); color: var(--accent); cursor: pointer;
+}
+.reminder-editing > button.danger { background: var(--c-red-8); color: var(--c-red); }
+.reminder-composer {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px 6px 8px; padding-inline-start: 14px;
+  border-radius: 22px;
+  border: 1px solid var(--ink-10);
+  background: var(--surface-2);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.reminder-composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--p-10); }
+.reminder-composer-row { display: flex; align-items: center; gap: 8px; }
+.reminder-composer-row > input {
+  flex: 1; min-width: 0; min-height: 40px; padding: 0;
+  border: none; outline: none; background: transparent;
+  font-family: var(--font-hebrew); font-size: 16px; font-weight: 500; color: var(--text-main);
+}
+.reminder-tools {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px; padding-inline-end: 2px;
+}
+.reminder-owners { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 3px; margin-inline-start: -3px; }
+.reminder-owners > button {
+  display: flex; padding: 0; border: none; border-radius: 50%;
+  background: none; cursor: pointer; opacity: 0.5;
+  transition: opacity var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.reminder-owners > button[aria-checked="true"] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--accent);
+}
+.chip.reminder-when { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.chip.add.reminder-when { background: var(--card-bg-solid); }
+.chip.reminder-when[aria-pressed="true"] { padding-inline-end: 2px; gap: 0; }
+.chip.reminder-when > button:first-child {
+  all: unset; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip.reminder-when .btn-x { width: 30px; height: 30px; min-width: 30px; color: inherit; }
+
+/* The add-item form's "already on the list" box (ChecklistTab). */
+.dup-box {
+  margin-top: 6px; padding: 8px 0 6px; padding-inline: 12px 4px;
+  border-radius: 12px; background: var(--butter);
+}
+.dup-box-title { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.dup-row { display: flex; align-items: center; gap: 8px; min-height: 34px; font-size: 13px; color: var(--text-main); }
+.dup-row-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dup-row-cat { flex-shrink: 0; font-size: 11px; color: var(--text-muted); }
+
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
@@ -2615,6 +2681,154 @@ div.section-header-toggle { cursor: default; }
   box-shadow: none;
 }
 
+/* ── "עמודת זמן": a place as a card with a stub (PlanningTab) ──
+   The main part reads like a short note on the place; the stub on the
+   inline-end side, tinted with the category's colour (--c), holds the
+   travel time and navigates. A dashed line parts them, a notch cut at
+   each end of it. The notches are a mask, so the page shows through
+   whatever is behind, and the shadow sits on the wrapper (a mask would
+   cut a shadow of the card's own). --c-ink is --c made readable as text. */
+.pstub-wrap {
+  filter: drop-shadow(0 1px 1px rgba(20, 20, 20, 0.05)) drop-shadow(0 6px 14px rgba(20, 20, 20, 0.06));
+}
+.pstub-wrap.visited, [data-theme="dark"] .pstub-wrap { filter: none; }
+.plan-card.pstub {
+  --stub-w: 78px;
+  --c-ink: color-mix(in srgb, var(--c) 75%, black);
+  flex-direction: row; align-items: stretch; gap: 0; padding: 0;
+  min-height: 96px; overflow: hidden; box-shadow: none; cursor: pointer;
+  -webkit-mask:
+    radial-gradient(circle 8px at var(--stub-w) 0, #0000 96%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 8px at var(--stub-w) 100%, #0000 96%, #000) bottom / 100% 51% no-repeat;
+  mask:
+    radial-gradient(circle 8px at var(--stub-w) 0, #0000 96%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 8px at var(--stub-w) 100%, #0000 96%, #000) bottom / 100% 51% no-repeat;
+}
+[dir="ltr"] .plan-card.pstub {
+  -webkit-mask:
+    radial-gradient(circle 8px at calc(100% - var(--stub-w)) 0, #0000 96%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 8px at calc(100% - var(--stub-w)) 100%, #0000 96%, #000) bottom / 100% 51% no-repeat;
+  mask:
+    radial-gradient(circle 8px at calc(100% - var(--stub-w)) 0, #0000 96%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 8px at calc(100% - var(--stub-w)) 100%, #0000 96%, #000) bottom / 100% 51% no-repeat;
+}
+[data-theme="dark"] .plan-card.pstub { --c-ink: color-mix(in srgb, var(--c) 55%, white); }
+.pstub-main {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 13px 14px 13px 12px; padding-inline: 14px 12px;
+}
+.pstub-head { display: flex; align-items: center; gap: 10px; }
+.pstub-title {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: 16px; font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+}
+.plan-card.visited .pstub-title { color: var(--text-muted); }
+.pstub-sub {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+}
+.pstub-sub > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pstub-desc {
+  margin: 0; font-size: 13px; font-weight: 500; line-height: 1.45; color: var(--c-slate);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+}
+.plan-card.visited .pstub-desc { color: var(--text-muted); }
+.pstub-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.pstub-stub {
+  width: var(--stub-w); flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 10px 4px; margin: 0;
+  border: none; border-inline-start: 2px dashed color-mix(in srgb, var(--c) 32%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--c) 11%, var(--card-bg-solid));
+  color: var(--c-ink);
+  font-family: var(--font-hebrew); text-align: center;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+button.pstub-stub { cursor: pointer; }
+button.pstub-stub:active { background: color-mix(in srgb, var(--c) 22%, var(--card-bg-solid)); transform: none; }
+.pstub-num {
+  font-size: 28px; font-weight: 900; line-height: 1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.pstub-unit, .pstub-alt, .pstub-go { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.pstub-unit { font-size: 11.5px; font-weight: 800; }
+.pstub-alt { margin-top: 3px; font-size: 11px; font-weight: 700; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.pstub-go {
+  margin-top: 7px; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  font-size: 10.5px; font-weight: 800;
+}
+.pstub-icon { display: flex; opacity: 0.8; }
+.plan-card.pstub.visited .pstub-stub {
+  background: var(--ink-4); color: var(--text-muted); border-inline-start-color: var(--ink-10);
+}
+.plan-card.pstub.visited .pstub-go { background: var(--ink-6); }
+.plan-card.pstub.event-today .pstub-stub { background: color-mix(in srgb, var(--c) 14%, transparent); }
+
+/* ── A place with a date (and time) ──
+   A fixed appointment, so it is the loudest thing on its card in every
+   layout: solid in the category's colour (--c), white type. Over, or
+   visited: quiet grey. --c-solid darkens the colour a touch so white
+   stays readable on the lighter category colours. */
+.pstub-stub.when, .plan-when-leaf, .plan-when-chip {
+  --c-solid: color-mix(in srgb, var(--c) 86%, black);
+}
+.plan-card.pstub .pstub-stub.when,
+.plan-card.pstub.event-today .pstub-stub.when {
+  background: var(--c-solid); color: #fff;
+  border-inline-start-color: transparent;
+}
+button.pstub-stub.when:active { background: color-mix(in srgb, var(--c) 70%, black); }
+.pstub-stub.when .pstub-num { font-size: 21px; letter-spacing: -0.01em; }
+.pstub-when-top { font-size: 12px; font-weight: 800; margin-bottom: 3px; }
+.pstub-stub.when .pstub-alt { opacity: 0.9; }
+.pstub-stub.when .pstub-go { background: rgba(255, 255, 255, 0.2); }
+.plan-card.pstub .pstub-stub.when.past {
+  background: var(--ink-6); color: var(--text-muted); border-inline-start-color: var(--ink-10);
+}
+.pstub-stub.when.past .pstub-go { background: var(--ink-6); }
+
+/* Compact row: a leaf off a calendar at the row's end. */
+.plan-when-leaf {
+  width: 54px; min-height: 54px; flex-shrink: 0; align-self: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 5px 2px; border-radius: 14px; line-height: 1;
+  background: var(--c-solid); color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.plan-when-leaf-top { font-size: 10.5px; font-weight: 800; }
+.plan-when-leaf-main { margin: 3px 0 2px; font-size: 16px; font-weight: 900; }
+.plan-when-leaf-sub { font-size: 10.5px; font-weight: 700; opacity: 0.9; }
+
+/* Grid tile: one solid line under the name. */
+.plan-when-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  margin-top: -2px; padding: 4px 9px; border-radius: 999px;
+  background: var(--c-solid); color: #fff;
+  font-size: 12px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.plan-when-chip > span { overflow: hidden; text-overflow: ellipsis; }
+.plan-when-leaf.past, .plan-when-chip.past { background: var(--ink-6); color: var(--text-muted); }
+
+/* The place form's "when" block. */
+.place-when {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px 14px; border-radius: 14px;
+  background: var(--surface-2);
+}
+.place-when[data-set] { background: color-mix(in srgb, var(--accent) 9%, var(--surface-2)); }
+.place-when-head {
+  display: flex; align-items: center; gap: 6px; min-height: 28px;
+  font-size: 13px; font-weight: 800; color: var(--accent);
+}
+.place-when-head > span { flex: 1; }
+.place-when-head .btn-x { width: 28px; height: 28px; min-width: 28px; }
+.place-when-hint { margin-top: -6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.place-when-error { font-size: 12.5px; font-weight: 700; color: var(--c-red); }
+
 /* The one control that stays on the card. A circle, not a form
    checkbox: it reports a state rather than collecting an answer. */
 .plan-visit-toggle, .check-circle {
@@ -3089,6 +3303,43 @@ body[data-fab] .app-content {
   border: 2px solid var(--card-bg-solid); margin-inline-start: -4px;
 }
 
+/* A category's emoji (typed from the keyboard) where its icon would be.
+   The phone's own emoji font, so a keycap or a flag is drawn as one. */
+.cat-emoji {
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1; font-style: normal;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.cat-disc.muted .cat-emoji { filter: grayscale(1); opacity: 0.55; }
+/* The emoji choice in the category settings: an icon button you type into. */
+.emoji-field {
+  --c: var(--accent);
+  position: relative; width: 38px; height: 38px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1.5px dashed var(--ink-20);
+  background: var(--card-bg-solid); color: var(--text-muted);
+}
+.emoji-field.on {
+  border: none;
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  box-shadow: 0 0 0 2px var(--c);
+}
+.emoji-field:focus-within { border-color: var(--accent); }
+.emoji-field > input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  padding: 0; border: none; border-radius: 50%; outline: none;
+  background: transparent; caret-color: transparent; text-align: center;
+  font-size: 20px; line-height: 38px; color: var(--text);
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.emoji-field > svg { pointer-events: none; }
+.emoji-field-hint {
+  position: absolute; top: calc(100% + 4px); inset-inline-start: 0; z-index: 2;
+  padding: 3px 8px; border-radius: 8px; white-space: nowrap;
+  background: var(--text); color: var(--modal-bg);
+  font-size: 11.5px; font-weight: 700;
+}
+
 /* A section of the planning pool: a category (or an area) under a header
    that stays in the list — not sticky — with a rule in its colour. */
 .plan-group-head {
@@ -3097,6 +3348,16 @@ body[data-fab] .app-content {
   border-bottom: 2px solid color-mix(in srgb, var(--c) 30%, transparent);
 }
 .plan-group-head .section-header-toggle { font-size: 17px; font-weight: 900; }
+/* The checklist's categories wear the same header, and its rule fills
+   with the colour as the category gets packed (--done, 0–100%). */
+.group-progress { position: relative; }
+.group-progress::after {
+  content: ''; position: absolute; bottom: -2px; inset-inline-start: 0;
+  width: var(--done, 0%); height: 2px; border-radius: 2px;
+  background: var(--c);
+  transition: width var(--dur-base) var(--ease-out);
+}
+
 .plan-group-head .section-header-icon {
   width: 32px; height: 32px; border-radius: 50%;
   align-items: center; justify-content: center;

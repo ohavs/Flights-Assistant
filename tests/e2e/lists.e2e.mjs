@@ -276,6 +276,52 @@ await step('checklist: a category has a visible ⋯ with rename and delete (no l
   await menu.waitFor({ state: 'detached' });
 });
 
+await step('checklist: category headers wear the group header, its rule tracks packing', async () => {
+  const heads = page.locator('.app-content .section-header');
+  const n = await heads.count();
+  if (!n || await page.locator('.app-content .section-header.plan-group-head.group-progress').count() !== n) throw new Error('a header is not the group header');
+  const rule = await heads.first().evaluate(el => {
+    const a = getComputedStyle(el, '::after');
+    return { h: parseFloat(a.height), w: a.width, line: getComputedStyle(el).borderBottomWidth };
+  });
+  if (rule.h !== 2 || rule.line !== '2px') throw new Error(`no rule under the header: ${JSON.stringify(rule)}`);
+  // The first category has one item ticked (above), so its rule is part-filled.
+  const done = await heads.first().evaluate(el => el.style.getPropertyValue('--done'));
+  if (!/^\d+%$/.test(done) || done === '0%') throw new Error(`--done is ${done}`);
+  await page.screenshot({ path: '.e2e/lists-checklist-heads.png' });
+});
+
+await step('checklist: a similar item can be deleted from the add form, after a confirmation', async () => {
+  const field = () => page.getByPlaceholder('למשל: סוודר, מטען');
+  await page.locator('button.fab', { hasText: 'פריט חדש' }).click();
+  await field().fill('מגבת חוף צהובה');
+  await page.locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.sheet-footer').waitFor({ state: 'detached' });
+  await page.locator('button.fab', { hasText: 'פריט חדש' }).click();
+  try {
+    await field().fill('חוף צהוב');
+    const row = page.locator('.modal-overlay .dup-row', { hasText: 'מגבת חוף צהובה' });
+    await row.waitFor();
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: '.e2e/lists-checklist-dup.png' });
+    // Cancelling the confirmation keeps it.
+    await row.getByRole('button', { name: 'מחיקת מגבת חוף צהובה' }).tap();
+    await page.getByRole('button', { name: 'בטל', exact: true }).tap();
+    await page.waitForTimeout(300);
+    if (!(await row.count())) throw new Error('cancel deleted it');
+    await row.getByRole('button', { name: 'מחיקת מגבת חוף צהובה' }).tap();
+    await page.getByRole('button', { name: 'מחק', exact: true }).tap();
+    await row.waitFor({ state: 'detached', timeout: 5000 });
+    // The form stays open, with what was typed.
+    if ((await field().inputValue()) !== 'חוף צהוב') throw new Error('the form lost its text');
+  } finally {
+    await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
+    const discard = page.getByRole('button', { name: 'צא בלי לשמור' });
+    if (await discard.isVisible({ timeout: 800 }).catch(() => false)) await discard.click();
+    await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  }
+});
+
 await step('reminders: a reminder can carry a time, and its card shows it', async () => {
   await page.locator('button[aria-label="תזכורות"]').click();
   const rem = page.getByRole('dialog', { name: 'תזכורות' });
@@ -296,6 +342,39 @@ await step('reminders: a reminder can carry a time, and its card shows it', asyn
   await rem.getByRole('button', { name: 'מחיקת התזכורת' }).waitFor();
   if ((await rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('button.check-circle').getAttribute('aria-pressed')) !== 'false') throw new Error('the tap ticked the reminder');
   await rem.getByRole('button', { name: 'בטל עריכה' }).tap();
+  await rem.locator('button[aria-label="סגור"]').first().click();
+  await rem.waitFor({ state: 'detached' });
+});
+
+await step('reminders: the time chip is a pill, the composer is one box, one height for every filter', async () => {
+  await page.locator('button[aria-label="תזכורות"]').click();
+  const rem = page.getByRole('dialog', { name: 'תזכורות' });
+  await rem.waitFor();
+  await page.waitForTimeout(350);
+  const chip = rem.getByRole('button', { name: 'שעה להתראה' });
+  const fit = await chip.evaluate(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, spill: el.scrollWidth - el.clientWidth }));
+  if (fit.w < fit.h * 2.5 || fit.spill > 1) throw new Error(`the time chip is squeezed: ${JSON.stringify(fit)}`);
+  // The chip, the text and send are inside one composer box.
+  const box = rem.locator('.reminder-composer');
+  await box.getByPlaceholder('כתוב תזכורת ושלח...').waitFor();
+  await box.getByRole('button', { name: 'שעה להתראה' }).waitFor();
+  // A second reminder, ticked: each filter now shows a different number.
+  await page.getByPlaceholder('כתוב תזכורת ושלח...').fill('להטעין מצלמה');
+  await rem.getByRole('button', { name: 'הוסף תזכורת' }).tap();
+  const added = rem.locator('.list-card', { hasText: 'להטעין מצלמה' });
+  await added.locator('button.check-circle').tap();
+  await added.waitFor({ state: 'detached' });
+  const heights = [];
+  for (let i = 0; i < 3; i++) {
+    await rem.locator('.segmented button').nth(i).tap();
+    await page.waitForTimeout(250);
+    heights.push(Math.round((await rem.boundingBox()).height));
+    if (i === 2) await page.screenshot({ path: '.e2e/lists-reminders.png' });
+  }
+  if (new Set(heights).size !== 1) throw new Error(`the sheet changes height: ${heights}`);
+  // The composer sits at the sheet's foot.
+  const [r, c] = [await rem.boundingBox(), await box.boundingBox()];
+  if (r.y + r.height - (c.y + c.height) > 40) throw new Error('the composer floats above the foot of the sheet');
   await rem.locator('button[aria-label="סגור"]').first().click();
   await rem.waitFor({ state: 'detached' });
 });

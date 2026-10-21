@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
-import { addCategory, saveCategory, removeCategory } from '../lib/categorySettings';
+import { addCategory, saveCategory, removeCategory, setCategoryIcon, setCategoryEmoji } from '../lib/categorySettings';
+import { lastEmoji } from '../lib/emoji';
 import { dayActivities, addActivities, updateActivity, removeActivity, swapActivities } from '../lib/dayActivities';
 import { localDay, isoDay } from '../lib/dates';
 import { changedFields } from '../lib/changes';
@@ -87,6 +88,7 @@ import {
   Check,
   Layers,
   LayoutList,
+  PanelLeft,
   LayoutGrid,
   Rows3,
   RefreshCw,
@@ -95,7 +97,6 @@ import {
   CalendarCheck,
   Footprints,
   Bus,
-  Sparkles,
   Sunrise,
   Sun,
   Sunset,
@@ -103,6 +104,9 @@ import {
   Pin,
   WifiOff,
   MapPinOff,
+  SmilePlus,
+  Wallet,
+  CalendarClock,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -207,19 +211,101 @@ function clusterByProximity(items, thresholdM) {
   return clusters;
 }
 
+/* A category's emoji, typed from the phone's own keyboard: tap, switch to
+   the emoji keyboard, pick one. Whatever was there is selected on focus,
+   so the new one replaces it; anything that is not an emoji is refused;
+   erasing it brings the icon back. Shaped like the icon buttons beside it. */
+function EmojiField({ value, color, label, disabled, onPick }) {
+  const [refused, setRefused] = useState(false);
+  const refuseTimer = useRef(null);
+  useEffect(() => () => clearTimeout(refuseTimer.current), []);
+  return (
+    <span className={`emoji-field${value ? ' on' : ''}`} style={{ '--c': color }}>
+      <input
+        type="text"
+        value={value}
+        aria-label={label}
+        title={refused ? 'רק אימוג׳י' : label}
+        disabled={disabled}
+        enterKeyHint="done"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        onFocus={e => e.target.select()}
+        onChange={e => {
+          const typed = e.target.value;
+          if (!typed.trim()) { if (value) onPick(''); return; }
+          const emoji = lastEmoji(typed);
+          if (!emoji) {
+            setRefused(true);
+            clearTimeout(refuseTimer.current);
+            refuseTimer.current = setTimeout(() => setRefused(false), 1600);
+            return;
+          }
+          setRefused(false);
+          if (emoji !== value) onPick(emoji);
+          e.target.blur();
+        }}
+      />
+      {!value && <SmilePlus size={16} aria-hidden="true" />}
+      {refused && <span className="emoji-field-hint" role="status">רק אימוג׳י</span>}
+    </span>
+  );
+}
+
+// A leg's time in the stub: the number big, its unit under it. From the
+// seconds when they were saved, else read back from the words.
+function stubTime(leg) {
+  if (!leg) return null;
+  let m = typeof leg.seconds === 'number' ? Math.round(leg.seconds / 60) : null;
+  if (m == null) {
+    const h = /(\d+)\s*שע/.exec(leg.duration || ''), mm = /(\d+)\s*דק/.exec(leg.duration || '');
+    if (!h && !mm) return null;
+    m = (h ? Number(h[1]) * 60 : 0) + (mm ? Number(mm[1]) : 0);
+  }
+  m = Math.max(m, 1);
+  if (m < 60) return { minutes: m, num: String(m), unit: "דק'" };
+  return { minutes: m, num: `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`, unit: "שע'" };
+}
+
+const DOW_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+
+// A place's date and time (`event`, any category since 8.66.0) as its card
+// shows it: "היום" / "מחר" or the weekday, the date, the time, an end when
+// it has one, and whether it is over.
+function placeWhen(ev) {
+  if (!ev?.startDate) return null;
+  const [y, m, d] = ev.startDate.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const day = new Date(y, m - 1, d);
+  const now = new Date();
+  const diff = Math.round((day - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+  const dm = (iso) => { const [, mm, dd] = iso.split('-'); return `${dd}.${mm}`; };
+  const until = ev.endDate && ev.endDate !== ev.startDate
+    ? `עד ${dm(ev.endDate)}${ev.endTime ? ` ${ev.endTime}` : ''}`
+    : ev.endTime ? `עד ${ev.endTime}` : '';
+  return {
+    rel: diff === 0 ? 'היום' : diff === 1 ? 'מחר' : null,
+    dow: DOW_HE[day.getDay()],
+    dm: dm(ev.startDate),
+    time: ev.startTime || '',
+    until,
+    today: diff === 0,
+    past: todayISO > (ev.endDate || ev.startDate),
+  };
+}
+
 // Card layouts for the places list. Each entry drives the density of the
-// card chrome, so every layout keeps the same behaviour (expand, navigate,
-// mark visited) and only the spacing changes.
+// card chrome; the list ones keep the same behaviour (open, navigate, mark
+// visited). "עמודת זמן" (stub) is a card of its own: everything about a
+// place you can read without opening it, and its travel time big in a
+// stub on the side that navigates. It replaced "מרווח" (8.65.0), so a
+// trip that had "מרווח" saved opens in it.
 const PLAN_LAYOUTS = {
-  comfortable: {
-    label: 'מרווח',
-    icon: LayoutList,
-    listGap: 14,
-    cardPad: '14px 14px',
-    iconBox: 42,
-    titleSize: 16,
-    headerGap: 12,
-    showSubtitle: true,
+  stub: {
+    label: 'עמודת זמן',
+    icon: PanelLeft,
+    listGap: 12,
     columns: 1,
   },
   compact: {
@@ -373,6 +459,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [eventEndDate, setEventEndDate] = useState('');
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
+  // A time was picked with no date: saving waits for one.
+  const [whenNeedsDate, setWhenNeedsDate] = useState(false);
   // Manual travel-time overrides (edit form only, in minutes)
   const [editWalkMins, setEditWalkMins] = useState('');
   const [editTransitMins, setEditTransitMins] = useState('');
@@ -413,8 +501,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [planLayout, setPlanLayout] = useState(() => {
     try {
       const saved = localStorage.getItem(`planLayout_${tripId}`);
-      return saved && PLAN_LAYOUTS[saved] ? saved : 'comfortable';
-    } catch { return 'comfortable'; }
+      if (saved === 'comfortable') return 'stub';
+      return saved && PLAN_LAYOUTS[saved] ? saved : 'stub';
+    } catch { return 'stub'; }
   });
   // How the list is broken into sections: none, by category, or by area
   // (proximity clusters). Remembered per trip, like the card layout.
@@ -926,6 +1015,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setEventEndDate('');
     setEventStartTime('');
     setEventEndTime('');
+    setWhenNeedsDate(false);
     setFormOriginId('hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
@@ -1001,6 +1091,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setEventEndDate(plan.event?.endDate || '');
     setEventStartTime(plan.event?.startTime || '');
     setEventEndTime(plan.event?.endTime || '');
+    setWhenNeedsDate(false);
     setFormOriginId(plan.distanceOriginId || 'hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
@@ -1109,13 +1200,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     e.preventDefault();
     if (!title.trim() || !tripId) return;
 
+    // A time needs a day to belong to.
+    if (eventStartTime && !eventStartDate) { setWhenNeedsDate(true); return; }
+    setWhenNeedsDate(false);
     const originId = formOriginId !== 'hotel' ? formOriginId : null;
-    const eventData = category === EVENTS_CATEGORY ? {
-      startDate: eventStartDate || null,
-      endDate: eventEndDate || null,
-      startTime: eventStartTime || null,
-      endTime: eventEndTime || null,
+    // Any place can carry a date and a time (`event`); only an event has an
+    // end. No date, no `event`, as before.
+    const whenOf = (v) => v.eventStartDate ? {
+      startDate: v.eventStartDate,
+      endDate: (v.category === EVENTS_CATEGORY && v.eventEndDate) || null,
+      startTime: v.eventStartTime || null,
+      endTime: (v.category === EVENTS_CATEGORY && v.eventEndTime) || null,
     } : null;
+    const eventData = whenOf({ category, eventStartDate, eventEndDate, eventStartTime, eventEndTime });
 
     if (editingId) {
       // Only what the edit changed, against the form as it opened (src/lib/
@@ -1129,10 +1226,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         price: (v.price || '').trim() || 'חינם',
         links: v.links || [],
         distanceOriginId: v.originId && v.originId !== 'hotel' ? v.originId : null,
-        event: v.category === EVENTS_CATEGORY ? {
-          startDate: v.eventStartDate || null, endDate: v.eventEndDate || null,
-          startTime: v.eventStartTime || null, endTime: v.eventEndTime || null,
-        } : null,
+        event: whenOf(v),
         priority: v.priority || null,
         needsReservation: !!v.needsReservation,
       });
@@ -1273,6 +1367,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   };
 
   const getCategoryIcon = useCallback((cat, size = 18) => {
+    // An emoji typed for the category wins over its icon.
+    const emoji = categorySettings[cat]?.emoji;
+    if (emoji) return <span className="cat-emoji" style={{ fontSize: Math.round(size * 1.1) }} aria-hidden="true">{emoji}</span>;
     const iconKey = categorySettings[cat]?.iconKey;
     const Icon = iconKey ? ICON_MAP[iconKey] : null;
     if (Icon) return <Icon size={size} />;
@@ -1474,7 +1571,18 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const detailPlan = detailPlanId ? plans.find(p => p.id === detailPlanId) || null : null;
 
   // Active card layout (density + column count).
-  const LO = PLAN_LAYOUTS[planLayout] || PLAN_LAYOUTS.comfortable;
+  const LO = PLAN_LAYOUTS[planLayout] || PLAN_LAYOUTS.stub;
+  // Which days of the schedule each place is on, in the days' order.
+  const plannedDays = useMemo(() => {
+    const byPlace = new Map();
+    days.forEach(d => (d.activities || []).forEach(a => {
+      if (!a.placeId) return;
+      const list = byPlace.get(a.placeId) || [];
+      if (!list.includes(d)) list.push(d);
+      byPlace.set(a.placeId, list);
+    }));
+    return byPlace;
+  }, [days]);
   // Small enough that two tiles still fit on a ~360px phone; auto-fill adds
   // more columns on wider screens.
   const gridMinCol = 148;
@@ -2093,30 +2201,43 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <span className={`switch${formNeedsReservation ? ' on danger' : ''}`} aria-hidden="true"><i /></span>
                   </button>
 
-                  {/* Event date/time — only for the events category */}
-                  {category === EVENTS_CATEGORY && (
-                    <div style={{
-                      background: 'var(--surface-2)',
-                      border: 'none',
-                      borderRadius: 12,
-                      padding: 14,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 12,
-                    }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Calendar size={14} /> מתי האירוע?
-                      </span>
-                      <div className="row-2" style={{ gap: 10 }}>
-                        <CustomDatePicker label="תאריך התחלה" value={eventStartDate} onChange={setEventStartDate} />
-                        <CustomDatePicker label="תאריך סיום (לא חובה)" value={eventEndDate} onChange={setEventEndDate} />
+                  {/* When: a date and a time, for any place (8.66.0), and an
+                      end as well for the events category. Optional; a place
+                      with a date is shown as a fixed appointment on its card. */}
+                  {(() => {
+                    const isEv = category === EVENTS_CATEGORY;
+                    const any = eventStartDate || eventStartTime || (isEv && (eventEndDate || eventEndTime));
+                    return (
+                      <div className="place-when" data-set={eventStartDate ? 'true' : undefined}>
+                        <div className="place-when-head">
+                          <Calendar size={14} aria-hidden="true" />
+                          <span>{isEv ? 'מתי האירוע?' : 'מתי? (לא חובה)'}</span>
+                          {any && (
+                            <button type="button" className="btn-x" aria-label="בלי תאריך ושעה" title="בלי תאריך ושעה"
+                              onClick={() => { setEventStartDate(''); setEventStartTime(''); setEventEndDate(''); setEventEndTime(''); }}>
+                              <X size={15} />
+                            </button>
+                          )}
+                        </div>
+                        {!isEv && !any && (
+                          <span className="place-when-hint">לסיור, הופעה או שולחן בתאריך ובשעה מסוימים. יוצג בבירור על הכרטיס.</span>
+                        )}
+                        <div className="row-2" style={{ gap: 10 }}>
+                          <CustomDatePicker label={isEv ? 'תאריך התחלה' : 'תאריך'} value={eventStartDate} onChange={setEventStartDate} />
+                          <CustomTimePicker label={isEv ? 'שעת התחלה' : 'שעה (לא חובה)'} value={eventStartTime} onChange={setEventStartTime} />
+                        </div>
+                        {isEv && (
+                          <div className="row-2" style={{ gap: 10 }}>
+                            <CustomDatePicker label="תאריך סיום (לא חובה)" value={eventEndDate} onChange={setEventEndDate} />
+                            <CustomTimePicker label="שעת סיום (לא חובה)" value={eventEndTime} onChange={setEventEndTime} />
+                          </div>
+                        )}
+                        {whenNeedsDate && eventStartTime && !eventStartDate && (
+                          <span className="place-when-error" role="alert">בחרו תאריך לשעה הזאת</span>
+                        )}
                       </div>
-                      <div className="row-2" style={{ gap: 10 }}>
-                        <CustomTimePicker label="שעת התחלה" value={eventStartTime} onChange={setEventStartTime} />
-                        <CustomTimePicker label="שעת סיום (לא חובה)" value={eventEndTime} onChange={setEventEndTime} />
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <div className="form-group">
                     <label>כתובת / מיקום</label>
@@ -2749,13 +2870,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 const isTile = LO.columns > 1;
 
                 // Event status (only for the events category)
-                const ev = plan.event;
-                const isEvent = plan.category === EVENTS_CATEGORY && ev?.startDate;
-                const isExpiredEvent = isEvent && (() => {
-                  const end = ev.endDate || ev.startDate;
-                  return todayISO > end;
-                })();
-                const isTodayEvent = isEvent && ev.startDate === todayISO;
+                // A date (and time) on the place, of any category: a fixed
+                // appointment, and every layout makes it stand out.
+                const when = placeWhen(plan.event);
+                const isEvent = !!when;
+                const isTodayEvent = isEvent && when.today;
 
                 // One quiet meta line under the title: what it is, when it is,
                 // how far it is, how many links it carries. No buttons, no
@@ -2763,8 +2882,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 const travel = travelSummary(plan);
                 const linkCount = (Array.isArray(plan.links) ? plan.links.length : 0);
                 const metaParts = [];
-                if (isEvent) metaParts.push({ key: 'when', Icon: Calendar, text: formatEventWhen(plan.event) });
-                else if (plan.category) metaParts.push({ key: 'category', text: plan.category });
+                if (plan.category) metaParts.push({ key: 'category', text: plan.category });
+                if (when?.until) metaParts.push({ key: 'until', Icon: Calendar, text: when.until });
                 if (travel.walk) metaParts.push({ key: 'walk', Icon: Footprints, text: travel.walk });
                 else if (travel.transit) metaParts.push({ key: 'transit', Icon: Bus, text: travel.transit });
                 if (linkCount > 0) metaParts.push({ key: 'links', Icon: Link2, text: String(linkCount) });
@@ -2776,17 +2895,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   </span>
                 ));
 
-                // At most one status pill per card, so the eye has a single
-                // thing to catch when scanning: today's event beats "must",
-                // and a finished event is worth flagging over both.
-                const pill =
-                  isTodayEvent && !plan.visited
-                    ? { text: 'היום', tone: 'sky', Icon: Sparkles }
-                  : isExpiredEvent && !plan.visited
-                    ? { text: 'נגמר', tone: 'muted' }
-                  : plan.priority === 'must' && !plan.visited
-                    ? { text: 'חובה', tone: 'butter', star: true }
-                    : null;
+                // "Must" as a pill. A date's "today" and "over" are said by
+                // the date itself (the stub, the leaf, the chip).
+                const pill = plan.priority === 'must' && !plan.visited
+                  ? { text: 'חובה', tone: 'butter', star: true }
+                  : null;
+                // The date as one solid block, in the category's colour.
+                const whenTop = when && (when.rel || when.dow);
+                const whenLine = when && `${when.rel || when.dow} ${when.dm}${when.time ? ` · ${when.time}` : ''}`;
 
                 const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
                 const cardRef = bindItemRef(plan.id);
@@ -2801,10 +2917,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                    tiny flag for "must" / "happening today". Everything else
                    is one tap away in the details sheet.                     */
                 if (isTile) {
-                  const flag =
-                    isTodayEvent && !plan.visited ? { title: 'היום' }
-                    : plan.priority === 'must' && !plan.visited ? { star: true, title: 'חובה' }
-                    : null;
+                  const flag = plan.priority === 'must' && !plan.visited ? { star: true, title: 'חובה' } : null;
                   return (
                     <div
                       key={plan.id}
@@ -2850,12 +2963,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         {plan.title}
                       </h3>
 
+                      {when && (
+                        <span className={`plan-when-chip${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
+                          <CalendarClock size={12} aria-hidden="true" />
+                          <span>{whenLine}</span>
+                        </span>
+                      )}
+
                       {/* Flags in the top corner (inline-end; the disc is at the start). */}
                       {(flag || (!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation))) && (
                         <span style={{ position: 'absolute', top: 12, insetInlineEnd: 12, display: 'flex', gap: 5 }}>
                           {flag && (
                             <span title={flag.title} style={{ display: 'flex', alignItems: 'center', color: 'var(--c-orange)', fontSize: 12, lineHeight: 1 }}>
-                              {flag.star ? <Star size={14} className="star-must" /> : <Sparkles size={14} aria-label="היום" />}
+                              <Star size={14} className="star-must" />
                             </span>
                           )}
                           {!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation) && (
@@ -2872,7 +2992,135 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   );
                 }
 
-                /* ── List row (מרווח / קומפקטי) ───────────────────────────── */
+                /* ── Stub card (עמודת זמן) ──────────────────────────────────
+                   Everything about the place you can read without opening
+                   it: its name, what and where it is, the start of its
+                   notes, then small tags (the day it is on, booking,
+                   price, links). The stub on the side holds how long it
+                   takes to get there — walking, or transit when the walk
+                   is long — and a tap on it navigates. The rest of the
+                   card opens the details sheet; the circle ticks it.     */
+                if (planLayout === 'stub') {
+                  const color = getCategoryColor(plan.category);
+                  const cache = distanceCache[`${plan.id}_${plan.distanceOriginId || 'hotel'}`];
+                  const ready = cache && !cache.loading && !cache.error;
+                  const walk = ready ? stubTime(cache.walk) : null;
+                  const transit = ready ? stubTime(cache.transit) : null;
+                  const byWalk = walk && (!transit || walk.minutes <= 30 || walk.minutes <= transit.minutes);
+                  const main = byWalk ? { ...walk, Icon: Footprints, mode: 'הליכה' } : transit ? { ...transit, Icon: Bus, mode: 'בתחבורה' } : null;
+                  const other = main && (byWalk ? transit && { ...transit, Icon: Bus } : walk && { ...walk, Icon: Footprints });
+                  const locs = getPlanLocations(plan);
+                  const area = plan.address && !/^https?:\/\//i.test(plan.address)
+                    ? plan.address.split(',')[0].trim() : '';
+                  const onDays = plannedDays.get(plan.id) || [];
+                  const booked = bookedPlaceIds.has(plan.id);
+                  const price = (plan.price || '').trim();
+                  const tags = [];
+                  if (pill) tags.push({ key: 'pill', tone: pill.tone, text: pill.text, icon: <Star size={11} className="star-must" /> });
+                  if (when?.until) tags.push({ key: 'until', tone: 'sky', text: when.until, icon: <Calendar size={11} aria-hidden="true" /> });
+                  if (onDays.length) {
+                    const d = onDays[0];
+                    const when = d.date ? (() => {
+                      const [, mm, dd] = d.date.split('-');
+                      return `${DOW_HE[(localDay(d.date) || new Date(d.date)).getDay()]} ${dd}.${mm}`;
+                    })() : d.title;
+                    tags.push({ key: 'day', tone: 'sky', text: onDays.length > 1 ? `${when} +${onDays.length - 1}` : when, icon: <Calendar size={11} aria-hidden="true" />, title: `בלוז: ${onDays.map(x => x.title).join(', ')}` });
+                  }
+                  if (!plan.visited && (booked || plan.needsReservation)) {
+                    tags.push(booked
+                      ? { key: 'book', tone: 'mint', text: 'הוזמן', icon: <Check size={11} strokeWidth={3} />, title: 'יש הזמנה בטאב ההזמנות' }
+                      : { key: 'book', tone: 'red', text: 'להזמין מראש', icon: <CalendarCheck size={11} />, title: 'צריך לסגור / להזמין מראש' });
+                  }
+                  if (plan.priority === 'optional' && !plan.visited) tags.push({ key: 'opt', tone: 'muted', text: 'אם יישאר זמן', icon: <Clock size={11} aria-hidden="true" /> });
+                  if (price && price !== 'חינם') tags.push({ key: 'price', tone: 'neutral', text: price, icon: <Wallet size={11} aria-hidden="true" /> });
+                  if (linkCount > 0) tags.push({ key: 'links', tone: 'neutral', text: String(linkCount), icon: <Link2 size={11} aria-hidden="true" />, title: `${linkCount} קישורים` });
+
+                  // A date takes the stub over: when, big, and the travel
+                  // time small under it. Solid in the category's colour, so
+                  // a fixed appointment is the first thing the eye finds.
+                  const stubBody = when ? (<>
+                    <span className="pstub-when-top">{whenTop}</span>
+                    <span className="pstub-num">{when.time || when.dm}</span>
+                    {when.time && <span className="pstub-unit">{when.dm}</span>}
+                    {main && <span className="pstub-alt"><main.Icon size={11} aria-hidden="true" />{main.num} {main.unit}</span>}
+                  </>) : main ? (<>
+                    <span className="pstub-num">{main.num}</span>
+                    <span className="pstub-unit"><main.Icon size={12} aria-hidden="true" />{main.unit}</span>
+                    {other && <span className="pstub-alt"><other.Icon size={11} aria-hidden="true" />{other.num} {other.unit}</span>}
+                  </>) : cache?.loading ? (
+                    <Loader2 size={20} className="spinning" aria-hidden="true" />
+                  ) : locs.length ? (<>
+                    <Navigation size={22} aria-hidden="true" />
+                    <span className="pstub-unit">ניווט</span>
+                  </>) : (
+                    <span className="pstub-icon">{getCategoryIcon(plan.category, 24)}</span>
+                  );
+                  const stubClass = `pstub-stub${when ? ' when' : ''}${when && (when.past || plan.visited) ? ' past' : ''}`;
+                  return (
+                    <div key={plan.id} ref={cardRef} className={`pstub-wrap${plan.visited ? ' visited' : ''}`}>
+                      <div
+                        className={`${cardClass} pstub`}
+                        onClick={() => openPlanDetail(plan.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={openOnKey}
+                        style={{ '--c': color }}
+                      >
+                        <div className="pstub-main">
+                          <div className="pstub-head">
+                            {(canEdit || plan.visited) && (
+                              <CheckCircle
+                                checked={!!plan.visited}
+                                onToggle={canEdit ? () => handleToggleVisited(plan) : undefined}
+                                label={plan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}
+                              />
+                            )}
+                            <h3 className="pstub-title">{plan.title}</h3>
+                          </div>
+                          <div className="pstub-sub">
+                            <CategoryDisc color={color} size={22} radius={7} muted={plan.visited}>
+                              {getCategoryIcon(plan.category, 12)}
+                            </CategoryDisc>
+                            {/* Where first: the disc already says what it is,
+                                and a long category name is what gets cut. */}
+                            <span>
+                              {area && <><bdi>{area}</bdi> · </>}
+                              {plan.category}
+                            </span>
+                          </div>
+                          {plan.description && <p className="pstub-desc">{plan.description}</p>}
+                          {tags.length > 0 && (
+                            <div className="pstub-tags">
+                              {tags.map(t => (
+                                <Pill key={t.key} size="sm" tone={t.tone} icon={t.icon} title={t.title}>{t.text}</Pill>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {locs.length ? (
+                          <button
+                            type="button"
+                            className={stubClass}
+                            aria-label={`ניווט אל ${plan.title}${when ? `, ${whenLine}` : ''}${main ? `, ${main.num} ${main.unit} ${main.mode}` : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (locs.length === 1) window.open(locs[0].url, '_blank', 'noreferrer');
+                              else setLocationsModal(plan);
+                            }}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            {stubBody}
+                            {(main || when) && <span className="pstub-go"><Navigation size={10} aria-hidden="true" />ניווט</span>}
+                          </button>
+                        ) : (
+                          <div className={stubClass} aria-label={when ? whenLine : undefined} aria-hidden={!main && !when}>{stubBody}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                /* ── List row (קומפקטי) ──────────────────────────────────── */
                 return (
                   <div
                     key={plan.id}
@@ -2961,8 +3209,18 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       })()}
                     </div>
 
-                    {/* Quiet "opens a panel" affordance (RTL: points inward) */}
-                    <ChevronLeft size={18} style={{ color: 'var(--ink-20)', flexShrink: 0 }} />
+                    {/* A date: a leaf off a calendar, solid in the category's
+                        colour, where the quiet chevron is otherwise. */}
+                    {when ? (
+                      <span className={`plan-when-leaf${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
+                        <span className="plan-when-leaf-top">{whenTop}</span>
+                        <span className="plan-when-leaf-main">{when.time || when.dm}</span>
+                        {when.time && <span className="plan-when-leaf-sub">{when.dm}</span>}
+                      </span>
+                    ) : (
+                      /* Quiet "opens a panel" affordance (RTL: points inward) */
+                      <ChevronLeft size={18} style={{ color: 'var(--ink-20)', flexShrink: 0 }} />
+                    )}
                   </div>
                 );
               };
@@ -3150,8 +3408,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   {detailPlan.visited && (
                     <Pill size="sm" tone="muted" icon={<Check size={11} strokeWidth={3} />}>ביקרנו</Pill>
                   )}
-                  {detailPlan.category === EVENTS_CATEGORY && detailPlan.event?.startDate && (
-                    <Pill size="sm" tone="sky" icon={<Calendar size={11} aria-hidden="true" />}>{formatEventWhen(detailPlan.event)}</Pill>
+                  {detailPlan.event?.startDate && (
+                    <Pill size="sm" tone="sky" icon={<CalendarClock size={11} aria-hidden="true" />}>{formatEventWhen(detailPlan.event)}</Pill>
                   )}
                 </div>
               </div>
@@ -3554,16 +3812,24 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       )}
                     </div>
 
-                    {/* Icon picker */}
+                    {/* Icon picker: an emoji from the keyboard first, then
+                        the icons. Picking either replaces the other. */}
                     <div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>אייקון</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>אייקון, או אימוג'י מהמקלדת</span>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        <EmojiField
+                          value={s.emoji || ''}
+                          color={color}
+                          label={`אימוג'י ל${cat}`}
+                          disabled={!canEdit}
+                          onPick={(e) => categoryWrite(() => setCategoryEmoji(db, tripId, cat, e))}
+                        />
                         {ICON_OPTIONS.map(({ key, Icon }) => {
-                          const selected = s.iconKey === key;
+                          const selected = !s.emoji && s.iconKey === key;
                           return (
                             <button key={key} type="button"
                               onClick={() => {
-                                categoryWrite(() => saveCategory(db, tripId, cat, { iconKey: key }));
+                                categoryWrite(() => setCategoryIcon(db, tripId, cat, key));
                               }}
                               title={key}
                               style={{
