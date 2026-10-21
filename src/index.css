@@ -1590,6 +1590,19 @@ textarea.form-control {
   transform: translateY(-1px);
 }
 
+/* A range: the days between the first and the last, as one stretch. */
+.cal-day.in-range { background: var(--p-8); color: var(--accent); font-weight: 800; border-radius: 8px; }
+.picker-readout-hint { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.picker-readout-time.range { font-size: 22px; direction: rtl; }
+/* A time range: two pairs of wheels, start on the right. Each side says
+   which end it is, so the wheels drop their own "שעה"/"דקה". */
+.time-range { display: flex; gap: 14px; }
+.time-range-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.time-range-label { text-align: center; font-size: 13px; font-weight: 900; color: var(--primary); }
+.time-range .wheel-label { display: none; }
+.time-range .wheels { gap: 2px; }
+.time-range .wheel-colon { font-size: 20px; }
+
 /* ── Time wheels ──
    The middle row is the value: a tinted band sits behind it, and the
    rows above and below fade out toward the edges. */
@@ -2713,11 +2726,16 @@ div.section-header-toggle { cursor: default; }
     radial-gradient(circle 8px at calc(100% - var(--stub-w)) 100%, #0000 96%, #000) bottom / 100% 51% no-repeat;
 }
 [data-theme="dark"] .plan-card.pstub { --c-ink: color-mix(in srgb, var(--c) 55%, white); }
+/* The text in the middle of the card's height, however tall the stub
+   makes it: the body sits in the middle row between two that share the
+   rest. The flags span all three rows, so they keep to the top. */
 .pstub-main {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column; gap: 6px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 1fr auto 1fr;
+  column-gap: 10px;
   padding: 13px 14px 13px 12px; padding-inline: 14px 12px;
 }
+.pstub-body { grid-area: 2 / 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .pstub-head { display: flex; align-items: center; gap: 10px; }
 .pstub-title {
   flex: 1; min-width: 0; margin: 0;
@@ -2736,12 +2754,59 @@ div.section-header-toggle { cursor: default; }
 }
 .plan-card.visited .pstub-desc { color: var(--text-muted); }
 .pstub-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+/* ── A category's theme on its cards (src/lib/categoryTheme.js) ──
+   [data-ct] on the part of the card that carries it (a stub card's main
+   part, a row, a tile): a tint of the category's colour (--c) and a
+   texture of things from its world in that colour — snowflakes and pines
+   for Christmas, bubbles for bars. Not on a visited card, which gives up
+   its surface (.plan-card.visited). Each texture is one tile drawn as a
+   mask, like the page's own (.app-container::before). */
+[data-ct] {
+  position: relative; isolation: isolate;
+  background: color-mix(in srgb, var(--c) 7%, var(--card-bg-solid));
+}
+[data-ct]::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  border-radius: inherit;
+  background: var(--c);
+  -webkit-mask: var(--ct-tex);
+  mask: var(--ct-tex);
+  opacity: 0.14;
+}
+[data-theme="dark"] [data-ct] { background: color-mix(in srgb, var(--c) 13%, var(--card-bg-solid)); }
+[data-theme="dark"] [data-ct]::before { opacity: 0.2; }
+[data-ct="christmas"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 18h12M15 12.8l6 10.4M15 23.2l6-10.4'/%3E%3Cpath d='M47.5 52h9M49.8 48.1l4.5 7.8M49.8 55.9l4.5-7.8'/%3E%3C/g%3E%3Cpath d='M56 6l6.5 9h-3.5l5 7.5h-16l5-7.5h-3.5z'/%3E%3Crect x='55' y='22.5' width='2' height='3'/%3E%3Cpath d='M22 46l5 7h-2.8l4 6h-12.4l4-6h-2.8z'/%3E%3Ccircle cx='36' cy='34' r='1.5'/%3E%3Ccircle cx='8' cy='62' r='1.2'/%3E%3Ccircle cx='66' cy='38' r='1.2'/%3E%3Ccircle cx='38' cy='8' r='1.1'/%3E%3C/svg%3E") 0 0 / 72px 72px; }
+[data-ct="food"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 8v6.5M13.5 8v6.5M17 8v6.5M10 14.5c0 3.2 7 3.2 7 0M13.5 17v11'/%3E%3Cpath d='M23 8c4 2.5 4 9 0 11.5M23 8v20'/%3E%3Ccircle cx='47' cy='45' r='9'/%3E%3Ccircle cx='47' cy='45' r='5'/%3E%3C/g%3E%3Ccircle cx='42' cy='14' r='1.3'/%3E%3Ccircle cx='14' cy='48' r='1.3'/%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="cafe"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='16' cy='17' rx='5.5' ry='8' transform='rotate(35 16 17)'/%3E%3Cpath d='M12.6 11.3c3.5 2.8 1.2 8.2 6.8 11.4'/%3E%3Cellipse cx='44' cy='44' rx='5.5' ry='8' transform='rotate(-30 44 44)'/%3E%3Cpath d='M40.2 38.8c3.8 2.4 1.5 8 7.6 10.4'/%3E%3C/g%3E%3Ccircle cx='44' cy='14' r='1.3'/%3E%3Ccircle cx='14' cy='46' r='1.3'/%3E%3C/svg%3E") 0 0 / 60px 60px; }
+[data-ct="bars"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='13' cy='14' r='5'/%3E%3Ccircle cx='24' cy='31' r='3'/%3E%3Ccircle cx='42' cy='10' r='2.5'/%3E%3Ccircle cx='46' cy='38' r='6'/%3E%3Ccircle cx='31' cy='52' r='3.5'/%3E%3C/g%3E%3Ccircle cx='12' cy='48' r='1.6'/%3E%3Ccircle cx='55' cy='55' r='1.4'/%3E%3Ccircle cx='34' cy='22' r='1.2'/%3E%3C/svg%3E") 0 0 / 60px 60px; }
+[data-ct="shopping"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 20h16l-1.8 15h-12.4z'/%3E%3Cpath d='M13 20v-2.5a4 4 0 0 1 8 0V20'/%3E%3Cpath d='M38 36h10l6 6-6 6H38z'/%3E%3Ccircle cx='42' cy='42' r='1.3'/%3E%3C/g%3E%3Ccircle cx='46' cy='14' r='1.3'/%3E%3Ccircle cx='16' cy='50' r='1.3'/%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="attractions"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cpath d='M16.0 9.5L17.7 13.6L22.2 14.0L18.8 16.9L19.8 21.3L16.0 18.9L12.2 21.3L13.2 16.9L9.8 14.0L14.3 13.6Z' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M44 32q1.5 6.5 8 8q-6.5 1.5-8 8q-1.5-6.5-8-8q6.5-1.5 8-8z'/%3E%3Cpath d='M48.0 8.8L48.8 10.8L51.0 11.0L49.4 12.4L49.9 14.6L48.0 13.4L46.1 14.6L46.6 12.4L45.0 11.0L47.2 10.8Z'/%3E%3Ccircle cx='14' cy='46' r='1.4'/%3E%3Ccircle cx='30' cy='30' r='1.1'/%3E%3C/svg%3E") 0 0 / 60px 60px; }
+[data-ct="sights"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 31s-7-7.5-7-12.5a7 7 0 0 1 14 0c0 5-7 12.5-7 12.5z'/%3E%3Ccircle cx='16' cy='18.5' r='2.4'/%3E%3Cpath d='M23 36c10 1 17 5 21 12' stroke-dasharray='0.1 4.5'/%3E%3Cpath d='M50 58s-4.5-4.8-4.5-8a4.5 4.5 0 0 1 9 0c0 3.2-4.5 8-4.5 8z'/%3E%3C/g%3E%3Ccircle cx='46' cy='14' r='1.3'/%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="museums"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8' y='10' width='20' height='15' rx='1'/%3E%3Crect x='11.5' y='13.5' width='13' height='8'/%3E%3Crect x='38' y='36' width='15' height='19' rx='1'/%3E%3Crect x='41.5' y='39.5' width='8' height='12'/%3E%3C/g%3E%3Ccircle cx='46' cy='14' r='1.3'/%3E%3Ccircle cx='16' cy='48' r='1.3'/%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="nature"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 29c0-12 8-19 19-19 0 11-7 19-19 19z'/%3E%3Cpath d='M9 29l12-12'/%3E%3Cpath d='M38 56c0-10 6-15 15-15 0 9-6 15-15 15z'/%3E%3Cpath d='M38 56l10-10'/%3E%3C/g%3E%3Ccircle cx='46' cy='16' r='1.3'/%3E%3Ccircle cx='16' cy='48' r='1.3'/%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="spa"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 32c-4-4 4-6 0-11s4-7 0-11'/%3E%3Cpath d='M20 32c-4-4 4-6 0-11s4-7 0-11'/%3E%3Ccircle cx='45' cy='42' r='5'/%3E%3Ccircle cx='53' cy='26' r='2.5'/%3E%3Ccircle cx='36' cy='55' r='2'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="events"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect x='9' y='10' width='7' height='3' rx='1' transform='rotate(30 12.5 11.5)'/%3E%3Crect x='41' y='14' width='7' height='3' rx='1' transform='rotate(-25 44.5 15.5)'/%3E%3Crect x='22' y='42' width='7' height='3' rx='1' transform='rotate(65 25.5 43.5)'/%3E%3Crect x='48' y='46' width='7' height='3' rx='1' transform='rotate(15 51.5 47.5)'/%3E%3Cpath d='M27 25q2.5-4 5 0t5 0' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='14' cy='54' r='2'/%3E%3Ccircle cx='57' cy='31' r='1.6'/%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="transport"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M0 18h64' stroke-dasharray='5 5'/%3E%3Ccircle cx='20' cy='18' r='2.6' fill='%23000'/%3E%3Cpath d='M0 48h64' stroke-dasharray='5 5' stroke-dashoffset='5'/%3E%3Ccircle cx='50' cy='48' r='2.6' fill='%23000'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 64px 64px; }
+[data-ct="info"] { --ct-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ccircle cx='10' cy='10' r='1.4'/%3E%3Ccircle cx='30' cy='30' r='1.4'/%3E%3C/svg%3E") 0 0 / 40px 40px; }
+.ct-santa { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 44'%3E%3Cpath d='M7 33C9 18 20 7 35 7c7 0 12 4 13 11-4-3-9-3-12 0-4 4-5 9-5 15z' fill='%23D62828'/%3E%3Cpath d='M35 7c7 0 12 4 13 11-4-3-9-3-12 0-1-5-1-8-1-11z' fill='%23B01E1E'/%3E%3Crect x='3' y='30' width='32' height='10' rx='5' fill='%23fff' stroke='%23E3E3E3' stroke-width='1'/%3E%3Ccircle cx='48.5' cy='19' r='5.5' fill='%23fff' stroke='%23E3E3E3' stroke-width='1'/%3E%3C/svg%3E"); }
+/* The ornament: a Santa hat hung on the card's top corner, on the start
+   side (the right, in Hebrew). On the stub card's wrapper, since the card
+   itself is masked for its notches. */
+.ct-ornament {
+  position: absolute; z-index: 2; pointer-events: none;
+  top: -14px; inset-inline-start: -13px;
+  width: 52px; height: 41px;
+  background-position: center; background-size: contain; background-repeat: no-repeat;
+  transform: rotate(30deg);
+}
+[dir="ltr"] .ct-ornament { transform: scaleX(-1) rotate(30deg); }
+.pstub-wrap:has(.ct-ornament) { position: relative; }
+
 /* "Must" and booking: top corner of the card, by the stub, stacked at one
-   width. Part of the head row, so the title wraps beside them. */
-.pstub-head:has(.pstub-flags) { align-items: flex-start; }
-.pstub-head:has(.pstub-flags) > .check-circle { margin-top: 1px; }
+   width. A column of their own, so the title wraps beside them. */
 .pstub-flags {
-  flex-shrink: 0; display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  grid-area: 1 / 2 / 4 / 3; align-self: start;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
   margin-inline-end: -4px;
 }
 .pstub-flag {
@@ -2845,6 +2910,12 @@ button.pstub-stub.when:active { background: color-mix(in srgb, var(--c) 70%, bla
 }
 .place-when-head > span { flex: 1; }
 .place-when-head .btn-x { width: 28px; height: 28px; min-width: 28px; }
+/* "טווח": the switch at the end of the head row. */
+.place-when-range {
+  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+  padding: 2px 0; border: none; background: none; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800; color: var(--text);
+}
 .place-when-hint { margin-top: -6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .place-when-error { font-size: 12.5px; font-weight: 700; color: var(--c-red); }
 
@@ -3359,20 +3430,51 @@ body[data-fab] .app-content {
   font-size: 11.5px; font-weight: 700;
 }
 
+/* Planning's sticky stack (the owner's ask): a category's header glued
+   to the very top of the scroll area, and the toolbar's floating buttons
+   right under it. top: -16px undoes .app-content's padding — with 0 a
+   sticky row stops inside it and the cards show through above it. With
+   no category headers the toolbar itself goes to the top. */
+:root { --plan-head-h: 56px; }
+.plan-toolbar-dock { position: sticky; top: -16px; z-index: 5; padding: 6px 0 10px; }
+.plan-toolbar-dock.under-head { top: calc(var(--plan-head-h) - 16px); }
+
 /* A section of the planning pool: a category (or an area) under a header
-   with a rule in its colour. A category's stays on top, under the sticky
-   toolbar (6 + 44 + 10px), while its own places scroll; the section ends
-   and the next one's takes over. Opaque, edge to edge, so nothing shows
-   through. */
+   with a rule in its colour. A category's stays on top while its own
+   places scroll; the section ends and the next one's takes over. */
 .plan-group-head {
   --c: var(--accent);
   padding: 2px 2px 8px;
   border-bottom: 2px solid color-mix(in srgb, var(--c) 30%, transparent);
 }
 .plan-group-head.stuck {
-  position: sticky; top: 60px; z-index: 4;
-  margin-inline: -16px; padding: 8px 18px;
-  background: var(--body-bg);
+  position: sticky; top: -16px; z-index: 4;
+  height: var(--plan-head-h); box-sizing: border-box;
+  margin-inline: -16px; padding: 0 18px;
+}
+/* Stuck (data-stuck, set on scroll in PlanningTab), it hides what scrolls
+   under it with the app's own background: the colour, the rule over it,
+   and the texture lined up with the one behind the page (--tex-at), so
+   the row does not read as a band. In the flow it has no background. */
+.plan-group-head[data-stuck]::before,
+.plan-group-head[data-stuck]::after {
+  content: ''; position: absolute; z-index: -1; pointer-events: none;
+}
+.plan-group-head[data-stuck]::before {
+  inset: 0 0 -2px;
+  background:
+    linear-gradient(to top, color-mix(in srgb, var(--c) 30%, var(--body-bg)) 2px, transparent 2px),
+    var(--bg-gradient);
+}
+.plan-group-head[data-stuck]::after {
+  inset: 0;
+  display: var(--texture-display, none);
+  background: var(--texture-fill, var(--brand));
+  -webkit-mask: var(--texture-mask, none);
+  mask: var(--texture-mask, none);
+  -webkit-mask-position: var(--tex-at, 0 0);
+  mask-position: var(--tex-at, 0 0);
+  opacity: calc(var(--texture-opacity, 1) * var(--texture-opacity-dark, 1));
 }
 
 /* Duplicates: the note over the list, and the mark on a tile. */

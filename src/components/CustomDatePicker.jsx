@@ -35,6 +35,17 @@ export function formatHebrewDate(dateStr) {
   return `${d.getDate()} ב${MONTHS_HE[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// A range of days, as short as it reads: "13–15 בנובמבר 2026",
+// "28 בנובמבר – 2 בדצמבר 2026". No end, or the same day: just the day.
+function formatHebrewDateRange(start, end) {
+  if (!start) return '';
+  if (!end || end === start) return formatHebrewDate(start);
+  const a = parseDateISO(start), b = parseDateISO(end);
+  if (a.getFullYear() !== b.getFullYear()) return `${formatHebrewDate(start)} – ${formatHebrewDate(end)}`;
+  if (a.getMonth() === b.getMonth()) return `${a.getDate()}–${b.getDate()} ב${MONTHS_HE[a.getMonth()]} ${a.getFullYear()}`;
+  return `${a.getDate()} ב${MONTHS_HE[a.getMonth()]} – ${b.getDate()} ב${MONTHS_HE[b.getMonth()]} ${b.getFullYear()}`;
+}
+
 // Helper to display formatted datetime in Hebrew
 export function formatHebrewDateTime(dateTimeStr) {
   if (!dateTimeStr) return 'בחר תאריך ושעה';
@@ -89,7 +100,9 @@ function PickerDialog({ title, onClose, readout, okLabel, onOk, children }) {
 /* ══════════════════════════════════════════════════════════
    CALENDAR CORE COMPONENT
    ══════════════════════════════════════════════════════════ */
-function CalendarBody({ selectedDateStr, onSelect }) {
+// `rangeEnd`: a range's last day; the days from the selected one to it
+// are marked as one stretch.
+function CalendarBody({ selectedDateStr, onSelect, rangeEnd }) {
   const initialDate = selectedDateStr ? parseDateISO(selectedDateStr) : new Date();
   const [currentYear, setCurrentYear] = useState(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth()); // 0-11
@@ -153,14 +166,15 @@ function CalendarBody({ selectedDateStr, onSelect }) {
           }
 
           const thisDateStr = formatDateISO(new Date(currentYear, currentMonth, item.dayNum));
-          const isSelected = selectedDateStr === thisDateStr;
+          const isSelected = selectedDateStr === thisDateStr || rangeEnd === thisDateStr;
           const isToday = todayStr === thisDateStr;
+          const inRange = !!rangeEnd && thisDateStr > selectedDateStr && thisDateStr < rangeEnd;
 
           return (
             <button
               key={`day-${item.dayNum}`}
               type="button"
-              className={`cal-day${isToday ? ' is-today' : ''}`}
+              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}`}
               aria-pressed={isSelected}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => onSelect(thisDateStr)}
@@ -427,6 +441,112 @@ export function CustomTimePicker({ value, onChange, label, required }) {
           onOk={handleSave}
         >
           <TimeWheels hour={tempH} minute={tempM} onHour={setTempH} onMinute={setTempM} />
+        </PickerDialog>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   RANGES — a first and a last day, a start and an end time
+   ══════════════════════════════════════════════════════════ */
+// One calendar: a tap picks the first day, the next the last (or, before
+// the first, a new first day). One tap and "בחירה" is a single day.
+export function CustomDateRangePicker({ start, end, onChange, label }) {
+  const [isOpen, setIsOpen] = useState(false);
+  useBackHandler(isOpen, () => setIsOpen(false));
+  const [from, setFrom] = useState(start || '');
+  const [to, setTo] = useState(end || '');
+  const open = () => {
+    setFrom(start || formatDateISO(new Date()));
+    setTo(end && end !== start ? end : '');
+    setIsOpen(true);
+  };
+  const pick = (d) => {
+    if (!from || to || d < from) { setFrom(d); setTo(''); }
+    else if (d === from) setTo('');
+    else setTo(d);
+  };
+  const handleSave = () => {
+    onChange(from, to);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="field-wrap">
+      {label && <label className="field-label">{label}</label>}
+      <PickerField Icon={CalendarIcon} filled={!!start} onOpen={open}>
+        {start ? formatHebrewDateRange(start, end) : 'בחר תאריכים...'}
+      </PickerField>
+      {isOpen && (
+        <PickerDialog
+          title={label || 'בחירת תאריכים'}
+          onClose={() => setIsOpen(false)}
+          readout={<>
+            {formatHebrewDateRange(from, to)}
+            {!to && <span className="picker-readout-hint">ועכשיו היום האחרון (או "בחירה" ליום אחד)</span>}
+          </>}
+          okLabel="בחירה"
+          onOk={handleSave}
+        >
+          <CalendarBody selectedDateStr={from} rangeEnd={to} onSelect={pick} />
+        </PickerDialog>
+      )}
+    </div>
+  );
+}
+
+// Add an hour to "HH:MM", round the clock.
+const plusHour = (hh, mm) => ({ hh: String((Number(hh) + 1) % 24).padStart(2, '0'), mm });
+
+// Both ends in one window, side by side: start on the right, as it reads.
+// With no end yet it opens an hour after the start, so a one-hour slot is
+// a single tap on "בחירה".
+export function CustomTimeRangePicker({ start, end, onChange, label }) {
+  const [isOpen, setIsOpen] = useState(false);
+  useBackHandler(isOpen, () => setIsOpen(false));
+  const [a, setA] = useState(parseTime(start));
+  const [b, setB] = useState(parseTime(end));
+  const open = () => {
+    const s = parseTime(start);
+    setA(s);
+    setB(end ? parseTime(end) : plusHour(s.hh, s.mm));
+    setIsOpen(true);
+  };
+  const handleSave = () => {
+    onChange(`${a.hh}:${a.mm}`, `${b.hh}:${b.mm}`);
+    setIsOpen(false);
+  };
+  const text = start
+    ? (end ? `${formatHebrewTime(start)} – ${formatHebrewTime(end)}` : `מ־${formatHebrewTime(start)}`)
+    : '';
+
+  return (
+    <div className="field-wrap">
+      {label && <label className="field-label">{label}</label>}
+      <PickerField Icon={Clock} filled={!!start} onOpen={open}>
+        <span className="picker-field-num">{text || 'בחר שעות...'}</span>
+      </PickerField>
+      {isOpen && (
+        <PickerDialog
+          title={label || 'בחירת שעות'}
+          onClose={() => setIsOpen(false)}
+          readout={<span className="picker-readout-time range">{a.hh}:{a.mm} – {b.hh}:{b.mm}</span>}
+          okLabel="בחירה"
+          onOk={handleSave}
+        >
+          <div className="time-range">
+            <div className="time-range-side">
+              <span className="time-range-label">התחלה</span>
+              <TimeWheels hour={a.hh} minute={a.mm}
+                onHour={(hh) => setA(v => ({ ...v, hh }))} onMinute={(mm) => setA(v => ({ ...v, mm }))} />
+            </div>
+            <div className="time-range-side">
+              <span className="time-range-label">סיום</span>
+              <TimeWheels hour={b.hh} minute={b.mm}
+                onHour={(hh) => setB(v => ({ ...v, hh }))} onMinute={(mm) => setB(v => ({ ...v, mm }))} />
+            </div>
+          </div>
         </PickerDialog>
       )}
     </div>

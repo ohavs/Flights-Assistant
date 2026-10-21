@@ -40,7 +40,8 @@ import {
   fetchTravelTimes,
   knownPlaceCoords,
 } from '../services/distanceApi';
-import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
+import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
+import { categoryTheme, THEMES } from '../lib/categoryTheme';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
@@ -461,6 +462,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [eventEndDate, setEventEndDate] = useState('');
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
+  // "טווח": a first and a last day, a start and an end time. Off, the end
+  // is kept in the form (switching back brings it) but not saved.
+  const [whenRange, setWhenRange] = useState(false);
+  const endDateOn = whenRange ? eventEndDate : '';
+  const endTimeOn = whenRange ? eventEndTime : '';
   // A time was picked with no date: saving waits for one.
   const [whenNeedsDate, setWhenNeedsDate] = useState(false);
   // Manual travel-time overrides (edit form only, in minutes)
@@ -499,11 +505,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [showSortMenu, setShowSortMenu] = useState(false);
   // The phone's back gesture closes the options sheet before anything else.
   const optionsBtnRef = useRef(null);
-  // Card layout, remembered per trip.
+  // Card layout, remembered per trip. 8.69.0 (the owner's ask): everyone
+  // starts on stub cards in category sections, even with an older choice
+  // saved — so the keys are new ("2"); a choice made from here on is kept.
   const [planLayout, setPlanLayout] = useState(() => {
     try {
-      const saved = localStorage.getItem(`planLayout_${tripId}`);
-      if (saved === 'comfortable') return 'stub';
+      const saved = localStorage.getItem(`planLayout2_${tripId}`);
       return saved && PLAN_LAYOUTS[saved] ? saved : 'stub';
     } catch { return 'stub'; }
   });
@@ -511,9 +518,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // (proximity clusters). Remembered per trip, like the card layout.
   const [groupBy, setGroupBy] = useState(() => {
     try {
-      const saved = localStorage.getItem(`planGroupBy_${tripId}`);
-      return ['none', 'category', 'area'].includes(saved) ? saved : 'none';
-    } catch { return 'none'; }
+      const saved = localStorage.getItem(`planGroupBy2_${tripId}`);
+      return ['none', 'category', 'area'].includes(saved) ? saved : 'category';
+    } catch { return 'category'; }
   });
   // Quick way to get finished places out of the way in a long list.
   const [hideVisited, setHideVisited] = useState(false);
@@ -794,11 +801,15 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // initializer above — the trip UI unmounts when you go back to the trip
   // list, so the layout is re-read on every entry into a trip.
   useEffect(() => {
-    if (tripId) localStorage.setItem(`planLayout_${tripId}`, planLayout);
+    if (!tripId) return;
+    localStorage.setItem(`planLayout2_${tripId}`, planLayout);
+    localStorage.removeItem(`planLayout_${tripId}`);
   }, [planLayout, tripId]);
 
   useEffect(() => {
-    if (tripId) localStorage.setItem(`planGroupBy_${tripId}`, groupBy);
+    if (!tripId) return;
+    localStorage.setItem(`planGroupBy2_${tripId}`, groupBy);
+    localStorage.removeItem(`planGroupBy_${tripId}`);
   }, [groupBy, tripId]);
 
   /* ══════════════════════════════════════════════════════════
@@ -1038,6 +1049,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setEventEndDate('');
     setEventStartTime('');
     setEventEndTime('');
+    setWhenRange(false);
     setWhenNeedsDate(false);
     setFormOriginId('hotel');
     setOriginDropOpen(false);
@@ -1071,7 +1083,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // every time, even when nothing changed.
   const currentPlanForm = () => planFormKey({
     title, category, description, address, price, links, newLinkLabel, newLinkUrl,
-    eventStartDate, eventEndDate, eventStartTime, eventEndTime,
+    eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn,
     originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
     walkMins: editWalkMins, transitMins: editTransitMins,
   });
@@ -1114,6 +1126,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setEventEndDate(plan.event?.endDate || '');
     setEventStartTime(plan.event?.startTime || '');
     setEventEndTime(plan.event?.endTime || '');
+    setWhenRange(!!(plan.event?.endDate || plan.event?.endTime));
     setWhenNeedsDate(false);
     setFormOriginId(plan.distanceOriginId || 'hotel');
     setOriginDropOpen(false);
@@ -1224,18 +1237,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     if (!title.trim() || !tripId) return;
 
     // A time needs a day to belong to.
-    if (eventStartTime && !eventStartDate) { setWhenNeedsDate(true); return; }
+    if ((eventStartTime || endTimeOn) && !eventStartDate) { setWhenNeedsDate(true); return; }
     setWhenNeedsDate(false);
     const originId = formOriginId !== 'hotel' ? formOriginId : null;
-    // Any place can carry a date and a time (`event`); only an event has an
-    // end. No date, no `event`, as before.
+    // Any place can carry a date and a time (`event`), and with "טווח" an
+    // end as well (8.69.0; only events had one before). A last day that is
+    // the first is no range. No date, no `event`, as before.
     const whenOf = (v) => v.eventStartDate ? {
       startDate: v.eventStartDate,
-      endDate: (v.category === EVENTS_CATEGORY && v.eventEndDate) || null,
+      endDate: (v.eventEndDate && v.eventEndDate !== v.eventStartDate && v.eventEndDate) || null,
       startTime: v.eventStartTime || null,
-      endTime: (v.category === EVENTS_CATEGORY && v.eventEndTime) || null,
+      endTime: v.eventEndTime || null,
     } : null;
-    const eventData = whenOf({ category, eventStartDate, eventEndDate, eventStartTime, eventEndTime });
+    const eventData = whenOf({ eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn });
 
     if (editingId) {
       // Only what the edit changed, against the form as it opened (src/lib/
@@ -1259,7 +1273,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       const opened = editBaseline ? Object.fromEntries(JSON.parse(editBaseline).map((x, i) => [FORM_KEYS[i], x])) : null;
       const updates = changedFields(opened ? fieldsOf(opened) : {}, fieldsOf({
         title, category, description, address, price, links,
-        eventStartDate, eventEndDate, eventStartTime, eventEndTime,
+        eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn,
         originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
       }));
       // Resolved location depends on address / links / chosen origin — if any
@@ -1353,6 +1367,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setEventEndDate('');
     setEventStartTime('');
     setEventEndTime('');
+    setWhenRange(false);
     setEditWalkMins('');
     setEditTransitMins('');
     setFormPriority(null);
@@ -1365,8 +1380,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
      rendering, and a wrapper reading a ref that an effect fills would be
      undefined on the very first paint. They depend only on the category
      settings, which change rarely, so the memo still holds nearly always. */
+  // A category's theme (src/lib/categoryTheme.js): its cards' texture and
+  // ornament, and its colour when none was picked and it has no default.
+  const getCategoryTheme = useCallback(
+    (cat) => categoryTheme(cat, categorySettings[cat]?.emoji), [categorySettings]);
   const getCategoryColor = useCallback(
-    (cat) => categorySettings[cat]?.color || DEFAULT_CATEGORY_COLORS[cat] || '#4F46E5', [categorySettings]);
+    (cat) => categorySettings[cat]?.color || DEFAULT_CATEGORY_COLORS[cat]
+      || THEMES[categoryTheme(cat, categorySettings[cat]?.emoji)]?.hue || '#4F46E5', [categorySettings]);
 
   // Compact Hebrew "when" string for an event: "12.06" / "12.06–14.06 · 20:30-23:00"
   const formatEventWhen = (ev) => {
@@ -1695,6 +1715,47 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       if (!folded) items.forEach(p => renderItems.push(p));
     });
   }
+
+  // A category's header sticks to the top, with the toolbar under it.
+  // Stuck, it carries the page's background (data-stuck, index.css), the
+  // texture lined up with the page's own (--tex-at): measured here, as
+  // the header's offset from the frame the page texture is drawn on.
+  const headsStick = catGrouped && filteredPlans.length > 0;
+  const poolListRef = useRef(null);
+  const markStuck = useCallback(() => {
+    const list = poolListRef.current;
+    const scroller = list?.closest('.app-content');
+    const frame = list?.closest('.app-container');
+    if (!scroller || !frame) return;
+    const top = scroller.getBoundingClientRect().top;
+    const f = frame.getBoundingClientRect();
+    list.querySelectorAll('.plan-group-head.stuck').forEach(h => {
+      const r = h.getBoundingClientRect();
+      if (r.top <= top + 0.5 && r.bottom > top) {
+        h.dataset.stuck = '';
+        h.style.setProperty('--tex-at', `${f.left - r.left}px ${f.top - r.top}px`);
+      } else if ('stuck' in h.dataset) {
+        delete h.dataset.stuck;
+      }
+    });
+  }, []);
+  useEffect(() => { markStuck(); });
+  useEffect(() => {
+    if (subTab !== 'pool' || !headsStick) return undefined;
+    const scroller = poolListRef.current?.closest('.app-content');
+    if (!scroller) return undefined;
+    let raf = 0;
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; markStuck(); });
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      scroller.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [subTab, headsStick, markStuck]);
 
   /* ══════════════════════════════════════════════════════════
      DAILY PLANNER OPERATIONS
@@ -2247,12 +2308,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     <span className={`switch${formNeedsReservation ? ' on danger' : ''}`} aria-hidden="true"><i /></span>
                   </button>
 
-                  {/* When: a date and a time, for any place (8.66.0), and an
-                      end as well for the events category. Optional; a place
-                      with a date is shown as a fixed appointment on its card. */}
+                  {/* When: a date and a time, for any place (8.66.0). "טווח"
+                      turns both into ranges, a first and a last day and a
+                      start and an end time (8.69.0). Optional; a place with
+                      a date is shown as a fixed appointment on its card. */}
                   {(() => {
                     const isEv = category === EVENTS_CATEGORY;
-                    const any = eventStartDate || eventStartTime || (isEv && (eventEndDate || eventEndTime));
+                    const any = eventStartDate || eventStartTime || endDateOn || endTimeOn;
                     return (
                       <div className="place-when" data-set={eventStartDate ? 'true' : undefined}>
                         <div className="place-when-head">
@@ -2264,21 +2326,27 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               <X size={15} />
                             </button>
                           )}
+                          <button type="button" role="switch" aria-checked={whenRange} className="place-when-range"
+                            onClick={() => setWhenRange(v => !v)}>
+                            <span>טווח</span>
+                            <span className={`switch${whenRange ? ' on' : ''}`} aria-hidden="true"><i /></span>
+                          </button>
                         </div>
                         {!isEv && !any && (
                           <span className="place-when-hint">לסיור, הופעה או שולחן בתאריך ובשעה מסוימים. יוצג בבירור על הכרטיס.</span>
                         )}
-                        <div className="row-2" style={{ gap: 10 }}>
-                          <CustomDatePicker label={isEv ? 'תאריך התחלה' : 'תאריך'} value={eventStartDate} onChange={setEventStartDate} />
-                          <CustomTimePicker label={isEv ? 'שעת התחלה' : 'שעה (לא חובה)'} value={eventStartTime} onChange={setEventStartTime} />
-                        </div>
-                        {isEv && (
+                        {whenRange ? (<>
+                          <CustomDateRangePicker label="תאריכים" start={eventStartDate} end={eventEndDate}
+                            onChange={(a, b) => { setEventStartDate(a); setEventEndDate(b); }} />
+                          <CustomTimeRangePicker label="שעות (לא חובה)" start={eventStartTime} end={eventEndTime}
+                            onChange={(a, b) => { setEventStartTime(a); setEventEndTime(b); }} />
+                        </>) : (
                           <div className="row-2" style={{ gap: 10 }}>
-                            <CustomDatePicker label="תאריך סיום (לא חובה)" value={eventEndDate} onChange={setEventEndDate} />
-                            <CustomTimePicker label="שעת סיום (לא חובה)" value={eventEndTime} onChange={setEventEndTime} />
+                            <CustomDatePicker label="תאריך" value={eventStartDate} onChange={setEventStartDate} />
+                            <CustomTimePicker label="שעה (לא חובה)" value={eventStartTime} onChange={setEventStartTime} />
                           </div>
                         )}
-                        {whenNeedsDate && eventStartTime && !eventStartDate && (
+                        {whenNeedsDate && (eventStartTime || endTimeOn) && !eventStartDate && (
                           <span className="place-when-error" role="alert">בחרו תאריך לשעה הזאת</span>
                         )}
                       </div>
@@ -2621,18 +2689,12 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             </Sheet>
           )}
 
-          {/* Filter pill + search and options buttons — sticky. The row
-              itself has no background (the owner's ask): stuck below the
-              content's padding, a band left a strip of the cards showing
-              above it. Each control carries its own colour, and the cards
-              scroll under them. */}
-          <div style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 5,
-            paddingTop: '6px',
-            paddingBottom: '10px',
-          }}>
+          {/* Filter pill + search and options buttons — sticky, under the
+              stuck category header when there is one (.plan-toolbar-dock).
+              The row itself has no background (the owner's ask): each
+              control carries its own colour, and the cards scroll under
+              them. */}
+          <div className={`plan-toolbar-dock${headsStick ? ' under-head' : ''}`}>
           {/* The owner's ask: the category filter as a pill on its own, and
               search and options as two round white buttons. Search opens
               into a field across the whole row. */}
@@ -2877,7 +2939,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               and an expanded card spans the full width so its contents stay
               readable. Grouped, each group is a section of its own that
               spans all columns (see renderItems). */}
-          <div style={planListStyle}>
+          <div ref={poolListRef} style={planListStyle}>
             {filteredPlans.length === 0 ? (
               /* An empty pool and a filter that matched nothing are two
                  different problems. The old copy said "nothing matches the
@@ -2974,6 +3036,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 const whenLine = when && `${when.rel || when.dow} ${when.dm}${when.time ? ` · ${when.time}` : ''}`;
 
                 const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
+                // The category's theme; a visited card gives up its surface.
+                const theme = plan.visited ? null : getCategoryTheme(plan.category);
+                const ornament = theme && THEMES[theme].ornament
+                  ? <span className={`ct-ornament ct-${THEMES[theme].ornament}`} aria-hidden="true" /> : null;
                 const cardRef = bindItemRef(plan.id);
                 const openOnKey = (e) => {
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlanDetail(plan.id); }
@@ -2997,7 +3063,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       tabIndex={0}
                       onKeyDown={openOnKey}
                       title={plan.title}
+                      data-ct={theme || undefined}
                       style={{
+                        '--c': getCategoryColor(plan.category),
                         // A tile: the category disc on top, the name under it,
                         // flags in the top corner.
                         position: 'relative',
@@ -3012,6 +3080,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         willChange: 'transform',
                       }}
                     >
+                      {ornament}
                       {/* Under a category's header the disc would repeat it:
                           just the check, once visited. */}
                       {(!catGrouped || plan.visited) && (
@@ -3142,6 +3211,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   const stubClass = `pstub-stub${when ? ' when' : ''}${when && (when.past || plan.visited) ? ' past' : ''}`;
                   return (
                     <div key={plan.id} ref={cardRef} className={`pstub-wrap${plan.visited ? ' visited' : ''}`}>
+                      {ornament}
                       <div
                         className={`${cardClass} pstub`}
                         onClick={() => openPlanDetail(plan.id)}
@@ -3150,7 +3220,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         onKeyDown={openOnKey}
                         style={{ '--c': color }}
                       >
-                        <div className="pstub-main">
+                        {/* The text sits in the middle of the card's height (the
+                            owner's ask); "must" and booking stay in the top
+                            corner by the stub (.pstub-main is a grid). */}
+                        <div className="pstub-main" data-ct={theme || undefined}>
+                          <div className="pstub-body">
                           <div className="pstub-head">
                             {(canEdit || plan.visited) && (
                               <CheckCircle
@@ -3160,13 +3234,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               />
                             )}
                             <h3 className="pstub-title">{plan.title}</h3>
-                            {flags.length > 0 && (
-                              <span className="pstub-flags">
-                                {flags.map(f => (
-                                  <span key={f.key} className={`pstub-flag ${f.cls}`} title={f.title}>{f.icon}{f.text}</span>
-                                ))}
-                              </span>
-                            )}
                           </div>
                           {catGrouped ? (area && (
                             <div className="pstub-sub">
@@ -3193,6 +3260,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                                 <Pill key={t.key} size="sm" tone={t.tone} icon={t.icon} title={t.title}>{t.text}</Pill>
                               ))}
                             </div>
+                          )}
+                          </div>
+                          {flags.length > 0 && (
+                            <span className="pstub-flags">
+                              {flags.map(f => (
+                                <span key={f.key} className={`pstub-flag ${f.cls}`} title={f.title}>{f.icon}{f.text}</span>
+                              ))}
+                            </span>
                           )}
                         </div>
                         {locs.length ? (
@@ -3228,7 +3303,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     role="button"
                     tabIndex={0}
                     onKeyDown={openOnKey}
+                    data-ct={theme || undefined}
                     style={{
+                      '--c': getCategoryColor(plan.category),
                       padding: LO.cardPad,
                       // .glass-card is a column flexbox — the row direction has
                       // to be set explicitly or the card stacks vertically.
@@ -3240,6 +3317,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       willChange: 'transform',
                     }}
                   >
+                    {ornament}
                     {/* Visited toggle — the one action that stays on the card,
                         so places can be ticked off without opening anything. */}
                     {(canEdit || plan.visited) && (
