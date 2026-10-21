@@ -95,6 +95,16 @@ fi
 # The hardware back button on the first screen leaves the app (nothing open).
 # Polled, not a fixed wait: on a slow emulator 3 seconds were not always
 # enough (2026-10-20, a run with nothing changed near this screen).
+# The press must reach the app: Google's sheet, still closing, or a system
+# dialog can hold the focus a moment after the message shows, and then the
+# back goes to them (2026-10-21, master after #113; the same code passed on
+# its PR). So first wait until the app's own window has the focus.
+for i in $(seq 1 10); do
+  focus=$(adb shell dumpsys window | grep -m1 mCurrentFocus || true)
+  echo "$focus" | grep -q "$PKG" && break
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 && adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 && dismiss_anr || true
+  sleep 1
+done
 adb shell input keyevent KEYCODE_BACK
 for i in $(seq 1 10); do
   sleep 1
@@ -105,7 +115,10 @@ for i in $(seq 1 10); do
   fi
 done
 if [ -z "${left:-}" ]; then
-  echo "back on the first screen did not leave the app in 10s"; exit 1
+  echo "back on the first screen did not leave the app in 10s (focus before: ${focus:-?})"
+  adb shell dumpsys window | grep -m1 mCurrentFocus || true
+  adb exec-out screencap -p > android-smoke.png || true
+  exit 1
 fi
 echo "back on the first screen leaves the app"
 
