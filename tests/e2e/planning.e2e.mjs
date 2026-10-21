@@ -127,7 +127,7 @@ await step('grid layout', async () => {
 
 await step('group by category', async () => {
   await page.locator('[title="מיון ותצוגה"]').click();
-  await page.getByText('מרווח', { exact: true }).click();
+  await page.getByText('עמודת זמן', { exact: true }).click();
   await page.getByText('קטגוריה', { exact: true }).first().click();
   await page.mouse.click(5, 5);
   await shot('pool-grouped');
@@ -184,6 +184,39 @@ await step('category settings', async () => {
   await page.getByRole('button', { name: 'מחק', exact: true }).click();
   await modal().locator('span', { hasText: /^חופים$/ }).waitFor({ state: 'detached', timeout: 5000 });
   await closeModal();
+});
+
+await step('a category takes an emoji from the keyboard, of any kind, and an icon takes it back', async () => {
+  await page.locator('[title="מיון ותצוגה"]').click();
+  await page.getByText('הגדרות קטגוריות', { exact: false }).first().click();
+  await modal().waitFor();
+  const field = modal().getByLabel("אימוג'י למסעדות ומקומות אכילה");
+  await field.scrollIntoViewIfNeeded();
+  // Not an emoji: refused, nothing saved.
+  await field.fill('abc');
+  await modal().getByText('רק אימוג׳י').waitFor();
+  if ((await field.inputValue()) !== '') throw new Error('letters were taken');
+  // A family (a ZWJ sequence), then a flag: each kept whole.
+  for (const e of ['👨‍👩‍👧‍👦', '🇮🇱']) {
+    await field.fill(e);
+    await page.waitForFunction((v) => [...document.querySelectorAll('.modal-overlay .cat-emoji')].some(el => el.textContent === v), e, { timeout: 5000 });
+    if ((await field.inputValue()) !== e) throw new Error(`the field holds ${await field.inputValue()}`);
+  }
+  await shot('category-emoji');
+  await closeModal();
+  // The list wears it: the restaurant's disc, and its stub (no address).
+  const card = page.locator('.plan-card', { hasText: 'Mazel Tov' }).first();
+  await card.locator('.cat-emoji', { hasText: '🇮🇱' }).first().waitFor();
+  await shot('pool-emoji');
+  // An icon replaces it.
+  await page.locator('[title="מיון ותצוגה"]').click();
+  await page.getByText('הגדרות קטגוריות', { exact: false }).first().click();
+  await modal().waitFor();
+  const row = modal().locator('div', { has: page.getByLabel("אימוג'י למסעדות ומקומות אכילה") }).last();
+  await row.locator('button[title="Coffee"]').click();
+  await page.waitForFunction(() => document.querySelector('.modal-overlay input[aria-label="אימוג\'י למסעדות ומקומות אכילה"]')?.value === '', null, { timeout: 5000 });
+  await closeModal();
+  if (await card.locator('.cat-emoji').count()) throw new Error('the emoji stayed on the card');
 });
 
 await step('daily plan: empty', async () => {

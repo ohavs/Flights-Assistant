@@ -37,7 +37,7 @@ export function Pill({ tone = 'neutral', icon, size, title, children, style }) {
 /* A category's icon on a disc tinted with the category's colour. */
 export function CategoryDisc({ color, size = 42, radius, children, muted }) {
   return (
-    <span style={{
+    <span className={`cat-disc${muted ? ' muted' : ''}`} style={{
       width: size, height: size, borderRadius: radius ?? Math.round(size / 3),
       background: muted ? 'var(--surface-2)' : `${color}1F`,
       color: muted ? 'var(--text-muted)' : color,

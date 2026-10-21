@@ -169,7 +169,7 @@ await step('details sheet shows times from the city centre', async () => {
   await shot('details-from-city');
   await closeModal();
   // Measured once, the time shows on the card too.
-  await card.locator('.meta-part').nth(1).waitFor();
+  await card.locator('.pstub-num').waitFor();
   cardBefore = (await card.innerText()).replace(/\s+/g, ' ');
   await card.click();
 });
@@ -256,6 +256,27 @@ await step('offline: the pick is kept, the times come back online', async () => 
   await ctx.setOffline(false);
   await travel().locator('.lucide-footprints').waitFor({ timeout: 20000 });
   await closeModal();
+});
+
+await step('stub card: the walk is big in the stub, which navigates; the rest opens the details', async () => {
+  await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null; }; });
+  const card = page.locator('.plan-card', { hasText: 'מבצר הדייגים' }).first();
+  const stub = card.locator('button.pstub-stub');
+  const num = Number((await stub.locator('.pstub-num').innerText()).trim());
+  if (!(num > 0 && num < 60)) throw new Error(`stub number ${num}`);
+  if (!(await stub.innerText()).includes("דק'")) throw new Error('no unit under the number');
+  // Next to the card's text, on the inline-end side (left, in Hebrew).
+  const [c, b] = [await card.boundingBox(), await stub.boundingBox()];
+  if (b.x - c.x > 4 || b.height < c.height - 4) throw new Error('the stub is not the full-height left column');
+  await stub.click();
+  const opened = await page.evaluate(() => window.__opened);
+  if (opened.length !== 1 || !opened[0].includes('google.com/maps')) throw new Error(`navigation opened ${JSON.stringify(opened)}`);
+  if (await page.locator('.modal-overlay').count()) throw new Error('the stub also opened the details');
+  await card.locator('.pstub-title').click();
+  await travel().waitFor();
+  await closeModal();
+  await page.mouse.wheel(0, -5000);
+  await shot('stub-cards');
 });
 
 await step('dark mode', async () => {

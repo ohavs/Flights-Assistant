@@ -8,7 +8,8 @@ import { doc, setDoc, deleteField } from 'firebase/firestore';
 const ref = (db, tripId) => doc(db, 'trips', tripId, 'settings', 'categories');
 
 // `patch` is merged into the category: { color } leaves its icon alone,
-// and { iconKey } its colour.
+// and { iconKey } its colour. { emoji } (a keyboard emoji, optional) wins
+// over iconKey where both are set.
 export const saveCategory = (db, tripId, cat, patch) =>
   setDoc(ref(db, tripId), { [cat]: patch }, { merge: true });
 
@@ -20,3 +21,11 @@ export const addCategory = (db, tripId, cat) =>
 
 export const removeCategory = (db, tripId, cat) =>
   setDoc(ref(db, tripId), { [cat]: deleteField() }, { merge: true });
+
+// An icon from the list, or an emoji from the keyboard: one replaces the
+// other. Clearing the emoji ('') brings the icon back.
+export const setCategoryIcon = (db, tripId, cat, iconKey) =>
+  saveCategory(db, tripId, cat, { iconKey, emoji: deleteField() });
+
+export const setCategoryEmoji = (db, tripId, cat, emoji) =>
+  saveCategory(db, tripId, cat, { emoji: emoji || deleteField() });
