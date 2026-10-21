@@ -126,6 +126,27 @@ await step('the title in the middle of the card, "must" at its top', async () =>
   if (flags.y - card.y > 16) throw new Error('"must" is not at the top');
 });
 
+await step('a dot by the date: a ring before it starts, green while it is on, grey after', async () => {
+  const iso = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const dated = { 'פסטיבל היום': [0, 'live'], 'הופעה אתמול': [-1, 'past'], 'שוק בעוד שבוע': [7, 'upcoming'] };
+  let i = 0;
+  for (const [title, [days]] of Object.entries(dated)) {
+    await put(`trips/pv/planning/when${++i}`, { title, category: 'אירועים', address: '', event: { startDate: iso(days) } });
+  }
+  for (const [title, [, state]] of Object.entries(dated)) {
+    const top = page.locator('.plan-card', { hasText: title }).locator('.pstub-when-top');
+    await top.locator(`.when-dot.${state}`).waitFor();
+    // Before the top line, on its line.
+    const [dot, line] = [await top.locator('.when-dot').boundingBox(), await top.boundingBox()];
+    if (Math.abs(dot.y + dot.height / 2 - (line.y + line.height / 2)) > 2) throw new Error(`${title}: the dot is off the line`);
+  }
+  const live = page.locator('.plan-card', { hasText: 'פסטיבל היום' });
+  if (await live.locator('.pstub-stub.past').count()) throw new Error('today is grey');
+  if (!(await page.locator('.plan-card', { hasText: 'הופעה אתמול' }).locator('.pstub-stub.past').count())) throw new Error('yesterday is not grey');
+  await live.scrollIntoViewIfNeeded();
+  await shot('9-when-dots');
+});
+
 await step('"טווח": a first and a last day, a start and an end time, saved as one range', async () => {
   const modal = () => page.locator('.modal-content').last();
   await page.locator('button.fab', { hasText: 'יעד חדש' }).click();

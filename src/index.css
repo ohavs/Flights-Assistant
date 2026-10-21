@@ -2913,6 +2913,27 @@ button.pstub-stub.when:active { background: color-mix(in srgb, var(--c) 70%, bla
 .plan-when-chip .nb { white-space: nowrap; }
 .plan-when-leaf.past, .plan-when-chip.past { background: var(--ink-6); color: var(--text-muted); }
 
+/* Where the date stands now (whenState), a dot before its top line: a
+   ring before it starts, green and breathing while it is on, grey after. */
+.pstub-when-top, .plan-when-leaf-top { display: inline-flex; align-items: center; gap: 4px; }
+.when-dot {
+  width: 7px; height: 7px; flex-shrink: 0; box-sizing: border-box;
+  border: 1.5px solid currentColor; border-radius: 50%;
+}
+.when-dot.live {
+  width: 8px; height: 8px;
+  background: #4ADE80; border-color: #fff;
+  animation: when-live 1.8s ease-out infinite;
+}
+.when-dot.past { background: currentColor; border-color: transparent; opacity: 0.55; }
+@keyframes when-live {
+  0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.75); }
+  70%, 100% { box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .when-dot.live { animation: none; }
+}
+
 /* The place form's "when" block. */
 .place-when {
   display: flex; flex-direction: column; gap: 10px;

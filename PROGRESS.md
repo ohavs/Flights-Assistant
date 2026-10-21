@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.70.1 (`changelog.md`)
+- גרסת ווב: 8.71.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - **הרשאת "הוספה" (8.70.0, בקשת הבעלים 2026-10-21):** תפקיד `contributor` ב־`members`. מוסיף הכל עם `createdBy`, עורך ומוחק רק את שלו (`createdBy`, או `addedBy` במקומות ובהזמנות), ומסמן של אחרים (`visited`/`completed`; במקום גם `distances`/`coords`). בלוז: רק פעילויות שלו בתוך המערך (`ownActivities` בחוקים, עד 8 בכתיבה; `onlyOwn` ב־`dayActivities.js` כדי לא לגעת בפעילויות של אחרים). לא ימים, לא `settings`, לא מסמך הטיול. ב־UI: `canAdd` ו־`mayChange(item)` מ־`useTrip()` (`src/lib/roles.js`), `canEdit` נשאר לכל השאר. **כל יצירה חדשה חייבת `createdBy: currentUid`** (גם בווידג'ט, `ExpenseStore.java`). בדיקות: `tests/rules.test.mjs`, `tests/e2e/roles.e2e.mjs`.
@@ -55,6 +55,7 @@
   - **ערכות נושא לקטגוריות (8.69.0, בקשת הבעלים):** `src/lib/categoryTheme.js` (טהור, `tests/categoryTheme.test.mjs`) מחזיר מפתח לפי שם הקטגוריה ואז האימוג'י. `data-ct` על החלק שנושא את הרקע (`.pstub-main`, שורה, אריח), והטקסטורות ב־`index.css` (`[data-ct="…"]`, מסכה בצבע `--c`). קישוט: `THEMES[k].ornament` → `.ct-ornament.ct-santa` (על `.pstub-wrap`, כי הכרטיס עם mask). `getCategoryColor` נופל ל־`hue` של הנושא לפני הסגול. לא על כרטיס שביקרו בו. נושא חדש: כלל ב־`RULES` + טקסטורה ב־CSS.
   - **ברירת מחדל לתצוגה (8.69.0, בקשת הבעלים):** מפתחות חדשים `planLayout2_{tripId}`/`planGroupBy2_{tripId}` כדי שכולם יתחילו ב"עמודת זמן" + קטגוריה; הישנים נמחקים.
   - **טווח בכרטיס (8.70.1, בקשת הבעלים):** טווח תאריכים עם שעה = כל יום בשעות האלה. `placeWhen` מחזיר `top`/`main`/`sub` (העמודה והעלה), `until` (תגית), `line` (רשת, aria); ב־`daily` העמודה "כל יום / שעה / עד שעה" והתאריכים בתגית.
+  - **מצב התאריך (8.71.0, בקשת הבעלים):** `src/lib/whenState.js` (טהור, `tests/whenState.test.mjs`) מחזיר `upcoming`/`live`/`past` לפי השעה. `placeWhen(ev, now)` מחזיר `state` ו־`past` ממנו. `WhenDot` (‏`.when-dot`) לפני השורה העליונה בעמודה ובעלה, ובמקום האייקון בשבב. בלי שעת סיום: `live` לשעה (`POINT_MINUTES`). `now` ב־`PlanningTab` מתעדכן כל דקה וכשהאפליקציה חוזרת לחזית.
   - **"טווח" בטופס (8.69.0, בקשת הבעלים):** `whenRange` בטופס; `CustomDateRangePicker`/`CustomTimeRangePicker` ב־`CustomDatePicker.jsx`. הסיום נשמר רק כשהמתג דלוק (`endDateOn`/`endTimeOn`), לכל קטגוריה. סוף = התחלה לא נשמר.
   - **כפילויות (8.67.0):** `src/lib/placeDuplicates.js` (טהור, `tests/placeDuplicates.test.mjs`): אותו שם (`nameKey`) או אותו `address` (`placeKey`), union-find. סימון "כפילות" בכל הפריסות. `.plan-dup-notice` מעל הרשימה, ולחיצה עליה מפעילה `dupOnly`, שמציג סעיף לכל קבוצה. בדיקה: `tests/e2e/places.e2e.mjs`.
     - הסינון הוא `PlanCategoryFilter.jsx`: תיבות סימון לכמה קטגוריות (`pickedCats`, ריק = הכל) ומתג "רק חובה" (`mustOnly`). לא נשמר במכשיר, כמו קודם.

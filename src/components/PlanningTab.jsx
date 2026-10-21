@@ -50,6 +50,7 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import { withScheme } from '../lib/links';
 import { findDuplicates } from '../lib/placeDuplicates';
+import { whenState } from '../lib/whenState';
 import {
   Search,
   Plus,
@@ -169,13 +170,6 @@ const PROXIMITY_THRESHOLD_M = 800;
 // own origin (`distanceOriginId`, the hotel by default).
 const PLACE_ORIGIN = 'place_';
 
-// Local today date (YYYY-MM-DD) evaluated once on module load.
-// Used for event-status badges; stale by at most one day if tab is left open overnight.
-const todayISO = (() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-})();
-
 // Short, readable form of a URL — used whenever a link has no name of its
 // own, so the UI never has to fall back to showing the raw address twice.
 function prettyUrl(url) {
@@ -277,24 +271,24 @@ const DOW_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 // A place's date and time (`event`, any category since 8.66.0) as its card
 // shows it: a top line, the big value and a small one under it (the stub
 // and the leaf), a tag for what doesn't fit there (`until`), the whole of
-// it in one line, and whether it is over.
+// it in one line, and where it stands now (`state`, src/lib/whenState.js).
 // A date range with hours is open every day in those hours (a Christmas
 // market), as the sheet says: "כל יום", the hours, and the dates as a tag.
 // Before 8.70.1 the card read it as one stretch from the first day's
 // opening to the last day's closing.
-function placeWhen(ev) {
+function placeWhen(ev, now = new Date()) {
   if (!ev?.startDate) return null;
   const [y, m, d] = ev.startDate.split('-').map(Number);
   if (!y || !m || !d) return null;
   const day = new Date(y, m - 1, d);
-  const now = new Date();
   const diff = Math.round((day - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
   const dm = (iso) => { const [, mm, dd] = iso.split('-'); return `${dd}.${mm}`; };
   const rel = diff === 0 ? 'היום' : diff === 1 ? 'מחר' : null;
   const dow = DOW_HE[day.getDay()];
   const time = ev.startTime || '';
   const range = !!ev.endDate && ev.endDate !== ev.startDate;
-  const base = { dm: dm(ev.startDate), today: diff === 0, past: todayISO > (ev.endDate || ev.startDate) };
+  const state = whenState(ev, now);
+  const base = { dm: dm(ev.startDate), today: diff === 0, state, past: state === 'past' };
   if (range && time) {
     const hours = `${time}${ev.endTime ? `–${ev.endTime}` : ''}`;
     const dates = `${dm(ev.startDate)}–${dm(ev.endDate)}`;
@@ -310,6 +304,13 @@ function placeWhen(ev) {
     until: ev.endTime ? `עד ${ev.endTime}` : '',
     line: `${top} ${dm(ev.startDate)}${time ? ` · ${time}${ev.endTime ? `–${ev.endTime}` : ''}` : ''}` };
 }
+
+// The dot by a date: a ring before it starts, a green dot that breathes
+// while it is on, a grey one after (8.71.0).
+const WHEN_STATE_LABEL = { upcoming: 'עוד לא התחיל', live: 'עכשיו', past: 'הסתיים' };
+const WhenDot = ({ state }) => state
+  ? <span className={`when-dot ${state}`} role="img" aria-label={WHEN_STATE_LABEL[state]} title={WHEN_STATE_LABEL[state]} />
+  : null;
 
 // Card layouts for the places list. Each entry drives the density of the
 // card chrome; the list ones keep the same behaviour (open, navigate, mark
@@ -400,6 +401,16 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // visited, and changes only what they added (src/lib/roles.js).
   const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles } = useTrip();
   const confirm = useConfirm();
+
+  // The clock the dates' dots read: a tick a minute while the app is in
+  // front, and at once when it comes back.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => { if (!document.hidden) setNow(new Date()); };
+    const t = setInterval(tick, 60e3);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick); };
+  }, []);
 
   // Profile of whoever added a place, for the little avatar on the card.
   const profileFor = (uid) => {
@@ -3021,7 +3032,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 // Event status (only for the events category)
                 // A date (and time) on the place, of any category: a fixed
                 // appointment, and every layout makes it stand out.
-                const when = placeWhen(plan.event);
+                const when = placeWhen(plan.event, now);
                 const isEvent = !!when;
                 const isTodayEvent = isEvent && when.today;
 
@@ -3055,6 +3066,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   : null;
                 // The date as one solid block, in the category's colour.
                 const whenLine = when && when.line;
+                const whenSay = when && `${when.line}, ${WHEN_STATE_LABEL[when.state]}`;
 
                 const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
                 // The category's theme; a visited card gives up its surface.
@@ -3128,7 +3140,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
 
                       {when && (
                         <span className={`plan-when-chip${when.daily ? ' daily' : ''}${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
-                          <CalendarClock size={12} aria-hidden="true" />
+                          <WhenDot state={when.state} />
                           {/* Every day: the hours, and the dates on a line of their own when the tile is narrow. */}
                           {when.daily
                             ? <span><span className="nb">{when.hours} ·</span> <span className="nb">{when.dates}</span></span>
@@ -3216,7 +3228,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   // time small under it. Solid in the category's colour, so
                   // a fixed appointment is the first thing the eye finds.
                   const stubBody = when ? (<>
-                    <span className="pstub-when-top">{when.top}</span>
+                    <span className="pstub-when-top"><WhenDot state={when.state} />{when.top}</span>
                     <span className="pstub-num">{when.main}</span>
                     {when.sub && <span className="pstub-unit">{when.sub}</span>}
                     {main && <span className="pstub-alt"><main.Icon size={11} aria-hidden="true" />{main.num} {main.unit}</span>}
@@ -3298,7 +3310,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                           <button
                             type="button"
                             className={stubClass}
-                            aria-label={`ניווט אל ${plan.title}${when ? `, ${whenLine}` : ''}${main ? `, ${main.num} ${main.unit} ${main.mode}` : ''}`}
+                            aria-label={`ניווט אל ${plan.title}${when ? `, ${whenSay}` : ''}${main ? `, ${main.num} ${main.unit} ${main.mode}` : ''}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (locs.length === 1) window.open(locs[0].url, '_blank', 'noreferrer');
@@ -3310,7 +3322,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                             {(main || when) && <span className="pstub-go"><Navigation size={10} aria-hidden="true" />ניווט</span>}
                           </button>
                         ) : (
-                          <div className={stubClass} aria-label={when ? whenLine : undefined} aria-hidden={!main && !when}>{stubBody}</div>
+                          <div className={stubClass} aria-label={when ? whenSay : undefined} aria-hidden={!main && !when}>{stubBody}</div>
                         )}
                       </div>
                     </div>
@@ -3420,7 +3432,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         colour, where the quiet chevron is otherwise. */}
                     {when ? (
                       <span className={`plan-when-leaf${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
-                        <span className="plan-when-leaf-top">{when.top}</span>
+                        <span className="plan-when-leaf-top"><WhenDot state={when.state} />{when.top}</span>
                         <span className="plan-when-leaf-main">{when.main}</span>
                         {when.sub && <span className="plan-when-leaf-sub">{when.sub}</span>}
                       </span>
