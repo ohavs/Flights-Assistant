@@ -1,4 +1,5 @@
-// Places list: group headers never pile up under the toolbar, and a place's
+// Places list: the category filter picks several categories, each shown in
+// its own section under a header that stays in the list, and a place's
 // details sheet measures travel times from any other place on the list.
 //   bash scripts/run-e2e.sh tests/e2e/travel.e2e.mjs
 // The app gets a fake Maps key (emulator builds only) and this test answers
@@ -109,28 +110,52 @@ await step('add places in several categories', async () => {
   await addPlace({ title: 'שוק הפשפשים', category: 'מידע כללי וטיפים', address: at(47.4870, 19.0580) });
 });
 
-await step('only one group header sticks at a time', async () => {
+await step('two categories picked: one section each, under headers that are not sticky', async () => {
+  const pill = page.locator('button.plan-filter-pill');
+  const menu = page.getByRole('dialog', { name: 'סינון לפי קטגוריה' });
+  const heads = () => page.locator('.plan-group .section-header-title').allInnerTexts();
+  await pill.click();
+  await menu.getByRole('checkbox', { name: /מסעדות ומקומות אכילה/ }).click();
+  await menu.getByRole('checkbox', { name: /מקומות לבקר/ }).click();
+  if (await menu.getByRole('checkbox', { name: /כל הקטגוריות/ }).getAttribute('aria-checked') !== 'false') {
+    throw new Error('"all" is still ticked');
+  }
+  await menu.getByRole('button', { name: 'הצג 6 מקומות' }).waitFor();
+  await shot('filter-two-picked');
+  await menu.getByRole('button', { name: 'הצג 6 מקומות' }).click();
+  await menu.waitFor({ state: 'detached' });
+  // In the list's category order, though "מקומות לבקר" was picked second.
+  if ((await heads()).join('|') !== 'מסעדות ומקומות אכילה|מקומות לבקר') throw new Error(`sections: ${(await heads()).join('|')}`);
+  if (await page.locator('.plan-card').count() !== 6) throw new Error('not just the two categories');
+  if (!(await pill.innerText()).includes('2 קטגוריות')) throw new Error('the pill does not say two categories');
+  if (await page.locator('.plan-group .section-header').first().evaluate(el => getComputedStyle(el).position) === 'sticky') {
+    throw new Error('the header is still sticky');
+  }
+  await shot('two-categories');
+  // Back to everything: a single list again (grouping is off).
+  await pill.click();
+  await menu.getByRole('button', { name: 'נקה' }).click();
+  await menu.getByRole('button', { name: 'הצג 11 מקומות' }).click();
+  await menu.waitFor({ state: 'detached' });
+  if (await page.locator('.plan-group').count()) throw new Error('sections without two categories picked');
+  // Grouped by category from the options, every category gets a section.
   await page.locator('[title="מיון ותצוגה"]').click();
   await page.getByText('קטגוריה', { exact: true }).first().click();
   await page.mouse.click(5, 5);
   await page.locator('.plan-group').nth(3).waitFor();
-  // Scroll through the whole list; at no point may two headers overlap.
-  for (let i = 0; i < 24; i++) {
-    const rects = await page.locator('.plan-group .section-header').evaluateAll(els =>
-      els.map(el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }));
-    for (let a = 0; a < rects.length; a++) {
-      for (let b = a + 1; b < rects.length; b++) {
-        if (rects[a].top < rects[b].bottom - 1 && rects[b].top < rects[a].bottom - 1) {
-          await shot('headers-overlap');
-          throw new Error(`headers ${a} and ${b} overlap after ${i} scrolls`);
-        }
-      }
-    }
-    if (i === 4) await shot('grouped-scrolled');
-    await page.mouse.move(195, 500);
+  if ((await heads()).length !== 4) throw new Error(`sections: ${(await heads()).join('|')}`);
+  // Scrolled, the first header leaves with its places instead of sticking.
+  const head = page.locator('.plan-group .section-header').first();
+  const top0 = (await head.boundingBox()).y;
+  await page.mouse.move(195, 500);
+  for (let i = 0; i < 6; i++) {
     await page.mouse.wheel(0, 90);
     await page.waitForTimeout(120);
   }
+  await page.waitForTimeout(200);
+  const top1 = (await head.boundingBox()).y;
+  if (top1 > top0 - 300) throw new Error(`the header did not scroll away (${top0} → ${top1})`);
+  await shot('grouped-scrolled');
 });
 
 let cardBefore = '';

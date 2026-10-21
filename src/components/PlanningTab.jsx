@@ -8,8 +8,8 @@ import { changedFields } from '../lib/changes';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
 import SectionHeader from '../ui/SectionHeader';
+import PlanCategoryFilter from './PlanCategoryFilter';
 import { useWeather, getWeatherIcon } from '../hooks/useWeather';
-import { createPortal } from 'react-dom';
 import {
   collection,
   doc,
@@ -346,7 +346,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // The search is a round button until tapped; then it opens into a field
   // across the row. It stays open while there is a query.
   const [searchOpen, setSearchOpen] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState('הכל');
+  // The category filter: any number of categories (none = all), and
+  // "must only" on top of them (PlanCategoryFilter).
+  const [pickedCats, setPickedCats] = useState([]);
+  const [mustOnly, setMustOnly] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -406,12 +409,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const [showSortMenu, setShowSortMenu] = useState(false);
   // The phone's back gesture closes the options sheet before anything else.
   const optionsBtnRef = useRef(null);
-  // Category filter dropdown (replaces the old row of filter pills). The
-  // trigger's position is captured on click rather than read during render,
-  // so the popup can be positioned without touching a ref mid-render.
-  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
-  const [categoryMenuRect, setCategoryMenuRect] = useState(null);
-  const categoryBtnRef = useRef(null);
   // Card layout, remembered per trip.
   const [planLayout, setPlanLayout] = useState(() => {
     try {
@@ -1421,33 +1418,38 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // combination of filters that leaves nothing on screen.
   const clearPoolFilters = () => {
     setSearchQuery('');
-    setSelectedFilter('הכל');
+    setPickedCats([]);
+    setMustOnly(false);
     setHideVisited(false);
   };
 
-  // Filter plans + sort
+  // Filter plans + sort. A category no longer in the list (renamed or
+  // deleted since it was picked) no longer filters anything.
+  const picked = pickedCats.filter(c => categories.includes(c));
+  // Search and "hide visited" — the filters the category menu doesn't set.
+  const passesOthers = (plan) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = plan.title.toLowerCase().includes(q) ||
+                          (plan.description || '').toLowerCase().includes(q) ||
+                          (plan.address || '').toLowerCase().includes(q);
+    // "Hide visited" never hides the card currently open in the sheet, so
+    // marking a place as visited from there doesn't make it vanish mid-read.
+    const matchesVisibility = !hideVisited || !plan.visited || plan.id === detailPlanId;
+    return matchesSearch && matchesVisibility;
+  };
+  const eventTime = (p) => p.event?.startDate
+    ? new Date(`${p.event.startDate}T${p.event.startTime || '00:00'}`).getTime()
+    : Infinity;
   const filteredPlans = plans
     .filter(plan => {
-      const matchesCategory =
-        selectedFilter === 'הכל' ? true :
-        selectedFilter === '__must__' ? plan.priority === 'must' :
-        plan.category === selectedFilter;
-      const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (plan.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (plan.address || '').toLowerCase().includes(searchQuery.toLowerCase());
-      // "Hide visited" never hides the card currently open in the sheet, so
-      // marking a place as visited from there doesn't make it vanish mid-read.
-      const matchesVisibility = !hideVisited || !plan.visited || plan.id === detailPlanId;
-      return matchesCategory && matchesSearch && matchesVisibility;
+      const matchesCategory = (!picked.length || picked.includes(plan.category)) &&
+        (!mustOnly || plan.priority === 'must');
+      return matchesCategory && passesOthers(plan);
     })
     .sort((a, b) => {
       // When viewing the events category, order chronologically by date+time.
-      if (selectedFilter === EVENTS_CATEGORY && sortBy === 'default') {
-        const ts = (p) => {
-          if (!p.event?.startDate) return Infinity;
-          return new Date(`${p.event.startDate}T${p.event.startTime || '00:00'}`).getTime();
-        };
-        return ts(a) - ts(b);
+      if (picked.length === 1 && picked[0] === EVENTS_CATEGORY && sortBy === 'default') {
+        return eventTime(a) - eventTime(b);
       }
       if (sortBy !== 'default') {
         const getTime = (plan, type) => {
@@ -1513,9 +1515,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       renderItems.push({ __header: true, id: '__hx', label: 'ללא מיקום', count: unlocated.length });
       if (!collapsedAreas['__hx']) unlocated.forEach(p => renderItems.push(p));
     }
-  } else if (groupBy === 'category') {
-    // One collapsible section per category, in the order categories are
-    // configured, so a long mixed list reads as a handful of short lists.
+  } else if (groupBy === 'category' || picked.length >= 2) {
+    // One section per category, in the order categories are configured,
+    // so a long mixed list reads as a handful of short lists. Picking two
+    // or more categories in the filter always shows them this way.
     const byCat = new Map();
     filteredPlans.forEach(p => {
       const cat = p.category || 'ללא קטגוריה';
@@ -1529,12 +1532,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     renderItems = [];
     ordered.forEach(cat => {
       const items = byCat.get(cat) || [];
-      const headerId = `__cat:${cat}`;
+      // Events read by date in their own section too.
+      if (cat === EVENTS_CATEGORY && sortBy === 'default') items.sort((a, b) => eventTime(a) - eventTime(b));
       renderItems.push({
-        __header: true, id: headerId, label: cat, count: items.length,
+        __header: true, id: `__cat:${cat}`, label: cat, count: items.length,
         category: cat,
       });
-      if (!collapsedAreas[headerId]) items.forEach(p => renderItems.push(p));
+      items.forEach(p => renderItems.push(p));
     });
   }
 
@@ -2490,143 +2494,20 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               </button>
             </div>
           ) : (<>
-            {/* Category filter — a single dropdown instead of a pill per
-                category, so the row stays readable however many there are.
-                Fixed positioning (anchored via getBoundingClientRect) because
-                the sticky, backdrop-filtered parent breaks absolute popups. */}
-            {(() => {
-              const usedCategories = categories.filter(cat => plans.some(p => p.category === cat));
-              const mustCount = plans.filter(p => p.priority === 'must').length;
-              const countFor = (cat) => plans.filter(p => p.category === cat).length;
-
-              const isMust = selectedFilter === '__must__';
-              const isAll = selectedFilter === 'הכל';
-              const activeColor = isMust ? 'var(--c-orange)' : (isAll ? null : getCategoryColor(selectedFilter));
-              const rect = showCategoryMenu ? categoryMenuRect : null;
-
-              const options = [
-                ...(mustCount > 0 ? [{
-                  key: '__must__', label: 'חובה', color: 'var(--c-orange)', count: mustCount,
-                  icon: <Star size={15} className="star-must" />,
-                }] : []),
-                { key: 'הכל', label: 'הכל', color: null, count: plans.length, icon: <Layers size={15} /> },
-                ...usedCategories.map(cat => ({
-                  key: cat, label: cat, color: getCategoryColor(cat), count: countFor(cat),
-                  icon: getCategoryIcon(cat, 15),
-                })),
-              ];
-              const current = options.find(o => o.key === selectedFilter) || options.find(o => o.key === 'הכל');
-
-              return (
-                <>
-                  <button
-                    ref={categoryBtnRef}
-                    type="button"
-                    onClick={() => {
-                      const r = categoryBtnRef.current?.getBoundingClientRect();
-                      if (r) setCategoryMenuRect({ bottom: r.bottom, right: r.right, width: r.width });
-                      setShowCategoryMenu(v => !v);
-                    }}
-                    title="סינון לפי קטגוריה"
-                    aria-expanded={showCategoryMenu}
-                    className="plan-filter-pill"
-                    // A filter in effect tints the pill in its colour.
-                    style={activeColor ? { background: `color-mix(in srgb, ${activeColor} 14%, var(--card-bg-solid))` } : undefined}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', color: activeColor || 'var(--text-muted)', flexShrink: 0 }}>
-                      {current?.icon}
-                    </span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {current?.label || 'הכל'}
-                    </span>
-                    <Pill size="sm" tone={activeColor ? 'neutral' : 'muted'} style={activeColor ? { background: 'var(--card-bg-solid)' } : undefined}>
-                      {current?.count ?? 0}
-                    </Pill>
-                    <ChevronDown
-                      size={15}
-                      style={{
-                        flexShrink: 0, opacity: 0.7,
-                        transform: showCategoryMenu ? 'rotate(180deg)' : 'rotate(0)',
-                        transition: 'transform 0.2s ease',
-                      }}
-                    />
-                  </button>
-
-                  {/* Rendered into <body>: the toolbar above is
-                      backdrop-filtered, and a filtered ancestor becomes the
-                      containing block for position:fixed children — which
-                      would offset this popup by the toolbar's own position. */}
-                  {showCategoryMenu && createPortal(
-                    <>
-                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowCategoryMenu(false)} />
-                      <div style={{
-                        position: 'fixed',
-                        top: rect ? rect.bottom + 6 : 120,
-                        // Anchored under the button, but kept on screen: the
-                        // button now sits mid-bar, not at the screen's edge.
-                        right: rect ? Math.max(8, Math.min(window.innerWidth - rect.right, window.innerWidth - 8 - Math.min(280, window.innerWidth - 16))) : 8,
-                        width: Math.min(280, window.innerWidth - 16),
-                        maxWidth: 'calc(100vw - 16px)',
-                        maxHeight: '60vh',
-                        overflowY: 'auto',
-                        zIndex: 50,
-                        background: 'var(--card-bg-solid)',
-                        border: 'none',
-                        borderRadius: 18,
-                        boxShadow: 'var(--shadow-lg)',
-                        padding: '4px 0',
-                        direction: 'rtl',
-                      }}>
-                        <div style={{
-                          padding: '14px 18px 6px', fontSize: 12, fontWeight: 800,
-                          color: 'var(--text-muted)',
-                          background: 'var(--card-bg-solid)',
-                          // Up into the list's 4px padding: at 0 the options
-                          // showed through above it as they scrolled.
-                          position: 'sticky', top: -4,
-                        }}>סינון לפי קטגוריה</div>
-                        {options.map(opt => {
-                          const active = opt.key === selectedFilter;
-                          return (
-                            <button
-                              key={opt.key}
-                              type="button"
-                              onClick={() => { setSelectedFilter(opt.key); setShowCategoryMenu(false); }}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                                padding: '10px 14px', border: 'none',
-                                background: active ? (opt.color ? `color-mix(in srgb, ${opt.color} 8%, transparent)` : 'var(--p-6)') : 'var(--surface)',
-                                color: active ? (opt.color || 'var(--accent)') : 'var(--primary)',
-                                cursor: 'pointer', fontFamily: 'var(--font-hebrew)',
-                                fontSize: 13, fontWeight: 700,
-                                borderBottom: '1px solid var(--ink-4)', textAlign: 'right',
-                              }}
-                            >
-                              <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, color: opt.color || (active ? 'var(--accent)' : 'var(--text-muted)') }}>
-                                {opt.icon}
-                              </span>
-                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {opt.label}
-                              </span>
-                              <span style={{
-                                fontSize: 11, fontWeight: 800, flexShrink: 0,
-                                background: opt.color ? `color-mix(in srgb, ${opt.color} 12%, transparent)` : 'var(--ink-5)',
-                                color: opt.color || 'var(--text-muted)',
-                                padding: '2px 7px', borderRadius: 999,
-                              }}>
-                                {opt.count}
-                              </span>
-                              {active && <Check size={14} style={{ flexShrink: 0 }} />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>,
-                    document.body
-                  )}
-                </>
-              );
-            })()}
+            {/* Category filter — one pill instead of a pill per category,
+                so the row stays readable however many there are. Its menu
+                ticks any number of them. */}
+            <PlanCategoryFilter
+              plans={plans}
+              categories={categories}
+              picked={picked}
+              onPicked={setPickedCats}
+              mustOnly={mustOnly}
+              onMustOnly={setMustOnly}
+              colorOf={getCategoryColor}
+              iconOf={getCategoryIcon}
+              also={passesOthers}
+            />
 
             {/* Single options button — no wrapper div (backdrop-filter parent
                 causes positioned wrapper divs to get implicit solid bg).
@@ -2762,7 +2643,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             if (hiddenCount <= 0) return null;
             const bits = [];
             if (searchQuery.trim()) bits.push(`חיפוש: "${searchQuery.trim()}"`);
-            if (selectedFilter !== 'הכל') bits.push(selectedFilter === '__must__' ? 'חובה בלבד' : selectedFilter);
+            if (mustOnly) bits.push('חובה בלבד');
+            if (picked.length) bits.push(picked.length <= 2 ? picked.join(' · ') : `${picked.length} קטגוריות`);
             if (hideVisited) bits.push('ללא מקומות שביקרנו בהם');
             return (
               <div style={{
@@ -2775,7 +2657,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 {bits.length > 0 && <span style={{ opacity: 0.75 }}>· {bits.join(' · ')}</span>}
                 <button
                   type="button"
-                  onClick={() => { setSearchQuery(''); setSelectedFilter('הכל'); setHideVisited(false); }}
+                  onClick={clearPoolFilters}
                   style={{
                     marginInlineStart: 'auto', flexShrink: 0,
                     background: 'var(--p-8)', color: 'var(--accent)',
@@ -2841,34 +2723,25 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             ) : (
               (() => {
               const renderEntry = (plan) => {
-                // Section header rows (area clusters / category sections)
+                // Section header rows (area clusters / category sections).
+                // They stay in the list, not sticky (the owner's ask): a
+                // stuck header was replaced by the next as you scrolled.
+                // Hiding a category is the filter's job, so its header
+                // doesn't fold; an area's still does.
                 if (plan.__header) {
-                  const collapsed = !!collapsedAreas[plan.id];
                   const headerColor = plan.category ? getCategoryColor(plan.category) : 'var(--accent)';
+                  const area = !plan.category;
                   return (
                     <SectionHeader
                       key={plan.id}
+                      className="plan-group-head"
                       title={plan.label}
-                      icon={plan.category ? getCategoryIcon(plan.category, 14) : <Layers size={14} />}
+                      icon={plan.category ? getCategoryIcon(plan.category, 16) : <Layers size={16} />}
                       color={headerColor}
                       count={plan.count}
-                      collapsed={collapsed}
-                      onToggle={() => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
-                      // A pill of its own, like the toolbar's controls, so it
-                      // stays legible when it sticks with no band behind it;
-                      // 64px ≈ the sticky toolbar's height, so a stuck header
-                      // lands just below it. It sticks inside its own section
-                      // only, so the next group's header pushes it out
-                      // instead of landing on top of it.
-                      style={{
-                        position: 'sticky', top: 64, zIndex: 4,
-                        background: 'var(--card-bg)',
-                        borderRadius: 999,
-                        paddingInline: 12,
-                        boxShadow: 'var(--shadow-sm)',
-                        alignSelf: 'flex-start',
-                        maxWidth: '100%',
-                      }}
+                      collapsed={area ? !!collapsedAreas[plan.id] : undefined}
+                      onToggle={area ? () => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] })) : undefined}
+                      style={{ '--c': headerColor }}
                     />
                   );
                 }
@@ -3095,9 +2968,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               };
               if (!renderItems.some(item => item.__header)) return renderItems.map(renderEntry);
               // One section per group: its header, then its places in the
-              // layout's own list. A sticky element sticks only within its
-              // parent, so a stuck header leaves with the last place of its
-              // group, and the headers never pile up under the toolbar.
+              // layout's own list.
               const sections = [];
               renderItems.forEach(item => {
                 if (item.__header) sections.push({ header: item, items: [] });
@@ -3110,7 +2981,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   style={{
                     gridColumn: '1 / -1',
                     display: 'flex', flexDirection: 'column', gap: LO.listGap,
-                    marginTop: i === 0 ? 0 : 10,
+                    marginTop: i === 0 ? 0 : 18,
                   }}
                 >
                   {renderEntry(header)}
