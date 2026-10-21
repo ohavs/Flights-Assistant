@@ -62,6 +62,8 @@ const ex = (id, amount, currency, category, description, day, paidBy, extra = {}
 //   e8 ₪230 Dana's, with me and Roni (not on the trip): we owe her 76.67 each.
 //   e5 ₪256 Dana's, "רק הם", Roni alone: he owes her 256.
 // Me +648.33, Dana -315.67, Roni -332.67: Roni → me 332.67, Dana → me 315.67.
+// Each one's part (not split: the payer's): me 170 + 39.2 + 480 + 725 + 76.67
+// = 1490.87; Dana 72 + 60 + 109.6 + 725 + 76.67 = 1043.27; Roni 256 + 76.67.
 await ex('e1', 42.5, 'EUR', 'אוכל ושתייה', 'ארוחת ערב באלפמה', 13, me);
 await ex('e2', 18, 'EUR', 'תחבורה', 'כרטיס יומי', 13, dana);
 await ex('e3', 1450, 'ILS', 'לינה', 'מקדמה למלון', 12, me, { splitWith: [dana] });
@@ -90,11 +92,14 @@ for (const theme of ['light', 'dark']) {
   await page.locator('.trip-card', { hasText: 'ליסבון' }).getByText('פתח טיול').click();
   await tab('הוצאות');
 
-  await step(`${theme}: the card over the list: the total, per person, per day, what I get back`, async () => {
+  await step(`${theme}: the card over the list: the total, my part, what I get back`, async () => {
     await hero.getByText('₪2,867').waitFor();
     await has(hero, '9 הוצאות');
-    await has(hero, '₪1,433');   // per person
-    await has(hero, '₪717');     // a day, over 4
+    await has(hero, 'החלק שלי');
+    await has(hero, '₪1,491');
+    for (const gone of ['לאדם', 'ממוצע ליום']) {
+      if ((await hero.innerText()).includes(gone)) throw new Error(`"${gone}" is still on the card`);
+    }
     await has(hero, 'מגיע לך');
     await has(hero, '₪648');
     if (await hero.locator('.expense-bar > span').count() !== 6) throw new Error('not a segment per category');
@@ -114,9 +119,16 @@ for (const theme of ['light', 'dark']) {
     await page.mouse.wheel(0, -3000);
   });
 
-  await step(`${theme}: the full summary: who paid, who owes whom from the splits, categories, currencies, the biggest`, async () => {
+  await step(`${theme}: the full summary: each one's part, who owes whom from the splits, categories, currencies, the biggest`, async () => {
     await hero.click();
     await sheet.waitFor();
+    const people = sheet.locator('.expense-section', { has: page.locator('.section-header-toggle', { hasText: 'לכל משתתף' }) });
+    await has(people.locator('.expense-row', { hasText: 'דנה' }), '₪1,043');
+    await has(people.locator('.expense-row', { hasText: 'דנה' }), 'שילם ₪728');
+    await has(people.locator('.expense-row', { hasText: 'רוני' }), 'לא שילם');
+    for (const gone of ['לאדם', 'ממוצע ליום']) {
+      if ((await sheet.innerText()).includes(gone)) throw new Error(`"${gone}" is still in the summary`);
+    }
     await sheet.locator('.expense-row.transfer', { hasText: 'דנה' }).waitFor();
     const transfer = sheet.locator('.expense-row.transfer');
     if (await transfer.count() !== 2) throw new Error(`${await transfer.count()} transfers`);
@@ -134,6 +146,24 @@ for (const theme of ['light', 'dark']) {
       await page.mouse.wheel(0, 600);
       await shot(`${theme}-${k}-summary`);
     }
+    await sheet.getByRole('button', { name: 'סגור' }).click();
+    await sheet.waitFor({ state: 'detached' });
+  });
+
+  await step(`${theme}: "שלי": my part, what I paid, my settling up, my categories and biggest`, async () => {
+    await hero.click();
+    await sheet.waitFor();
+    await sheet.getByRole('radio', { name: 'שלי' }).click();
+    const tiles = sheet.locator('.expense-tiles');
+    await has(tiles, '₪1,491');
+    await has(tiles, '₪2,139');
+    await has(sheet, '5 הוצאות שלך');
+    const mine = sheet.locator('.expense-row.transfer');
+    if (await mine.count() !== 2) throw new Error(`${await mine.count()} of my transfers`);
+    for (const t of ['ההתחשבנות שלי', 'לינה', '₪725', 'ההוצאות הגדולות שלי', 'מתוך ₪1,450']) await has(sheet, t);
+    if ((await sheet.innerText()).includes('לכל משתתף')) throw new Error('"שלי" shows everyone');
+    await shot(`${theme}-7-mine`);
+    await sheet.getByRole('radio', { name: 'כל הטיול' }).click();
     await sheet.getByRole('button', { name: 'סגור' }).click();
     await sheet.waitFor({ state: 'detached' });
   });

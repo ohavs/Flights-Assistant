@@ -47,6 +47,7 @@ import EmptyState from './EmptyState';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import { withScheme } from '../lib/links';
+import { findDuplicates } from '../lib/placeDuplicates';
 import {
   Search,
   Plus,
@@ -107,6 +108,7 @@ import {
   SmilePlus,
   Wallet,
   CalendarClock,
+  Copy,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -515,7 +517,28 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   });
   // Quick way to get finished places out of the way in a long list.
   const [hideVisited, setHideVisited] = useState(false);
+  // "Show the duplicates": the notice over the list shows just them, each
+  // set as its own section.
+  const [dupOnly, setDupOnly] = useState(false);
   const [collapsedAreas, setCollapsedAreas] = useState({}); // headerId → true when collapsed
+  // Category sections folded in the list, per trip on this device: with
+  // everything (or several categories) shown, a fold skips past one.
+  const [foldedCats, setFoldedCats] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`plan_cats_folded_${tripId}`);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`plan_cats_folded_${tripId}`, JSON.stringify([...foldedCats]));
+    } catch { /* storage full or blocked: the fold just isn't remembered */ }
+  }, [foldedCats, tripId]);
+  const toggleCatFold = (cat) => setFoldedCats(prev => {
+    const next = new Set(prev);
+    if (next.has(cat)) next.delete(cat); else next.add(cat);
+    return next;
+  });
   const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
   // Places whose address/links were just edited — their travel times are
   // recomputed as soon as the updated document comes back.
@@ -1518,7 +1541,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     setPickedCats([]);
     setMustOnly(false);
     setHideVisited(false);
+    setDupOnly(false);
   };
+  // Places that look like the same one: the same name, or the same link or
+  // address (src/lib/placeDuplicates.js). Each is marked on its card.
+  const dups = useMemo(() => findDuplicates(plans), [plans]);
+  const showDups = dupOnly && dups.groups.length > 0;
+  const dupNames = (id) => (dups.byId.get(id)?.group || [])
+    .filter(x => x !== id).map(x => plans.find(p => p.id === x)?.title).filter(Boolean);
 
   // Filter plans + sort. A category no longer in the list (renamed or
   // deleted since it was picked) no longer filters anything.
@@ -1537,7 +1567,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   const eventTime = (p) => p.event?.startDate
     ? new Date(`${p.event.startDate}T${p.event.startTime || '00:00'}`).getTime()
     : Infinity;
-  const filteredPlans = plans
+  const filteredPlans = showDups ? plans.filter(p => dups.byId.has(p.id)) : plans
     .filter(plan => {
       const matchesCategory = (!picked.length || picked.includes(plan.category)) &&
         (!mustOnly || plan.priority === 'must');
@@ -1606,7 +1636,21 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // resolved coordinates land in a trailing "ללא מיקום" group.
   const locatedCount = filteredPlans.filter(p => coordsCache[p.id]).length;
   let renderItems = filteredPlans;
-  if (groupBy === 'area') {
+  // Sections by category: the header stays on top while its places scroll,
+  // so the cards leave the category out.
+  const catGrouped = !showDups && groupBy !== 'area' && (groupBy === 'category' || picked.length >= 2);
+  if (showDups) {
+    // One section per set of duplicates, so they sit together.
+    const byId = new Map(plans.map(p => [p.id, p]));
+    renderItems = [];
+    dups.groups.forEach((group, i) => {
+      const anyName = group.some(id => dups.byId.get(id).name);
+      const anyPlace = group.some(id => dups.byId.get(id).place);
+      const why = anyName && anyPlace ? 'אותו שם או מיקום' : anyName ? 'אותו שם' : 'אותו מיקום';
+      renderItems.push({ __header: true, id: `__dup${i}`, label: `כפילות ${i + 1} · ${why}`, count: group.length, dup: true });
+      if (!collapsedAreas[`__dup${i}`]) group.forEach(id => byId.has(id) && renderItems.push(byId.get(id)));
+    });
+  } else if (groupBy === 'area') {
     const located = filteredPlans
       .filter(p => coordsCache[p.id])
       .map(p => ({ ...p, coords: coordsCache[p.id] }));
@@ -1642,11 +1686,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       const items = byCat.get(cat) || [];
       // Events read by date in their own section too.
       if (cat === EVENTS_CATEGORY && sortBy === 'default') items.sort((a, b) => eventTime(a) - eventTime(b));
+      // A search shows every match, folded or not.
+      const folded = !searchQuery.trim() && foldedCats.has(cat);
       renderItems.push({
         __header: true, id: `__cat:${cat}`, label: cat, count: items.length,
-        category: cat,
+        category: cat, folded,
       });
-      items.forEach(p => renderItems.push(p));
+      if (!folded) items.forEach(p => renderItems.push(p));
     });
   }
 
@@ -2754,6 +2800,21 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           </div>
           </div>
 
+          {/* Duplicates: a small note over the list; a tap shows just them,
+              each set together. */}
+          {dups.groups.length > 0 && !showDups && (
+            <button type="button" className="plan-dup-notice" onClick={() => {
+              clearPoolFilters();
+              setDupOnly(true);
+            }}>
+              <Copy size={15} aria-hidden="true" />
+              <span>
+                {dups.byId.size} מקומות נראים כפולים
+              </span>
+              <span className="plan-dup-notice-go">הצג<ChevronLeft size={14} aria-hidden="true" /></span>
+            </button>
+          )}
+
           {/* Active-view summary — one quiet line telling you how much of the
               list you are actually looking at, with a one-tap way back to
               everything. Hidden when nothing is filtered out. */}
@@ -2767,6 +2828,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
             if (mustOnly) bits.push('חובה בלבד');
             if (picked.length) bits.push(picked.length <= 2 ? picked.join(' · ') : `${picked.length} קטגוריות`);
             if (hideVisited) bits.push('ללא מקומות שביקרנו בהם');
+            if (showDups) bits.push('רק כפילויות');
             return (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
@@ -2845,23 +2907,26 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
               (() => {
               const renderEntry = (plan) => {
                 // Section header rows (area clusters / category sections).
-                // They stay in the list, not sticky (the owner's ask): a
-                // stuck header was replaced by the next as you scrolled.
-                // Hiding a category is the filter's job, so its header
-                // doesn't fold; an area's still does.
+                // A category's stays on top while its own places scroll
+                // under it, until the next one's takes over (the owner's
+                // ask); the cards then leave the category out. Each folds:
+                // a category's is remembered on the device.
                 if (plan.__header) {
                   const headerColor = plan.category ? getCategoryColor(plan.category) : 'var(--accent)';
                   const area = !plan.category;
+                  const searching = !!searchQuery.trim();
                   return (
                     <SectionHeader
                       key={plan.id}
-                      className="plan-group-head"
+                      className={`plan-group-head${plan.category ? ' stuck' : ''}`}
                       title={plan.label}
-                      icon={plan.category ? getCategoryIcon(plan.category, 16) : <Layers size={16} />}
+                      icon={plan.category ? getCategoryIcon(plan.category, 16) : plan.dup ? <Copy size={16} /> : <Layers size={16} />}
                       color={headerColor}
                       count={plan.count}
-                      collapsed={area ? !!collapsedAreas[plan.id] : undefined}
-                      onToggle={area ? () => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] })) : undefined}
+                      collapsed={area ? !!collapsedAreas[plan.id] : plan.folded}
+                      onToggle={area
+                        ? () => setCollapsedAreas(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))
+                        : searching ? undefined : () => toggleCatFold(plan.category)}
                       style={{ '--c': headerColor }}
                     />
                   );
@@ -2882,7 +2947,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 const travel = travelSummary(plan);
                 const linkCount = (Array.isArray(plan.links) ? plan.links.length : 0);
                 const metaParts = [];
-                if (plan.category) metaParts.push({ key: 'category', text: plan.category });
+                if (plan.category && !catGrouped) metaParts.push({ key: 'category', text: plan.category });
                 if (when?.until) metaParts.push({ key: 'until', Icon: Calendar, text: when.until });
                 if (travel.walk) metaParts.push({ key: 'walk', Icon: Footprints, text: travel.walk });
                 else if (travel.transit) metaParts.push({ key: 'transit', Icon: Bus, text: travel.transit });
@@ -2899,6 +2964,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 // the date itself (the stub, the leaf, the chip).
                 const pill = plan.priority === 'must' && !plan.visited
                   ? { text: 'חובה', tone: 'butter', star: true }
+                  : null;
+                // Looks like another place on the list: said on every card.
+                const dup = dups.byId.has(plan.id)
+                  ? { text: 'כפילות', title: `כפילות של: ${dupNames(plan.id).join(', ')}` }
                   : null;
                 // The date as one solid block, in the category's colour.
                 const whenTop = when && (when.rel || when.dow);
@@ -2943,11 +3012,15 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         willChange: 'transform',
                       }}
                     >
-                      <CategoryDisc color={getCategoryColor(plan.category)} size={36} radius={12} muted={plan.visited}>
-                        {plan.visited
-                          ? <Check size={17} strokeWidth={3} />
-                          : getCategoryIcon(plan.category, 17)}
-                      </CategoryDisc>
+                      {/* Under a category's header the disc would repeat it:
+                          just the check, once visited. */}
+                      {(!catGrouped || plan.visited) && (
+                        <CategoryDisc color={getCategoryColor(plan.category)} size={36} radius={12} muted={plan.visited}>
+                          {plan.visited
+                            ? <Check size={17} strokeWidth={3} />
+                            : getCategoryIcon(plan.category, 17)}
+                        </CategoryDisc>
+                      )}
 
                       <h3 style={{
                         minWidth: 0, margin: 0, width: '100%',
@@ -2971,8 +3044,13 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       )}
 
                       {/* Flags in the top corner (inline-end; the disc is at the start). */}
-                      {(flag || (!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation))) && (
+                      {(flag || dup || (!plan.visited && (bookedPlaceIds.has(plan.id) || plan.needsReservation))) && (
                         <span style={{ position: 'absolute', top: 12, insetInlineEnd: 12, display: 'flex', gap: 5 }}>
+                          {dup && (
+                            <span className="plan-dup-mark" title={dup.title} aria-label={dup.title}>
+                              <Copy size={13} />
+                            </span>
+                          )}
                           {flag && (
                             <span title={flag.title} style={{ display: 'flex', alignItems: 'center', color: 'var(--c-orange)', fontSize: 12, lineHeight: 1 }}>
                               <Star size={14} className="star-must" />
@@ -3015,8 +3093,19 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                   const onDays = plannedDays.get(plan.id) || [];
                   const booked = bookedPlaceIds.has(plan.id);
                   const price = (plan.price || '').trim();
+                  // "Must" and booking sit at the top, by the stub (the
+                  // owner's ask), one over the other and one width, so the
+                  // title wraps beside them and nothing overlaps. A booking
+                  // still to make is solid red: it needs doing.
+                  const flags = [];
+                  if (pill) flags.push({ key: 'must', cls: 'must', text: pill.text, icon: <Star size={11} className="star-must" /> });
+                  if (dup) flags.push({ key: 'dup', cls: 'dup', text: dup.text, icon: <Copy size={11} aria-hidden="true" />, title: dup.title });
+                  if (!plan.visited && (booked || plan.needsReservation)) {
+                    flags.push(booked
+                      ? { key: 'book', cls: 'booked', text: 'הוזמן', icon: <Check size={11} strokeWidth={3} />, title: 'יש הזמנה בטאב ההזמנות' }
+                      : { key: 'book', cls: 'book', text: 'להזמין', icon: <CalendarCheck size={11} />, title: 'צריך לסגור / להזמין מראש' });
+                  }
                   const tags = [];
-                  if (pill) tags.push({ key: 'pill', tone: pill.tone, text: pill.text, icon: <Star size={11} className="star-must" /> });
                   if (when?.until) tags.push({ key: 'until', tone: 'sky', text: when.until, icon: <Calendar size={11} aria-hidden="true" /> });
                   if (onDays.length) {
                     const d = onDays[0];
@@ -3025,11 +3114,6 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       return `${DOW_HE[(localDay(d.date) || new Date(d.date)).getDay()]} ${dd}.${mm}`;
                     })() : d.title;
                     tags.push({ key: 'day', tone: 'sky', text: onDays.length > 1 ? `${when} +${onDays.length - 1}` : when, icon: <Calendar size={11} aria-hidden="true" />, title: `בלוז: ${onDays.map(x => x.title).join(', ')}` });
-                  }
-                  if (!plan.visited && (booked || plan.needsReservation)) {
-                    tags.push(booked
-                      ? { key: 'book', tone: 'mint', text: 'הוזמן', icon: <Check size={11} strokeWidth={3} />, title: 'יש הזמנה בטאב ההזמנות' }
-                      : { key: 'book', tone: 'red', text: 'להזמין מראש', icon: <CalendarCheck size={11} />, title: 'צריך לסגור / להזמין מראש' });
                   }
                   if (plan.priority === 'optional' && !plan.visited) tags.push({ key: 'opt', tone: 'muted', text: 'אם יישאר זמן', icon: <Clock size={11} aria-hidden="true" /> });
                   if (price && price !== 'חינם') tags.push({ key: 'price', tone: 'neutral', text: price, icon: <Wallet size={11} aria-hidden="true" /> });
@@ -3076,18 +3160,32 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               />
                             )}
                             <h3 className="pstub-title">{plan.title}</h3>
+                            {flags.length > 0 && (
+                              <span className="pstub-flags">
+                                {flags.map(f => (
+                                  <span key={f.key} className={`pstub-flag ${f.cls}`} title={f.title}>{f.icon}{f.text}</span>
+                                ))}
+                              </span>
+                            )}
                           </div>
-                          <div className="pstub-sub">
-                            <CategoryDisc color={color} size={22} radius={7} muted={plan.visited}>
-                              {getCategoryIcon(plan.category, 12)}
-                            </CategoryDisc>
-                            {/* Where first: the disc already says what it is,
-                                and a long category name is what gets cut. */}
-                            <span>
-                              {area && <><bdi>{area}</bdi> · </>}
-                              {plan.category}
-                            </span>
-                          </div>
+                          {catGrouped ? (area && (
+                            <div className="pstub-sub">
+                              <MapPin size={13} aria-hidden="true" style={{ flexShrink: 0 }} />
+                              <span><bdi>{area}</bdi></span>
+                            </div>
+                          )) : (
+                            <div className="pstub-sub">
+                              <CategoryDisc color={color} size={22} radius={7} muted={plan.visited}>
+                                {getCategoryIcon(plan.category, 12)}
+                              </CategoryDisc>
+                              {/* Where first: the disc already says what it is,
+                                  and a long category name is what gets cut. */}
+                              <span>
+                                {area && <><bdi>{area}</bdi> · </>}
+                                {plan.category}
+                              </span>
+                            </div>
+                          )}
                           {plan.description && <p className="pstub-desc">{plan.description}</p>}
                           {tags.length > 0 && (
                             <div className="pstub-tags">
@@ -3152,9 +3250,11 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       />
                     )}
 
-                    <CategoryDisc color={getCategoryColor(plan.category)} size={LO.iconBox} muted={plan.visited}>
-                      {getCategoryIcon(plan.category, LO.iconBox >= 40 ? 20 : 16)}
-                    </CategoryDisc>
+                    {!catGrouped && (
+                      <CategoryDisc color={getCategoryColor(plan.category)} size={LO.iconBox} muted={plan.visited}>
+                        {getCategoryIcon(plan.category, LO.iconBox >= 40 ? 20 : 16)}
+                      </CategoryDisc>
+                    )}
 
                     <div style={{ minWidth: 0, flex: 1 }}>
                       {/* The name gets its own line (up to two): tags used to
@@ -3186,9 +3286,14 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                         // tag beside the status one instead of competing for it.
                         const booked = bookedPlaceIds.has(plan.id);
                         const bookingTag = !plan.visited && (booked || plan.needsReservation);
-                        if (!pill && !bookingTag) return null;
+                        if (!pill && !bookingTag && !dup) return null;
                         return (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
+                            {dup && (
+                              <Pill size="sm" tone="lavender" title={dup.title} icon={<Copy size={11} aria-hidden="true" />}>
+                                {dup.text}
+                              </Pill>
+                            )}
                             {pill && (
                               <Pill size="sm" tone={pill.tone} icon={pill.star ? <Star size={11} className="star-must" /> : pill.Icon ? <pill.Icon size={11} aria-hidden="true" /> : null}>
                                 {pill.text}

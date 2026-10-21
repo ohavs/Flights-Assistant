@@ -2736,6 +2736,25 @@ div.section-header-toggle { cursor: default; }
 }
 .plan-card.visited .pstub-desc { color: var(--text-muted); }
 .pstub-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+/* "Must" and booking: top corner of the card, by the stub, stacked at one
+   width. Part of the head row, so the title wraps beside them. */
+.pstub-head:has(.pstub-flags) { align-items: flex-start; }
+.pstub-head:has(.pstub-flags) > .check-circle { margin-top: 1px; }
+.pstub-flags {
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  margin-inline-end: -4px;
+}
+.pstub-flag {
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  min-height: 21px; padding: 0 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 800; line-height: 1; white-space: nowrap;
+}
+.pstub-flag svg { flex-shrink: 0; }
+.pstub-flag.must { background: var(--butter); color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-orange) 30%, transparent); }
+.pstub-flag.book { background: var(--c-red); color: #fff; box-shadow: 0 1px 0 color-mix(in srgb, var(--c-red) 50%, black); }
+[data-theme="dark"] .pstub-flag.book { color: #0B0B0C; }
+.pstub-flag.dup { background: var(--lavender); color: var(--text); }
+.pstub-flag.booked { background: var(--mint); color: var(--c-green); }
 .pstub-stub {
   width: var(--stub-w); flex-shrink: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -3341,12 +3360,31 @@ body[data-fab] .app-content {
 }
 
 /* A section of the planning pool: a category (or an area) under a header
-   that stays in the list — not sticky — with a rule in its colour. */
+   with a rule in its colour. A category's stays on top, under the sticky
+   toolbar (6 + 44 + 10px), while its own places scroll; the section ends
+   and the next one's takes over. Opaque, edge to edge, so nothing shows
+   through. */
 .plan-group-head {
   --c: var(--accent);
   padding: 2px 2px 8px;
   border-bottom: 2px solid color-mix(in srgb, var(--c) 30%, transparent);
 }
+.plan-group-head.stuck {
+  position: sticky; top: 60px; z-index: 4;
+  margin-inline: -16px; padding: 8px 18px;
+  background: var(--body-bg);
+}
+
+/* Duplicates: the note over the list, and the mark on a tile. */
+.plan-dup-notice {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--ink-6); background: var(--lavender); color: var(--text);
+  font-family: var(--font-hebrew); font-size: 12.5px; font-weight: 700; text-align: start;
+}
+.plan-dup-notice > span:nth-child(2) { flex: 1; min-width: 0; }
+.plan-dup-notice-go { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 800; flex-shrink: 0; }
+.plan-dup-mark { display: flex; color: var(--text-muted); }
 .plan-group-head .section-header-toggle { font-size: 17px; font-weight: 900; }
 /* The checklist's categories wear the same header, and its rule fills
    with the colour as the category gets packed (--done, 0–100%). */

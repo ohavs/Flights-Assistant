@@ -1,9 +1,9 @@
-// The expenses tab's summary: totals, per person, per day, categories,
-// who paid, and who owes whom (only from split expenses).
+// The expenses tab's summary: totals, categories, each one's part and what
+// they paid, who owes whom (only from split expenses), and one person's own.
 //   node --test tests/expenseSummary.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSummary, settle, splitGroup } from '../src/lib/expenseSummary.js';
+import { expenseSummary, settle, splitGroup, shareOf, personalExpenses } from '../src/lib/expenseSummary.js';
 
 const rates = { EUR: 1, ILS: 4, USD: 1 };   // €1 = ₪4 = $1
 const ex = (amount, currency, extra = {}) => ({ amount, currency, category: 'כללי', createdAt: '2026-11-13T10:00:00.000Z', ...extra });
@@ -16,15 +16,13 @@ test('no rates: the totals per currency only, biggest first', () => {
   assert.deepEqual(s.transfers, []);
 });
 
-test('in shekels: total, per person, per day, by category, the biggest', () => {
+test('in shekels: total, by category, the biggest', () => {
   const s = expenseSummary([
     ex(10, 'EUR', { category: 'אוכל ושתייה', paidBy: 'a' }),
     ex(100, 'ILS', { category: 'תחבורה', paidBy: 'b', createdAt: '2026-11-14T10:00:00.000Z' }),
     ex(25, 'USD', { paidBy: 'a', description: 'מונית' }),
   ], { rates, members: ['a', 'b'] });
   assert.equal(s.ils, 40 + 100 + 100);
-  assert.equal(s.perPerson, 120);
-  assert.deepEqual(s.daily, { avg: 120, days: 2 });
   assert.deepEqual(s.byCategory.map(c => [c.cat, c.total, c.pct]), [['תחבורה', 100, 42], ['כללי', 100, 42], ['אוכל ושתייה', 40, 17]]);
   assert.deepEqual(s.top.map(e => e.ils), [100, 100, 40]);
   assert.equal(s.byCurrency.find(c => c.code === 'EUR').ils, 40);
@@ -32,11 +30,12 @@ test('in shekels: total, per person, per day, by category, the biggest', () => {
 
 test('who paid; no one owes anyone until an expense is split', () => {
   const s = expenseSummary([ex(300, 'ILS', { paidBy: 'a' }), ex(100, 'ILS', { paidBy: 'b' })], { rates, members: ['a', 'b'], currentUid: 'a' });
-  assert.deepEqual(s.byPayer.map(p => [p.uid, p.total, p.balance]), [['a', 300, 0], ['b', 100, 0]]);
+  // Not split: all of it is the payer's part.
+  assert.deepEqual(s.byPerson.map(p => [p.uid, p.paid, p.share, p.balance]), [['a', 300, 300, 0], ['b', 100, 100, 0]]);
   assert.equal(s.splits, 0);
   assert.deepEqual(s.transfers, []);
   assert.equal(s.mine, null);
-  assert.equal(s.perPerson, 200);   // a statistic, not a debt
+  assert.equal(s.myShare, 300);
 });
 
 test('a split: evenly among the payer and those chosen', () => {
@@ -47,7 +46,10 @@ test('a split: evenly among the payer and those chosen', () => {
   assert.equal(s.splits, 1);
   assert.deepEqual(s.transfers.map(t => [t.from, t.to, t.amount]).sort(), [['b', 'a', 100], ['c', 'a', 100]]);
   assert.equal(s.mine, -100);
-  assert.deepEqual(s.byPayer.find(p => p.uid === 'a').balance, 200);
+  assert.deepEqual(s.byPerson.find(p => p.uid === 'a').balance, 200);
+  // b: 100 of a's split, and all of their own.
+  assert.equal(s.myShare, 200);
+  assert.deepEqual(s.byPerson.map(p => [p.uid, p.paid, p.share]), [['b', 100, 200], ['a', 300, 100], ['c', 0, 100]]);
 });
 
 test('"רק הם": the payer is out of the split; a guest by name owes too', () => {
@@ -58,6 +60,8 @@ test('"רק הם": the payer is out of the split; a guest by name owes too', () 
   assert.equal(s.splits, 2);
   // a: +100 -30 = 70; b: +60; Dani: -130.
   assert.equal(s.mine, 70);
+  assert.equal(s.myShare, 30);
+  assert.equal(s.byPerson.find(p => p.uid === 'name:דני').share, 130);
   assert.deepEqual(s.transfers, [{ from: 'name:דני', to: 'a', amount: 70 }, { from: 'name:דני', to: 'b', amount: 60 }]);
 });
 
@@ -69,16 +73,34 @@ test('splitGroup: the payer first, never twice; nothing without a payer or other
   assert.deepEqual(splitGroup({}, 'a'), []);
 });
 
-test('a member who left and paid is still counted in per person', () => {
+test('a member who left and paid is still one of the people', () => {
   const s = expenseSummary([ex(300, 'ILS', { paidBy: 'a' }), ex(300, 'ILS', { paidBy: 'gone' })], { rates, members: ['a', 'c'] });
   assert.equal(s.people, 3);
-  assert.equal(s.perPerson, 200);
-  assert.deepEqual(s.byPayer.map(p => p.uid).sort(), ['a', 'c', 'gone']);
+  assert.deepEqual(s.byPerson.map(p => p.uid).sort(), ['a', 'c', 'gone']);
+});
+
+test('one person\'s own: each expense cut to their part', () => {
+  const list = [
+    ex(300, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'], category: 'אוכל ושתייה' }),   // 100 each
+    ex(80, 'ILS', { paidBy: 'b', category: 'תחבורה' }),                                // all b's
+    ex(60, 'ILS', { paidBy: 'a', splitWith: ['b'], splitSelf: false }),                // all b's
+    ex(40, 'ILS', { paidBy: 'c' }),                                                    // none of b's
+  ];
+  assert.equal(shareOf(list[0], 'b', 'a'), 1 / 3);
+  assert.equal(shareOf(list[2], 'a', 'a'), 0);
+  assert.equal(shareOf(list[3], 'b', 'c'), 0);
+  const mine = personalExpenses(list, 'b', { members: ['a', 'b', 'c'] });
+  assert.deepEqual(mine.map(e => e.amount), [100, 80, 60]);
+  const s = expenseSummary(mine, { rates, members: ['a', 'b', 'c'], currentUid: 'b' });
+  assert.equal(s.ils, 240);
+  assert.deepEqual(s.byCategory.map(c => [c.cat, c.total]), [['אוכל ושתייה', 100], ['תחבורה', 80], ['כללי', 60]]);
+  // On a trip of one, an expense with no payer is theirs.
+  assert.deepEqual(personalExpenses([ex(50, 'ILS')], 'a', { members: ['a'] }).map(e => e.amount), [50]);
 });
 
 test('no payer recorded: the one person on a trip of one, no one on a shared trip', () => {
   const solo = expenseSummary([ex(50, 'ILS')], { rates, members: ['a'] });
-  assert.deepEqual(solo.byPayer.map(p => [p.uid, p.total]), [['a', 50]]);
+  assert.deepEqual(solo.byPerson.map(p => [p.uid, p.paid, p.share]), [['a', 50, 50]]);
   assert.equal(solo.unassigned, 0);
   const shared = expenseSummary([ex(50, 'ILS', { splitWith: ['b'] }), ex(100, 'ILS', { paidBy: 'a' })], { rates, members: ['a', 'b'] });
   assert.equal(shared.unassigned, 50);
@@ -93,7 +115,7 @@ test('settle: fewest transfers, nothing under half a shekel', () => {
 });
 
 test('a number createdAt and an empty list do not throw', () => {
-  assert.equal(expenseSummary([ex(10, 'ILS', { createdAt: 1700000000000 })], { rates, members: ['a'] }).daily.days, 1);
+  assert.equal(expenseSummary([ex(10, 'ILS', { createdAt: 1700000000000 })], { rates, members: ['a'] }).ils, 10);
   const none = expenseSummary([], { rates, members: ['a'] });
   assert.equal(none.count, 0);
   assert.equal(none.ils, null);
