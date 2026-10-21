@@ -110,7 +110,7 @@ await step('add places in several categories', async () => {
   await addPlace({ title: 'שוק הפשפשים', category: 'מידע כללי וטיפים', address: at(47.4870, 19.0580) });
 });
 
-await step('two categories picked: one section each, under headers that are not sticky', async () => {
+await step('two categories picked: one section each; the header stays on top while its places scroll, and folds', async () => {
   const pill = page.locator('button.plan-filter-pill');
   const menu = page.getByRole('dialog', { name: 'סינון לפי קטגוריה' });
   const heads = () => page.locator('.plan-group .section-header-title').allInnerTexts();
@@ -128,10 +128,31 @@ await step('two categories picked: one section each, under headers that are not 
   if ((await heads()).join('|') !== 'מסעדות ומקומות אכילה|מקומות לבקר') throw new Error(`sections: ${(await heads()).join('|')}`);
   if (await page.locator('.plan-card').count() !== 6) throw new Error('not just the two categories');
   if (!(await pill.innerText()).includes('2 קטגוריות')) throw new Error('the pill does not say two categories');
-  if (await page.locator('.plan-group .section-header').first().evaluate(el => getComputedStyle(el).position) === 'sticky') {
-    throw new Error('the header is still sticky');
+  // Under its header, a card leaves the category (name and icon) out.
+  if (await page.locator('.plan-card', { hasText: 'מסעדות ומקומות אכילה' }).count()) throw new Error('a card still names its category');
+  if (await page.locator('.plan-group .plan-card .cat-disc').count()) {
+    throw new Error('a card still shows its category icon');
   }
   await shot('two-categories');
+  // Scrolled into the first section: its header is stuck under the toolbar.
+  const content = page.locator('.app-content');
+  const firstHead = page.locator('.plan-group .section-header').first();
+  await content.evaluate(el => el.scrollBy(0, 330));
+  await page.waitForTimeout(200);
+  const [box, top] = [await firstHead.boundingBox(), (await content.boundingBox()).y];
+  // Stuck right under the toolbar: the content's 16px padding, then the
+  // toolbar's 60.
+  if (Math.abs(box.y - (top + 76)) > 3) throw new Error(`the header is at ${Math.round(box.y - top)}, not stuck at 76`);
+  if (!(await firstHead.innerText()).includes('מסעדות')) throw new Error('the stuck header is not the section being read');
+  await shot('header-stuck');
+  await content.evaluate(el => el.scrollTo(0, 0));
+  // A section folds from its header, and opens again.
+  const visit = page.locator('.plan-group', { hasText: 'מקומות לבקר' });
+  await visit.locator('.section-header-toggle').click();
+  if (await visit.locator('.plan-card').count()) throw new Error('the section did not fold');
+  if (await page.locator('.plan-card').count() !== 3) throw new Error('folding one section hid another');
+  await visit.locator('.section-header-toggle').click();
+  await visit.locator('.plan-card').first().waitFor();
   // Back to everything: a single list again (grouping is off).
   await pill.click();
   await menu.getByRole('button', { name: 'נקה' }).click();
@@ -144,17 +165,19 @@ await step('two categories picked: one section each, under headers that are not 
   await page.mouse.click(5, 5);
   await page.locator('.plan-group').nth(3).waitFor();
   if ((await heads()).length !== 4) throw new Error(`sections: ${(await heads()).join('|')}`);
-  // Scrolled, the first header leaves with its places instead of sticking.
-  const head = page.locator('.plan-group .section-header').first();
-  const top0 = (await head.boundingBox()).y;
-  await page.mouse.move(195, 500);
-  for (let i = 0; i < 6; i++) {
-    await page.mouse.wheel(0, 90);
-    await page.waitForTimeout(120);
-  }
-  await page.waitForTimeout(200);
-  const top1 = (await head.boundingBox()).y;
-  if (top1 > top0 - 300) throw new Error(`the header did not scroll away (${top0} → ${top1})`);
+  // Past the first section, its header leaves with it, and the next one's
+  // is the one stuck under the toolbar.
+  const scroller = page.locator('.app-content');
+  const second = page.locator('.plan-group').nth(1);
+  await second.evaluate(el => {
+    const sc = document.querySelector('.app-content');
+    sc.scrollBy(0, el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 76 + 120);
+  });
+  await page.waitForTimeout(250);
+  const y0 = (await scroller.boundingBox()).y;
+  const [first, next] = [await page.locator('.plan-group .section-header').first().boundingBox(), await second.locator('.section-header').boundingBox()];
+  if (first.y > y0 + 30) throw new Error(`the first header is still at ${Math.round(first.y - y0)}`);
+  if (Math.abs(next.y - (y0 + 76)) > 3) throw new Error(`the next header is at ${Math.round(next.y - y0)}, not stuck at 76`);
   await shot('grouped-scrolled');
 });
 
