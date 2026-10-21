@@ -101,8 +101,8 @@ function PickerDialog({ title, onClose, readout, okLabel, onOk, children }) {
    CALENDAR CORE COMPONENT
    ══════════════════════════════════════════════════════════ */
 // `rangeEnd`: a range's last day; the days from the selected one to it
-// are marked as one stretch.
-function CalendarBody({ selectedDateStr, onSelect, rangeEnd }) {
+// are marked as one stretch. `range`: the days before its first are grey.
+function CalendarBody({ selectedDateStr, onSelect, rangeEnd, range = false }) {
   const initialDate = selectedDateStr ? parseDateISO(selectedDateStr) : new Date();
   const [currentYear, setCurrentYear] = useState(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth()); // 0-11
@@ -169,12 +169,13 @@ function CalendarBody({ selectedDateStr, onSelect, rangeEnd }) {
           const isSelected = selectedDateStr === thisDateStr || rangeEnd === thisDateStr;
           const isToday = todayStr === thisDateStr;
           const inRange = !!rangeEnd && thisDateStr > selectedDateStr && thisDateStr < rangeEnd;
+          const beforeRange = range && !!selectedDateStr && thisDateStr < selectedDateStr;
 
           return (
             <button
               key={`day-${item.dayNum}`}
               type="button"
-              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}`}
+              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}${beforeRange ? ' before-range' : ''}`}
               aria-pressed={isSelected}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => onSelect(thisDateStr)}
@@ -457,8 +458,10 @@ export function CustomDateRangePicker({ start, end, onChange, label }) {
   useBackHandler(isOpen, () => setIsOpen(false));
   const [from, setFrom] = useState(start || '');
   const [to, setTo] = useState(end || '');
+  // Nothing picked yet, so the first tap is the first day. Until 8.71.1
+  // today was the first, unseen, and the first tap became the last.
   const open = () => {
-    setFrom(start || formatDateISO(new Date()));
+    setFrom(start || '');
     setTo(end && end !== start ? end : '');
     setIsOpen(true);
   };
@@ -468,7 +471,7 @@ export function CustomDateRangePicker({ start, end, onChange, label }) {
     else setTo(d);
   };
   const handleSave = () => {
-    onChange(from, to);
+    if (from) onChange(from, to);
     setIsOpen(false);
   };
 
@@ -482,14 +485,14 @@ export function CustomDateRangePicker({ start, end, onChange, label }) {
         <PickerDialog
           title={label || 'בחירת תאריכים'}
           onClose={() => setIsOpen(false)}
-          readout={<>
+          readout={from ? <>
             {formatHebrewDateRange(from, to)}
             {!to && <span className="picker-readout-hint">ועכשיו היום האחרון (או "בחירה" ליום אחד)</span>}
-          </>}
+          </> : 'בחרו את היום הראשון'}
           okLabel="בחירה"
           onOk={handleSave}
         >
-          <CalendarBody selectedDateStr={from} rangeEnd={to} onSelect={pick} />
+          <CalendarBody selectedDateStr={from} rangeEnd={to} onSelect={pick} range />
         </PickerDialog>
       )}
     </div>

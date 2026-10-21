@@ -1592,6 +1592,8 @@ textarea.form-control {
 
 /* A range: the days between the first and the last, as one stretch. */
 .cal-day.in-range { background: var(--p-8); color: var(--accent); font-weight: 800; border-radius: 8px; }
+/* Before the first day: outside it, grey (a tap there moves the first day). */
+.cal-day.before-range { color: var(--text-muted); opacity: 0.45; font-weight: 500; }
 .picker-readout-hint { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
 .picker-readout-time.range { font-size: 22px; direction: rtl; }
 /* A time range: two pairs of wheels, start on the right. Each side says

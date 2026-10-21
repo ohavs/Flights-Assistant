@@ -156,6 +156,19 @@ await step('"טווח": a first and a last day, a start and an end time, saved a
   // Days: a tap on the first, a tap on the last; the ones between are one stretch.
   await when.locator('.picker-field', { hasText: 'בחר תאריכים' }).click();
   const days = page.locator('.picker-card .cal-day');
+  // The first tap is the first day, whatever today is; the days before it
+  // go grey, and the stretch runs on into the next month.
+  const next = page.locator('.picker-card .cal-nav[aria-label="החודש הבא"]');
+  await next.click();
+  await days.filter({ hasText: /^20$/ }).click();
+  if (!/ועכשיו היום האחרון/.test(await page.locator('.picker-readout').innerText())) throw new Error('the first tap was not the first day');
+  if (await page.locator('.picker-card .cal-day.before-range').count() !== 19) throw new Error('the days before the first are not grey');
+  await next.click();
+  await days.filter({ hasText: /^10$/ }).click();
+  if (await page.locator('.picker-card .cal-day.in-range').count() !== 9) throw new Error('the stretch is not marked in the next month');
+  await shot('6a-range-months');
+  await page.locator('.picker-card').getByRole('button', { name: 'ביטול' }).click();
+  await when.locator('.picker-field', { hasText: 'בחר תאריכים' }).click();
   await days.filter({ hasText: /^13$/ }).click();
   await days.filter({ hasText: /^16$/ }).click();
   if (await page.locator('.picker-card .cal-day.in-range').count() !== 2) throw new Error('the days between are not marked');
