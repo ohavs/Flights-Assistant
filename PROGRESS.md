@@ -6,6 +6,7 @@
 - גרסת ווב: 8.70.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
+  - **PR #110 (8.70.0, "הוספה") ממתין ל־CI:** למזג אם ירוק (יש בדיקה מתוזמנת), לוודא שה־Deploy וה־Rules הצליחו, ואז למחוק את השורה הזאת.
   - **הרשאת "הוספה" (8.70.0, בקשת הבעלים 2026-10-21):** תפקיד `contributor` ב־`members`. מוסיף הכל עם `createdBy`, עורך ומוחק רק את שלו (`createdBy`, או `addedBy` במקומות ובהזמנות), ומסמן של אחרים (`visited`/`completed`; במקום גם `distances`/`coords`). בלוז: רק פעילויות שלו בתוך המערך (`ownActivities` בחוקים, עד 8 בכתיבה; `onlyOwn` ב־`dayActivities.js` כדי לא לגעת בפעילויות של אחרים). לא ימים, לא `settings`, לא מסמך הטיול. ב־UI: `canAdd` ו־`mayChange(item)` מ־`useTrip()` (`src/lib/roles.js`), `canEdit` נשאר לכל השאר. **כל יצירה חדשה חייבת `createdBy: currentUid`** (גם בווידג'ט, `ExpenseStore.java`). בדיקות: `tests/rules.test.mjs`, `tests/e2e/roles.e2e.mjs`.
   - הכניסה עם Google באפליקציה עובדת (הבעלים אישר ב־2026-10-15). התראות טיסה (N1, `v1.0.19`) ותזכורות בשעה (N2, `v1.0.21`) באוויר. ה־workflows של N2 ב־master ירוקים (Deploy, CI, Android).
   - **תור (בקשות הבעלים, 2026-10-15), לפי הסדר:**
