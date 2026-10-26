@@ -242,8 +242,12 @@ await step('a place with a date and time: optional, and the loudest thing on its
   const stub = card.locator('.pstub-stub.when');
   const text = (await stub.innerText()).replace(/\s+/g, ' ');
   if (!text.includes('היום') || !text.includes(time)) throw new Error(`stub says "${text}", not today ${time}`);
-  const look = await stub.evaluate(el => ({ bg: getComputedStyle(el).backgroundColor, fg: getComputedStyle(el).color }));
-  if (look.fg !== 'rgb(255, 255, 255)' || /rgba\(.*, 0\)|transparent/.test(look.bg)) throw new Error(`the stub is not solid: ${JSON.stringify(look)}`);
+  // Solid while ahead; once the time has gone by (the picker's 12:00, after
+  // noon) it is quiet, "past" (8.71.0). Which one depends on the hour.
+  const ahead = await page.evaluate((t) => { const [h, m] = t.split(':').map(Number); const n = new Date(); return n.getHours() * 60 + n.getMinutes() < h * 60 + m; }, time);
+  const look = await stub.evaluate(el => ({ bg: getComputedStyle(el).backgroundColor, fg: getComputedStyle(el).color, past: el.classList.contains('past') }));
+  if (ahead && (look.fg !== 'rgb(255, 255, 255)' || /rgba\(.*, 0\)|transparent/.test(look.bg))) throw new Error(`the stub is not solid: ${JSON.stringify(look)}`);
+  if (!ahead && !look.past) throw new Error(`a time gone by is not quiet: ${JSON.stringify(look)}`);
   await shot('pool-when-stub');
   // Compact: a leaf at the row's end.
   await page.locator('[title="מיון ותצוגה"]').click();

@@ -50,6 +50,14 @@ import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import { withScheme } from '../lib/links';
 import { findDuplicates } from '../lib/placeDuplicates';
+import { isNative } from '../lib/platform';
+import { formatAlert } from '../lib/placeAlerts';
+import PlaceAlarmSheet from './PlaceAlarmSheet';
+import { readPlaceAlarms, setPlaceAlarm, removePlaceAlarm, tidyPlaceAlarms, EVENT as ALARMS_EVENT } from '../lib/native/placeAlarms';
+
+// Alerts on places with a date are the phone's own notifications, so the
+// app only (src/lib/native/placeAlarms.js); the e2e test turns them on.
+const ALARMS_ON = isNative || (typeof window !== 'undefined' && !!window.__e2eAlarms);
 import { whenState } from '../lib/whenState';
 import {
   Search,
@@ -112,6 +120,7 @@ import {
   Wallet,
   CalendarClock,
   Copy,
+  Bell,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -396,7 +405,7 @@ function planFormKey(v) {
   ]);
 }
 
-export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceHandled }) {
+export default function PlanningTab({ tripId, tripName = '', sharedPlace = null, onSharedPlaceHandled, openPlaceId = null, onOpenPlaceHandled }) {
   // "הוספה" (canAdd without canEdit) adds places and activities, ticks
   // visited, and changes only what they added (src/lib/roles.js).
   const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles } = useTrip();
@@ -506,6 +515,16 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
   // Tapping a place card opens a details sheet instead of expanding the card
   // in place — the card itself stays plain text, every action lives here.
   const [detailPlanId, setDetailPlanId] = useState(null);
+  const [alarms, setAlarms] = useState(() => (ALARMS_ON ? readPlaceAlarms() : {}));
+  useEffect(() => {
+    if (!ALARMS_ON) return undefined;
+    const sync = () => setAlarms(readPlaceAlarms());
+    window.addEventListener(ALARMS_EVENT, sync);
+    return () => window.removeEventListener(ALARMS_EVENT, sync);
+  }, []);
+  const alarmOf = (id) => alarms[`${tripId}/${id}`] || null;
+  const [alarmFor, setAlarmFor] = useState(null);     // the place whose alert is being set
+  const [alarmPerm, setAlarmPerm] = useState(null);   // 'denied' once the phone said no
   // The "from where" picker over the details sheet: the place it measures to.
   const [originPickerFor, setOriginPickerFor] = useState(null);
   const [originQuery, setOriginQuery] = useState('');
@@ -745,6 +764,9 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
       }));
       setPlans(fetchedPlans);
       setLoading(false);
+      // From the server only: an alert of a place deleted (or past) goes,
+      // and a renamed place keeps its alert's title current.
+      if (ALARMS_ON && !snapshot.metadata.fromCache) tidyPlaceAlarms(tripId, fetchedPlans);
     }, () => setLoading(false));   // refused for good: the empty list, not a skeleton forever
 
     return () => unsubscribe();
@@ -1104,6 +1126,17 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     // handleOpenAdd is recreated every render; the place itself is the trigger.
   }, [sharedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A tap on a place's alert opens that place, once the list is here.
+  useEffect(() => {
+    if (!openPlaceId || loading) return undefined;
+    const t = setTimeout(() => {
+      if (plans.some(p => p.id === openPlaceId)) { setSubTab('pool'); setDetailPlanId(openPlaceId); }
+      onOpenPlaceHandled?.();
+    });
+    return () => clearTimeout(t);
+    // The id is the trigger; the list only has to have arrived.
+  }, [openPlaceId, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Whether closing the plan form would lose something (the "unsaved
   // changes" prompt, and drag-to-dismiss only while nothing would be lost).
   // A new place: anything typed in. An edit: anything different from what
@@ -1264,6 +1297,31 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
     e.preventDefault();
     if (!title.trim() || !tripId) return;
 
+    // A link typed but not added (or an open edit of one) was lost on save
+    // (the owner's ask): say so, and add it before saving, or go back.
+    const typedUrl = newLinkUrl.trim();
+    const edited = editingLinkIdx !== null && links[editingLinkIdx] && editLinkUrl.trim()
+      && (withScheme(editLinkUrl.trim()) !== links[editingLinkIdx].url || editLinkLabel.trim() !== (links[editingLinkIdx].label || ''));
+    let formLinks = links;
+    if (typedUrl || edited) {
+      const ok = await confirm({
+        title: edited && !typedUrl ? 'עריכת קישור לא נשמרה' : 'קישור שלא נוסף',
+        message: <>
+          הקישור <strong dir="ltr">{prettyUrl(withScheme(typedUrl || editLinkUrl.trim()))}</strong> עוד לא נוסף למקום.
+          {' '}להוסיף אותו ולשמור?
+        </>,
+        confirmText: 'הוסף ושמור',
+        cancelText: 'חזרה לטופס',
+      });
+      if (!ok) return;
+      if (edited) formLinks = formLinks.map((l, i) => (i === editingLinkIdx ? { label: editLinkLabel.trim(), url: withScheme(editLinkUrl.trim()) } : l));
+      if (typedUrl) formLinks = [...formLinks, { label: newLinkLabel.trim(), url: withScheme(typedUrl) }];
+      setLinks(formLinks);
+      setEditingLinkIdx(null);
+      setNewLinkLabel('');
+      setNewLinkUrl('');
+    }
+
     // A time needs a day to belong to.
     if ((eventStartTime || endTimeOn) && !eventStartDate) { setWhenNeedsDate(true); return; }
     setWhenNeedsDate(false);
@@ -1300,7 +1358,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         'walkMins', 'transitMins'];
       const opened = editBaseline ? Object.fromEntries(JSON.parse(editBaseline).map((x, i) => [FORM_KEYS[i], x])) : null;
       const updates = changedFields(opened ? fieldsOf(opened) : {}, fieldsOf({
-        title, category, description, address, price, links,
+        title, category, description, address, price, links: formLinks,
         eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn,
         originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
       }));
@@ -1373,7 +1431,7 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
         description: description.trim(),
         address: address.trim(),
         price: price.trim() || 'חינם',
-        links: links,
+        links: formLinks,
         visited: false,
         distanceOriginId: originId,
         event: eventData,
@@ -2403,7 +2461,10 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       which, and an empty name is left empty rather than being
                       filled with the URL. */}
                   <div className="form-group">
-                    <label>קישורים נוספים</label>
+                    <label>
+                      קישורים נוספים
+                      {links.length > 0 && <span className="link-count">{links.length}</span>}
+                    </label>
                     {links.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                         {links.map((link, idx) => (
@@ -2457,8 +2518,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                               </div>
                             </div>
                           ) : (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 16, border: 'none' }}>
-                              <Link2 size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            <div key={idx} className="link-row">
+                              <span className="link-row-icon"><Link2 size={14} aria-hidden="true" /></span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: link.label ? 'var(--primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {link.label || 'ללא שם'}
@@ -2477,41 +2538,41 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                       </div>
                     )}
 
-                    {/* New-link row — stacked, each field under its own label */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 16, border: 'none' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label style={linkFieldLabel}>שם הקישור (אופציונלי)</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          placeholder="למשל: אתר רשמי, פוסט בפייסבוק"
-                          value={newLinkLabel}
-                          onChange={(e) => setNewLinkLabel(e.target.value)}
-                          style={{ fontSize: 13 }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label style={linkFieldLabel}>כתובת הקישור (URL)</label>
+                    {/* New link: the address first (it is what gets pasted),
+                        then an optional name. Once there is an address the
+                        box and its "הוסף קישור" light up, so it reads as a
+                        step still to take (the owner's ask: visually, not
+                        with a hint); saving with it still here asks first. */}
+                    <div className={`link-composer${newLinkUrl.trim() ? ' ready' : ''}`}>
+                      <div className="link-composer-url">
+                        <Link2 size={16} aria-hidden="true" />
                         <input
                           type="text"
                           inputMode="url"
-                          className="form-control"
-                          placeholder="https://..."
+                          aria-label="כתובת הקישור"
+                          placeholder="הדביקו קישור: https://..."
                           value={newLinkUrl}
                           onChange={(e) => setNewLinkUrl(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLinkRow(); } }}
                           dir="ltr"
-                          style={{ fontSize: 13, textAlign: 'left' }}
                         />
                       </div>
+                      <input
+                        type="text"
+                        className="form-control link-composer-name"
+                        aria-label="שם הקישור"
+                        placeholder="שם לקישור (לא חובה): אתר רשמי, פוסט..."
+                        value={newLinkLabel}
+                        onChange={(e) => setNewLinkLabel(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLinkRow(); } }}
+                      />
                       <button
                         type="button"
                         onClick={handleAddLinkRow}
                         disabled={!newLinkUrl.trim()}
-                        className="btn-secondary"
-                        style={{ width: '100%', opacity: newLinkUrl.trim() ? 1 : 0.5 }}
+                        className="link-add-btn"
                       >
-                        <Plus size={14} />
+                        <Plus size={16} strokeWidth={2.6} />
                         <span>הוסף קישור</span>
                       </button>
                     </div>
@@ -3220,6 +3281,8 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                     })() : d.title;
                     tags.push({ key: 'day', tone: 'sky', text: onDays.length > 1 ? `${when} +${onDays.length - 1}` : when, icon: <Calendar size={11} aria-hidden="true" />, title: `בלוז: ${onDays.map(x => x.title).join(', ')}` });
                   }
+                  const alarm = ALARMS_ON && alarmOf(plan.id);
+                  if (alarm && !plan.visited) tags.push({ key: 'alarm', tone: 'lavender', text: formatAlert(alarm.at).slice(3), icon: <Bell size={11} aria-hidden="true" />, title: 'התראה' });
                   if (plan.priority === 'optional' && !plan.visited) tags.push({ key: 'opt', tone: 'muted', text: 'אם יישאר זמן', icon: <Clock size={11} aria-hidden="true" /> });
                   if (price && price !== 'חינם') tags.push({ key: 'price', tone: 'neutral', text: price, icon: <Wallet size={11} aria-hidden="true" /> });
                   if (linkCount > 0) tags.push({ key: 'links', tone: 'neutral', text: String(linkCount), icon: <Link2 size={11} aria-hidden="true" />, title: `${linkCount} קישורים` });
@@ -3652,6 +3715,24 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
                 </p>
               )}
 
+              {/* A place with a date: its alert (the app), or a way to set one. */}
+              {ALARMS_ON && detailPlan.event?.startDate && (() => {
+                const alarm = alarmOf(detailPlan.id);
+                return (<>
+                  <button type="button" className={`place-alarm${alarm ? ' on' : ''}`} onClick={() => setAlarmFor(detailPlan.id)}>
+                    <span className="place-alarm-icon"><Bell size={17} aria-hidden="true" /></span>
+                    <span className="place-alarm-text">
+                      <span className="place-alarm-title">{alarm ? 'התראה' : 'הוסף התראה'}</span>
+                      <span className="place-alarm-sub">{alarm ? formatAlert(alarm.at) : 'בחרו מתי להזכיר לכם על המקום'}</span>
+                    </span>
+                    <span className="place-alarm-go">{alarm ? 'שינוי' : <Plus size={18} strokeWidth={2.6} aria-hidden="true" />}</span>
+                  </button>
+                  {alarm && alarmPerm === 'denied' && (
+                    <p className="place-alarm-warn" role="alert">ההתראות של האפליקציה חסומות בהגדרות הטלפון, ולכן ההתראה לא תגיע.</p>
+                  )}
+                </>);
+              })()}
+
               {renderDistanceBlock(detailPlan)}
 
               {/* Locations & links */}
@@ -3804,6 +3885,25 @@ export default function PlanningTab({ tripId, sharedPlace = null, onSharedPlaceH
           </>)}
         </Sheet>
       )}
+
+      {/* Setting a place's alert, over its details. */}
+      {alarmFor && (() => {
+        const plan = plans.find(p => p.id === alarmFor);
+        if (!plan?.event?.startDate) return null;
+        return (
+          <PlaceAlarmSheet
+            plan={plan}
+            alarm={alarmOf(plan.id)}
+            whenText={formatEventWhen(plan.event)}
+            onClose={() => setAlarmFor(null)}
+            onSave={async (at) => setAlarmPerm(await setPlaceAlarm({
+              tripId, placeId: plan.id, at, title: plan.title, when: formatEventWhen(plan.event), tripName,
+            }))}
+            onRemove={() => removePlaceAlarm(tripId, plan.id)}
+          />
+        );
+      })()}
+
 
       {/* ── "From where" picker, over the details sheet ──────────────────
           The hotel (and any saved starting point) stays pinned on top for

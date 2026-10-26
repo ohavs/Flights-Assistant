@@ -16,6 +16,7 @@ export const NOTIFY_KINDS = [
   { key: 'flight', label: 'טיסות', hint: "24 שעות לפני (צ'ק־אין) ו־3 שעות לפני ההמראה", default: true },
   { key: 'reminder', label: 'תזכורות', hint: 'בשעה שקבעתם לתזכורת שלכם', default: true },
   { key: 'booking', label: 'הזמנות', hint: 'לפני כל הזמנה: השעה ומספר האישור', default: true },
+  { key: 'place', label: 'מקומות עם תאריך', hint: 'ההתראות שקבעתם למקומות בתכנון', default: true },
   { key: 'morning', label: 'סיכום בוקר', hint: 'בכל בוקר בטיול: התוכנית של היום ומזג האוויר', default: true },
   // Sent by the server, not scheduled here: see push.js.
   { key: 'partners', label: 'שינויים של שותפים', hint: 'הוצאה, מקום או פעילות חדשים, הצטרפות לטיול, ושינוי בטיסה או במלון', default: true },

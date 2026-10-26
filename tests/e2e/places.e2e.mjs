@@ -1,7 +1,10 @@
 // The places list: "must" and booking at the top of a card, by the stub,
 // with the title wrapping beside them; duplicates (the same name, or the
 // same link or address) marked on every card, and a note over the list
-// that shows just them, each set together.
+// that shows just them, each set together. The place form's links: a
+// typed address lights "הוסף קישור" up, and saving with it still there
+// asks first. A place with a date takes an alert (the app's; turned on
+// here with window.__e2eAlarms).
 //   bash scripts/run-e2e.sh tests/e2e/places.e2e.mjs
 // Screenshots: .e2e/places/
 import { chromium } from 'playwright';
@@ -11,6 +14,7 @@ const out = '.e2e/places';
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const ctx = await browser.newContext({ viewport: { width: 360, height: 800 }, deviceScaleFactor: 2, serviceWorkers: 'block' });
+await ctx.addInitScript(() => { window.__e2eAlarms = true; });
 const page = await ctx.newPage();
 page.setDefaultTimeout(15000);
 const errors = [];
@@ -50,6 +54,19 @@ await place('p3', 'szimpla ', 'מקומות לבקר');
 await place('p4', 'ארמון בודה', 'מקומות לבקר', { address: 'https://maps.app.goo.gl/xyz' });
 await place('p5', 'הארמון המלכותי', 'אטרקציות ודברים לעשות', { address: 'maps.app.goo.gl/xyz/' });
 await place('p6', 'גשר השלשלאות', 'מקומות לבקר');
+// Ten days from now, at seven in the evening.
+const pad = (n) => String(n).padStart(2, '0');
+const day = new Date(Date.now() + 10 * 864e5);
+const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const eve = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1);
+await place('p7', 'שוק חג המולד', 'אטרקציות ודברים לעשות', { event: { startDate: iso(day), startTime: '19:00', endDate: null, endTime: null } });
+const get = (path) => fetch(`${DB}/${path}`, { headers: admin }).then(r => r.json());
+const topModal = () => page.locator('.modal-overlay').last();
+const closeTop = async () => {
+  const n = await page.locator('.modal-overlay').count();
+  await topModal().locator('button[aria-label="סגור"]').first().click();
+  await page.waitForFunction((k) => document.querySelectorAll('.modal-overlay').length < k, n);
+};
 
 await page.locator('.trip-card', { hasText: 'בודפשט' }).getByText('פתח טיול').click();
 await page.locator('nav button.nav-item[aria-label="תכנון טיול"]').click();
@@ -99,8 +116,83 @@ await step('the note over the list shows just the duplicates, each set together;
   await shot('2-duplicates');
   await page.getByRole('button', { name: 'הצג הכל' }).click();
   await card('גשר השלשלאות').waitFor();
-  if (await page.locator('.plan-card').count() !== 6) throw new Error('not all back');
+  if (await page.locator('.plan-card').count() !== 7) throw new Error('not all back');
   await note.waitFor();
+});
+
+await step('links: a typed address lights "הוסף קישור" up; saving with it still there asks, and "הוסף ושמור" keeps it', async () => {
+  await card('גשר השלשלאות').click();
+  await topModal().getByText('עריכה', { exact: true }).click();
+  await topModal().getByText('עריכת פריט תכנון').waitFor();
+  const composer = topModal().locator('.link-composer');
+  const add = composer.locator('.link-add-btn');
+  if (await composer.evaluate(e => e.classList.contains('ready'))) throw new Error('ready with nothing typed');
+  if (!(await add.isDisabled())) throw new Error('"הוסף קישור" is on with nothing typed');
+  await composer.getByLabel('כתובת הקישור').fill('example.com/bridge');
+  if (!(await composer.evaluate(e => e.classList.contains('ready')))) throw new Error('the box does not light up');
+  if (await add.evaluate(e => getComputedStyle(e).animationName) !== 'link-add-pulse') throw new Error('the button does not pulse');
+  await add.evaluate(e => e.scrollIntoView({ block: 'center' }));
+  await shot('4-link-ready');
+  const submit = topModal().locator('.sheet-footer button[type="submit"]');
+  await submit.click();
+  const ask = page.getByText('קישור שלא נוסף');
+  await ask.waitFor();
+  await shot('5-link-ask');
+  await page.getByRole('button', { name: 'חזרה לטופס' }).click();
+  await ask.waitFor({ state: 'detached' });
+  if (await composer.getByLabel('כתובת הקישור').inputValue() !== 'example.com/bridge') throw new Error('going back lost the address');
+  await submit.click();
+  await page.getByRole('button', { name: 'הוסף ושמור' }).click();
+  await page.getByText('עריכת פריט תכנון').waitFor({ state: 'detached' });
+  let urls = [];
+  for (let i = 0; i < 20 && !urls.length; i++) {
+    const doc = await get('trips/pl/planning/p6');
+    urls = (doc.fields?.links?.arrayValue?.values || []).map(v => v.mapValue.fields.url.stringValue);
+    if (!urls.length) await page.waitForTimeout(250);
+  }
+  if (urls.join() !== 'https://example.com/bridge') throw new Error(`saved links: ${urls.join()}`);
+  while (await page.locator('.modal-overlay').count()) await closeTop();
+});
+
+await step('a place with a date: set an alert from its details, choosing "ערב לפני"; it shows there and on the card', async () => {
+  // No date, no alert.
+  await card('גשר השלשלאות').click();
+  if (await topModal().locator('.place-alarm').count()) throw new Error('an alert on a place with no date');
+  await closeTop();
+  await card('שוק חג המולד').click();
+  const alarm = topModal().locator('.place-alarm');
+  if (!(await alarm.innerText()).includes('הוסף התראה')) throw new Error(`alarm: ${await alarm.innerText()}`);
+  await alarm.click();
+  const sheet = page.locator('.modal-overlay', { hasText: 'התראה למקום' });
+  await sheet.waitFor();
+  const presets = await sheet.locator('.alarm-preset-label').allInnerTexts();
+  if (presets.join('|') !== 'שעה לפני|3 שעות לפני|בבוקר של היום|ערב לפני') throw new Error(`presets: ${presets.join('|')}`);
+  await sheet.getByRole('radio', { name: /ערב לפני/ }).click();
+  const at = `${pad(eve.getDate())}.${pad(eve.getMonth() + 1)} · 20:00`;
+  if (!(await sheet.locator('.alarm-summary').innerText()).includes(at)) throw new Error(`summary: ${await sheet.locator('.alarm-summary').innerText()}`);
+  await shot('6-alarm-sheet');
+  await sheet.getByRole('button', { name: 'שמור התראה' }).click();
+  await sheet.waitFor({ state: 'detached' });
+  await topModal().locator('.place-alarm.on', { hasText: at }).waitFor();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('notify.places') || '{}'));
+  if (stored['pl/p7']?.at !== `${iso(eve)}T20:00`) throw new Error(`stored: ${JSON.stringify(stored)}`);
+  await closeTop();
+  if (!(await card('שוק חג המולד').innerText()).includes('20:00')) throw new Error('the card does not show the alert');
+  await shot('7-alarm-card');
+});
+
+await step('the alert is changed and removed from the same sheet', async () => {
+  await card('שוק חג המולד').click();
+  await topModal().locator('.place-alarm.on').click();
+  const sheet = page.locator('.modal-overlay', { hasText: 'התראה למקום' });
+  await sheet.waitFor();
+  if ((await sheet.getByRole('radio', { name: /ערב לפני/ }).getAttribute('aria-checked')) !== 'true') throw new Error('the set time is not chosen');
+  await sheet.getByRole('button', { name: 'הסר' }).click();
+  await sheet.waitFor({ state: 'detached' });
+  await topModal().locator('.place-alarm', { hasText: 'הוסף התראה' }).waitFor();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('notify.places') || '{}'));
+  if (Object.keys(stored).length) throw new Error(`still stored: ${JSON.stringify(stored)}`);
+  await closeTop();
 });
 
 await step('dark mode', async () => {

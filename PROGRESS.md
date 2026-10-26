@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.71.1 (`changelog.md`)
+- גרסת ווב: 8.72.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - **הרשאת "הוספה" (8.70.0, בקשת הבעלים 2026-10-21):** תפקיד `contributor` ב־`members`. מוסיף הכל עם `createdBy`, עורך ומוחק רק את שלו (`createdBy`, או `addedBy` במקומות ובהזמנות), ומסמן של אחרים (`visited`/`completed`; במקום גם `distances`/`coords`). בלוז: רק פעילויות שלו בתוך המערך (`ownActivities` בחוקים, עד 8 בכתיבה; `onlyOwn` ב־`dayActivities.js` כדי לא לגעת בפעילויות של אחרים). לא ימים, לא `settings`, לא מסמך הטיול. ב־UI: `canAdd` ו־`mayChange(item)` מ־`useTrip()` (`src/lib/roles.js`), `canEdit` נשאר לכל השאר. **כל יצירה חדשה חייבת `createdBy: currentUid`** (גם בווידג'ט, `ExpenseStore.java`). בדיקות: `tests/rules.test.mjs`, `tests/e2e/roles.e2e.mjs`.
@@ -57,6 +57,8 @@
   - **טווח בכרטיס (8.70.1, בקשת הבעלים):** טווח תאריכים עם שעה = כל יום בשעות האלה. `placeWhen` מחזיר `top`/`main`/`sub` (העמודה והעלה), `until` (תגית), `line` (רשת, aria); ב־`daily` העמודה "כל יום / שעה / עד שעה" והתאריכים בתגית.
   - **מצב התאריך (8.71.0, בקשת הבעלים):** `src/lib/whenState.js` (טהור, `tests/whenState.test.mjs`) מחזיר `upcoming`/`live`/`past` לפי השעה. `placeWhen(ev, now)` מחזיר `state` ו־`past` ממנו. `WhenDot` (‏`.when-dot`) לפני השורה העליונה בעמודה ובעלה, ובמקום האייקון בשבב. בלי שעת סיום: `live` לשעה (`POINT_MINUTES`). `now` ב־`PlanningTab` מתעדכן כל דקה וכשהאפליקציה חוזרת לחזית.
   - **"טווח" בטופס (8.69.0, בקשת הבעלים):** `whenRange` בטופס; `CustomDateRangePicker`/`CustomTimeRangePicker` ב־`CustomDatePicker.jsx`. **מ־8.71.1** בלי תאריך קודם הבורר נפתח ריק (לא "היום"), והלחיצה הראשונה היא ההתחלה; ימים לפני ההתחלה `.before-range` (אפור, `range` ב־`CalendarBody`). הסיום נשמר רק כשהמתג דלוק (`endDateOn`/`endTimeOn`), לכל קטגוריה. סוף = התחלה לא נשמר.
+  - **התראה למקום (8.72.0, בקשת הבעלים 2026-10-26):** רק למקום עם `event.startDate`, ורק באפליקציה (`ALARMS_ON` ב־PlanningTab; ה־e2e מדליק עם `window.__e2eAlarms`). נשמרת בטלפון ב־localStorage ‏`notify.places` (`src/lib/native/placeAlarms.js`), לא במסמך, ולכן אין שינוי בחוקים, זה עובד באופליין ולא נוגע בשאר המשתתפים. סוג `place` ב־`NOTIFY_KINDS`. האפשרויות המוכנות והתזמון ב־`src/lib/placeAlerts.js` (טהור, `tests/placeAlerts.test.mjs`). החלונית: `src/components/PlaceAlarmSheet.jsx`. `tidyPlaceAlarms` רץ על snapshot מהשרת: מוחק התראות של מקום שנמחק או שזמנן עבר, ומעדכן את השם. לחיצה על התראה פותחת את המקום (`extra.placeId` → `openPlaceId`).
+  - **קישורים בטופס המקום (8.72.0):** `.link-composer` (כתובת קודם), שנהיה `.ready` כשיש כתובת, ואז הכפתור מהבהב. שמירה עם כתובת שלא נוספה (או עריכה פתוחה) שואלת "הוסף ושמור" / "חזרה לטופס", דרך `formLinks` ב־`handleAddSubmit`.
   - **כפילויות (8.67.0):** `src/lib/placeDuplicates.js` (טהור, `tests/placeDuplicates.test.mjs`): אותו שם (`nameKey`) או אותו `address` (`placeKey`), union-find. סימון "כפילות" בכל הפריסות. `.plan-dup-notice` מעל הרשימה, ולחיצה עליה מפעילה `dupOnly`, שמציג סעיף לכל קבוצה. בדיקה: `tests/e2e/places.e2e.mjs`.
     - הסינון הוא `PlanCategoryFilter.jsx`: תיבות סימון לכמה קטגוריות (`pickedCats`, ריק = הכל) ומתג "רק חובה" (`mustOnly`). לא נשמר במכשיר, כמו קודם.
     - החלטות הבעלים: 2+ קטגוריות שנבחרו תמיד מחולקות לקבוצות; ב"הכל" החלוקה לפי `groupBy`. כותרת קטגוריה לא מתקפלת (מסתירים מהתפריט); כותרת איזור מתקפלת.
