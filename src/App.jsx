@@ -1179,6 +1179,8 @@ function AppInner() {
   const [pendingTripPick, setPendingTripPick] = useState(null);
   // Handed to PlanningTab, which opens the add-place form pre-filled with it.
   const [pendingSharedPlace, setPendingSharedPlace] = useState(null);
+  // A place to open in the planning tab (a tap on its alert).
+  const [pendingPlaceId, setPendingPlaceId] = useState(null);
   // Header elevation + "scroll to top" both need the scrolling element.
   const contentRef = useRef(null);
   const [contentScrolled, setContentScrolled] = useState(false);
@@ -1225,6 +1227,13 @@ function AppInner() {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [trips, signedInUid, notifyVersion]);
+
+  // Alerts set on places (kept on the phone, src/lib/native/placeAlarms.js):
+  // scheduled again on launch and when the switches change.
+  useEffect(() => {
+    if (!isNative || !signedInUid) return;
+    import('./lib/native/placeAlarms').then(p => p.syncPlaceAlarms()).catch(() => {});
+  }, [signedInUid, notifyVersion]);
 
   // Reminders with a time (Android app): listen to every trip's reminders
   // and keep the owner's notifications in step — added, moved, ticked off.
@@ -1432,6 +1441,8 @@ function AppInner() {
       if (!extra?.tripId) return;
       setSelectedTripId(extra.tripId);
       if (extra.tab) setActiveTab(extra.tab);
+      // A place's alert opens that place.
+      if (extra.placeId) setPendingPlaceId(extra.placeId);
       setScreen('trip');
     };
     const offs = [];
@@ -2254,8 +2265,11 @@ function AppInner() {
             {activeTab === 'planning'  && (
               <PlanningTab
                 tripId={selectedTripId}
+                tripName={selectedTrip?.name || ''}
                 sharedPlace={pendingSharedPlace}
                 onSharedPlaceHandled={() => setPendingSharedPlace(null)}
+                openPlaceId={pendingPlaceId}
+                onOpenPlaceHandled={() => setPendingPlaceId(null)}
               />
             )}
             {activeTab === 'checklist' && <ChecklistTab tripId={selectedTripId} />}
