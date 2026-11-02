@@ -237,7 +237,7 @@ await step('days made from the flight dates are those dates, in a US time zone t
       dates = (list.documents || []).map(d => d.fields.date.stringValue).sort();
     }
     if (dates.join() !== '2026-11-03,2026-11-04,2026-11-05') throw new Error(`days: ${dates.join() || 'none'}`);
-    await page.getByText('ג׳ 03.11').first().waitFor();   // Tuesday, on the day's card
+    await page.locator('.dp-chip[aria-label="יום 1, ג׳ 03.11"]').waitFor();   // Tuesday, in the strip of days
   } finally {
     await cdp.send('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
   }
