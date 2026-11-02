@@ -1,17 +1,18 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
-import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Search, X, Check,
-  Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2,
+  Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2, ArrowLeftRight,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
 import { expenseSummary, personalExpenses, splitGroup, GUEST } from '../lib/expenseSummary';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
+import { tripCurrencies, destinationCurrency } from '../lib/destinationCurrency';
 import { useConfirm } from '../ConfirmContext';
 import Sheet, { Segmented } from '../ui/Sheet';
 import { CustomDropdown } from './CustomDatePicker';
@@ -51,14 +52,15 @@ export default function ExpensesTab({ tripId }) {
   const [sessionCategories, setSessionCategories] = useState([]);
 
   // The form's own pickers, each over the form: the currency (with the
-  // trip's own on top), the split, a place from the plan. "עוד פרטים"
-  // (the place) is folded until opened, or when the expense has one.
+  // trip's own on top), the split, a place from the plan (at the top of the
+  // form, the owner's ask; a place not on the list is a line under it).
   const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [splitOpen, setSplitOpen] = useState(false);
   const [placePickOpen, setPlacePickOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  // "מקום שלא ברשימה": the typed place, shown when asked for or when set.
+  const [otherPlace, setOtherPlace] = useState(false);
 
   // Exchange rates for ILS conversion
   // The last rates fetched (cached) at once, or none: a save before the
@@ -70,7 +72,7 @@ export default function ExpensesTab({ tripId }) {
 
   const confirm = useConfirm();
   // "הוספה" adds expenses, and changes only the ones they added.
-  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canAdd, mayChange } = useTrip();
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canAdd, canEdit, mayChange, trip } = useTrip();
 
   // Payer state
   const [paidBy, setPaidBy] = useState('');
@@ -139,11 +141,36 @@ export default function ExpensesTab({ tripId }) {
     return () => unsub();
   }, [tripId]);
 
-  // Derive persistent quick currencies: defaults + ever-used in expenses
+  // The trip's currencies: by its destination (Budapest: shekels, euros,
+  // forints), those it saved (`expenseCurrencies`, a currency added in the
+  // form), any added on this phone, then any its expenses used.
+  const savedKey = `expenseCurrencies_${tripId}`;
+  const [phoneCurrencies, setPhoneCurrencies] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(savedKey)) || []; } catch { return []; }
+  });
   const persistentQuickCurrencies = useMemo(() => {
-    const used = [...new Set(expenses.map(e => e.currency))];
-    return [...new Set([...DEFAULT_CURRENCIES, ...used])];
-  }, [expenses]);
+    const used = expenses.map(e => e.currency).filter(Boolean);
+    return [...new Set([...tripCurrencies(trip, DEFAULT_CURRENCIES), ...phoneCurrencies, ...used])];
+  }, [expenses, trip, phoneCurrencies]);
+  // A new expense starts in the destination's money, else the latest one's.
+  const startCurrency = destinationCurrency(trip)
+    || [...expenses].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))[0]?.currency
+    || persistentQuickCurrencies[0] || 'ILS';
+  // A currency added in the form is kept for the trip: on the trip for
+  // everyone (an editor may write it), else on this phone.
+  const keepCurrency = (code) => {
+    if (persistentQuickCurrencies.includes(code)) return;
+    if (canEdit && tripId) {
+      updateDoc(doc(db, 'trips', tripId), { expenseCurrencies: arrayUnion(code) })
+        .catch(err => console.error('Save currency failed:', err));
+    } else {
+      setPhoneCurrencies(prev => {
+        const next = [...new Set([...prev, code])];
+        try { localStorage.setItem(savedKey, JSON.stringify(next)); } catch { /* private mode */ }
+        return next;
+      });
+    }
+  };
 
   // What the form held when it opened: closing it unchanged is free.
   const [formBaseline, setFormBaseline] = useState(null);
@@ -164,7 +191,7 @@ export default function ExpensesTab({ tripId }) {
       splitSelf: expense.splitSelf !== false,
     } : {
       amount: '',
-      currency: persistentQuickCurrencies[0] || 'ILS',
+      currency: startCurrency,
       category: 'כללי',
       description: '',
       linkedPlanId: '',
@@ -193,7 +220,7 @@ export default function ExpensesTab({ tripId }) {
     setCurrencySearch('');
     setSplitOpen(false);
     setPlacePickOpen(false);
-    setMoreOpen(!!(f.linkedPlanId || f.customPlace));
+    setOtherPlace(!!f.customPlace);
     setShowForm(true);
   };
 
@@ -474,6 +501,51 @@ export default function ExpensesTab({ tripId }) {
                 </div>
               </div>
 
+              {/* Where: a place from the plan (it brings the category), or
+                  one that is not on the list. */}
+              <div className="act-form-block">
+                <span className="act-form-label">מקום מהתכנון</span>
+                {linkedPlanId ? (
+                  (() => {
+                    const linked = plans.find(p => p.id === linkedPlanId);
+                    return (
+                      <div className="act-place">
+                        <span className="dp-disc lavender"><MapPin size={18} /></span>
+                        <div className="act-place-text">
+                          <span className="act-place-title">{linked?.title || 'מקום מהתכנון'}</span>
+                          {linked?.category && <span className="act-place-sub">{linked.category}</span>}
+                        </div>
+                        <button type="button" className="round-btn" aria-label="החלפת מקום" title="החלפת מקום" onClick={() => setPlacePickOpen(true)}>
+                          <ArrowLeftRight size={16} />
+                        </button>
+                        <button type="button" className="btn-x" aria-label="נקה קישור למקום" title="נקה קישור למקום" onClick={() => setLinkedPlanId('')}>
+                          <X size={16} />
+                        </button>
+                      </div>
+                    );
+                  })()
+                ) : (<>
+                  {plans.length > 0 && (
+                    <button type="button" className="act-pick" onClick={() => setPlacePickOpen(true)}>
+                      <Search size={17} aria-hidden="true" />
+                      <span>חיפוש מקום ברשימה</span>
+                    </button>
+                  )}
+                  {otherPlace || !plans.length ? (
+                    <input type="text" className="form-control"
+                      aria-label="מיקום"
+                      placeholder={plans.length ? 'מקום שלא ברשימה...' : 'מקום (לא חובה)'}
+                      value={customPlace}
+                      onChange={e => setCustomPlace(e.target.value)}
+                    />
+                  ) : (
+                    <button type="button" className="exp-other-place" onClick={() => setOtherPlace(true)}>
+                      מקום שלא ברשימה?
+                    </button>
+                  )}
+                </>)}
+              </div>
+
               {/* What for */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>{linkedPlanId ? 'הערה (לא חובה)' : 'על מה'}</label>
@@ -545,54 +617,6 @@ export default function ExpensesTab({ tripId }) {
                 );
               })()}
 
-              {/* More: the place it was spent at */}
-              <div className="exp-more">
-                <button type="button" className="exp-more-toggle" aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)}>
-                  <span>עוד פרטים</span>
-                  {!moreOpen && (linkedPlanId || customPlace.trim()) && (
-                    <span className="exp-more-hint">
-                      <MapPin size={12} aria-hidden="true" />
-                      {plans.find(p => p.id === linkedPlanId)?.title || customPlace.trim()}
-                    </span>
-                  )}
-                  <ChevronDown size={16} aria-hidden="true" className="exp-more-chev" />
-                </button>
-                {moreOpen && (
-                  <div className="exp-more-body">
-                    {linkedPlanId ? (
-                      (() => {
-                        const linked = plans.find(p => p.id === linkedPlanId);
-                        return (
-                          <div className="act-place">
-                            <span className="dp-disc lavender"><MapPin size={18} /></span>
-                            <div className="act-place-text">
-                              <span className="act-place-title">{linked?.title || 'מקום מהתכנון'}</span>
-                              {linked?.category && <span className="act-place-sub">{linked.category}</span>}
-                            </div>
-                            <button type="button" className="btn-x" aria-label="נקה קישור למקום" title="נקה קישור למקום" onClick={() => setLinkedPlanId('')}>
-                              <X size={16} />
-                            </button>
-                          </div>
-                        );
-                      })()
-                    ) : (<>
-                      {plans.length > 0 && (
-                        <button type="button" className="act-pick" onClick={() => setPlacePickOpen(true)}>
-                          <Search size={17} aria-hidden="true" />
-                          <span>מקום מהתכנון</span>
-                        </button>
-                      )}
-                      <input type="text" className="form-control"
-                        aria-label="מיקום"
-                        placeholder={plans.length ? 'או מקום שלא ברשימה...' : 'מקום (לא חובה)'}
-                        value={customPlace}
-                        onChange={e => setCustomPlace(e.target.value)}
-                      />
-                    </>)}
-                  </div>
-                )}
-              </div>
-
               <div className="sheet-footer">
                 <button type="submit" className="btn-primary">שמור</button>
                 <button type="button" onClick={cancel} className="btn-secondary">ביטול</button>
@@ -633,6 +657,7 @@ export default function ExpensesTab({ tripId }) {
                 onClick={() => {
                   setCurrency(c.code);
                   if (!formQuickCurrencies.includes(c.code)) setFormQuickCurrencies(prev => [...prev, c.code]);
+                  keepCurrency(c.code);
                   close();
                 }}>
                 <span className="exp-cur-symbol" aria-hidden="true">{c.symbol}</span>

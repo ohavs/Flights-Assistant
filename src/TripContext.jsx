@@ -15,6 +15,7 @@ const TripContext = createContext({
   currentUserProfile: null,
   memberProfiles: {},
   tripMembers: {},
+  trip: null,      // the trip document
 });
 
 export const TripProvider = TripContext.Provider;

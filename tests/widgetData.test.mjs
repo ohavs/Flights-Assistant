@@ -108,15 +108,30 @@ test('the expense widget: the destination\'s currencies, categories, places, and
   assert.ok(p.spend.categories.includes('כללי'));
   // Places not visited first, then by name; nameless ones left out.
   assert.deepEqual(p.spend.places.map(x => x.id), ['p3', 'p2', 'p1']);
+  // Rome, no flight yet: known by its name.
+  assert.equal(r.spend.currency, 'EUR');
+  assert.deepEqual(r.spend.currencies.map(c => c.code), ['ILS', 'EUR']);
   // No destination known: the tab's defaults, in shekels.
-  assert.equal(r.spend.currency, 'ILS');
-  assert.deepEqual(r.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD']);
+  const [u] = widgetSnapshot({ trips: [{ ...rome, id: 'u', name: 'טיול' }], now }).trips;
+  assert.equal(u.spend.currency, 'ILS');
+  assert.deepEqual(u.spend.currencies.map(c => c.code), ['ILS', 'EUR', 'USD']);
   // The rates of every currency the widget can offer: its settings add any the app knows.
   assert.deepEqual(s.rates, { ILS: 4.05, EUR: 1, CHF: 0.96, USD: 1.1, JPY: 162 });
   assert.equal(widgetSnapshot({ trips: [paris], now }).rates, null);
   // Those currencies, with their signs and names.
   assert.ok(s.currencies.length > 30);
   assert.deepEqual(s.currencies.find(c => c.code === 'HUF'), { code: 'HUF', symbol: 'Ft', name: 'פורינט הונגרי' });
+});
+
+test('a trip with no flight yet: its destination as typed; a currency the trip saved', () => {
+  assert.equal(destinationCurrency({ destination: 'בודפשט' }), 'HUF');
+  assert.equal(destinationCurrency({ destination: 'בודפשט, הונגריה' }), 'HUF');
+  assert.equal(destinationCurrency({ name: 'סוף שבוע בפראג' }), 'CZK');
+  assert.deepEqual(tripCurrencies({ destination: 'ניו יורק' }, ['ILS']), ['ILS', 'USD']);
+  assert.equal(destinationCurrency({ destination: 'מקום לא מוכר' }), null);
+  // Added in the expense form, kept on the trip, after its own.
+  assert.deepEqual(tripCurrencies({ destination: 'בודפשט', expenseCurrencies: ['GBP', 'HUF', 'XYZ'] }, ['ILS']), ['ILS', 'EUR', 'HUF', 'GBP']);
+  assert.deepEqual(tripCurrencies({ expenseCurrencies: ['GBP'] }, ['ILS', 'EUR', 'USD']), ['ILS', 'EUR', 'USD', 'GBP']);
 });
 
 test('the destination\'s currency: Budapest offers shekels, euros and forints, New York dollars', () => {

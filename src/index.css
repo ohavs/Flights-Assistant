@@ -4170,3 +4170,7 @@ button.dp-leg:active { background: var(--ink-4); }
 .expense-card-title { font-size: 16px; font-weight: 800; color: var(--text); }
 .expense-card .expense-section-hint { margin: -4px 0 2px; }
 .custom-dropdown-popup > * { flex-shrink: 0; }
+.exp-other-place {
+  align-self: flex-start; padding: 2px 4px; border: none; background: none;
+  color: var(--accent); font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
+}

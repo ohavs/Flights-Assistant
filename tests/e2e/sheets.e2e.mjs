@@ -260,11 +260,11 @@ const openSummary = async () => {
   await page.locator('.expense-hero').click();
   await page.getByRole('dialog', { name: 'סיכום הוצאות' }).waitFor();
 };
-// The form with "עוד פרטים" open, on a short screen: it scrolls.
+// The form with a typed place open, on a short screen: it scrolls.
 await page.setViewportSize({ width: 390, height: 600 });
 await check('expense form', async () => {
   await openExpense();
-  await page.getByRole('button', { name: 'עוד פרטים' }).click();
+  await page.getByRole('button', { name: 'מקום שלא ברשימה?' }).click();
 }, closeAll);
 // Scrolled, a sheet's title bar sits at the very top of the sheet, edge to
 // edge: nothing scrolling under it shows above or beside it (with top: 0

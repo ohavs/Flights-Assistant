@@ -59,12 +59,70 @@ const CURRENCY = {
 const EUROPE = new Set([...EURO.split(' '),
   'HU', 'CZ', 'GB', 'CH', 'PL', 'RO', 'SE', 'NO', 'DK', 'IS', 'RS', 'AL', 'MK', 'BA', 'MD', 'UA']);
 
-// The destination's country (ISO 3166 alpha-2), or ''.
+// The trip's destination as typed ("בודפשט, הונגריה", "Rome"): countries
+// and the cities Israelis fly to most, in Hebrew and English. For a trip
+// with no flight entered yet.
+const PLACES = {
+  HU: 'הונגריה בודפשט hungary budapest',
+  CZ: 'צ׳כיה צ\'כיה צכיה פראג czech czechia prague praha',
+  AT: 'אוסטריה וינה זלצבורג austria vienna wien salzburg',
+  DE: 'גרמניה ברלין מינכן פרנקפורט המבורג germany berlin munich frankfurt hamburg',
+  FR: 'צרפת פריז ניס france paris nice',
+  IT: 'איטליה רומא מילאנו ונציה פירנצה נאפולי italy rome roma milan milano venice florence naples',
+  ES: 'ספרד מדריד ברצלונה spain madrid barcelona',
+  PT: 'פורטוגל ליסבון פורטו portugal lisbon porto',
+  GR: 'יוון אתונה כרתים רודוס greece athens crete rhodes',
+  CY: 'קפריסין לרנקה פאפוס cyprus larnaca paphos',
+  NL: 'הולנד אמסטרדם netherlands holland amsterdam',
+  BE: 'בלגיה בריסל belgium brussels',
+  GB: 'בריטניה אנגליה לונדון סקוטלנד אדינבורו uk england london scotland edinburgh britain',
+  IE: 'אירלנד דבלין ireland dublin',
+  CH: 'שווייץ שוויץ ציריך ז׳נבה switzerland zurich geneva',
+  PL: 'פולין ורשה קרקוב poland warsaw krakow',
+  RO: 'רומניה בוקרשט romania bucharest',
+  BG: 'בולגריה סופיה bulgaria sofia',
+  HR: 'קרואטיה זאגרב croatia zagreb',
+  SI: 'סלובניה slovenia', SK: 'סלובקיה slovakia',
+  ME: 'מונטנגרו montenegro',
+  RS: 'סרביה בלגרד serbia belgrade',
+  GE: 'גאורגיה גרוזיה טביליסי בטומי georgia tbilisi batumi',
+  TR: 'טורקיה איסטנבול אנטליה turkey istanbul antalya',
+  SE: 'שוודיה סטוקהולם sweden stockholm', NO: 'נורווגיה אוסלו norway oslo',
+  DK: 'דנמרק קופנהגן denmark copenhagen', FI: 'פינלנד הלסינקי finland helsinki',
+  IS: 'איסלנד iceland',
+  AE: 'איחוד האמירויות דובאי אבו דאבי uae dubai abu dhabi',
+  EG: 'מצרים סיני שארם קהיר egypt sinai cairo',
+  JO: 'ירדן עקבה עמאן jordan aqaba amman', MA: 'מרוקו morocco',
+  TH: 'תאילנד בנגקוק פוקט קוסמוי thailand bangkok phuket',
+  JP: 'יפן טוקיו קיוטו japan tokyo kyoto',
+  IN: 'הודו גואה india goa', VN: 'וייטנאם vietnam',
+  US: 'ארצות הברית ארה״ב ארה"ב אמריקה ניו יורק לוס אנג׳לס מיאמי usa america new york los angeles miami',
+  CA: 'קנדה canada', MX: 'מקסיקו mexico',
+  AU: 'אוסטרליה australia', ZA: 'דרום אפריקה south africa',
+  IL: 'ישראל israel אילת eilat',
+};
+// Each word, and in Hebrew also without a one-letter prefix ("בפראג").
+const words = (s) => String(s || '').toLowerCase().replace(/[,.()\-–]/g, ' ').split(/\s+/).filter(Boolean)
+  .flatMap(w => (/^[בלמוה][\u05d0-\u05ea׳'"]{2,}/.test(w) ? [w, w.slice(1)] : [w]));
+function countryFromText(...texts) {
+  const said = ` ${texts.map(t => words(t).join(' ')).join(' ')} `;
+  for (const [country, names] of Object.entries(PLACES)) {
+    // Whole words, and a two-word name ("ניו יורק") as a phrase.
+    const list = names.split(' ');
+    if (list.some(n => said.includes(` ${n} `))) return country;
+    for (let i = 0; i < list.length - 1; i++) if (said.includes(` ${list[i]} ${list[i + 1]} `)) return country;
+  }
+  return '';
+}
+
+// The destination's country (ISO 3166 alpha-2), or '': from the outbound
+// flight's airport, else from the destination the trip was given.
 export function destinationCountry(trip) {
   const apt = trip?.outboundFlightDetails?.arrAirport || trip?.returnFlightDetails?.depAirport || {};
   const stored = String(apt.country || '').toUpperCase();
   if (/^[A-Z]{2}$/.test(stored)) return stored;
-  return AIRPORT_COUNTRY[String(apt.code || '').toUpperCase()] || '';
+  return AIRPORT_COUNTRY[String(apt.code || '').toUpperCase()]
+    || countryFromText(trip?.destination, trip?.name);
 }
 
 // The destination's currency, when the app knows it (CURRENCY_META), or null.
@@ -75,10 +133,12 @@ export function destinationCurrency(trip) {
 
 // The currencies a new expense offers on this trip: shekels, then euros in
 // Europe or dollars elsewhere, then the destination's own (Budapest: ILS,
-// EUR, HUF), or the tab's defaults when the destination is not known.
+// EUR, HUF), or the tab's defaults when the destination is not known; and
+// after them any the trip saved (`expenseCurrencies`, added in the form).
 export function tripCurrencies(trip, defaults) {
   const country = destinationCountry(trip);
-  if (!country) return [...defaults];
   const local = destinationCurrency(trip);
-  return [...new Set(['ILS', EUROPE.has(country) ? 'EUR' : 'USD', ...(local ? [local] : [])])];
+  const base = country ? ['ILS', EUROPE.has(country) ? 'EUR' : 'USD', ...(local ? [local] : [])] : [...defaults];
+  const saved = Array.isArray(trip?.expenseCurrencies) ? trip.expenseCurrencies.filter(c => CURRENCY_META[c]) : [];
+  return [...new Set([...base, ...saved])];
 }
