@@ -320,13 +320,6 @@ await step('daily plan: activity actions sheet moves an activity', async () => {
   if (!(order[0] >= 0 && order[0] < order[1])) throw new Error(`order did not change: ${order}`);
 });
 
-await step('daily plan: summary layout', async () => {
-  const toggle = page.locator('button[aria-label="תצוגה מקוצרת"], button[aria-label="תצוגת סיכום"], button[aria-label="תצוגה מלאה"]').first();
-  await toggle.click();
-  await shot('days-summary');
-  await toggle.click();
-});
-
 await step('activity details', async () => {
   await page.getByText('סיור ברובע היהודי').first().click();
   await page.waitForTimeout(300);

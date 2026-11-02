@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
 import { addCategory, saveCategory, removeCategory, setCategoryIcon, setCategoryEmoji } from '../lib/categorySettings';
 import { lastEmoji } from '../lib/emoji';
-import { dayActivities, addActivities, updateActivity, removeActivity, swapActivities } from '../lib/dayActivities';
-import { localDay, isoDay } from '../lib/dates';
+import { dayActivities } from '../lib/dayActivities';
+import { localDay } from '../lib/dates';
+import { legKey, isPlaceLeg } from '../lib/dayPlan';
+import DayPlanner from './DayPlanner';
 import { changedFields } from '../lib/changes';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
 import Sheet, { SheetSection, Segmented } from '../ui/Sheet';
@@ -17,14 +19,10 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  writeBatch,
   arrayUnion,
   arrayRemove,
   deleteField,
 } from 'firebase/firestore';
-import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import {
   hasGmapsKey,
   resolveOriginString,
@@ -42,7 +40,6 @@ import {
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
 import { categoryTheme, THEMES } from '../lib/categoryTheme';
-import { creatorOf } from '../lib/roles';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
 import EmptyState from './EmptyState';
@@ -69,10 +66,7 @@ import {
   UtensilsCrossed,
   Train,
   Info,
-  CheckCircle2,
   Pencil,
-  ArrowUp, MoreHorizontal,
-  ArrowDown,
   Loader2,
   Hotel,
   Calendar,
@@ -96,7 +90,6 @@ import {
   Mountain,
   Tent,
   Navigation,
-  GripVertical,
   Check,
   Layers,
   LayoutList,
@@ -105,15 +98,9 @@ import {
   Rows3,
   RefreshCw,
   SlidersHorizontal,
-  MessageSquare,
   CalendarCheck,
   Footprints,
   Bus,
-  Sunrise,
-  Sun,
-  Sunset,
-  Moon,
-  Pin,
   WifiOff,
   MapPinOff,
   SmilePlus,
@@ -189,6 +176,22 @@ function prettyUrl(url) {
 }
 
 // Great-circle distance between two {lat,lng} points, in metres.
+// Where a place can be opened: its address, then its links.
+function planLocations(plan) {
+  const locs = [];
+  if (plan.address) {
+    const isUrl = /^https?:\/\//i.test(plan.address);
+    locs.push({
+      label: plan.address,
+      url: isUrl ? plan.address : `https://maps.google.com/?q=${encodeURIComponent(plan.address)}`,
+    });
+  }
+  if (Array.isArray(plan.links)) {
+    plan.links.forEach(link => locs.push({ label: link.label || prettyUrl(link.url), url: link.url }));
+  }
+  return locs;
+}
+
 function haversineMeters(a, b) {
   const R = 6371000;
   const toRad = d => (d * Math.PI) / 180;
@@ -357,44 +360,6 @@ const PLAN_LAYOUTS = {
     columns: 2,
   },
 };
-
-// Group a day's activities by their time-of-day label.
-// Known labels come first in canonical order, custom labels (e.g. "10:30")
-// follow by first appearance, and unlabeled activities are grouped last.
-const TIME_GROUP_ORDER = ['בוקר', 'צהריים', 'ערב', 'לילה'];
-const TIME_GROUP_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
-
-// A place in the day planner's picker: how far it is, and how much it matters.
-const travelMeta = (cache) => {
-  const walk = cache?.walk?.duration, transit = cache?.transit?.duration;
-  if (!walk && !transit) return undefined;
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      {walk && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Footprints size={12} aria-hidden="true" />{walk}</span>}
-      {transit && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Bus size={12} aria-hidden="true" />{transit}</span>}
-    </span>
-  );
-};
-const priorityIcon = (priority) =>
-  priority === 'must' ? <Star size={13} className="star-must" aria-label="חובה" />
-  : priority === 'optional' ? <Clock size={13} aria-label="אופציונלי" style={{ color: 'var(--text-muted)' }} />
-  : undefined;
-
-function groupActivitiesByTime(acts) {
-  const map = new Map();
-  acts.forEach((act, i) => {
-    const label = (act.timeLabel || '').trim();
-    if (!map.has(label)) map.set(label, { label, acts: [], firstIdx: i });
-    map.get(label).acts.push(act);
-  });
-  const rank = (g) => g.label === '' ? 3 : TIME_GROUP_ORDER.includes(g.label) ? 1 : 2;
-  return [...map.values()].sort((a, b) => {
-    const ra = rank(a), rb = rank(b);
-    if (ra !== rb) return ra - rb;
-    if (ra === 1) return TIME_GROUP_ORDER.indexOf(a.label) - TIME_GROUP_ORDER.indexOf(b.label);
-    return a.firstIdx - b.firstIdx;
-  });
-}
 
 // The plan form's editable values as one comparable string.
 function planFormKey(v) {
@@ -619,68 +584,9 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   const [newOriginName, setNewOriginName] = useState('');
   const [newOriginUrl, setNewOriginUrl] = useState('');
 
-  // Form states for daily activities
-  const [showActivityForm, setShowActivityForm] = useState(false);
-  const [selectedDayId, setSelectedDayId] = useState('');
-  const [editingActivityId, setEditingActivityId] = useState(null);
-  const [savedPlaceSelections, setSavedPlaceSelections] = useState([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
-  const [activityTitle, setActivityTitle] = useState('');
-  const [activityTimeLabel, setActivityTimeLabel] = useState('');
-  const [activityAddress, setActivityAddress] = useState('');
-  const [activityDescription, setActivityDescription] = useState('');
-  const [activityCategory, setActivityCategory] = useState('אטרקציות ודברים לעשות');
-
-  // Day Title Editing states
-  const [editingDayId, setEditingDayId] = useState(null);
-  /* A day is appended to the bottom of the list, which on a trip of any
-     length is off-screen — so adding one looked like nothing happened.
-     A toast would say "it worked" and still leave you to go find it;
-     taking you to the new card puts you where the next action is, which
-     is filling it in. The pulse says which of the cards is the new one. */
-  const dayNodes = useRef(new Map());
-  const [arrivedDayId, setArrivedDayId] = useState(null);
-
-  /* A second layout for the day list: one line per day instead of a full
-     timeline. On a week-long trip the full view is several screens of
-     scrolling to answer "what is on Thursday?". */
-  const [dayLayout, setDayLayout] = useState(() => {
-    try { return localStorage.getItem(`dayLayout_${tripId}`) === 'summary' ? 'summary' : 'full'; }
-    catch { return 'full'; }
-  });
-  useEffect(() => {
-    try { if (tripId) localStorage.setItem(`dayLayout_${tripId}`, dayLayout); } catch { /* private mode */ }
-  }, [dayLayout, tripId]);
-  // Which days are opened out of the summary. Kept apart from
-  // collapsedDays so switching layouts never disturbs the other one.
-  const [openSummaryDays, setOpenSummaryDays] = useState(() => new Set());
-
-  const [collapsedDays, setCollapsedDays] = useState(() => {
-    try {
-      const raw = localStorage.getItem(`collapsed_days_${tripId}`);
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch { return new Set(); }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(`collapsed_days_${tripId}`, JSON.stringify([...collapsedDays]));
-    } catch { /* ignore */ }
-  }, [collapsedDays, tripId]);
-  // Collapsed time-of-day groups inside day cards, keyed `${dayId}|${label}`
-  const [collapsedTimeGroups, setCollapsedTimeGroups] = useState(() => {
-    try {
-      const raw = localStorage.getItem(`collapsed_timegroups_${tripId}`);
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch { return new Set(); }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(`collapsed_timegroups_${tripId}`, JSON.stringify([...collapsedTimeGroups]));
-    } catch { /* ignore */ }
-  }, [collapsedTimeGroups, tripId]);
   const [hourlyWeatherDate, setHourlyWeatherDate] = useState(null);
-  const [activityDetail, setActivityDetail] = useState(null);
-  const [editingDayTitle, setEditingDayTitle] = useState('');
   const [tripFlightDates, setTripFlightDates] = useState({ out: null, ret: null, plannerSync: null });
+  const [flights, setFlights] = useState({ out: null, ret: null });
   const [destCoords, setDestCoords] = useState(null);
 
   const defaultCategoryNames = [
@@ -702,15 +608,18 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   // Load category customisation settings
   // Places that already have a booking in the הזמנות tab — shown as
   // booked instead of "to book".
-  const [bookedPlaceIds, setBookedPlaceIds] = useState(() => new Set());
+  // The schedule shows each dated booking on its day (DayPlanner).
+  const [bookings, setBookings] = useState([]);
   useEffect(() => {
     if (!tripId) return;
     return listen(collection(db, 'trips', tripId, 'bookings'), snap => {
-      setBookedPlaceIds(new Set(
-        snap.docs.map(d => d.data()).filter(b => b.placeId && b.status !== 'cancelled').map(b => b.placeId)
-      ));
+      setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [tripId]);
+  const bookedPlaceIds = useMemo(
+    () => new Set(bookings.filter(b => b.placeId && b.status !== 'cancelled').map(b => b.placeId)),
+    [bookings],
+  );
 
   useEffect(() => {
     if (!tripId) return;
@@ -739,6 +648,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         ret: d.returnFlightDetails?.date || null,
         plannerSync: d.plannerDaysFromFlight || null,
       });
+      // The flights stand on their dates in the schedule.
+      setFlights({ out: d.outboundFlightDetails || null, ret: d.returnFlightDetails || null });
       const arr = d.outboundFlightDetails?.arrAirport || d.returnFlightDetails?.depAirport;
       if (arr?.lat && arr?.lng) setDestCoords(arr);
     });
@@ -1519,20 +1430,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     marginBottom: 0, display: 'block',
   };
 
-  const getPlanLocations = (plan) => {
-    const locs = [];
-    if (plan.address) {
-      const isUrl = /^https?:\/\//i.test(plan.address);
-      locs.push({
-        label: plan.address,
-        url: isUrl ? plan.address : `https://maps.google.com/?q=${encodeURIComponent(plan.address)}`,
-      });
-    }
-    if (Array.isArray(plan.links)) {
-      plan.links.forEach(link => locs.push({ label: link.label || prettyUrl(link.url), url: link.url }));
-    }
-    return locs;
-  };
+  const getPlanLocations = planLocations;
 
   // Cached travel times for a place, if they were already measured. Used for
   // the one-line card summary and for the details sheet header.
@@ -1845,133 +1743,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   }, [subTab, headsStick, markStuck]);
 
   /* ══════════════════════════════════════════════════════════
-     DAILY PLANNER OPERATIONS
+     THE SCHEDULE (DayPlanner)
      ══════════════════════════════════════════════════════════ */
-  /* Stable handles for everything DayCard is given.
-   *
-   * React.memo compares props by reference, so a plain arrow re-created
-   * each render would make every day re-render anyway and the memo would
-   * be decoration. useCallback would work but needs a correct dependency
-   * list for each of eight functions, and a wrong one is a stale closure
-   * — a bug that shows up as an action quietly using yesterday's state.
-   * This keeps the latest implementations in a ref and hands out wrappers
-   * created once: permanently stable, never stale, no dependency lists.
-   */
-  const latestFns = useRef({});
-  const dayFns = useMemo(() => {
-    // eslint-disable-next-line react-hooks/refs -- the wrapper reads the ref
-    // when the handler fires, never while rendering; the two helpers that
-    // *are* called during render are useCallback'd above instead.
-    const call = (name) => (...args) => latestFns.current[name](...args);
-    return {
-      handleSaveDayTitle: call('handleSaveDayTitle'),
-      handleDeleteDay: call('handleDeleteDay'),
-      handleOpenAddActivity: call('handleOpenAddActivity'),
-      handleStartEditActivity: call('handleStartEditActivity'),
-      handleDeleteActivity: call('handleDeleteActivity'),
-      moveActivity: call('moveActivity'),
-    };
-  }, []);
-
-  /* Refreshed after every render, read only when a handler fires — so a
-     wrapper never calls a stale implementation. In an effect rather than
-     during render: writing a ref while rendering is what the rules-of-hooks
-     lint flags, and events can only run after the effect anyway. */
-  useEffect(() => {
-    latestFns.current = {
-      handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
-      handleStartEditActivity, handleDeleteActivity, moveActivity,
-    };
-  });
-
-  const handleAddDay = () => {
-    if (!tripId) return;
-    const nextDayNum = days.length + 1;
-    const dayId = 'day-' + Date.now();
-    setDoc(doc(db, 'trips', tripId, 'days', dayId), {
-      title: `יום ${nextDayNum}`,
-      // After the last one, whatever the count: a day deleted, or one a partner
-      // added offline, would otherwise give two days the same place.
-      order: Math.max(0, ...days.map(d => Number(d.order) || 0)) + 1,
-      activities: []
-    }).catch(err => console.error('Add day error:', err));
-    // The write is fire-and-forget so this works offline too: the day
-    // arrives from the local cache and the effect below takes us to it.
-    setArrivedDayId(dayId);
-  };
-
-  // Scroll to the day that was just added, once it has actually rendered.
-  useEffect(() => {
-    if (!arrivedDayId) return undefined;
-    const node = dayNodes.current.get(arrivedDayId);
-    if (!node) return undefined;   // not in the snapshot yet; runs again when it is
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const t = setTimeout(() => setArrivedDayId(null), 2000);   // matches .highlight-pulse
-    return () => clearTimeout(t);
-  }, [arrivedDayId, days]);
-
-  /* "ימים מסונכרנים עם הטיסה" is a confirmation, not a status.
-   *
-   * It used to render from the persisted comparison between the flight
-   * dates and `plannerDaysFromFlight`, which is true from the moment you
-   * sync until the dates change — so it sat there permanently, and a
-   * message that never leaves stops being read. It now appears only right
-   * after a sync actually runs, and clears itself. What it was standing
-   * in for is already on the button beside it, which reads "ייצר" before
-   * a sync and "עדכן" after one.
-   */
-  const [justSynced, setJustSynced] = useState(false);
-  const syncedTimer = useRef(null);
-  useEffect(() => () => clearTimeout(syncedTimer.current), []);
-
-  const flashSynced = () => {
-    clearTimeout(syncedTimer.current);
-    setJustSynced(true);
-    syncedTimer.current = setTimeout(() => setJustSynced(false), 4000);
-  };
-
-  const handleInitDaysFromFlight = async () => {
-    if (!tripId || !tripFlightDates.out || !tripFlightDates.ret) return;
-    if (days.length > 0) {
-      const ok = await confirm({
-        title: 'החלפת ימי הטיול',
-        message: 'כבר קיימים ימים מתוכננים. האם למחוק אותם וליצור מחדש לפי תאריכי הטיסה?',
-        confirmText: 'כן, החלף',
-        cancelText: 'ביטול',
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    const start = localDay(String(tripFlightDates.out).slice(0, 10));
-    const end = localDay(String(tripFlightDates.ret).slice(0, 10));
-    if (!start || !end) return;
-    const maxDays = 30;
-    // One batch, not awaited: the old days go and the new ones come in the
-    // same write. Deleting first and awaiting it lost the days when the app
-    // was closed offline in between.
-    const batch = writeBatch(db);
-    days.forEach(d => batch.delete(doc(db, 'trips', tripId, 'days', d.id)));
-    let dayNum = 1;
-    const cur = new Date(start);
-    while (cur <= end && dayNum <= maxDays) {
-      const id = 'day-' + Date.now() + '-' + dayNum;
-      batch.set(doc(db, 'trips', tripId, 'days', id), {
-        title: `יום ${dayNum}`,
-        date: isoDay(cur),
-        order: dayNum,
-        activities: [],
-      });
-      cur.setDate(cur.getDate() + 1);
-      dayNum++;
-    }
-    // Record which flight dates were used so we can detect stale state
-    batch.update(doc(db, 'trips', tripId), {
-      plannerDaysFromFlight: { out: tripFlightDates.out, ret: tripFlightDates.ret },
-    });
-    batch.commit().catch(err => console.error('Make days failed:', err));
-    flashSynced();
-  };
-
   // When the connection comes back, drop the "offline" markers and bump the
   // epoch so anything that couldn't be measured is retried automatically.
   useEffect(() => {
@@ -2014,21 +1787,6 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     if (done.length) setRecomputeIds(prev => prev.filter(id => !done.includes(id)));
   }, [plans, recomputeIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Lazy-fetch travel times for all day-planner activities that link to a saved place
-  useEffect(() => {
-    if (!hasGmapsKey() || (!hotelDetails && !tripDestination)) return;
-    const allPlaceIds = new Set(
-      days.flatMap(d => (d.activities || []).map(a => a.placeId).filter(Boolean))
-    );
-    allPlaceIds.forEach(placeId => {
-      const plan = plans.find(p => p.id === placeId);
-      // No cache guard here: fetchPlanDistances() cheaply no-ops when the
-      // cached result already matches the current origin, and re-fetches
-      // when the hotel address changed underneath it.
-      if (plan) fetchPlanDistances(plan);
-    });
-  }, [days, plans, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // The open details sheet: measure from its origin when it opens, when
   // another origin is picked there, and again once back online.
   const detailOriginKey = detailPlan ? sheetOriginKey(detailPlan) : null;
@@ -2038,207 +1796,79 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     return () => clearTimeout(t);
   }, [detailPlanId, detailOriginKey, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const daySensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
-  );
-
-  const handleDayDragEnd = async (event) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIdx = days.findIndex(d => d.id === active.id);
-    const newIdx = days.findIndex(d => d.id === over.id);
-    const reordered = arrayMove(days, oldIdx, newIdx);
-    // Both title and date are positional anchors — only activities travel.
-    // They travel with their own document, so the array is not written:
-    // writing it back from this phone's view would erase a partner's change.
-    const positionalDates  = days.map(d => d.date  ?? null);
-    const positionalTitles = days.map(d => d.title ?? '');
-    const batch = writeBatch(db);
-    reordered.forEach((day, idx) => {
-      batch.update(doc(db, 'trips', tripId, 'days', day.id), {
-        order:      idx + 1,
-        date:       positionalDates[idx],
-        title:      positionalTitles[idx],
-      });
-    });
-    await batch.commit();
-  };
-
-  const handleSaveDayTitle = (dayId, newTitle) => {
-    if (!tripId || !newTitle.trim()) return;
-    setEditingDayId(null);
-    updateDoc(doc(db, 'trips', tripId, 'days', dayId), { title: newTitle.trim() })
-      .catch(err => console.error('Save day title error:', err));
-  };
-
-  const handleDeleteDay = async (dayId) => {
-    if (!tripId) return;
-    const day = days.find(d => d.id === dayId);
-    const ok = await confirm({
-      title: 'מחיקת יום טיול',
-      message: <>האם למחוק את <strong>{day?.title || 'היום'}</strong> וכל הפעילויות שבו?</>,
-      confirmText: 'מחק יום',
-      cancelText: 'בטל',
-      danger: true,
-    });
-    if (!ok) return;
-    await deleteDoc(doc(db, 'trips', tripId, 'days', dayId));
-  };
-
-  const handleOpenAddActivity = (dayId) => {
-    setSelectedDayId(dayId);
-    setEditingActivityId(null);
-    setSavedPlaceSelections([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
-    setActivityTitle('');
-    setActivityTimeLabel('');
-    setActivityAddress('');
-    setActivityDescription('');
-    setActivityCategory('אטרקציות ודברים לעשות');
-    setShowActivityForm(true);
-  };
-
-  const activityFormDirty = () =>
-    !!(activityTitle.trim() || activityTimeLabel.trim() ||
-       activityAddress.trim() || activityDescription.trim() ||
-       savedPlaceSelections.some(s => s.placeId));
-
-  const closeActivityForm = () => {
-    setShowActivityForm(false);
-    setEditingActivityId(null);
-  };
-
-  const handleStartEditActivity = (dayId, act) => {
-    setSelectedDayId(dayId);
-    setEditingActivityId(act.id);
-    if (act.placeId) {
-      const place = plans.find(p => p.id === act.placeId);
-      setSavedPlaceSelections([{ categoryFilter: place?.category || '', placeId: act.placeId, timeLabel: act.timeLabel || '' }]);
-    } else {
-      setSavedPlaceSelections([{ categoryFilter: '', placeId: '', timeLabel: '' }]);
-    }
-    setActivityTitle(act.title);
-    setActivityTimeLabel(act.timeLabel || '');
-    setActivityAddress(act.address || '');
-    setActivityDescription(act.description || '');
-    setActivityCategory(act.category || 'אטרקציות ודברים לעשות');
-    setShowActivityForm(true);
-  };
-
-  const addSavedPlaceSelection = () =>
-    setSavedPlaceSelections(prev => [...prev, { categoryFilter: '', placeId: '', timeLabel: '' }]);
-
-  const removeSavedPlaceSelection = (idx) =>
-    setSavedPlaceSelections(prev => prev.filter((_, i) => i !== idx));
-
-  const updateSavedPlaceSelection = (idx, field, value) =>
-    setSavedPlaceSelections(prev => prev.map((sel, i) => {
-      if (i !== idx) return sel;
-      const updated = { ...sel, [field]: value };
-      if (field === 'categoryFilter') updated.placeId = '';
-      return updated;
-    }));
-
-  const handleDeleteActivity = async (dayId, activityId) => {
-    if (!tripId) return;
-    const day = days.find(d => d.id === dayId);
-    if (!day) return;
-    const act = (day.activities || []).find(a => a.id === activityId);
-    const ok = await confirm({
-      title: 'מחיקת פעילות',
-      message: act?.title ? <>האם למחוק את <strong>{act.title}</strong>?</> : 'האם למחוק פעילות זו?',
-      confirmText: 'מחק',
-      cancelText: 'בטל',
-      danger: true,
-    });
-    if (!ok) return;
-
-    removeActivity(db, tripId, dayId, day.rawActivities, activityId, !canEdit)
-      .catch(err => console.error('Activity delete error:', err));
-  };
-
-  // When activities render grouped by time label, the visual neighbor may not
-  // be the array neighbor — `swapWithId` names the exact activity to swap with.
-  const moveActivity = (dayId, activityId, direction, swapWithId = null) => {
-    if (!tripId) return;
-    const day = days.find(d => d.id === dayId);
-    if (!day) return;
-
-    const list = day.activities;
-    const idx = list.findIndex(act => act.id === activityId);
-    if (idx === -1) return;
-    const other = swapWithId != null ? swapWithId : list[idx + direction]?.id;
-    if (other == null) return;
-
-    swapActivities(db, tripId, dayId, day.rawActivities, activityId, other)
-      .catch(err => console.error('Activity move error:', err));
-  };
-
-  const handleActivitySubmit = async (e) => {
-    e.preventDefault();
-    if (!tripId || !selectedDayId) return;
-
-    const hasPlaceSelections = savedPlaceSelections.some(s => s.placeId);
-    const hasManualTitle = activityTitle.trim().length > 0;
-    if (!hasPlaceSelections && !hasManualTitle) return;
-
-    const day = days.find(d => d.id === selectedDayId);
-    if (!day) return;
-
-    let write;
-    if (editingActivityId) {
-      const firstSel = savedPlaceSelections[0];
-      const place = firstSel?.placeId ? plans.find(p => p.id === firstSel.placeId) : null;
-      const activityObj = {
-        id: editingActivityId,
-        title: place ? place.title : activityTitle.trim(),
-        timeLabel: firstSel?.placeId ? (firstSel.timeLabel || '') : activityTimeLabel.trim(),
-        placeId: firstSel?.placeId || null,
-        address: place ? (place.address || '') : activityAddress.trim(),
-        description: activityDescription.trim(),
-        category: place ? place.category : activityCategory,
-        // Whose it is stays with it (firestore.rules).
-        createdBy: (day.activities || []).find(a => a.id === editingActivityId)?.createdBy || null,
-      };
-      write = () => updateActivity(db, tripId, selectedDayId, day.rawActivities, activityObj, !canEdit);
-    } else {
-      const added = [];
-      for (const sel of savedPlaceSelections) {
-        if (sel.placeId) {
-          const place = plans.find(p => p.id === sel.placeId);
-          if (place) {
-            added.push({
-              id: 'act-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-              title: place.title,
-              timeLabel: sel.timeLabel || '',
-              placeId: place.id,
-              address: place.address || '',
-              description: place.description || '',
-              category: place.category,
-              createdBy: currentUid || null,
-            });
-          }
-        }
+  // How long from one stop of a day to the next (DayPlanner). A stop is
+  // the hotel, a place from the list, or an address typed on an activity
+  // or a booking. To a place, from the hotel or another place, it is the
+  // place's own measurement (saved on it, as in the details sheet);
+  // anything else is measured here and kept for this session.
+  const distancesOn = hasGmapsKey() && !!(hotelDetails || tripDestination || distanceOrigins.length);
+  const originIds = distanceOrigins.map(o => o.id);
+  const isDirectLeg = (from, to) => isPlaceLeg(from, to, originIds);
+  const legKeyOf = (from, to) => legKey(from, to, originIds);
+  const legsInFlight = useRef(new Set());
+  const fetchStopLeg = async (from, to) => {
+    const key = legKeyOf(from, to);
+    const known = distanceCache[key];
+    if (legsInFlight.current.has(key) || (known && !known.offline)) return;
+    legsInFlight.current.add(key);
+    setDistanceCache(prev => ({ ...prev, [key]: { loading: true } }));
+    const online = isOnlineNow();
+    const hint = resolveOriginString(hotelDetails, null, tripDestination);
+    const region = { coords: regionCoords, text: tripDestination };
+    const where = async (stop) => {
+      if (stop.key === 'hotel' || distanceOrigins.some(o => o.id === stop.key)) {
+        const custom = distanceOrigins.find(o => o.id === stop.key) || null;
+        const c = await buildOriginCandidates(hotelDetails, custom, tripDestination, { online });
+        return c[0]?.value || null;
       }
-      if (hasManualTitle) {
-        added.push({
-          id: 'act-' + Date.now(),
-          title: activityTitle.trim(),
-          timeLabel: activityTimeLabel.trim(),
-          placeId: null,
-          address: activityAddress.trim(),
-          description: activityDescription.trim(),
-          category: activityCategory,
-          createdBy: currentUid || null,
-        });
+      if (stop.plan) {
+        const c = coordsCache[stop.plan.id] || stop.plan.coords;
+        return c ? `${c.lat},${c.lng}` : resolveDestinationAsync(stop.plan, hint, region);
       }
-      write = () => addActivities(db, tripId, selectedDayId, day.rawActivities, added);
+      return resolveDestinationAsync({ id: stop.key, title: stop.title || '', address: stop.address || '' }, hint, region);
+    };
+    let value;
+    try {
+      const [a, b] = await Promise.all([where(from), where(to)]);
+      if (!a || !b) value = online ? { noLocation: true } : { offline: true };
+      else {
+        const r = await fetchTravelTimes(a, b);
+        value = r?.networkError ? { offline: true }
+          : (r && (r.walk || r.transit) && isSaneTravel(r)) ? { walk: r.walk || null, transit: r.transit || null }
+          : { noLocation: true };
+      }
+    } catch {
+      value = online ? { noLocation: true } : { offline: true };
     }
-
-    setShowActivityForm(false);
-    setEditingActivityId(null);
-    write().catch(err => console.error('Activity save error:', err));
+    legsInFlight.current.delete(key);
+    setDistanceCache(prev => ({ ...prev, [key]: value }));
   };
+  const measureLeg = (from, to) => (isDirectLeg(from, to)
+    ? fetchPlanDistances(to.plan, from.key)
+    : fetchStopLeg(from, to));
+
+  // A new category typed on an activity, as on a place.
+  const addCategoryFromSchedule = (name) => categoryWrite(() => addCategory(db, tripId, name));
+
+  /* Stable handles for what DayPlanner is given, so its memo holds while
+     the rest of the tab re-renders (the clock, the pool's state). Each
+     wrapper calls the latest implementation when it runs, never a stale
+     one; the ref is refreshed after every render, not during it. */
+  const latestFns = useRef({});
+  useEffect(() => {
+    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule };
+  });
+  const stable = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs -- read when called, never while rendering
+    const call = (name) => (...args) => latestFns.current[name](...args);
+    return {
+      measureLeg: call('measureLeg'),
+      openPlanDetail: call('openPlanDetail'),
+      addCategoryFromSchedule: call('addCategoryFromSchedule'),
+    };
+  }, []);
+  const categoriesKey = categories.join('\u0001');
+  const stableCategories = useMemo(() => categories, [categoriesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return <Skeleton rows={6} label="טוען תוכניות טיול" />;
@@ -2274,19 +1904,6 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
             <span>לוח זמנים</span>
           </button>
         </div>
-        {subTab === 'daily' && days.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setDayLayout(l => (l === 'summary' ? 'full' : 'summary'))}
-            className="btn-secondary"
-            style={{ padding: 0, width: 42, minWidth: 42, height: 42, minHeight: 42, flexShrink: 0 }}
-            title={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
-            aria-label={dayLayout === 'summary' ? 'תצוגה מלאה' : 'תצוגת סיכום'}
-            aria-pressed={dayLayout === 'summary'}
-          >
-            {dayLayout === 'summary' ? <LayoutList size={17} /> : <Rows3 size={17} />}
-          </button>
-        )}
       </div>
 
       {/* Render sub-tab content */}
@@ -3533,123 +3150,28 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
           </div>
         </>
       ) : (
-        /* DAILY PLANNER SUB-TAB */
-        <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* A toolbar only when it has something in it. The title said
-              what the sub-tab button above already says, adding a day
-              moved to the floating button every tab shares, and the view
-              switch moved up beside the sub-tabs — so most of the time
-              this row is not rendered at all and the days start higher. */}
-          {(() => {
-            const syncable = canEdit && tripFlightDates.out && tripFlightDates.ret &&
-              !(tripFlightDates.plannerSync?.out === tripFlightDates.out &&
-                tripFlightDates.plannerSync?.ret === tripFlightDates.ret);
-            if (!syncable && !justSynced) return null;
-            return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {syncable && (
-                  <button
-                    onClick={handleInitDaysFromFlight}
-                    className="btn-secondary"
-                    style={{ padding: '8px 14px', fontSize: 13, gap: 6 }}
-                    title="צור ימים אוטומטית לפי תאריכי הטיסה"
-                  >
-                    <Calendar size={15} />
-                    <span>{tripFlightDates.plannerSync ? 'עדכן ימים לפי טיסה' : 'ייצר ימים לפי טיסה'}</span>
-                  </button>
-                )}
-                {justSynced && (
-                  <span className="sync-flash" style={{
-                    fontSize: 12, color: 'var(--c-green)',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}>
-                    <CheckCircle2 size={13} />
-                    ימים מסונכרנים עם הטיסה
-                  </span>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Adding a day is a whole-sub-tab action, so it gets the
-              floating button — same as "יעד חדש" in the pool. Adding an
-              *activity* still belongs to one specific day and stays on
-              that day's card. */}
-          {canEdit && <Fab label="יום חדש" onClick={handleAddDay} />}
-
-          {days.length === 0 ? (
-            <EmptyState
-              icon={Calendar}
-              title="עוד אין ימי טיול"
-              hint={
-                canEdit && tripFlightDates.out && tripFlightDates.ret
-                  ? 'אפשר לייצר את כל ימי הטיול בבת אחת לפי תאריכי הטיסה שכבר הוזנו, ואז לשבץ לכל יום את המקומות מהרשימה.'
-                  : canEdit
-                    ? 'הוסיפו יום, ואז שבצו לתוכו מקומות מרשימת התכנון עם שעות.'
-                    : 'עוד לא נבנה לוח זמנים לטיול הזה.'
-              }
-              action={
-                canEdit && tripFlightDates.out && tripFlightDates.ret ? (
-                  <button onClick={handleInitDaysFromFlight} className="btn-primary">
-                    <Calendar size={16} />
-                    <span>ייצר ימים לפי תאריכי הטיסה</span>
-                  </button>
-                ) : null
-              }
-            />
-          ) : (
-            <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
-              <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {days.map((day) => {
-                const isSummary = dayLayout === 'summary' && !openSummaryDays.has(day.id);
-                const isEditing = editingDayId === day.id;
-                return (
-                <DayCard
-                  key={day.id}
-                  day={day}
-                  plans={plans}
-                  bookedPlaceIds={bookedPlaceIds}
-                  canEdit={canEdit}
-                  canAdd={canAdd}
-                  currentUid={currentUid}
-                  isSummary={isSummary}
-                  // The chevron reports whether the body is on screen, which
-                  // in summary mode is a different question from "collapsed".
-                  dayBodyShown={!isSummary && !collapsedDays.has(day.id)}
-                  isEditing={isEditing}
-                  // '' for every other card, so typing a title re-renders
-                  // only the card being edited.
-                  editingDayTitle={isEditing ? editingDayTitle : ''}
-                  isArrived={arrivedDayId === day.id}
-                  dayLayout={dayLayout}
-                  collapsedTimeGroups={collapsedTimeGroups}
-                  weatherByDate={weatherByDate}
-                  distanceCache={distanceCache}
-                  dayNodes={dayNodes}
-                  getCategoryColor={getCategoryColor}
-                  getCategoryIcon={getCategoryIcon}
-                  setCollapsedDays={setCollapsedDays}
-                  setOpenSummaryDays={setOpenSummaryDays}
-                  setCollapsedTimeGroups={setCollapsedTimeGroups}
-                  setEditingDayId={setEditingDayId}
-                  setEditingDayTitle={setEditingDayTitle}
-                  setActivityDetail={setActivityDetail}
-                  setHourlyWeatherDate={setHourlyWeatherDate}
-                  handleSaveDayTitle={dayFns.handleSaveDayTitle}
-                  handleDeleteDay={dayFns.handleDeleteDay}
-                  handleOpenAddActivity={dayFns.handleOpenAddActivity}
-                  handleStartEditActivity={dayFns.handleStartEditActivity}
-                  handleDeleteActivity={dayFns.handleDeleteActivity}
-                  moveActivity={dayFns.moveActivity}
-                />
-                );
-              })}
-            </div>
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
+        <DayPlanner
+          tripId={tripId}
+          days={days}
+          plans={plans}
+          bookings={bookings}
+          flights={flights}
+          hotelDetails={hotelDetails}
+          distanceOrigins={distanceOrigins}
+          tripFlightDates={tripFlightDates}
+          weatherByDate={weatherByDate}
+          categories={stableCategories}
+          getCategoryColor={getCategoryColor}
+          getCategoryIcon={getCategoryIcon}
+          getPlanLocations={planLocations}
+          distanceCache={distanceCache}
+          distancesOn={distancesOn}
+          measureLeg={stable.measureLeg}
+          netEpoch={netEpoch}
+          onOpenPlace={stable.openPlanDetail}
+          onOpenWeather={setHourlyWeatherDate}
+          onAddCategory={stable.addCategoryFromSchedule}
+        />
       )}
 
       {/* Locations Modal — multiple navigation targets for a card */}
@@ -4261,249 +3783,6 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       )}
 
       {/* Add/Edit Activity Slide-Up Bottom Sheet Modal */}
-      {showActivityForm && (() => {
-        const usedPlaceIds = new Set(
-          days.flatMap(day =>
-            (day.activities || [])
-              .filter(a => a.placeId && a.id !== editingActivityId)
-              .map(a => a.placeId)
-          )
-        );
-        return (
-          <Sheet
-            title={editingActivityId ? 'עריכת פעילות' : 'הוספת פעילות ליום'}
-            onClose={closeActivityForm}
-            dirty={activityFormDirty()}
-            style={{ maxHeight: '85vh' }}
-          >
-            {({ cancel }) => (
-              <form onSubmit={handleActivitySubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-                {/* === SECTION 1: Saved Places === */}
-                <div style={{
-                  background: 'var(--surface-2)',
-                  border: 'none',
-                  borderRadius: 18,
-                  padding: '14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10
-                }}>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>מקומות שמורים</span>
-
-                  {savedPlaceSelections.map((sel, idx) => {
-                    const placesForSel = sel.categoryFilter
-                      ? plans.filter(p => p.category === sel.categoryFilter)
-                      : plans;
-                    const unusedPlaces = placesForSel.filter(p => !usedPlaceIds.has(p.id));
-                    const usedPlaces = placesForSel.filter(p => usedPlaceIds.has(p.id));
-
-                    return (
-                      <div key={idx} style={{
-                        display: 'flex', flexDirection: 'column', gap: 10,
-                        borderBottom: idx < savedPlaceSelections.length - 1 ? '1px solid var(--p-8)' : 'none',
-                        paddingBottom: idx < savedPlaceSelections.length - 1 ? 12 : 0
-                      }}>
-                        {/* Category row (+ remove button) */}
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <CustomDropdown
-                              value={sel.categoryFilter}
-                              onChange={(v) => updateSavedPlaceSelection(idx, 'categoryFilter', v)}
-                              options={[
-                                { value: '', label: 'כל הקטגוריות' },
-                                ...categories.map(cat => ({ value: cat, label: cat }))
-                              ]}
-                              placeholder="בחר קטגוריה"
-                            />
-                          </div>
-                          {savedPlaceSelections.length > 1 && (
-                            <button type="button" className="btn-x danger" aria-label="הסר מקום" title="הסר מקום" onClick={() => removeSavedPlaceSelection(idx)}>
-                              <X size={16} />
-                            </button>
-                          )}
-                        </div>
-                        {/* Place selector — full width so name + travel times are readable */}
-                        <CustomDropdown
-                          value={sel.placeId}
-                          onChange={(v) => updateSavedPlaceSelection(idx, 'placeId', v)}
-                          options={[
-                            { value: '', label: 'בחר מקום' },
-                            ...[...unusedPlaces].sort((a, b) => {
-                              const order = { must: 0, optional: 1 };
-                              return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
-                            }).map(p => {
-                              const originKey = p.distanceOriginId || 'hotel';
-                              const cache = distanceCache[`${p.id}_${originKey}`];
-                              const meta = travelMeta(cache);
-                              const icon = priorityIcon(p.priority);
-                              const labelColor = p.priority === 'must' ? 'var(--c-orange)' : p.priority === 'optional' ? 'var(--text-muted)' : undefined;
-                              return { value: p.id, label: p.title, icon, meta, labelColor, visited: p.visited };
-                            }),
-                            ...(usedPlaces.length > 0 ? [
-                              ...[...usedPlaces].sort((a, b) => {
-                                const order = { must: 0, optional: 1 };
-                                return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
-                              }).map(p => {
-                                const originKey = p.distanceOriginId || 'hotel';
-                                const cache = distanceCache[`${p.id}_${originKey}`];
-                                const meta = travelMeta(cache);
-                                const icon = priorityIcon(p.priority);
-                                const labelColor = p.priority === 'must' ? 'var(--c-orange)' : p.priority === 'optional' ? 'var(--text-muted)' : undefined;
-                                return { value: p.id, label: `✓ ${p.title}`, icon, meta, labelColor, visited: p.visited, inUse: true };
-                              })
-                            ] : [])
-                          ]}
-                          placeholder="-- בחר מקום --"
-                        />
-                        {/* Time chips per row — when no place selected, they drive activityTimeLabel directly */}
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => {
-                            const activeLabel = sel.placeId ? sel.timeLabel : activityTimeLabel;
-                            const isActive = activeLabel === label;
-                            return (
-                              <button
-                                key={label}
-                                type="button"
-                                onClick={() => {
-                                  if (sel.placeId) {
-                                    updateSavedPlaceSelection(idx, 'timeLabel', isActive ? '' : label);
-                                  } else {
-                                    setActivityTimeLabel(isActive ? '' : label);
-                                  }
-                                }}
-                                style={{
-                                  border: 'none',
-                                  background: isActive ? 'var(--brand)' : 'var(--card-bg-solid)',
-                                  color: isActive ? 'var(--brand-fg)' : 'var(--text)',
-                                  borderRadius: 999,
-                                  padding: '6px 12px',
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  transition: 'background-color 0.15s ease'
-                                }}
-                              >
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {!editingActivityId && (
-                    <button
-                      type="button"
-                      onClick={addSavedPlaceSelection}
-                      className="chip add"
-                      style={{ alignSelf: 'flex-start' }}
-                    >
-                      <Plus size={14} />
-                      מקום שמור
-                    </button>
-                  )}
-                </div>
-
-                {/* === DIVIDER === */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ flex: 1, height: 1, background: 'var(--ink-10)' }} />
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>הזנה ידנית</span>
-                  <div style={{ flex: 1, height: 1, background: 'var(--ink-10)' }} />
-                </div>
-
-                {/* === SECTION 2: Manual Entry === */}
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>שם הפעילות{savedPlaceSelections.some(s => s.placeId) ? ' (אופציונלי)' : ' *'}</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={activityTitle}
-                    onChange={(e) => setActivityTitle(e.target.value)}
-                    required={!savedPlaceSelections.some(s => s.placeId)}
-                    placeholder="למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון"
-                    style={{ minHeight: 40, fontSize: 14 }}
-                  />
-                </div>
-
-                <CustomDropdown
-                  label="קטגוריה"
-                  value={activityCategory}
-                  onChange={setActivityCategory}
-                  options={categories}
-                  addable
-                  addLabel="הוסף קטגוריה חדשה"
-                  onCommit={(newCat) => {
-                    categoryWrite(() => addCategory(db, tripId, newCat));
-                  }}
-                />
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>תיוג זמן (שדה חופשי / בחירה מהירה)</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="למשל: בוקר, 10:30, צהריים, 19:00"
-                    value={activityTimeLabel}
-                    onChange={(e) => setActivityTimeLabel(e.target.value)}
-                    style={{ minHeight: 40, fontSize: 14 }}
-                  />
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {['בוקר', 'צהריים', 'ערב', 'לילה'].map(label => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => setActivityTimeLabel(label)}
-                        style={{
-                          border: 'none',
-                          background: activityTimeLabel === label ? 'var(--brand)' : 'var(--card-bg-solid)',
-                          color: activityTimeLabel === label ? 'var(--brand-fg)' : 'var(--text)',
-                          borderRadius: 999, padding: '6px 12px', fontSize: 13,
-                          fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s ease'
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>כתובת / מיקום</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="כתובת או קישור למפה"
-                    value={activityAddress}
-                    onChange={(e) => setActivityAddress(e.target.value)}
-                    style={{ minHeight: 40, fontSize: 14 }}
-                  />
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>הערות לפעילות זו</label>
-                  <textarea
-                    className="form-control"
-                    rows="3"
-                    placeholder="הערות מיוחדות, מספרי הזמנה, שעות פתיחה..."
-                    value={activityDescription}
-                    onChange={(e) => setActivityDescription(e.target.value)}
-                    style={{ resize: 'none', fontFamily: 'inherit', fontSize: 14 }}
-                  />
-                </div>
-
-                <div className="sheet-footer">
-                  <button type="submit" className="btn-primary">שמור</button>
-                  <button type="button" onClick={cancel} className="btn-secondary">ביטול</button>
-                </div>
-
-              </form>
-            )}
-          </Sheet>
-        );
-      })()}
-
       {/* Hourly weather popup */}
       {hourlyWeatherDate && (
         <Sheet label="מזג אוויר לפי שעה" onClose={() => setHourlyWeatherDate(null)} title={(
@@ -4553,663 +3832,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         </Sheet>
       )}
 
-      {/* Activity details — a bottom sheet like the place details: what it
-          is, when, where, the place it comes from, and what you can do. */}
-      {activityDetail && (
-        (() => {
-          const { __dayId: actDayId, ...act } = activityDetail;
-          const linked = act.placeId ? plans.find(p => p.id === act.placeId) : null;
-          const booked = linked && bookedPlaceIds.has(linked.id);
-          const addressUrl = act.address
-            ? (/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`)
-            : null;
-          const navUrl = addressUrl || (linked ? getPlanLocations(linked)[0]?.url : null);
-          const close = () => setActivityDetail(null);
-          const actions = [];
-          if (navUrl) actions.push({ key: 'nav', label: 'ניווט', Icon: Navigation, tone: 'mint', run: () => window.open(navUrl, '_blank', 'noreferrer') });
-          if (linked) actions.push({ key: 'place', label: 'פרטי המקום', Icon: MapPin, tone: 'lavender', run: () => { close(); openPlanDetail(linked.id); } });
-          if (actDayId && (canEdit || (canAdd && creatorOf(act) === currentUid))) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); handleStartEditActivity(actDayId, act); } });
-          return (
-            <Sheet label={act.title} onClose={close} header={({ close: closeSheet }) => (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  <CategoryDisc color={getCategoryColor(act.category)} size={48} radius={16}>
-                    {getCategoryIcon(act.category, 22)}
-                  </CategoryDisc>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)', margin: 0, lineHeight: 1.25, wordBreak: 'break-word' }}>
-                      {act.title}
-                    </h3>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                      {act.timeLabel && <Pill size="sm" tone="sky">{act.timeLabel}</Pill>}
-                      {act.category && <Pill size="sm" style={{ background: `${getCategoryColor(act.category)}1F` }}>{act.category}</Pill>}
-                      {linked?.priority === 'must' && <Pill size="sm" tone="butter" icon={<Star size={11} className="star-must" />}>חובה</Pill>}
-                      {booked
-                        ? <Pill size="sm" tone="mint" icon={<Check size={11} strokeWidth={3} />}>הוזמן</Pill>
-                        : linked?.needsReservation && <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>צריך לסגור מראש</Pill>}
-                    </div>
-                  </div>
-                  <button type="button" aria-label="סגור" className="btn-close" onClick={closeSheet} style={{ flexShrink: 0 }}>✕</button>
-                </div>
-              )}>
-
-                {act.description && (
-                  <p style={{ fontSize: 15, color: 'var(--text)', lineHeight: 1.55, margin: 0, wordBreak: 'break-word' }}>
-                    {act.description}
-                  </p>
-                )}
-
-                {act.address && (
-                  <a href={addressUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 16 }}>
-                      <span style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: 'var(--mint)', color: 'var(--c-green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <MapPin size={17} />
-                      </span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', wordBreak: 'break-word' }}>
-                        {/^https?:\/\//i.test(act.address) ? 'פתח בגוגל מפות' : act.address}
-                      </span>
-                    </div>
-                  </a>
-                )}
-
-                {!act.description && !act.address && !linked && (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>
-                    אין עוד פרטים לפעילות הזו.{actDayId && (canEdit || (canAdd && creatorOf(act) === currentUid)) ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
-                  </p>
-                )}
-
-                {actions.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${actions.length}, 1fr)`, gap: 8, marginTop: 2 }}>
-                    {actions.map(({ key, label, Icon, tone, run }) => (
-                      <button key={key} type="button" onClick={run} className="action-tile" style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text)',
-                        fontFamily: 'var(--font-hebrew)', fontSize: 12.5, fontWeight: 700,
-                      }}>
-                        <span className={`round-btn ${tone}`} style={{ width: 50, height: 50, minWidth: 50 }}><Icon size={20} /></span>
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-            </Sheet>
-          );
-        })()
-      )}
 
     </div>
-  );
-}
-
-/* ── Drag-and-drop helpers for day reordering ─────────────────────────── */
-
-const DragHandleContext = React.createContext(null);
-
-/* One day, memoized.
- *
- * Collapsing a day used to re-render every other day with it: the state
- * lives in PlanningTab, so React walked the whole list and re-applied the
- * inline style of every element in it. The profiler put `setValueForStyle`
- * at the top of a toggle — not the component's own logic, but React
- * writing styles back onto DOM nodes that had not changed. With this
- * memo the other days bail out and none of that work happens.
- *
- * Every prop below therefore has to be reference-stable across renders,
- * or the memo never holds: the handlers are useCallback'd in the parent
- * and the setters come from useState, which React keeps stable.
- */
-const DayCard = React.memo(function DayCard({
-  day, plans, bookedPlaceIds, canEdit, canAdd, currentUid,
-  /* Booleans, not the Sets they come from. Passing `collapsedDays` itself
-     meant every card got a brand-new Set on every toggle and the memo
-     never held — which is exactly what the first attempt measured: no
-     change at all. Only the toggled day's booleans move now. */
-  isSummary, dayBodyShown, isEditing, editingDayTitle, isArrived,
-  dayLayout, collapsedTimeGroups,
-  weatherByDate, distanceCache, dayNodes,
-  getCategoryColor, getCategoryIcon,
-  setCollapsedDays, setOpenSummaryDays, setCollapsedTimeGroups,
-  setEditingDayId, setEditingDayTitle, setActivityDetail, setHourlyWeatherDate,
-  handleSaveDayTitle, handleDeleteDay, handleOpenAddActivity,
-  handleStartEditActivity, handleDeleteActivity, moveActivity,
-}) {
-  // The activity whose ⋯ actions sheet is open (with its neighbours, for moving).
-  const [actMenu, setActMenu] = useState(null);
-  // "הוספה": adds activities, and changes only their own (firestore.rules).
-  const mine = (act) => canEdit || (canAdd && creatorOf(act) === currentUid);
-        return (
-        <SortableDayCard
-          key={day.id}
-          id={day.id}
-          compact={isSummary}
-          className={isArrived ? 'highlight-pulse' : ''}
-          innerRef={(node) => {
-            if (node) dayNodes.current.set(day.id, node);
-            else dayNodes.current.delete(day.id);
-          }}
-        >
-          {/* Day Header — whole row toggles collapse (inner controls stop propagation) */}
-          <div
-            onClick={() => {
-              if (isEditing) return;
-              if (dayLayout === 'summary') {
-                setOpenSummaryDays(prev => {
-                  const next = new Set(prev);
-                  next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                  return next;
-                });
-                return;
-              }
-              setCollapsedDays(prev => {
-                const next = new Set(prev);
-                next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                return next;
-              });
-            }}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              // A summary row is one line; a rule under it would
-              // read as a divider between days, not part of one.
-              paddingBottom: isSummary ? 0 : 2,
-              minHeight: isSummary ? 28 : 36,
-              cursor: isEditing ? 'default' : 'pointer',
-            }}>
-            {isEditing ? (
-              <form 
-                onSubmit={(e) => { e.preventDefault(); handleSaveDayTitle(day.id, editingDayTitle); }} 
-                style={{ display: 'flex', gap: 6, width: '100%' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input 
-                  className="form-control" 
-                  style={{ padding: '4px 8px', fontSize: 14, minHeight: 32, flex: 1 }} 
-                  value={editingDayTitle} 
-                  onChange={e => setEditingDayTitle(e.target.value)} 
-                  required 
-                />
-                <button type="submit" className="round-btn on" aria-label="שמור" title="שמור"><Check size={16} /></button>
-                <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => setEditingDayId(null)}><X size={16} /></button>
-              </form>
-            ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                  {canEdit && <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}><DayDragHandle /></span>}
-                  <h3 style={{ fontSize: isSummary ? 16 : 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{day.title}</h3>
-                  {day.date && (() => {
-                    const [, mm, dd] = day.date.split('-');
-                    const dowIdx = (localDay(day.date) || new Date(day.date)).getDay();
-                    const dow = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][dowIdx];
-                    const dayW = weatherByDate[day.date];
-                    return (<>
-                      <Pill size="sm" tone="sky">{`${dow} ${dd}.${mm}`}</Pill>
-                      {dayW && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setHourlyWeatherDate(day.date); }}
-                          style={{
-                            fontSize: 11.5, fontWeight: 700, flexShrink: 0,
-                            background: 'var(--butter)',
-                            border: 'none',
-                            borderRadius: 999, padding: '3px 8px',
-                            display: 'flex', alignItems: 'center', gap: 3,
-                            color: 'var(--text)', cursor: 'pointer',
-                            fontFamily: 'inherit',
-                          }}
-                        >
-                          <span style={{ fontSize: 13, lineHeight: 1 }}>{getWeatherIcon(dayW.code)}</span>
-                          <span>{dayW.max}°/{dayW.min}°</span>
-                          {dayW.rain > 0 && <span style={{ color: 'var(--c-blue)' }}>💧{dayW.rain}%</span>}
-                        </button>
-                      )}
-                    </>);
-                  })()}
-                </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  {canEdit && !isSummary && (<>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingDayId(day.id); setEditingDayTitle(day.title); }}
-                    style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
-                    title="ערוך כותרת יום"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteDay(day.id); }}
-                    style={{ border: 'none', background: 'transparent', color: 'var(--c-red)', cursor: 'pointer', padding: 4 }}
-                    title="מחק יום"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                  </>)}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const setter = dayLayout === 'summary' ? setOpenSummaryDays : setCollapsedDays;
-                      setter(prev => {
-                        const next = new Set(prev);
-                        next.has(day.id) ? next.delete(day.id) : next.add(day.id);
-                        return next;
-                      });
-                    }}
-                    aria-label={dayBodyShown ? 'סגור יום' : 'פתח יום'}
-                    style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, transition: 'transform 0.2s', transform: dayBodyShown ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                    title={dayBodyShown ? 'סגור יום' : 'פתח יום'}
-                  >
-                    <ChevronDown size={18} />
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Summary layout: the whole day on one muted line —
-              how many activities, and the first couple by time.
-              Enough to answer "what is on Thursday?" without
-              opening anything. */}
-          {isSummary && (() => {
-            const acts = day.activities || [];
-            if (acts.length === 0) {
-              return (
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-                  אין פעילויות
-                </span>
-              );
-            }
-            const shown = acts.slice(0, 2);
-            const rest = acts.length - shown.length;
-            return (
-              <div style={{
-                display: 'flex', alignItems: 'baseline', gap: 6,
-                fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
-                minWidth: 0,
-              }}>
-                <span style={{ fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
-                  {acts.length} פעילויות
-                </span>
-                <span style={{ color: 'var(--ink-22)', flexShrink: 0 }}>·</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {shown.map(a => [a.timeLabel, a.title].filter(Boolean).join(' ')).join(' · ')}
-                  {rest > 0 && ` +${rest}`}
-                </span>
-              </div>
-            );
-          })()}
-
-          {/* Day Activities + Add Button (collapsed when toggled) */}
-          {dayBodyShown && <>
-          <div className="day-body" style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
-            {(() => {
-            const dayActs = day.activities || [];
-            const timeGroups = groupActivitiesByTime(dayActs);
-            const showTimeHeaders = dayActs.some(a => (a.timeLabel || '').trim());
-
-            const renderActivityRow = (act, actIdx, groupList) => {
-              const isFirst = actIdx === 0;
-              const isLast = actIdx === groupList.length - 1;
-              const prevActId = groupList[actIdx - 1]?.id ?? null;
-              const nextActId = groupList[actIdx + 1]?.id ?? null;
-              const linkedPlan = plans.find(p => act.placeId ? p.id === act.placeId : p.title === act.title);
-              const isVisited = linkedPlan?.visited === true;
-
-              return (
-                <div key={act.id} style={{
-                  display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative',
-                  // The timeline line already links the activities; a coloured
-                  // rule between them read as a divider, so it is gone.
-                  paddingTop: isFirst ? 0 : 6,
-                  paddingBottom: isLast ? 0 : 6,
-                }}>
-                  {/* Timeline vertical node and line */}
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    flexShrink: 0, 
-                    position: 'relative', 
-                    height: '100%', 
-                    alignSelf: 'stretch'
-                  }}>
-                    <div style={{
-                      width: 30, height: 30, borderRadius: '50%',
-                      background: `${getCategoryColor(act.category)}1F`,
-                      color: getCategoryColor(act.category),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      zIndex: 2,
-                    }}>
-                      {getCategoryIcon(act.category, 15)}
-                    </div>
-                    {!isLast && (
-                      <div style={{
-                        position: 'absolute',
-                        top: 28,
-                        bottom: -24,
-                        width: 2,
-                        background: 'var(--ink-6)',
-                        zIndex: 1
-                      }} />
-                    )}
-                  </div>
-
-                  {/* Activity row — a quiet tile inside the day card */}
-                  <div style={{
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    padding: '11px 12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                    borderRadius: 16,
-                    background: 'var(--surface-2)',
-                    opacity: isVisited ? 0.6 : 1,
-                  }}>
-                    {(() => {
-                      // Compute travel-time chips once — reused below the title.
-                      let chips = null;
-                      if (act.placeId && hasGmapsKey()) {
-                        const linkedPlan = plans.find(p => p.id === act.placeId);
-                        const originKey = linkedPlan?.distanceOriginId || 'hotel';
-                        const cache = distanceCache[`${act.placeId}_${originKey}`];
-                        if (cache && !cache.loading && !cache.error && !cache.noLocation && (cache.walk || cache.transit)) {
-                          chips = (
-                            <>
-                              {cache.walk && (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green)', background: 'var(--c-green-10)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                  <Footprints size={12} aria-hidden="true" /> {cache.walk.duration}
-                                </span>
-                              )}
-                              {cache.transit && (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--p-8)', padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                  <Bus size={12} aria-hidden="true" /> {cache.transit.duration}
-                                </span>
-                              )}
-                            </>
-                          );
-                        }
-                      }
-                      const linkedPlace = act.placeId ? plans.find(pl => pl.id === act.placeId) : null;
-                      const titleColor =
-                        linkedPlace?.priority === 'optional' ? 'var(--text-muted)' : 'var(--text)';
-                      return (
-                        <>
-                          {/* Row 1: time badge + title (single line, ellipsis) + controls */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                            <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              {isVisited && <Pill size="sm" tone="muted">✓ בוצע</Pill>}
-                              {!isVisited && act.timeLabel && !showTimeHeaders && (
-                                <Pill size="sm" tone="sky" style={{ background: 'var(--card-bg-solid)' }}>{act.timeLabel}</Pill>
-                              )}
-                              {isVisited && act.timeLabel && !showTimeHeaders && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
-                                  flexShrink: 0,
-                                }}>
-                                  {act.timeLabel}
-                                </span>
-                              )}
-                              {linkedPlace?.priority === 'must' && !isVisited && (
-                                <Star size={13} className="star-must" style={{ flexShrink: 0 }} aria-label="חובה" />
-                              )}
-                              <h4
-                                onClick={() => setActivityDetail({ ...act, __dayId: day.id })}
-                                style={{
-                                  fontSize: 15, fontWeight: 800, color: isVisited ? 'var(--text-muted)' : titleColor, margin: 0,
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                  minWidth: 0, cursor: 'pointer',
-                                  textDecoration: 'none',
-                                }}
-                              >
-                                {act.title}
-                              </h4>
-                              {linkedPlace && !isVisited && (bookedPlaceIds.has(linkedPlace.id) || linkedPlace.needsReservation) && (
-                                <span title={bookedPlaceIds.has(linkedPlace.id) ? 'הוזמן' : 'צריך לסגור / להזמין מראש'} style={{
-                                  display: 'flex', flexShrink: 0,
-                                  color: bookedPlaceIds.has(linkedPlace.id) ? 'var(--c-green)' : 'var(--c-red)',
-                                }}>
-                                  <CalendarCheck size={13} />
-                                </span>
-                              )}
-                            </div>
-
-                            {/* One ⋯ instead of four small icons: the name gets the
-                                row, and the actions open in a sheet (below). */}
-                            {mine(act) && (
-                              <button
-                                type="button"
-                                aria-label={`פעולות: ${act.title}`}
-                                onClick={() => setActMenu({ act, prevActId, nextActId, isFirst, isLast })}
-                                className="round-btn"
-                                style={{ width: 32, height: 32, minWidth: 32, background: 'var(--card-bg-solid)', color: 'var(--text-muted)' }}
-                              >
-                                <MoreHorizontal size={17} />
-                              </button>
-                            )}
-                          </div>
-
-                          {act.description && (
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 3 }}>
-                              <MessageSquare size={11} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.35, wordBreak: 'break-word' }}>
-                                {act.description}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Row 2: address link + travel-time chips */}
-                          {(act.address || chips) && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                              {act.address && (
-                                <a
-                                  href={/^https?:\/\//i.test(act.address) ? act.address : `https://maps.google.com/?q=${encodeURIComponent(act.address)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={{
-                                    fontSize: 11, color: 'var(--accent)', fontWeight: 700,
-                                    display: 'flex', alignItems: 'center', gap: 3,
-                                    textDecoration: 'none', minWidth: 0,
-                                  }}
-                                >
-                                  <MapPin size={11} />
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{act.address}</span>
-                                  <ExternalLink size={10} />
-                                </a>
-                              )}
-                              {chips}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              );
-            };
-
-            // No time labels at all — keep the flat timeline as before
-            if (!showTimeHeaders) {
-              return dayActs.map((act, i) => renderActivityRow(act, i, dayActs));
-            }
-
-            // Grouped by time of day, each group collapsible as one unit
-            return timeGroups.map(g => {
-              const gKey = `${day.id}|${g.label}`;
-              const isGroupCollapsed = collapsedTimeGroups.has(gKey);
-              return (
-                <div key={gKey} style={{ marginBottom: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => setCollapsedTimeGroups(prev => {
-                      const next = new Set(prev);
-                      next.has(gKey) ? next.delete(gKey) : next.add(gKey);
-                      return next;
-                    })}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '6px 4px', marginBottom: isGroupCollapsed ? 0 : 8,
-                      borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: 'transparent', fontFamily: 'inherit',
-                    }}
-                  >
-                    {(() => {
-                      const GroupIcon = TIME_GROUP_ICONS[g.label] || (g.label ? Clock : Pin);
-                      return <GroupIcon size={15} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />;
-                    })()}
-                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
-                      {g.label || 'ללא תיוג זמן'}
-                    </span>
-                    {/* Pushed to the row's end so counts align across groups */}
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, color: 'var(--text)',
-                      background: 'var(--surface-2)', padding: '2px 0',
-                      borderRadius: 999, lineHeight: 1.4,
-                      marginInlineStart: 'auto', flexShrink: 0,
-                      width: 26, textAlign: 'center',
-                    }}>
-                      {g.acts.length}
-                    </span>
-                    <ChevronDown
-                      size={16}
-                      style={{
-                        color: 'var(--text-muted)', flexShrink: 0,
-                        transition: 'transform 0.2s',
-                        transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                      }}
-                    />
-                  </button>
-                  {!isGroupCollapsed && (
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {g.acts.map((act, i) => renderActivityRow(act, i, g.acts))}
-                    </div>
-                  )}
-                </div>
-              );
-            });
-            })()}
-
-            {(day.activities || []).length === 0 && (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0', margin: 0 }}>
-                אין עדיין פעילויות ליום זה.
-              </p>
-            )}
-          </div>
-
-          {/* Add Activity Button */}
-          {canAdd && (
-          <button
-            onClick={() => handleOpenAddActivity(day.id)}
-            className="btn-secondary"
-            style={{
-              width: '100%',
-              minHeight: 44,
-              padding: 10,
-              fontSize: 14,
-              fontWeight: 800,
-              border: 'none',
-              borderRadius: 16,
-              background: 'var(--surface-2)',
-              color: 'var(--text)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              cursor: 'pointer'
-            }}
-          >
-            <Plus size={14} />
-            <span>הוסף פעילות</span>
-          </button>
-          )}
-          </>}
-
-          {actMenu && (
-            <Sheet title={actMenu.act.title} onClose={() => setActMenu(null)}>
-              <div className="list-group">
-                {[
-                  // Moving reorders the others too: an editor's.
-                  ...(canEdit ? [
-                  { key: 'up', label: 'הזז למעלה', Icon: ArrowUp, disabled: actMenu.isFirst,
-                    run: () => moveActivity(day.id, actMenu.act.id, -1, actMenu.prevActId) },
-                  { key: 'down', label: 'הזז למטה', Icon: ArrowDown, disabled: actMenu.isLast,
-                    run: () => moveActivity(day.id, actMenu.act.id, 1, actMenu.nextActId) },
-                  ] : []),
-                  { key: 'edit', label: 'עריכה', Icon: Pencil,
-                    run: () => handleStartEditActivity(day.id, actMenu.act) },
-                  { key: 'del', label: 'מחיקה', Icon: Trash2, danger: true,
-                    run: () => handleDeleteActivity(day.id, actMenu.act.id) },
-                ].map(({ key, label, Icon, disabled, danger, run }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    disabled={disabled}
-                    className={`list-row${danger ? ' danger' : ''}`}
-                    onClick={() => { setActMenu(null); run(); }}
-                  >
-                    <Icon size={18} className="list-row-icon" />
-                    <span className="list-row-label">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </Sheet>
-          )}
-        </SortableDayCard>
-
-  );
-});
-
-function SortableDayCard({ id, children, innerRef, className = '', compact = false }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  // dnd-kit owns one ref and the scroll-to-new-day needs another.
-  const setRefs = (node) => {
-    setNodeRef(node);
-    innerRef?.(node);
-  };
-  return (
-    <DragHandleContext.Provider value={listeners}>
-      <div
-        ref={setRefs}
-        {...attributes}
-        className={`glass-card day-card${className ? ' ' + className : ''}`}
-        style={{
-          padding: compact ? '12px 14px' : 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: compact ? 6 : 12,
-          transform: CSS.Transform.toString(transform),
-          transition,
-          opacity: isDragging ? 0.45 : 1,
-          boxShadow: isDragging ? '0 8px 32px var(--ink-18)' : undefined,
-          zIndex: isDragging ? 10 : undefined,
-          position: 'relative',
-        }}
-      >
-        {children}
-      </div>
-    </DragHandleContext.Provider>
-  );
-}
-
-function DayDragHandle() {
-  const listeners = React.useContext(DragHandleContext);
-  return (
-    <button
-      type="button"
-      {...listeners}
-      style={{
-        border: 'none',
-        background: 'transparent',
-        color: 'var(--text-muted)',
-        cursor: 'grab',
-        padding: '4px 2px',
-        display: 'flex',
-        alignItems: 'center',
-        touchAction: 'none',
-        flexShrink: 0,
-        opacity: 0.5,
-      }}
-      title="גרור לשינוי סדר"
-    >
-      <GripVertical size={16} />
-    </button>
   );
 }

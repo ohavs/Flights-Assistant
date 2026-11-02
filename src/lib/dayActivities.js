@@ -81,3 +81,40 @@ export function swapActivities(db, tripId, dayId, raw, id, otherId) {
     ...put, { ...shown[a].act, order: aTo }, { ...shown[b].act, order: ra },
   ]);
 }
+
+// Moves an activity to the end of another day: out of one array, into the
+// other, in one batch. `onlyOwn` as in `settle`.
+export function moveActivityToDay(db, tripId, from, to, id, onlyOwn = false) {
+  const all = rows(from.rawActivities);
+  const was = shownRows(all).find(r => r.act?.id === id);
+  if (!was || from.id === to.id) return Promise.resolve();
+  const { out, put } = settle(all, new Set([id]), onlyOwn);
+  const top = Math.max(0, ...rows(to.rawActivities).map(r => r.rank));
+  const batch = writeBatch(db);
+  const src = dayRef(db, tripId, from.id);
+  if (out.length) batch.update(src, { activities: arrayRemove(...out) });
+  if (put.length) batch.update(src, { activities: arrayUnion(...put) });
+  batch.update(dayRef(db, tripId, to.id), {
+    activities: arrayUnion({ ...was.act, order: top + 1, updatedAt: Date.now() }),
+  });
+  return batch.commit();
+}
+
+// Swaps two days (src/lib/dayPlan.js, swapDayFields): each document takes
+// the other's place, and the activities fixed to a date by a booking
+// (`stayA` on a's date, `stayB` on b's, as ids) move over so they stay on it.
+export function swapDays(db, tripId, a, b, fields, stayA = new Set(), stayB = new Set()) {
+  const ra = dayRef(db, tripId, a.id);
+  const rb = dayRef(db, tripId, b.id);
+  const copies = (day, ids) => rows(day.rawActivities).filter(r => ids.has(r.act?.id)).map(r => r.act);
+  const fromA = copies(a, stayA);
+  const fromB = copies(b, stayB);
+  const batch = writeBatch(db);
+  batch.update(ra, fields.a);
+  batch.update(rb, fields.b);
+  if (fromA.length) batch.update(ra, { activities: arrayRemove(...fromA) });
+  if (fromB.length) batch.update(rb, { activities: arrayRemove(...fromB) });
+  if (fromA.length) batch.update(rb, { activities: arrayUnion(...fromA) });
+  if (fromB.length) batch.update(ra, { activities: arrayUnion(...fromB) });
+  return batch.commit();
+}

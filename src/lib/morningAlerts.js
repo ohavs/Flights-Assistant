@@ -6,6 +6,7 @@
 // the first of them, and the forecast at the destination. The forecast is
 // the one at scheduling time; the app schedules the coming week each time
 // it opens, so it stays fresh enough.
+import { PARTS, slotOf } from './dayPlan.js';
 import { alertId } from './flightAlerts.js';
 import { getWeatherIcon, getWeatherLabel } from './weatherCodes.js';
 import { dayActivities } from './dayOrder.js';
@@ -48,12 +49,17 @@ export function tripPlace(trip) {
   return p?.lat && p?.lng ? { lat: p.lat, lng: p.lng } : null;
 }
 
-// The planner groups a day by time of day; the first activity is the first
-// of the earliest group (as in PlanningTab's groupActivitiesByTime).
-const TIME_ORDER = ['בוקר', 'צהריים', 'ערב', 'לילה'];
+// The order of a day, as the schedule shows it (src/lib/dayPlan.js): by
+// part of the day, a clock time inside its part (after midnight is still
+// the night), free text after the parts, nothing last.
+const TIME_ORDER = PARTS;
 export function activityRank(a) {
-  const l = (a.timeLabel || '').trim();
-  return l === '' ? 99 : TIME_ORDER.includes(l) ? TIME_ORDER.indexOf(l) : 50;
+  const s = slotOf(a.timeLabel);
+  if (s.part) {
+    const m = s.minutes == null ? -1 : (s.minutes < 300 ? s.minutes + 1440 : s.minutes);
+    return TIME_ORDER.indexOf(s.part) * 10000 + m + 1;
+  }
+  return s.custom ? 50000 : 99000;
 }
 export function firstActivity(acts) {
   return (acts || []).reduce((best, a) => (best === null || activityRank(a) < activityRank(best) ? a : best), null);
