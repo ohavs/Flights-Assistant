@@ -5,10 +5,11 @@ import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestor
 import { changedFields } from '../lib/changes';
 import { withScheme } from '../lib/links';
 import {
-  UtensilsCrossed, Compass, Landmark, Ticket, Train, BedDouble, Tag,
   Pencil, Trash2, Phone, MapPin, ExternalLink, Copy, Check, Users, Clock,
-  CalendarCheck, UserRound,
+  CalendarCheck, UserRound, X, Search, ArrowLeftRight,
 } from 'lucide-react';
+import { BOOKING_TYPES, typeOf, STATUSES, statusOf, PAYMENT_LABEL, telHref, mapsHref } from './bookingKinds';
+import PlacePicker from './PlacePicker';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker } from './CustomDatePicker';
 import Sheet from '../ui/Sheet';
 import { useTrip } from '../TripContext';
@@ -38,31 +39,12 @@ import EmptyState from './EmptyState';
    copies it) and the ways to call, navigate and open the link.
    ══════════════════════════════════════════════════════════ */
 
-const BOOKING_TYPES = [
-  { value: 'restaurant', label: 'מסעדה',    Icon: UtensilsCrossed, color: '#ea580c' },
-  { value: 'tour',       label: 'סיור',     Icon: Compass,         color: '#4f46e5' },
-  { value: 'attraction', label: 'אטרקציה',  Icon: Landmark,        color: '#0891b2' },
-  { value: 'tickets',    label: 'כרטיסים / מופע', Icon: Ticket,    color: '#db2777' },
-  { value: 'transport',  label: 'תחבורה',   Icon: Train,           color: '#059669' },
-  { value: 'stay',       label: 'לינה',     Icon: BedDouble,       color: '#7c3aed' },
-  { value: 'other',      label: 'אחר',      Icon: Tag,             color: '#64748b' },
-];
-const typeOf = (v) => BOOKING_TYPES.find(t => t.value === v) || BOOKING_TYPES[BOOKING_TYPES.length - 1];
-
-const STATUSES = [
-  { value: 'confirmed', label: 'מאושרת',        tone: 'mint', Icon: Check },
-  { value: 'pending',   label: 'ממתינה לאישור', tone: 'butter' },
-  { value: 'cancelled', label: 'בוטלה',         tone: 'muted' },
-];
-const statusOf = (v) => STATUSES.find(st => st.value === v) || STATUSES[0];
-
 const PAYMENTS = [
   { value: null,      label: 'לא צוין' },
   { value: 'paid',    label: 'שולם' },
   { value: 'deposit', label: 'מקדמה' },
   { value: 'onsite',  label: 'תשלום במקום' },
 ];
-const PAYMENT_LABEL = { paid: 'שולם', deposit: 'שולמה מקדמה', onsite: 'תשלום במקום' };
 
 // Planner category → booking type, for pre-filling from a linked place.
 const TYPE_FROM_CATEGORY = {
@@ -85,8 +67,6 @@ function dateLeaf(date) {
   return { dow: `יום ${DOW[new Date(y, m - 1, d).getDay()]}`, day: d, month: MONTHS[m - 1] };
 }
 
-const telHref = (p) => `tel:${String(p).replace(/[^0-9+]/g, '')}`;
-const mapsHref = (a) => (/^https?:\/\//i.test(a) ? a : `https://maps.google.com/?q=${encodeURIComponent(a)}`);
 
 const EMPTY_FORM = {
   title: '', type: 'restaurant', placeId: '', date: '', time: '', people: '',
@@ -167,23 +147,36 @@ export default function BookingsTab({ tripId }) {
 
   const formDirty = () => JSON.stringify(form) !== JSON.stringify(initialForm);
 
-  // Linking a place fills in what the place already knows, without
-  // overwriting anything typed by hand.
+  // A booking linked to a place takes its name and address from the
+  // place: one or the other, never both typed. The rest (time, code,
+  // phone…) the place doesn't know, so it stays to fill in.
+  const [picking, setPicking] = useState(false);
+  const placeOf = (f) => (f.placeId ? places.find(p => p.id === f.placeId) || null : null);
+  const linked = placeOf(form);
   const pickPlace = (placeId) => {
     const place = places.find(p => p.id === placeId);
     setForm(prev => ({
       ...prev,
       placeId,
-      title: prev.title || place?.title || '',
-      address: prev.address || place?.address || '',
-      type: place && TYPE_FROM_CATEGORY[place.category] && prev.title === '' ? TYPE_FROM_CATEGORY[place.category] : prev.type,
+      type: place && TYPE_FROM_CATEGORY[place.category] && !prev.placeId && !editingId ? TYPE_FROM_CATEGORY[place.category] : prev.type,
     }));
   };
+  // Letting go of the place keeps its name and address, now to edit.
+  const unlinkPlace = () => setForm(prev => {
+    const place = placeOf(prev);
+    return {
+      ...prev,
+      placeId: '',
+      title: place?.title || prev.title,
+      address: place ? (place.address || '') : prev.address,
+    };
+  });
 
   const payloadOf = (f) => {
     const people = parseInt(f.people, 10);
+    const place = placeOf(f);
     return {
-      title: f.title.trim(),
+      title: place ? place.title : f.title.trim(),
       type: f.type,
       placeId: f.placeId || null,
       date: f.date || null,
@@ -191,7 +184,7 @@ export default function BookingsTab({ tripId }) {
       people: Number.isFinite(people) && people > 0 ? people : null,
       confirmation: f.confirmation.trim(),
       bookedUnder: f.bookedUnder.trim(),
-      address: f.address.trim(),
+      address: place ? (place.address || '') : f.address.trim(),
       phone: f.phone.trim(),
       url: withScheme(f.url),
       price: f.price.trim(),
@@ -203,8 +196,8 @@ export default function BookingsTab({ tripId }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!tripId || !form.title.trim()) return;
     const payload = payloadOf(form);
+    if (!tripId || !payload.title) return;
     const id = editingId || ('booking-' + Date.now());
     const ref = doc(db, 'trips', tripId, 'bookings', id);
     // Fire-and-forget: the offline cache queues the write. An edit writes
@@ -241,22 +234,6 @@ export default function BookingsTab({ tripId }) {
   };
 
   if (loading) return <Skeleton rows={4} header={false} label="טוען הזמנות" />;
-
-  const placeOptions = [
-    { value: '', label: 'ללא קישור' },
-    ...[...places]
-      .sort((a, b) => {
-        // Places still waiting to be booked first.
-        const rank = (p) => (p.needsReservation && !bookedPlaceIds.has(p.id) ? 0 : 1);
-        return rank(a) - rank(b) || (a.title || '').localeCompare(b.title || '', 'he');
-      })
-      .map(p => ({
-        value: p.id,
-        label: p.needsReservation && !bookedPlaceIds.has(p.id) && p.id !== form.placeId
-          ? `${p.title} · להזמין`
-          : p.title,
-      })),
-  ];
 
   const renderCard = (b) => {
     const t = typeOf(b.type);
@@ -411,19 +388,39 @@ export default function BookingsTab({ tripId }) {
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>שם *</label>
-                <input type="text" className="form-control" required value={form.title} onChange={setFromInput('title')}
-                  placeholder="למשל: ארוחת ערב ב-Costes" />
-              </div>
-
               {places.length > 0 && (
-                <CustomDropdown
-                  label="מקום מהתכנון (לא חובה)"
-                  value={form.placeId}
-                  onChange={pickPlace}
-                  options={placeOptions}
-                />
+                <div className="act-form-block">
+                  <span className="act-form-label">מקום מהתכנון (לא חובה)</span>
+                  {linked ? (<>
+                    <div className="act-place">
+                      <span className="dp-disc lavender"><MapPin size={18} /></span>
+                      <div className="act-place-text">
+                        <span className="act-place-title">{linked.title}</span>
+                        <span className="act-place-sub">{[linked.category, linked.address].filter(Boolean).join(' · ')}</span>
+                      </div>
+                      <button type="button" className="round-btn" aria-label="החלפת מקום" title="החלפת מקום" onClick={() => setPicking(true)}>
+                        <ArrowLeftRight size={16} />
+                      </button>
+                      <button type="button" className="btn-x" aria-label="ביטול הקישור למקום" title="ביטול הקישור" onClick={unlinkPlace}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <span className="act-form-note">השם והכתובת מגיעים מהמקום.</span>
+                  </>) : (
+                    <button type="button" className="act-pick" onClick={() => setPicking(true)}>
+                      <Search size={17} aria-hidden="true" />
+                      <span>חיפוש מקום ברשימה</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!linked && (
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>שם *</label>
+                  <input type="text" className="form-control" required value={form.title} onChange={setFromInput('title')}
+                    placeholder="למשל: ארוחת ערב ב-Costes" />
+                </div>
               )}
 
               <div className="row-2" style={{ gap: 10 }}>
@@ -474,11 +471,13 @@ export default function BookingsTab({ tripId }) {
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>כתובת</label>
-                <input type="text" className="form-control" value={form.address} onChange={setFromInput('address')}
-                  placeholder="כתובת או קישור למפה" />
-              </div>
+              {!linked && (
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>כתובת</label>
+                  <input type="text" className="form-control" value={form.address} onChange={setFromInput('address')}
+                    placeholder="כתובת או קישור למפה" />
+                </div>
+              )}
 
               <div className="row-2" style={{ gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -507,6 +506,20 @@ export default function BookingsTab({ tripId }) {
             </form>
           )}
         </Sheet>
+      )}
+
+      {showForm && canAdd && picking && (
+        <PlacePicker
+          places={places}
+          value={form.placeId}
+          title="קישור למקום מהתכנון"
+          hintOf={(p) => (p.address && !/^https?:\/\//i.test(p.address) ? p.address : p.category)}
+          badgeOf={(p) => (p.id === form.placeId ? null
+            : bookedPlaceIds.has(p.id) ? { text: 'הוזמן', tone: 'mint' }
+            : p.needsReservation ? { text: 'להזמין', tone: 'red' } : null)}
+          onPick={pickPlace}
+          onClose={() => setPicking(false)}
+        />
       )}
     </>
   );

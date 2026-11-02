@@ -11,7 +11,9 @@ import {
 } from 'firebase/firestore';
 import {
   dayActivities, addActivities, updateActivity, removeActivity, swapActivities,
+  moveActivityToDay, swapDays,
 } from '../src/lib/dayActivities.js';
+import { swapDayFields, anchoredIds } from '../src/lib/dayPlan.js';
 
 const phone = async (name) => {
   const app = initializeApp({ projectId: 'demo-flights', apiKey: 'demo-key' }, name);
@@ -100,6 +102,39 @@ test('move: swaps two activities and keeps the other phone\'s change', async () 
   // Moving again from a fresh view, down past the last one.
   await swapActivities(A.db, trip, 'd1', await raw(A.db, trip), lunch.id, beach.id);
   assert.deepEqual(await titles(trip), ['מוזיאון', 'ארוחת בוקר', 'חוף', 'צהריים']);
+});
+
+// Two days with dates, read back as the planner holds them.
+const dayDoc = async (db, trip, id) => {
+  const data = (await getDoc(doc(db, 'trips', trip, 'days', id))).data();
+  return { id, ...data, activities: dayActivities(data.activities), rawActivities: data.activities || [] };
+};
+
+test('move to another day: out of one, at the end of the other', async () => {
+  const trip = await newDay('days-move-day');
+  await setDoc(doc(B.db, 'trips', trip, 'days', 'd2'), { title: 'יום 2', order: 2, activities: [beach] });
+  await moveActivityToDay(A.db, trip, await dayDoc(A.db, trip, 'd1'), await dayDoc(A.db, trip, 'd2'), museum.id);
+  assert.deepEqual((await dayDoc(B.db, trip, 'd1')).activities.map(a => a.title), ['ארוחת בוקר', 'צהריים']);
+  assert.deepEqual((await dayDoc(B.db, trip, 'd2')).activities.map(a => a.title), ['חוף', 'מוזיאון']);
+});
+
+test('swapping days: the activities trade places, a booked one stays on its date', async () => {
+  const trip = await newDay('days-swap');
+  const dinner = { ...act('a-6', 'מסעדה'), placeId: 'p-rest', timeLabel: 'ערב' };
+  await setDoc(doc(B.db, 'trips', trip, 'days', 'd1'), { title: 'יום 1', order: 1, date: '2026-11-05', activities: [breakfast, dinner] });
+  await setDoc(doc(B.db, 'trips', trip, 'days', 'd2'), { title: 'יום 2', order: 2, date: '2026-11-06', activities: [beach] });
+  const bookings = [{ id: 'b1', placeId: 'p-rest', date: '2026-11-05' }];
+  const a = await dayDoc(A.db, trip, 'd1');
+  const b = await dayDoc(A.db, trip, 'd2');
+  await swapDays(A.db, trip, a, b, swapDayFields(a, b, 1, 2),
+    anchoredIds(a.activities, a.date, bookings), anchoredIds(b.activities, b.date, bookings));
+  const d1 = await dayDoc(B.db, trip, 'd1');
+  const d2 = await dayDoc(B.db, trip, 'd2');
+  // d2 now stands on the 5th: the beach, and the booked dinner that stayed.
+  assert.deepEqual([d2.date, d2.title, d2.order], ['2026-11-05', 'יום 1', 1]);
+  assert.deepEqual(d2.activities.map(x => x.title).sort(), ['חוף', 'מסעדה'].sort());
+  assert.deepEqual([d1.date, d1.title, d1.order], ['2026-11-06', 'יום 2', 2]);
+  assert.deepEqual(d1.activities.map(x => x.title), ['ארוחת בוקר']);
 });
 
 test('both phones edit one activity at once: one copy is shown, the newer', async () => {
