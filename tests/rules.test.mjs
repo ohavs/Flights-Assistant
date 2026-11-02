@@ -268,6 +268,21 @@ test('a day: a contributor adds activities, and changes only their own', async (
   assert.deepEqual((await getDoc(item(owner, tripId, 'days', 'd1'))).data().activities, [theirs]);
 });
 
+test('a personal plan is its member\'s alone, whatever the role', async () => {
+  const tripId = await createTrip();
+  const mine = (who, uid = who.uid) => doc(who.db, 'trips', tripId, 'personal', uid, 'days', '2026-11-10');
+  // A viewer plans for themselves too.
+  await setDoc(mine(viewer), { activities: [{ id: 'p1', title: 'ריצה', createdBy: viewer.uid }] }, { merge: true });
+  assert.equal((await getDoc(mine(viewer))).data().activities.length, 1);
+  // No one else reads or writes it: not the owner, not an editor, not a stranger.
+  await assert.rejects(getDoc(mine(owner, viewer.uid)), denied);
+  await assert.rejects(getDoc(mine(editor, viewer.uid)), denied);
+  await assert.rejects(setDoc(mine(owner, viewer.uid), { activities: [] }), denied);
+  await assert.rejects(getDoc(mine(stranger, viewer.uid)), denied);
+  // Not on the trip: not even a plan of one's own.
+  await assert.rejects(setDoc(mine(stranger), { activities: [] }), denied);
+});
+
 test('a viewer still adds nothing', async () => {
   const tripId = await createTrip();
   await assert.rejects(setDoc(item(viewer, tripId, 'planning', 'v'), { title: 'x', createdBy: viewer.uid }), denied);
