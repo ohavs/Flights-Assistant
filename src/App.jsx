@@ -1331,7 +1331,7 @@ function AppInner() {
   }, [morningKey, signedInUid, notifyVersion]);
 
   // Home screen widget (Android app): the current or next trips, their
-  // planner days, packing, reminders and bookings, saved for the widget whenever any
+  // planner days (with the user's own plan), packing, reminders and bookings, saved for the widget whenever any
   // of it changes (widgetData.js). Signed out, the widget says so.
   const { palette, mode: themeMode } = useTheme();
   const widgetKey = widgetTrips(trips).map(t => t.id).join(',');
@@ -1340,7 +1340,7 @@ function AppInner() {
     if (!isNative || loading) return undefined;
     if (!signedInUid) { import('./lib/native/widget').then(w => w.saveWidget(null)).catch(() => {}); return undefined; }
     const ids = widgetKey ? widgetKey.split(',') : [];
-    const data = { days: {}, checklist: {}, reminders: {}, expenses: {}, planning: {}, bookings: {} };
+    const data = { days: {}, checklist: {}, reminders: {}, expenses: {}, planning: {}, bookings: {}, personal: {} };
     let timer;
     const sync = () => {
       clearTimeout(timer);
@@ -1353,18 +1353,26 @@ function AppInner() {
         const rates = await import('./services/currency').then(c => c.refreshRatesIfStale()).then(r => r?.rates).catch(() => null);
         import('./lib/native/widget').then(w => w.saveWidget(widgetSnapshot({
           trips: tripsRef.current,
-          daysByTrip: data.days, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
+          daysByTrip: data.days, personalByTrip: data.personal, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
           expensesByTrip: data.expenses, plansByTrip: data.planning, bookingsByTrip: data.bookings, rates,
           palette: current, theme,
         }))).catch(() => {});
       }, 600);
     };
     widgetSync.current = sync;
-    const offs = ids.flatMap(id => ['days', 'checklist', 'reminders', 'expenses', 'planning', 'bookings'].map(sub => listen(
-      collection(db, 'trips', id, sub),
-      (snap) => { data[sub][id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
-      () => {},
-    )));
+    const offs = ids.flatMap(id => [
+      ...['days', 'checklist', 'reminders', 'expenses', 'planning', 'bookings'].map(sub => listen(
+        collection(db, 'trips', id, sub),
+        (snap) => { data[sub][id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
+        () => {},
+      )),
+      // The user's own plan of the days ("שלי"), on the plan widget too.
+      listen(
+        collection(db, 'trips', id, 'personal', signedInUid, 'days'),
+        (snap) => { data.personal[id] = snap.docs.map(d => ({ id: d.id, ...d.data() })); sync(); },
+        () => {},
+      ),
+    ]);
     sync();
     return () => { offs.forEach(off => off()); clearTimeout(timer); widgetSync.current = null; };
   }, [widgetKey, signedInUid, loading]);
@@ -1378,9 +1386,11 @@ function AppInner() {
   const offlineKey = offlineTrips(trips).map(t => t.id).join(',');
   useEffect(() => {
     if (!signedInUid || !offlineKey) return undefined;
-    const offs = offlineKey.split(',').flatMap(id =>
-      ['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings']
-        .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})));
+    const offs = offlineKey.split(',').flatMap(id => [
+      ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings']
+        .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})),
+      listen(collection(db, 'trips', id, 'personal', signedInUid, 'days'), () => {}, () => {}),
+    ]);
     return () => offs.forEach(off => off());
   }, [offlineKey, signedInUid]);
 

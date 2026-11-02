@@ -678,21 +678,31 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
     const update = () => {
       if (!triggerRef.current) return;
       const r = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - r.bottom;
-      const openAbove = spaceBelow < 220 && r.top > 220;
+      // Open where there is room for the list (it is up to 300px), and
+      // never past the screen's edge: a field low on the screen opens
+      // upwards, and the list scrolls inside what is left.
+      const spaceBelow = window.innerHeight - r.bottom - 12;
+      const spaceAbove = r.top - 12;
+      const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
       const w = Math.min(r.width, window.innerWidth - 32);
       const left = Math.max(16, Math.min(r.left, window.innerWidth - w - 16));
       setPopupRect({
-        top: openAbove ? undefined : r.bottom + 6,
+        // 'auto', not undefined: the class sets `top`, and with it the list
+        // opening upwards had both edges set and folded to nothing.
+        top: openAbove ? 'auto' : r.bottom + 6,
         bottom: openAbove ? (window.innerHeight - r.top + 6) : undefined,
         left,
         width: w,
+        maxHeight: Math.max(140, Math.min(300, (openAbove ? spaceAbove : spaceBelow) - 6)),
       });
     };
     update();
+    // A sheet that is still sliding in moves the field under the list.
+    const again = [setTimeout(update, 180), setTimeout(update, 420)];
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
     return () => {
+      again.forEach(clearTimeout);
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
@@ -772,7 +782,8 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
             bottom: popupRect.bottom,
             left: popupRect.left,
             right: 'auto',
-            width: popupRect.width
+            width: popupRect.width,
+            maxHeight: popupRect.maxHeight,
           }}
         >
           {normalized.map((opt) => {

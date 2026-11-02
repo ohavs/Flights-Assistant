@@ -52,7 +52,8 @@ test('the plan of each coming day, in time-of-day order, up to twenty items and 
   ];
   const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now }).trips;
   assert.deepEqual(Object.keys(t.days), ['2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06']);
-  assert.deepEqual(t.days['2026-11-03'], { title: 'יום 1 · הגעה', name: 'הגעה', when: 'יום ג׳ 3.11', items: [{ time: 'ערב', title: 'צ׳ק אין' }], more: 0 });
+  // The flight stands on its date, at its time (as in the schedule).
+  assert.deepEqual(t.days['2026-11-03'], { title: 'יום 1 · הגעה', name: 'הגעה', when: 'יום ג׳ 3.11', items: [{ time: '07:30', title: 'טיסה ל־CDG' }, { time: 'ערב', title: 'צ׳ק אין' }], more: 0 });
   const d2 = t.days['2026-11-04'];
   assert.deepEqual(d2.items.slice(0, 3), [{ time: 'בוקר', title: 'לובר' }, { time: 'צהריים', title: 'שאנז אליזה' }, { time: 'ערב', title: 'מסעדה' }]);
   assert.equal(d2.items.length, 9);
@@ -137,7 +138,25 @@ test('the destination\'s currency: Budapest offers shekels, euros and forints, N
 test('a plan item keeps its place, for the expense widget to link to', () => {
   const days = [{ id: 'd1', order: 0, date: '2026-11-03', activities: [{ title: 'לובר', placeId: 'pl1' }, { title: 'גלידה' }] }];
   const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now }).trips;
-  assert.deepEqual(t.days['2026-11-03'].items, [{ time: '', title: 'לובר', placeId: 'pl1' }, { time: '', title: 'גלידה' }]);
+  assert.deepEqual(t.days['2026-11-03'].items, [{ time: '07:30', title: 'טיסה ל־CDG' }, { time: '', title: 'לובר', placeId: 'pl1' }, { time: '', title: 'גלידה' }]);
+});
+
+test('a day as the schedule shows it: bookings on their date, the hotel, and my own plan', () => {
+  const trip = { ...paris, hotelDetails: { name: 'Hotel', checkIn: '2026-11-04T15:00' } };
+  const days = [{ id: 'd2', order: 1, date: '2026-11-04', activities: [{ id: 'a1', title: 'מסעדה', placeId: 'pl9', timeLabel: 'ערב' }] }];
+  const bookings = [
+    { id: 'b1', title: 'מסעדה', placeId: 'pl9', date: '2026-11-04', time: '20:30' },
+    { id: 'b2', title: 'סיור', date: '2026-11-04', time: '11:00' },
+    { id: 'b3', title: 'בוטל', date: '2026-11-04', time: '12:00', status: 'cancelled' },
+  ];
+  const personal = [{ id: '2026-11-04', activities: [{ id: 'm1', title: 'ריצה', timeLabel: '07:00' }] }];
+  const [t] = widgetSnapshot({ trips: [trip], daysByTrip: { p: days }, bookingsByTrip: { p: bookings }, personalByTrip: { p: personal }, now }).trips;
+  assert.deepEqual(t.days['2026-11-04'].items, [
+    { time: '07:00', title: 'ריצה' },
+    { time: '11:00', title: 'סיור' },
+    { time: '15:00', title: 'צ׳ק־אין במלון' },
+    { time: '20:30', title: 'מסעדה', placeId: 'pl9' },   // the booking's time, one line
+  ]);
 });
 
 test('the app\'s theme: light or dark whatever the phone is, else the phone\'s', () => {
@@ -157,7 +176,7 @@ test('a day named only "יום 3" has no name of its own; places say whether the
   assert.equal(d1.title, 'יום 1');
   assert.equal(d1.name, '');
   // By id, by name as the planning tab matches it, or no place at all.
-  assert.deepEqual(d1.items, [
+  assert.deepEqual(d1.items.slice(1), [
     { time: '', title: 'לובר', placeId: 'pl1', visited: true },
     { time: '', title: 'אורסיי', placeId: 'pl2' },
     { time: '', title: 'גלידה' },

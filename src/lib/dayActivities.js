@@ -13,12 +13,17 @@
 // reordered or has something removed. Two edits of one activity at the
 // same time can leave two copies of it. Readers show the newer one
 // (`updatedAt`), and the next change to it removes both.
-import { doc, updateDoc, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
+//
+// A day is named by its id (trips/{tripId}/days/{id}), or by
+// { ref, upsert: true }: a document that may not exist yet and is made by
+// its first activity (a personal day, trips/{tripId}/personal/{uid}/days).
+import { doc, setDoc, updateDoc, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { hasOrder, rows, shownRows, dayActivities } from './dayOrder.js';
 
 export { dayActivities };
 
-const dayRef = (db, tripId, dayId) => doc(db, 'trips', tripId, 'days', dayId);
+const dayRef = (db, tripId, day) => (day && typeof day === 'object' ? day.ref : doc(db, 'trips', tripId, 'days', day));
+const upserts = (day) => !!(day && typeof day === 'object' && day.upsert);
 
 // One batch: take out the exact copies in `out`, then put in `put`.
 function commit(db, tripId, dayId, out, put) {
@@ -47,7 +52,10 @@ export function addActivities(db, tripId, dayId, raw, acts) {
   let top = Math.max(0, ...rows(raw).map(r => r.rank));
   const now = Date.now();
   const put = acts.map(a => ({ ...a, order: ++top, updatedAt: now }));
-  return updateDoc(dayRef(db, tripId, dayId), { activities: arrayUnion(...put) });
+  const ref = dayRef(db, tripId, dayId);
+  return upserts(dayId)
+    ? setDoc(ref, { activities: arrayUnion(...put) }, { merge: true })
+    : updateDoc(ref, { activities: arrayUnion(...put) });
 }
 
 // Replaces the activity with id `next.id` by `next`, in the same place.
@@ -83,7 +91,9 @@ export function swapActivities(db, tripId, dayId, raw, id, otherId) {
 }
 
 // Moves an activity to the end of another day: out of one array, into the
-// other, in one batch. `onlyOwn` as in `settle`.
+// other, in one batch. `from`/`to`: { id, rawActivities, target? }, where
+// `target` names the document as above when it is not a shared day.
+// `onlyOwn` as in `settle`.
 export function moveActivityToDay(db, tripId, from, to, id, onlyOwn = false) {
   const all = rows(from.rawActivities);
   const was = shownRows(all).find(r => r.act?.id === id);
@@ -91,12 +101,13 @@ export function moveActivityToDay(db, tripId, from, to, id, onlyOwn = false) {
   const { out, put } = settle(all, new Set([id]), onlyOwn);
   const top = Math.max(0, ...rows(to.rawActivities).map(r => r.rank));
   const batch = writeBatch(db);
-  const src = dayRef(db, tripId, from.id);
+  const src = dayRef(db, tripId, from.target ?? from.id);
   if (out.length) batch.update(src, { activities: arrayRemove(...out) });
   if (put.length) batch.update(src, { activities: arrayUnion(...put) });
-  batch.update(dayRef(db, tripId, to.id), {
-    activities: arrayUnion({ ...was.act, order: top + 1, updatedAt: Date.now() }),
-  });
+  const moved = { activities: arrayUnion({ ...was.act, order: top + 1, updatedAt: Date.now() }) };
+  const dest = to.target ?? to.id;
+  if (upserts(dest)) batch.set(dayRef(db, tripId, dest), moved, { merge: true });
+  else batch.update(dayRef(db, tripId, dest), moved);
   return batch.commit();
 }
 

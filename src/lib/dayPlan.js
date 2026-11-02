@@ -106,16 +106,47 @@ export function dayItems({ acts = [], date = null, bookings = [], flights = {}, 
     }
   }
 
-  // Parts of the day in their order, then free-text labels as they first
-  // appear, then what has no time. Inside a part: what has no clock time
-  // first (in the day's own order), then by the clock.
+  return sortItems(items);
+}
+
+// Items in the order shown: parts of the day in their order, then
+// free-text labels as they first appear, then what has no time. Inside a
+// part: what has no clock time first (by `seq`, the day's own order), then
+// by the clock. Two lists merged (the personal plan over the shared one)
+// sort the same way.
+export function sortItems(items) {
   const customs = [];
   items.forEach(it => { if (it.slot.custom && !customs.includes(it.slot.label)) customs.push(it.slot.label); });
   const group = (it) => (it.slot.part ? PARTS.indexOf(it.slot.part)
     : it.slot.custom ? PARTS.length + customs.indexOf(it.slot.label) : 99);
-  return items.sort((a, b) => group(a) - group(b)
+  return [...items].sort((a, b) => group(a) - group(b)
     || (a.slot.minutes == null ? -1 : dayMinutes(a.slot.minutes)) - (b.slot.minutes == null ? -1 : dayMinutes(b.slot.minutes))
     || a.seq - b.seq);
+}
+
+// The personal plan ("שלי") over the shared one: the member's own
+// activities (a booking merged into one of theirs when it is for their
+// place), and everything shared (the day's activities, the other
+// bookings, flights, the hotel) marked `shared`, in one order.
+export function personalItems({ mine = [], shared = [], date = null, bookings = [], flights = {}, hotel = null } = {}) {
+  const places = new Set(mine.map(a => a?.placeId).filter(Boolean));
+  const ours = (b) => !!b?.placeId && places.has(b.placeId);
+  const own = dayItems({ acts: mine, date, bookings: bookings.filter(ours) });
+  const rest = dayItems({ acts: shared, date, bookings: bookings.filter(b => !ours(b)), flights, hotel })
+    .map(it => ({ ...it, key: `sh:${it.key}`, shared: true, seq: it.seq + 10000 }));
+  return sortItems([...own, ...rest]);
+}
+
+// What a fixed item is called, in the schedule and in the plan widget.
+export function fixedTitle(it) {
+  if (it?.kind === 'flight') {
+    const a = it.flight?.arrAirport || {};
+    if (a.city) return `טיסה ל${a.city}`;
+    if (a.code) return `טיסה ל־${a.code}`;
+    return it.leg === 'out' ? 'טיסת הלוך' : 'טיסת חזור';
+  }
+  if (it?.kind === 'hotel') return it.what === 'in' ? 'צ׳ק־אין במלון' : 'צ׳ק־אאוט מהמלון';
+  return '';
 }
 
 // The items in sections by part of the day ({ key, label, items }). With no
@@ -136,7 +167,7 @@ export function groupItems(items) {
 // itself by time, so only two with the same time (or none) can.
 export function canSwap(a, b) {
   return !!a && !!b && a.kind === 'activity' && b.kind === 'activity' && !a.booking && !b.booking
-    && a.slot.label === b.slot.label;
+    && !a.shared && !b.shared && a.slot.label === b.slot.label;
 }
 
 // "יום 3": a title that only says where the day is.

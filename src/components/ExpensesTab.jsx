@@ -5,7 +5,7 @@ import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestor
 import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Search, X, Check,
-  Wallet, Pencil, ChevronDown, Link2, MapPin, Users,
+  Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
 import { expenseSummary, personalExpenses, splitGroup, GUEST } from '../lib/expenseSummary';
@@ -13,7 +13,9 @@ import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, ex
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
 import { useConfirm } from '../ConfirmContext';
-import Sheet from '../ui/Sheet';
+import Sheet, { Segmented } from '../ui/Sheet';
+import { CustomDropdown } from './CustomDatePicker';
+import PlacePicker from './PlacePicker';
 import { useTrip } from '../TripContext';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
@@ -45,19 +47,18 @@ export default function ExpensesTab({ tripId }) {
   // Collapsed state per expense category group
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  // Inline new-category input in form + categories added this session
-  const [showNewCatInput, setShowNewCatInput] = useState(false);
-  const [newCatDraft, setNewCatDraft] = useState('');
+  // Categories added this session
   const [sessionCategories, setSessionCategories] = useState([]);
 
-  // Currency selector in form
+  // The form's own pickers, each over the form: the currency (with the
+  // trip's own on top), the split, a place from the plan. "עוד פרטים"
+  // (the place) is folded until opened, or when the expense has one.
   const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
-  const [showCurrencyList, setShowCurrencyList] = useState(false);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-
-  // Planning items dropdown
-  const [showPlanDropdown, setShowPlanDropdown] = useState(false);
-  const [planFilter, setPlanFilter] = useState('');
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [placePickOpen, setPlacePickOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Exchange rates for ILS conversion
   // The last rates fetched (cached) at once, or none: a save before the
@@ -73,7 +74,6 @@ export default function ExpensesTab({ tripId }) {
 
   // Payer state
   const [paidBy, setPaidBy] = useState('');
-  const [showPayerDropdown, setShowPayerDropdown] = useState(false);
 
   // Split: who shares it with the payer (uids, or GUEST + a name), and
   // whether the payer is in it ("רק הם" when not). Nothing chosen: no one
@@ -189,13 +189,11 @@ export default function ExpensesTab({ tripId }) {
     setFormBaseline(expenseKey(f));
     setOpenedWith(f);
     setFormQuickCurrencies(base);
-    setShowCurrencyList(false);
+    setCurrencyOpen(false);
     setCurrencySearch('');
-    setShowNewCatInput(false);
-    setNewCatDraft('');
-    setShowPlanDropdown(false);
-    setPlanFilter('');
-    setShowPayerDropdown(false);
+    setSplitOpen(false);
+    setPlacePickOpen(false);
+    setMoreOpen(!!(f.linkedPlanId || f.customPlace));
     setShowForm(true);
   };
 
@@ -324,21 +322,6 @@ export default function ExpensesTab({ tripId }) {
       : null),
     [showSummary, expenses, rates, memberUids, currentUid]
   );
-
-  // Currencies available to add (not yet in formQuickCurrencies)
-  const addableCurrencies = useMemo(
-    () => ALL_CURRENCIES.filter(c => !formQuickCurrencies.includes(c.code) &&
-      (currencySearch === '' || c.name.includes(currencySearch) || c.code.toLowerCase().includes(currencySearch.toLowerCase()))
-    ),
-    [formQuickCurrencies, currencySearch]
-  );
-
-  const filteredDropdownPlans = planFilter.trim()
-    ? plans.filter(p =>
-        p.title.toLowerCase().includes(planFilter.toLowerCase()) ||
-        (p.category || '').includes(planFilter)
-      )
-    : plans;
 
   if (loading) {
     return <Skeleton rows={4} label="טוען הוצאות" />;
@@ -470,407 +453,145 @@ export default function ExpensesTab({ tripId }) {
           {({ cancel, close }) => (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Amount */}
-              <div className="form-group">
-                <label>סכום *</label>
-                <input
-                  type="number" min="0" step="0.01"
-                  className="form-control"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  required
-                  placeholder="0.00"
-                  style={{ fontSize: 20, fontWeight: 700 }}
+              {/* How much, and in what: one field, the currency at its end */}
+              <div className="exp-amount">
+                <label htmlFor="exp-amount" className="exp-amount-label">סכום *</label>
+                <div className="exp-amount-field">
+                  <input
+                    id="exp-amount"
+                    type="number" min="0" step="0.01" inputMode="decimal"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    required
+                    placeholder="0.00"
+                  />
+                  <button type="button" className="exp-currency" onClick={() => setCurrencyOpen(true)}
+                    aria-haspopup="dialog" aria-label={`מטבע: ${getCurrencyInfo(currency).name}`}>
+                    <span className="exp-currency-symbol">{getCurrencyInfo(currency).symbol}</span>
+                    <span className="exp-currency-code">{currency}</span>
+                    <ChevronDown size={15} strokeWidth={2.6} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+
+              {/* What for */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>{linkedPlanId ? 'הערה (לא חובה)' : 'על מה'}</label>
+                <input type="text" className="form-control"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="למשל: ארוחת ערב, כרטיסי כניסה..."
                 />
               </div>
 
-              {/* Currency — inline chips + expandable full list */}
-              <div className="form-group">
-                <label>מטבע</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {formQuickCurrencies.map(code => {
-                    const c = getCurrencyInfo(code);
-                    return (
-                      <button key={code} type="button" onClick={() => setCurrency(code)}
-                        className="chip" aria-pressed={currency === code}>
-                        {c.symbol} {code}
-                      </button>
-                    );
+              {/* Category, and who paid */}
+              <div className={payerUids.length > 1 ? 'row-2' : ''} style={{ gap: 10 }}>
+                <CustomDropdown
+                  label="קטגוריה"
+                  value={category}
+                  onChange={setCategory}
+                  options={expenseCategories.map(cat => {
+                    const st = expenseCategoryStyle(cat);
+                    return { value: cat, label: cat, icon: <st.Icon size={16} style={{ color: st.color }} /> };
                   })}
-                  <button type="button"
-                    onClick={() => { setShowCurrencyList(s => !s); setCurrencySearch(''); }}
-                    className="chip add">
-                    <Plus size={13} /> מטבע
-                  </button>
-                </div>
-
-                {/* Inline currency list — no nested modal */}
-                {showCurrencyList && (
-                  <div style={{ marginTop: 8, border: '1px solid var(--ink-8)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
-                    <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--ink-6)', position: 'sticky', top: 0, background: 'var(--surface)' }}>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="text"
-                          className="form-control"
-                          placeholder="חפש מטבע..."
-                          value={currencySearch}
-                          onChange={e => setCurrencySearch(e.target.value)}
-                          style={{ minHeight: 36, fontSize: 13, paddingRight: 36 }}
-                          autoFocus
-                        />
-                        <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                      </div>
-                    </div>
-                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                      {addableCurrencies.length === 0 ? (
-                        <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
-                          {currencySearch ? 'לא נמצאו תוצאות' : 'כל המטבעות כבר נוספו'}
-                        </p>
-                      ) : addableCurrencies.map(c => (
-                        <button key={c.code} type="button"
-                          onClick={() => {
-                            setFormQuickCurrencies(prev => [...prev, c.code]);
-                            setCurrency(c.code);
-                            setShowCurrencyList(false);
-                            setCurrencySearch('');
-                          }}
-                          style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-4)' }}
-                        >
-                          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--primary)' }}>{c.name}</span>
-                          <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>{c.symbol} {c.code}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  addable
+                  addLabel="קטגוריה חדשה"
+                  onCommit={(val) => setSessionCategories(prev => [...new Set([...prev, val])])}
+                />
+                {payerUids.length > 1 && (
+                  <CustomDropdown
+                    label="שילם/ה"
+                    value={paidBy || currentUid}
+                    onChange={(uid) => { setPaidBy(uid); setSplitWith(prev => prev.filter(id => id !== uid)); }}
+                    options={payerUids.map(uid => {
+                      const prof = getPayerProfile(uid);
+                      return {
+                        value: uid,
+                        label: uid === currentUid ? 'אני' : (prof?.displayName || prof?.email || 'משתתף'),
+                        icon: <MemberAvatar profile={prof} size={22} />,
+                      };
+                    })}
+                  />
                 )}
               </div>
 
-              {/* ── Payer picker ──────────────────────────────────────── */}
-              {payerUids.length > 0 && (
-                <div className="form-group" style={{ position: 'relative' }}>
-                  <label>מי שילם</label>
-                  <button type="button"
-                    onClick={() => payerUids.length > 1 && setShowPayerDropdown(s => !s)}
-                    className="form-control picker-field custom-dropdown-trigger"
-                    aria-haspopup="listbox"
-                    aria-expanded={showPayerDropdown}
-                    style={{ cursor: payerUids.length > 1 ? 'pointer' : 'default' }}
-                  >
-                    <MemberAvatar profile={getPayerProfile(paidBy || currentUid)} size={24} />
-                    <span style={{ flex: 1, textAlign: 'right' }}>
-                      {getPayerProfile(paidBy || currentUid)?.displayName || getPayerProfile(paidBy || currentUid)?.email || 'אני'}
-                      {(paidBy || currentUid) === currentUid && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>(אני)</span>}
-                    </span>
-                    {payerUids.length > 1 && (
-                      <span className="picker-field-chev" aria-hidden="true"><ChevronDown size={16} strokeWidth={2.6} /></span>
-                    )}
-                  </button>
-                  {showPayerDropdown && payerUids.length > 1 && (
-                    <div className="custom-dropdown-popup" role="listbox">
-                      {payerUids.map(uid => {
-                        const profile = getPayerProfile(uid);
-                        return (
-                          <button key={uid} type="button"
-                            onClick={() => { setPaidBy(uid); setSplitWith(prev => prev.filter(id => id !== uid)); setShowPayerDropdown(false); }}
-                            role="option"
-                            aria-selected={uid === (paidBy || currentUid)}
-                            className={`custom-dropdown-option${uid === (paidBy || currentUid) ? ' active' : ''}`}
-                          >
-                            <MemberAvatar profile={profile} size={30} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {profile?.displayName || profile?.email || uid}
-                              </div>
-                              {uid === currentUid && (
-                                <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>אני</div>
-                              )}
-                            </div>
-                            {uid === (paidBy || currentUid) && (
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── Split: who shares it. Who owes whom comes only from
-                  here (the owner's ask); nothing chosen, no one owes. ── */}
+              {/* Split: one line; the choice opens over the form. Who owes
+                  whom comes only from here (the owner's ask). */}
               {(() => {
                 const payer = paidBy || currentUid;
-                const people = [...payerUids.filter(uid => uid !== payer), ...guestNames];
                 const chosen = splitWith.filter(id => id !== payer);
                 const n = chosen.length + (splitSelf ? 1 : 0);
                 const each = chosen.length && parseFloat(amount) > 0 ? parseFloat(amount) / n : null;
-                const payerName = payer === currentUid ? 'אותי' : (personProfile(payer)?.displayName || 'המשלם');
+                const names = chosen.map(id => personProfile(id)?.displayName || personProfile(id)?.email || '').filter(Boolean);
+                const payerName = payer === currentUid ? 'אני' : (personProfile(payer)?.displayName || 'המשלם');
                 return (
-                  <div className="form-group">
-                    <label>חלוקה</label>
-                    <div className="split-chips" role="group" aria-label="עם מי מתחלקים">
-                      {people.map(id => {
-                        const prof = personProfile(id);
-                        return (
-                          <button key={id} type="button" className="chip" aria-pressed={chosen.includes(id)}
-                            onClick={() => toggleSplit(id)}>
-                            <MemberAvatar profile={prof} size={18} />
-                            {prof?.displayName || prof?.email || ''}
-                          </button>
-                        );
-                      })}
-                      {showNewName ? (
-                        <div style={{ display: 'flex', gap: 6, width: '100%', alignItems: 'center' }}>
-                          <input
-                            type="text" autoFocus className="form-control"
-                            value={newNameDraft}
-                            onChange={e => setNewNameDraft(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); addGuest(); }
-                              if (e.key === 'Escape') { setShowNewName(false); setNewNameDraft(''); }
-                            }}
-                            placeholder="שם של מי שלא בטיול"
-                            style={{ flex: 1, minHeight: 38, fontSize: 13 }}
-                          />
-                          <button type="button" onClick={addGuest} className="round-btn on" aria-label="הוסף שם" title="הוסף שם">
-                            <Check size={16} />
-                          </button>
-                          <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setShowNewName(false); setNewNameDraft(''); }}>
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={() => { setShowNewName(true); setNewNameDraft(''); }} className="chip add">
-                          <Plus size={13} /> שם
-                        </button>
-                      )}
-                    </div>
-                    {chosen.length > 0 ? (
-                      <>
-                        <div className="split-chips" role="radiogroup" aria-label="מי בחלוקה">
-                          <button type="button" role="radio" className="chip" aria-checked={splitSelf} aria-pressed={splitSelf}
-                            onClick={() => setSplitSelf(true)}>
-                            שווה בשווה, כולל {payerName}
-                          </button>
-                          <button type="button" role="radio" className="chip" aria-checked={!splitSelf} aria-pressed={!splitSelf}
-                            onClick={() => setSplitSelf(false)}>
-                            רק הם
-                          </button>
-                        </div>
-                        <p className="split-note">
-                          {n === 1 ? 'אדם אחד' : `${n} אנשים`}{each != null ? ` · ${money(each, currency)} כל אחד` : ''}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="split-note">בלי חלוקה, אף אחד לא חייב על ההוצאה הזאת.</p>
+                  <button type="button" className="exp-split" onClick={() => setSplitOpen(true)} aria-haspopup="dialog">
+                    <span className="exp-split-icon" aria-hidden="true"><Users size={17} /></span>
+                    <span className="exp-split-text">
+                      <span className="exp-split-label">חלוקה</span>
+                      <span className="exp-split-value">
+                        {chosen.length
+                          ? `${names.join(', ')}${splitSelf ? ` + ${payerName}` : ''}`
+                          : 'בלי חלוקה, אף אחד לא חייב'}
+                      </span>
+                    </span>
+                    {chosen.length > 0 && (
+                      <span className="exp-split-each">
+                        {each != null ? `${money(each, currency)} כל אחד` : `${n} אנשים`}
+                      </span>
                     )}
-                  </div>
+                    <ChevronLeft size={16} className="exp-split-chev" aria-hidden="true" />
+                  </button>
                 );
               })()}
 
-              {/* ── Section A: link to planning item ─────────────────── */}
-              <div style={{
-                padding: '14px', borderRadius: 14,
-                background: linkedPlanId ? 'var(--p-6)' : 'var(--p-3)',
-                border: `1.5px solid ${linkedPlanId ? 'var(--p-22)' : 'var(--p-12)'}`,
-                display: 'flex', flexDirection: 'column', gap: 10,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Link2 size={13} style={{ color: 'var(--accent)' }} />
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent)' }}>בחירה מרשימת הטיול</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>— קטגוריה תמולא אוטומטית</span>
-                </div>
-
-                {linkedPlanId ? (
-                  (() => {
-                    const linked = plans.find(p => p.id === linkedPlanId);
-                    return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--p-8)', borderRadius: 10 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {linked?.title || linkedPlanId}
-                          </div>
-                          {linked?.category && (
-                            <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 2, opacity: 0.75 }}>{linked.category}</div>
-                          )}
-                        </div>
-                        <button type="button" className="btn-x" aria-label="נקה קישור למקום" title="נקה קישור למקום" onClick={() => { setLinkedPlanId(''); setShowPlanDropdown(false); }}>
-                          <X size={16} />
-                        </button>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <>
-                    <button type="button"
-                      onClick={() => { setShowPlanDropdown(s => !s); setPlanFilter(''); }}
-                      className="form-control picker-field custom-dropdown-trigger"
-                      aria-expanded={showPlanDropdown}
-                    >
-                      <span className="picker-field-text is-empty">{showPlanDropdown ? 'סגור רשימה' : 'בחר מהרשימה...'}</span>
-                      <span className="picker-field-chev" aria-hidden="true"><ChevronDown size={16} strokeWidth={2.6} /></span>
-                    </button>
-
-                    {showPlanDropdown && (
-                      <div style={{ border: '1px solid var(--ink-8)', borderRadius: 14, overflow: 'hidden', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
-                        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--ink-6)', background: 'var(--surface)' }}>
-                          <div style={{ position: 'relative' }}>
-                            <input type="text" className="form-control"
-                              placeholder="חפש אטרקציה, מסעדה..."
-                              value={planFilter}
-                              onChange={e => setPlanFilter(e.target.value)}
-                              style={{ minHeight: 36, fontSize: 13, paddingRight: 36 }}
-                            />
-                            <Search size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                            {planFilter && (
-                              <button type="button" className="btn-x" aria-label="נקה חיפוש" title="נקה חיפוש" style={{ position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)' }} onClick={() => setPlanFilter('')}>
-                                <X size={16} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                          {plans.length === 0 ? (
-                            <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>אין פריטים בתכנון הטיול עדיין</p>
-                          ) : filteredDropdownPlans.length === 0 ? (
-                            <p style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>לא נמצאו תוצאות</p>
-                          ) : filteredDropdownPlans.map(p => (
-                            <button key={p.id} type="button"
-                              onClick={() => {
-                                setLinkedPlanId(p.id);
-                                setCategory(p.category || 'כללי'); // auto-fill category
-                                setCustomPlace('');
-                                setShowPlanDropdown(false);
-                                setPlanFilter('');
-                              }}
-                              style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'right', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-4)' }}
-                            >
-                              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0, background: 'var(--ink-5)', padding: '2px 8px', borderRadius: 20 }}>{p.category}</span>
+              {/* More: the place it was spent at */}
+              <div className="exp-more">
+                <button type="button" className="exp-more-toggle" aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)}>
+                  <span>עוד פרטים</span>
+                  {!moreOpen && (linkedPlanId || customPlace.trim()) && (
+                    <span className="exp-more-hint">
+                      <MapPin size={12} aria-hidden="true" />
+                      {plans.find(p => p.id === linkedPlanId)?.title || customPlace.trim()}
+                    </span>
+                  )}
+                  <ChevronDown size={16} aria-hidden="true" className="exp-more-chev" />
+                </button>
+                {moreOpen && (
+                  <div className="exp-more-body">
+                    {linkedPlanId ? (
+                      (() => {
+                        const linked = plans.find(p => p.id === linkedPlanId);
+                        return (
+                          <div className="act-place">
+                            <span className="dp-disc lavender"><MapPin size={18} /></span>
+                            <div className="act-place-text">
+                              <span className="act-place-title">{linked?.title || 'מקום מהתכנון'}</span>
+                              {linked?.category && <span className="act-place-sub">{linked.category}</span>}
+                            </div>
+                            <button type="button" className="btn-x" aria-label="נקה קישור למקום" title="נקה קישור למקום" onClick={() => setLinkedPlanId('')}>
+                              <X size={16} />
                             </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
+                          </div>
+                        );
+                      })()
+                    ) : (<>
+                      {plans.length > 0 && (
+                        <button type="button" className="act-pick" onClick={() => setPlacePickOpen(true)}>
+                          <Search size={17} aria-hidden="true" />
+                          <span>מקום מהתכנון</span>
+                        </button>
+                      )}
+                      <input type="text" className="form-control"
+                        aria-label="מיקום"
+                        placeholder={plans.length ? 'או מקום שלא ברשימה...' : 'מקום (לא חובה)'}
+                        value={customPlace}
+                        onChange={e => setCustomPlace(e.target.value)}
+                      />
+                    </>)}
+                  </div>
                 )}
               </div>
-
-              {/* ── OR separator ─────────────────────────────────────── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1, height: 1, background: 'var(--ink-8)' }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1 }}>— או —</span>
-                <div style={{ flex: 1, height: 1, background: 'var(--ink-8)' }} />
-              </div>
-
-              {/* ── Section B: manual entry ───────────────────────────── */}
-              <div style={{
-                padding: '14px', borderRadius: 14,
-                background: (description.trim() || customPlace.trim()) ? 'var(--ink-4)' : 'var(--ink-2)',
-                border: `1.5px solid ${(description.trim() || customPlace.trim()) ? 'var(--ink-12)' : 'var(--ink-7)'}`,
-                display: 'flex', flexDirection: 'column', gap: 12,
-                opacity: linkedPlanId ? 0.5 : 1,
-                pointerEvents: linkedPlanId ? 'none' : 'auto',
-                transition: 'opacity 0.2s ease',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Pencil size={12} style={{ color: 'var(--text-muted)' }} />
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary)' }}>הוספה ידנית</span>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12 }}>תיאור ההוצאה</label>
-                  <input type="text" className="form-control"
-                    value={description}
-                    onChange={e => { setDescription(e.target.value); if (e.target.value.trim()) setLinkedPlanId(''); }}
-                    placeholder="למשל: ארוחת ערב, כרטיסי כניסה..."
-                    style={{ fontSize: 14 }}
-                  />
-                </div>
-
-                {/* Category — inline chips (same pattern as currency above) */}
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>קטגוריה</label>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {expenseCategories.map(cat => (
-                      <button key={cat} type="button" onClick={() => setCategory(cat)}
-                        className="chip" aria-pressed={category === cat}>
-                        {cat}
-                      </button>
-                    ))}
-                    {showNewCatInput ? (
-                      <div style={{ display: 'flex', gap: 6, width: '100%', alignItems: 'center' }}>
-                        <input
-                          type="text" autoFocus className="form-control"
-                          value={newCatDraft}
-                          onChange={e => setNewCatDraft(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const val = newCatDraft.trim();
-                              if (val) {
-                                setSessionCategories(prev => [...new Set([...prev, val])]);
-                                setCategory(val);
-                              }
-                              setShowNewCatInput(false); setNewCatDraft('');
-                            }
-                            if (e.key === 'Escape') { setShowNewCatInput(false); setNewCatDraft(''); }
-                          }}
-                          placeholder="שם קטגוריה חדשה"
-                          style={{ flex: 1, minHeight: 38, fontSize: 13 }}
-                        />
-                        <button type="button"
-                          onClick={() => {
-                            const val = newCatDraft.trim();
-                            if (val) {
-                              setSessionCategories(prev => [...new Set([...prev, val])]);
-                              setCategory(val);
-                            }
-                            setShowNewCatInput(false); setNewCatDraft('');
-                          }}
-                          className="round-btn on" aria-label="הוסף" title="הוסף">
-                          <Check size={16} />
-                        </button>
-                        <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setShowNewCatInput(false); setNewCatDraft(''); }}>
-                          <X size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button type="button"
-                        onClick={() => { setShowNewCatInput(true); setNewCatDraft(''); }}
-                        className="chip add">
-                        <Plus size={13} /> קטגוריה
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <MapPin size={11} style={{ color: 'var(--text-muted)' }} />
-                    מיקום (אופציונלי)
-                  </label>
-                  <input type="text" className="form-control"
-                    placeholder="שם מקום שלא נמצא ברשימה..."
-                    value={customPlace}
-                    onChange={e => { setCustomPlace(e.target.value); if (e.target.value.trim()) setLinkedPlanId(''); }}
-                    style={{ fontSize: 14 }}
-                  />
-                </div>
-              </div>
-
-              {/* ── Shared notes field ────────────────────────────────── */}
-              {linkedPlanId && (
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12 }}>הערות (אופציונלי)</label>
-                  <input type="text" className="form-control"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    placeholder="הערות לתשלום זה..."
-                    style={{ fontSize: 14 }}
-                  />
-                </div>
-              )}
 
               <div className="sheet-footer">
                 <button type="submit" className="btn-primary">שמור</button>
@@ -880,6 +601,153 @@ export default function ExpensesTab({ tripId }) {
             </form>
           )}
         </Sheet>
+      )}
+
+      {/* The currency: the trip's own on top, every other under them. */}
+      {showForm && currencyOpen && (
+        <Sheet
+          label="מטבע"
+          onClose={() => setCurrencyOpen(false)}
+          style={{ maxHeight: '80vh' }}
+          header={({ close }) => (
+            <div className="modal-header origin-picker-head">
+              <div className="origin-picker-title">
+                <h2>מטבע</h2>
+                <button type="button" aria-label="סגור" className="btn-close" onClick={close}>✕</button>
+              </div>
+              <div className="origin-picker-search">
+                <Search size={18} aria-hidden="true" />
+                <input type="search" enterKeyHint="search" className="form-control" placeholder="חיפוש מטבע"
+                  aria-label="חיפוש מטבע" value={currencySearch} onChange={(e) => setCurrencySearch(e.target.value)} />
+              </div>
+            </div>
+          )}
+        >
+          {({ close }) => {
+            const q = currencySearch.trim().toLowerCase();
+            const match = (c) => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
+            const quick = formQuickCurrencies.map(getCurrencyInfo).filter(match);
+            const rest = ALL_CURRENCIES.filter(c => !formQuickCurrencies.includes(c.code)).filter(match);
+            const row = (c) => (
+              <button key={c.code} type="button" role="radio" aria-checked={currency === c.code} className="list-row"
+                onClick={() => {
+                  setCurrency(c.code);
+                  if (!formQuickCurrencies.includes(c.code)) setFormQuickCurrencies(prev => [...prev, c.code]);
+                  close();
+                }}>
+                <span className="exp-cur-symbol" aria-hidden="true">{c.symbol}</span>
+                <span className="list-row-label">{c.name}<span className="list-row-hint">{c.code}</span></span>
+                {currency === c.code && <Check size={16} aria-hidden="true" />}
+              </button>
+            );
+            return (
+              <div className="place-picker">
+                {quick.length > 0 && (
+                  <section className="origin-picker-group">
+                    <SectionHeader title="בטיול הזה" />
+                    <div className="list-group" role="radiogroup" aria-label="בטיול הזה">{quick.map(row)}</div>
+                  </section>
+                )}
+                {rest.length > 0 && (
+                  <section className="origin-picker-group">
+                    <SectionHeader title="כל המטבעות" />
+                    <div className="list-group" role="radiogroup" aria-label="כל המטבעות">{rest.map(row)}</div>
+                  </section>
+                )}
+                {!quick.length && !rest.length && <div className="place-picker-empty">לא נמצא מטבע</div>}
+              </div>
+            );
+          }}
+        </Sheet>
+      )}
+
+      {/* The split: who shares it with the payer. */}
+      {showForm && splitOpen && (() => {
+        const payer = paidBy || currentUid;
+        const people = [...payerUids.filter(uid => uid !== payer), ...guestNames];
+        const chosen = splitWith.filter(id => id !== payer);
+        const n = chosen.length + (splitSelf ? 1 : 0);
+        const each = chosen.length && parseFloat(amount) > 0 ? parseFloat(amount) / n : null;
+        const payerName = payer === currentUid ? 'אותי' : (personProfile(payer)?.displayName || 'המשלם');
+        return (
+          <Sheet title="חלוקה" onClose={() => setSplitOpen(false)}>
+            {({ close }) => (
+              <div className="exp-split-sheet">
+                <p className="dp-sheet-note" style={{ marginTop: 0 }}>עם מי מתחלקים בהוצאה. בלי חלוקה, אף אחד לא חייב עליה.</p>
+                <div className="list-group" role="group" aria-label="עם מי מתחלקים">
+                  {people.map(id => {
+                    const prof = personProfile(id);
+                    const on = chosen.includes(id);
+                    return (
+                      <button key={id} type="button" role="checkbox" aria-checked={on}
+                        className={`list-row place-pick-row${on ? ' on' : ''}`} onClick={() => toggleSplit(id)}>
+                        <MemberAvatar profile={prof} size={26} />
+                        <span className="list-row-label">
+                          {prof?.displayName || prof?.email || ''}
+                          {prof?.guest && <span className="list-row-hint">לא בטיול</span>}
+                        </span>
+                        <span className={`place-pick-tick${on ? ' on' : ''}`} aria-hidden="true">{on && <Check size={14} strokeWidth={3} />}</span>
+                      </button>
+                    );
+                  })}
+                  {showNewName ? (
+                    <div className="list-row exp-new-name">
+                      <input
+                        type="text" autoFocus className="form-control"
+                        value={newNameDraft}
+                        onChange={e => setNewNameDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); addGuest(); }
+                          if (e.key === 'Escape') { setShowNewName(false); setNewNameDraft(''); }
+                        }}
+                        placeholder="שם של מי שלא בטיול"
+                      />
+                      <button type="button" onClick={addGuest} className="round-btn on" aria-label="הוסף שם" title="הוסף שם">
+                        <Check size={16} />
+                      </button>
+                      <button type="button" className="btn-x" aria-label="ביטול" title="ביטול" onClick={() => { setShowNewName(false); setNewNameDraft(''); }}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="list-row" onClick={() => { setShowNewName(true); setNewNameDraft(''); }}>
+                      <Plus size={16} className="list-row-icon" />
+                      <span className="list-row-label">שם של מי שלא בטיול</span>
+                    </button>
+                  )}
+                </div>
+                {chosen.length > 0 && (
+                  <Segmented label="מי בחלוקה" value={splitSelf ? 'all' : 'them'} onChange={(k) => setSplitSelf(k === 'all')}
+                    options={[{ key: 'all', label: `כולל ${payerName}` }, { key: 'them', label: 'רק הם' }]} />
+                )}
+                <p className="exp-split-sum">
+                  {chosen.length
+                    ? <>{n === 1 ? 'אדם אחד' : `${n} אנשים`}{each != null && <> · <b>{money(each, currency)}</b> כל אחד</>}</>
+                    : 'בלי חלוקה'}
+                </p>
+                <div className="sheet-footer">
+                  <button type="button" className="btn-primary" onClick={close}>סיום</button>
+                </div>
+              </div>
+            )}
+          </Sheet>
+        );
+      })()}
+
+      {showForm && placePickOpen && (
+        <PlacePicker
+          places={plans}
+          value={linkedPlanId}
+          title="מקום מהתכנון"
+          hintOf={(p) => p.category}
+          onPick={(id) => {
+            const p = plans.find(x => x.id === id);
+            setLinkedPlanId(id);
+            if (p?.category) setCategory(p.category);
+            setCustomPlace('');
+          }}
+          onClose={() => setPlacePickOpen(false)}
+        />
       )}
 
       {/* Adding lives in the app-wide floating button, same as every tab. */}

@@ -248,14 +248,29 @@ const openExpense = async () => {
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
   await page.getByRole('heading', { name: 'הוצאה חדשה' }).waitFor();
 };
-await check('expense form', openExpense, closeAll);
+// The expense form is short (8.74.0): on a phone it fits without scrolling,
+// so the scroll checks run on the summary, which is long.
 await dragClose('expense form', openExpense);
 await guardsUnsaved('expense form', openExpense, () => page.getByPlaceholder('0.00').fill('12'));
+// The full summary opens from the card over the list, once there is an expense.
+await openExpense();
+await page.getByPlaceholder('0.00').fill('12');
+await page.locator('.sheet-footer button[type="submit"]').click();
+const openSummary = async () => {
+  await page.locator('.expense-hero').click();
+  await page.getByRole('dialog', { name: 'סיכום הוצאות' }).waitFor();
+};
+// The form with "עוד פרטים" open, on a short screen: it scrolls.
+await page.setViewportSize({ width: 390, height: 600 });
+await check('expense form', async () => {
+  await openExpense();
+  await page.getByRole('button', { name: 'עוד פרטים' }).click();
+}, closeAll);
 // Scrolled, a sheet's title bar sits at the very top of the sheet, edge to
 // edge: nothing scrolling under it shows above or beside it (with top: 0
 // it stuck inside the sheet's padding).
 try {
-  await openExpense();
+  await openSummary();
   await page.waitForTimeout(500);
   await page.evaluate(() => { document.querySelector('.modal-content').scrollTop = 300; });
   await page.waitForTimeout(300);
@@ -264,21 +279,15 @@ try {
     return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right) };
   }));
   const ok = Math.abs(head.top - sheet.top) <= 1 && Math.abs(head.left - sheet.left) <= 1 && Math.abs(head.right - sheet.right) <= 1;
-  console.log(`  ${ok ? 'ok   ' : 'FAIL '} expense form: scrolled, its title bar is at the sheet's top, edge to edge (${JSON.stringify(head)} in ${JSON.stringify(sheet)})`);
+  console.log(`  ${ok ? 'ok   ' : 'FAIL '} expense summary: scrolled, its title bar is at the sheet's top, edge to edge (${JSON.stringify(head)} in ${JSON.stringify(sheet)})`);
   if (!ok) { failed++; await page.screenshot({ path: '.e2e/sheet-fail-sticky-header.png' }); }
 } catch (e) {
   failed++; console.log(`  FAIL  sticky title bar: ${e.message.split('\n')[0]}`);
 }
 await closeAll().catch(() => {});
 await page.waitForTimeout(400);
-// The full summary opens from the card over the list, once there is an expense.
-await openExpense();
-await page.getByPlaceholder('0.00').fill('12');
-await page.locator('.sheet-footer button[type="submit"]').click();
-await dragClose('expense summary', async () => {
-  await page.locator('.expense-hero').click();
-  await page.getByRole('dialog', { name: 'סיכום הוצאות' }).waitFor();
-});
+await page.setViewportSize({ width: 390, height: 700 });
+await dragClose('expense summary', openSummary);
 
 await tab('הזמנות');
 const openBooking = async () => {

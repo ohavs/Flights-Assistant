@@ -2123,7 +2123,7 @@ textarea.form-control {
 .expense-amount-main { font-size: 20px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .expense-amount-ils { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.expense-summary { display: flex; flex-direction: column; gap: 22px; padding-bottom: 8px; }
+.expense-summary { display: flex; flex-direction: column; gap: 16px; padding-bottom: 8px; }
 .expense-section { display: flex; flex-direction: column; gap: 10px; }
 .expense-section-hint { margin: -6px 0 0; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .expense-rows { display: flex; flex-direction: column; gap: 8px; }
@@ -4029,3 +4029,144 @@ button.dp-leg:active { background: var(--ink-4); }
 .act-part.on { background: var(--brand); color: var(--brand-fg); }
 .act-part.on.by-time { background: color-mix(in srgb, var(--brand) 24%, var(--surface-2)); color: var(--text); }
 .act-time { display: flex; align-items: flex-end; gap: 8px; }
+
+/* The schedule's two plans (8.74.0): the trip's, and my own over it, the
+   shared one dimmed under it. */
+.dp-mode-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: -4px; }
+.dp-mode {
+  display: inline-flex; padding: 3px; gap: 2px;
+  border-radius: 999px; background: var(--surface-2);
+}
+.dp-mode button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; padding: 0 14px; border: none; border-radius: 999px;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font-hebrew); font-size: 13.5px; font-weight: 800; cursor: pointer;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.dp-mode button[aria-checked="true"] { background: var(--card-bg-solid); color: var(--text); box-shadow: var(--shadow-sm); }
+.dp-mode button[aria-checked="true"]:last-child { background: var(--brand); color: var(--brand-fg); }
+.dp-mode-note { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.dp-row.shared .dp-card { opacity: 0.5; box-shadow: none; background: var(--surface-2); }
+.dp-row.shared .dp-card::before { opacity: 0.6; }
+.dp-row.shared .dp-time { opacity: 0.5; }
+.dp-add.mine { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.act-form-private {
+  margin: 0; padding: 8px 12px; border-radius: 12px;
+  background: var(--p-8); color: var(--accent); font-size: 12.5px; font-weight: 700;
+}
+.dp-empty.mine { padding: 4px 2px 0; text-align: start; }
+
+/* ── The expense form, compact (8.74.0): the amount and its currency in one
+   field, category and payer side by side, the split on one line (its
+   choice opens over the form), the place folded under "עוד פרטים". ── */
+.exp-amount { display: flex; flex-direction: column; gap: 6px; }
+.exp-amount-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.exp-amount-field {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 64px; padding: 6px 8px; padding-inline-start: 16px;
+  border-radius: 18px; border: 1.5px solid var(--field-line);
+  background: var(--field-bg); box-shadow: 0 2px 0 var(--field-lip);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.exp-amount-field:focus-within { border-color: var(--accent); }
+.exp-amount-field input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  font-family: var(--font-hebrew); font-size: 28px; font-weight: 900; color: var(--text);
+  font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+}
+.exp-amount-field input::-webkit-outer-spin-button,
+.exp-amount-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.exp-amount-field input::placeholder { color: var(--ink-22); }
+.exp-currency {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 48px; padding: 0 12px; border: none; border-radius: 14px;
+  background: var(--surface-2); color: var(--text);
+  font-family: var(--font-hebrew); font-size: 14px; font-weight: 800; cursor: pointer;
+}
+.exp-currency:active { transform: scale(0.97); }
+.exp-currency-symbol { font-size: 18px; font-weight: 900; color: var(--accent); }
+.exp-currency-code { letter-spacing: 0.04em; }
+.exp-cur-symbol {
+  width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--p-10); color: var(--accent); font-size: 15px; font-weight: 900;
+}
+.exp-split {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  min-height: 56px; padding: 8px 12px;
+  border-radius: 16px; border: 1.5px solid var(--field-line);
+  background: var(--field-bg); box-shadow: 0 2px 0 var(--field-lip);
+  color: var(--text); font-family: var(--font-hebrew); text-align: start; cursor: pointer;
+}
+.exp-split:active { transform: translateY(1px); }
+.exp-split-icon {
+  width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--p-10); color: var(--accent);
+}
+.exp-split-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.exp-split-label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+.exp-split-value { font-size: 14.5px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-split-each {
+  flex-shrink: 0; padding: 4px 9px; border-radius: 999px;
+  background: var(--mint); color: var(--c-green); font-size: 12px; font-weight: 800; white-space: nowrap;
+}
+.exp-split-chev { flex-shrink: 0; color: var(--text-muted); }
+.exp-split-sheet { display: flex; flex-direction: column; gap: 12px; }
+.exp-split-sum { margin: 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--text-muted); }
+.exp-split-sum b { color: var(--text); font-weight: 900; }
+.exp-new-name { gap: 6px; cursor: default; }
+.exp-new-name .form-control { flex: 1; min-height: 40px; padding-block: 6px; }
+.exp-more { display: flex; flex-direction: column; gap: 10px; }
+.exp-more-toggle {
+  align-self: stretch; display: flex; align-items: center; gap: 8px;
+  min-height: 40px; padding: 0 4px; border: none; background: none;
+  color: var(--text); font-family: var(--font-hebrew); font-size: 14px; font-weight: 800; cursor: pointer;
+}
+.exp-more-hint {
+  min-width: 0; display: inline-flex; align-items: center; gap: 3px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.exp-more-chev { margin-inline-start: auto; flex-shrink: 0; color: var(--text-muted); transition: transform var(--dur-fast) ease; transform: rotate(-90deg); }
+.exp-more-toggle[aria-expanded="true"] .exp-more-chev { transform: none; }
+.exp-more-body { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── The expense summary (8.74.0): "שלי" | "כולם", the numbers that matter
+   as big cards on top, the rest in sections that fold. ── */
+.expense-scope .segmented > button { flex-direction: row; justify-content: center; gap: 6px; min-height: 40px; font-size: 14px; font-weight: 800; }
+.expense-scope .segmented > button[aria-checked="true"]:first-child { background: var(--brand); color: var(--brand-fg); }
+.expense-headlines { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
+.expense-headline {
+  min-width: 0; display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 16px; border-radius: 20px;
+  background: var(--card-bg); border: var(--card-border); box-shadow: var(--shadow-sm);
+}
+.expense-headline:first-child { background: color-mix(in srgb, var(--brand) 14%, var(--card-bg-solid)); border-color: transparent; }
+.expense-headline-label { font-size: 12.5px; font-weight: 800; color: var(--text-muted); }
+.expense-headline-value {
+  font-size: 30px; font-weight: 900; line-height: 1.05; letter-spacing: -0.02em; color: var(--text);
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.expense-headline-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.expense-balance, .expense-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 14px 12px; border-radius: 20px;
+  background: var(--card-bg); border: var(--card-border); box-shadow: var(--shadow-sm);
+}
+.expense-balance.up { background: color-mix(in srgb, var(--c-green) 9%, var(--card-bg-solid)); }
+.expense-balance.down { background: color-mix(in srgb, var(--c-red) 7%, var(--card-bg-solid)); }
+.expense-balance-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.expense-balance-label { font-size: 15px; font-weight: 800; color: var(--text); }
+.expense-balance-value { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.expense-balance.up .expense-balance-value { color: var(--c-green); }
+.expense-balance.down .expense-balance-value { color: var(--c-red); }
+.expense-balance-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.expense-row.transfer.mine { gap: 10px; }
+.expense-row.transfer.mine .expense-row-name { flex: 1; min-width: 0; }
+.expense-row-value.up { color: var(--c-green); }
+.expense-row-value.down { color: var(--c-red); }
+.expense-card-title { font-size: 16px; font-weight: 800; color: var(--text); }
+.expense-card .expense-section-hint { margin: -4px 0 2px; }
+.custom-dropdown-popup > * { flex-shrink: 0; }

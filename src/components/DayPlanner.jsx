@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, writeBatch, collection } from 'firebase/firestore';
 import {
   Calendar, CheckCircle2, MoreHorizontal, Pencil, Trash2, ArrowLeftRight, ArrowUp, ArrowDown,
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
   Navigation, Phone, ExternalLink, Copy, Users, UserRound, Sunrise, Sun, Sunset, Moon, Clock,
-  ChevronDown, Loader2, CornerDownLeft,
+  ChevronDown, Loader2, CornerDownLeft, User, Lock,
 } from 'lucide-react';
 import { db } from '../firebase';
+import { listen } from '../lib/listen';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import Sheet from '../ui/Sheet';
@@ -19,8 +20,8 @@ import { typeOf, statusOf, PAYMENT_LABEL, telHref, mapsHref } from './bookingKin
 import { getWeatherIcon } from '../hooks/useWeather';
 import { localDay, isoDay } from '../lib/dates';
 import { creatorOf } from '../lib/roles';
-import { removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays } from '../lib/dayActivities';
-import { dayItems, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey } from '../lib/dayPlan';
+import { dayActivities, removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays } from '../lib/dayActivities';
+import { dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey } from '../lib/dayPlan';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -61,6 +62,48 @@ function DayPlanner({
   const confirm = useConfirm();
   const mine = (act) => canEdit || (canAdd && creatorOf(act) === currentUid);
 
+  /* ── The personal plan ("שלי", 8.74.0) ───────────────────────────
+     Each member's own plan of the days, theirs alone (firestore.rules):
+     trips/{tripId}/personal/{uid}/days/{date, or "id_" + the day's id}.
+     Keyed by the date, so swapping the shared days doesn't move it. Shown
+     over the shared plan, which stays on screen, dimmed. */
+  const modeKey = `dayMode_${tripId}`;
+  const [mode, setModeState] = useState(() => {
+    try { return localStorage.getItem(modeKey) === 'mine' ? 'mine' : 'shared'; } catch { return 'shared'; }
+  });
+  const setMode = (m) => {
+    setModeState(m);
+    try { localStorage.setItem(modeKey, m); } catch { /* private mode */ }
+  };
+  const personalMode = mode === 'mine' && !!currentUid;
+  const [personal, setPersonal] = useState({});
+  useEffect(() => {
+    if (!tripId || !currentUid) return undefined;
+    return listen(collection(db, 'trips', tripId, 'personal', currentUid, 'days'), snap => {
+      const m = {};
+      snap.docs.forEach(d => {
+        const raw = d.data().activities || [];
+        m[d.id] = { rawActivities: raw, activities: dayActivities(raw) };
+      });
+      setPersonal(m);
+    });
+  }, [tripId, currentUid]);
+  const keyOf = (d) => d.date || `id_${d.id}`;
+  // A day of the member's own plan, written to its own document (made by
+  // its first activity).
+  const planOf = (d, map = personal) => {
+    const key = keyOf(d);
+    const got = map[key] || { rawActivities: [], activities: [] };
+    return {
+      ...got, id: key, title: d.title, date: d.date,
+      target: { ref: doc(db, 'trips', tripId, 'personal', currentUid, 'days', key), upsert: true },
+    };
+  };
+  // An item that can be changed here: an activity of the plan on screen.
+  const canChange = (it) => it?.kind === 'activity' && !it.shared && (personalMode || mine(it.act));
+  // Writes go to the plan on screen; "הוספה" changes only its own shared ones.
+  const onlyOwn = personalMode ? false : !canEdit;
+
   const planById = useMemo(() => new Map(plans.map(p => [p.id, p])), [plans]);
   // Each place's booking, for "booked on another day" and "to book".
   const bookingByPlace = useMemo(() => {
@@ -92,11 +135,18 @@ function DayPlanner({
   }, [day?.id, days.length]);
 
   /* ── The chosen day, as shown ───────────────────────────────────── */
-  const items = useMemo(() => (day ? dayItems({
-    acts: day.activities, date: day.date || null, bookings, flights, hotel: hotelDetails,
-  }) : []), [day, bookings, flights, hotelDetails]);
+  // The plan written to: the shared day, or the member's own of it.
+  const planDay = useMemo(() => (day && personalMode ? planOf(day) : day),
+    [day, personalMode, personal, tripId, currentUid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = useMemo(() => {
+    if (!day) return [];
+    const at = { date: day.date || null, bookings, flights, hotel: hotelDetails };
+    return personalMode
+      ? personalItems({ ...at, mine: planDay.activities, shared: day.activities })
+      : dayItems({ ...at, acts: day.activities });
+  }, [day, planDay, personalMode, bookings, flights, hotelDetails]);
   const groups = useMemo(() => groupItems(items), [items]);
-  const anchored = useMemo(() => (day ? anchoredIds(day.activities, day.date, bookings) : new Set()), [day, bookings]);
+  const anchored = useMemo(() => (planDay ? anchoredIds(planDay.activities, day.date, bookings) : new Set()), [planDay, day, bookings]);
 
   // Where each stop is, for the time it takes to get there.
   const hotelStop = useMemo(() => ({ key: 'hotel', title: hotelDetails?.name ? 'המלון' : 'מרכז העיר' }), [hotelDetails]);
@@ -127,6 +177,7 @@ function DayPlanner({
     let prev = null;
     items.forEach(it => {
       if (it.kind === 'flight') { prev = null; return; }
+      if (it.shared) return;   // in "שלי", the way between my own stops
       const to = stopOf(it);
       if (!to) return;
       const custom = originOf(it.act?.travelFrom);
@@ -250,8 +301,8 @@ function DayPlanner({
 
   // The days and bookings as they are now, for an undo that runs after
   // the change came back (read when it runs, never while rendering).
-  const latest = useRef({ days, bookings });
-  useEffect(() => { latest.current = { days, bookings }; });
+  const latest = useRef({ days, bookings, personal });
+  useEffect(() => { latest.current = { days, bookings, personal }; });
 
   // Swaps two days by id (see swapDayFields). Returns the pair, or null.
   const swapPair = (aId, bId) => {
@@ -300,13 +351,15 @@ function DayPlanner({
       danger: true,
     });
     if (!ok) return;
-    removeActivity(db, tripId, day.id, day.rawActivities, act.id, !canEdit)
+    removeActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, act.id, onlyOwn)
       .catch(err => console.error('Activity delete error:', err));
   };
 
   const moveTo = (act, target) => {
     const fromId = day.id;
-    moveActivityToDay(db, tripId, day, target, act.id, !canEdit)
+    const own = personalMode;
+    const as = (d, map) => (own ? planOf(d, map) : d);
+    moveActivityToDay(db, tripId, planDay, as(target), act.id, onlyOwn)
       .catch(err => console.error('Move to day failed:', err));
     say({
       icon: <Calendar size={18} />,
@@ -314,11 +367,11 @@ function DayPlanner({
       action: {
         label: 'ביטול',
         run: () => {
-          const ds = latest.current.days;
+          const { days: ds, personal: pm } = latest.current;
           const from = ds.find(d => d.id === target.id);
           const back = ds.find(d => d.id === fromId);
           if (from && back) {
-            moveActivityToDay(db, tripId, from, back, act.id, !canEdit)
+            moveActivityToDay(db, tripId, as(from, pm), as(back, pm), act.id, onlyOwn)
               .catch(err => console.error('Move back failed:', err));
           }
         },
@@ -327,7 +380,7 @@ function DayPlanner({
   };
 
   const setTravelFrom = (act, key) => {
-    updateActivity(db, tripId, day.id, day.rawActivities, { ...act, travelFrom: key || null }, !canEdit)
+    updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, { ...act, travelFrom: key || null }, onlyOwn)
       .catch(err => console.error('Travel origin failed:', err));
   };
 
@@ -358,7 +411,7 @@ function DayPlanner({
     const leg = legs.get(it.key);
     if (!leg) return null;
     const v = legValue(leg);
-    const canPick = it.kind === 'activity' && mine(it.act);
+    const canPick = canChange(it);
     const fromText = leg.custom || leg.first || leg.from.key === 'hotel' ? fromLabel(leg.from) : '';
     let body;
     if (!v || v.loading) body = <span className="dp-leg-note"><Loader2 size={12} className="spinning" aria-hidden="true" />מחשב…</span>;
@@ -399,15 +452,13 @@ function DayPlanner({
     if (it.kind === 'flight' || it.kind === 'hotel') {
       const f = it.flight;
       const isFlight = it.kind === 'flight';
-      const title = isFlight
-        ? (it.leg === 'out' ? `טיסה ל${f.arrAirport?.city || 'יעד'}` : `טיסה ל${f.arrAirport?.city || 'הבית'}`)
-        : (it.what === 'in' ? 'צ׳ק־אין במלון' : 'צ׳ק־אאוט מהמלון');
+      const title = fixedTitle(it);
       const route = isFlight && f.depAirport?.code && f.arrAirport?.code ? `${f.depAirport.code} → ${f.arrAirport.code}` : '';
       const sub = isFlight
         ? <>{[f.flightNumber, time ? `המראה ${time}` : ''].filter(Boolean).join(' · ')}{route && <>{' · '}<bdi dir="ltr">{route}</bdi></>}</>
         : (it.hotel?.name || '');
       return (
-        <div key={it.key} className="dp-row">
+        <div key={it.key} className={`dp-row${it.shared ? ' shared' : ''}`}>
           <span className="dp-rail" aria-hidden="true"><span className="dp-time">{time}</span></span>
           <div className="dp-card fixed" style={{ '--c': isFlight ? 'var(--c-blue)' : '#7c3aed' }}>
             <div className="dp-card-main as-div">
@@ -429,7 +480,7 @@ function DayPlanner({
       return (
         <React.Fragment key={it.key}>
           {legChip(it)}
-          <div className="dp-row">
+          <div className={`dp-row${it.shared ? ' shared' : ''}`}>
             <span className="dp-rail" aria-hidden="true"><span className="dp-time">{time}</span></span>
             <div className="dp-card booking" style={{ '--c': t.color }}>
               <button type="button" className="dp-card-main" onClick={() => setDetailKey(it.key)}>
@@ -460,7 +511,7 @@ function DayPlanner({
     return (
       <React.Fragment key={it.key}>
         {legChip(it)}
-        <div className="dp-row">
+        <div className={`dp-row${it.shared ? ' shared' : ''}`}>
           <span className="dp-rail" aria-hidden="true">
             <span className="dp-time">{time}</span>
           </span>
@@ -491,7 +542,7 @@ function DayPlanner({
                 {it.booking && bookingStub(it.booking)}
               </span>
             </button>
-            {mine(act) && (
+            {canChange(it) && (
               <button
                 type="button"
                 className="round-btn dp-more"
@@ -512,8 +563,8 @@ function DayPlanner({
     !(tripFlightDates.plannerSync?.out === tripFlightDates.out && tripFlightDates.plannerSync?.ret === tripFlightDates.ret);
   const dayDate = day?.date ? localDay(day.date) : null;
   const dayW = day?.date ? weatherByDate[day.date] : null;
-  const actCount = day ? (day.activities || []).length : 0;
-  const bookingCount = items.filter(it => it.booking).length;
+  const actCount = planDay ? (planDay.activities || []).length : 0;
+  const bookingCount = items.filter(it => it.booking && !it.shared).length;
 
   return (
     <div className="animate-fade dp">
@@ -535,7 +586,7 @@ function DayPlanner({
         </div>
       )}
 
-      {canEdit && <Fab label="יום חדש" onClick={handleAddDay} />}
+      {canEdit && !personalMode && <Fab label="יום חדש" onClick={handleAddDay} />}
 
       {!day ? (
         <EmptyState
@@ -556,12 +607,31 @@ function DayPlanner({
           ) : null}
         />
       ) : (<>
+        {/* Whose plan: the trip's, or my own over it */}
+        {currentUid && (
+          <div className="dp-mode-row">
+            <div className="dp-mode" role="radiogroup" aria-label="איזה תכנון">
+              <button type="button" role="radio" aria-checked={!personalMode} onClick={() => setMode('shared')}>
+                <Users size={15} aria-hidden="true" /><span>משותף</span>
+              </button>
+              <button type="button" role="radio" aria-checked={personalMode} onClick={() => setMode('mine')}>
+                <User size={15} aria-hidden="true" /><span>שלי</span>
+              </button>
+            </div>
+            {personalMode && (
+              <span className="dp-mode-note"><Lock size={12} aria-hidden="true" />רק את/ה רואה. המשותף מעומעם.</span>
+            )}
+          </div>
+        )}
+
         {/* The days */}
         <div className="dp-strip hide-scroll" role="tablist" aria-label="ימי הטיול" ref={stripRef}>
           {days.map((d, i) => {
             const dd = d.date ? localDay(d.date) : null;
             const w = d.date ? weatherByDate[d.date] : null;
-            const n = (d.activities || []).length + bookingsOn(bookings, d.date).filter(b => !b.placeId || !(d.activities || []).some(a => a.placeId === b.placeId)).length;
+            const n = personalMode
+              ? (personal[keyOf(d)]?.activities || []).length
+              : (d.activities || []).length + bookingsOn(bookings, d.date).filter(b => !b.placeId || !(d.activities || []).some(a => a.placeId === b.placeId)).length;
             const on = d.id === day.id;
             return (
               <button
@@ -603,7 +673,7 @@ function DayPlanner({
                 {dayW.rain > 0 && <span className="dp-weather-rain">{dayW.rain}%</span>}
               </button>
             )}
-            {canEdit && (
+            {canEdit && !personalMode && (
               <button type="button" className="round-btn" aria-label="פעולות ליום" onClick={() => setDayMenu(true)}>
                 <MoreHorizontal size={18} />
               </button>
@@ -616,6 +686,10 @@ function DayPlanner({
               {bookingCount > 0 && <Pill size="sm" tone="mint" icon={<CalendarCheck size={11} />}>{bookingCount === 1 ? 'הזמנה אחת' : `${bookingCount} הזמנות`}</Pill>}
               {walkTotal > 0 && <Pill size="sm" tone="sky" icon={<Footprints size={11} />}>{`${fmtMins(walkTotal)} הליכה`}</Pill>}
             </div>
+          )}
+
+          {personalMode && actCount === 0 && items.length > 0 && (
+            <p className="dp-empty mine">עוד לא תכננת כלום ליום הזה. המשותף מוצג מעומעם, כדי לתכנן סביבו.</p>
           )}
 
           {items.length > 0 ? (
@@ -638,13 +712,13 @@ function DayPlanner({
               })}
             </div>
           ) : (
-            <p className="dp-empty">אין עדיין פעילויות ליום זה.</p>
+            <p className="dp-empty">{personalMode ? 'עוד לא תכננת כלום ליום הזה.' : 'אין עדיין פעילויות ליום זה.'}</p>
           )}
 
-          {canAdd && (
-            <button type="button" className="dp-add" onClick={() => setForm({ editing: null })}>
+          {(canAdd || personalMode) && (
+            <button type="button" className={`dp-add${personalMode ? ' mine' : ''}`} onClick={() => setForm({ editing: null })}>
               <Plus size={16} />
-              <span>הוסף פעילות</span>
+              <span>{personalMode ? 'הוסף לתכנון שלי' : 'הוסף פעילות'}</span>
             </button>
           )}
         </section>
@@ -654,12 +728,13 @@ function DayPlanner({
       {form && day && (
         <ActivitySheet
           tripId={tripId}
-          day={day}
+          day={planDay}
+          personal={personalMode}
+          onlyOwn={onlyOwn}
           editing={form.editing}
           plans={plans}
           categories={categories}
           usedOn={usedOn}
-          canEdit={canEdit}
           currentUid={currentUid}
           getCategoryColor={getCategoryColor}
           getCategoryIcon={getCategoryIcon}
@@ -676,19 +751,20 @@ function DayPlanner({
         const act = it.act;
         // Neighbours it may trade places with: same time, same section.
         const g = groups.find(x => x.items.includes(it));
-        const at = g ? g.items.indexOf(it) : -1;
-        const up = at > 0 && canSwap(g.items[at - 1], it) ? g.items[at - 1] : null;
-        const down = g && canSwap(it, g.items[at + 1]) ? g.items[at + 1] : null;
+        const own = g ? g.items.filter(x => !x.shared) : [];
+        const at = own.indexOf(it);
+        const up = at > 0 && canSwap(own[at - 1], it) ? own[at - 1] : null;
+        const down = at >= 0 && canSwap(it, own[at + 1]) ? own[at + 1] : null;
         const fixed = anchored.has(act.id);
         return (
           <Sheet title={act.title} onClose={() => setActMenu(null)}>
             <div className="list-group">
               {[
-                ...(canEdit ? [
+                ...(canEdit || personalMode ? [
                   { key: 'up', label: 'הזז למעלה', Icon: ArrowUp, disabled: !up,
-                    run: () => swapActivities(db, tripId, day.id, day.rawActivities, act.id, up.act.id).catch(err => console.error('Activity move error:', err)) },
+                    run: () => swapActivities(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, act.id, up.act.id).catch(err => console.error('Activity move error:', err)) },
                   { key: 'down', label: 'הזז למטה', Icon: ArrowDown, disabled: !down,
-                    run: () => swapActivities(db, tripId, day.id, day.rawActivities, act.id, down.act.id).catch(err => console.error('Activity move error:', err)) },
+                    run: () => swapActivities(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, act.id, down.act.id).catch(err => console.error('Activity move error:', err)) },
                 ] : []),
                 ...(days.length > 1 ? [{
                   key: 'move', label: 'העברה ליום אחר', Icon: Calendar, disabled: fixed,
@@ -713,7 +789,7 @@ function DayPlanner({
                 </button>
               ))}
             </div>
-            {canEdit && (!up || !down) && (it.slot.minutes != null || it.booking) && (
+            {(canEdit || personalMode) && (!up || !down) && (it.slot.minutes != null || it.booking) && (
               <p className="dp-sheet-note">היום מסודר לפי השעות. כדי להזיז, משנים את השעה בעריכה.</p>
             )}
           </Sheet>
@@ -891,7 +967,7 @@ function DayPlanner({
         if (b?.phone) actions.push({ key: 'tel', label: 'התקשר', Icon: Phone, tone: 'sky', run: () => { window.location.href = telHref(b.phone); } });
         if (b?.url) actions.push({ key: 'url', label: 'קישור', Icon: ExternalLink, tone: 'lavender', run: () => window.open(b.url, '_blank', 'noreferrer') });
         if (plan) actions.push({ key: 'place', label: 'פרטי המקום', Icon: MapPin, tone: 'lavender', run: () => { close(); onOpenPlace(plan.id); } });
-        if (act && mine(act)) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); setForm({ editing: act }); } });
+        if (canChange(it)) actions.push({ key: 'edit', label: 'עריכה', Icon: Pencil, tone: '', run: () => { close(); setForm({ editing: act }); } });
         const shown = actions.slice(0, 4);
         return (
           <Sheet label={title} onClose={close} header={({ close: closeSheet }) => (
@@ -926,7 +1002,7 @@ function DayPlanner({
               )}
 
               {leg && (
-                (act && mine(act))
+                canChange(it)
                   ? <button type="button" className="travel-from" onClick={() => { close(); setLegQuery(''); setLegFor(it.key); }}>
                       <span className="travel-from-head"><span>{`זמן הגעה ${fromLabel(leg.from)}`}</span><ChevronDown size={14} aria-hidden="true" /></span>
                       <LegTimes v={v} />
@@ -946,7 +1022,7 @@ function DayPlanner({
 
               {act && !act.description && !address && !plan && !b && (
                 <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>
-                  אין עוד פרטים לפעילות הזו.{mine(act) ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
+                  אין עוד פרטים לפעילות הזו.{canChange(it) ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
                 </p>
               )}
 

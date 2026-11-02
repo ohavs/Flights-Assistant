@@ -10,8 +10,9 @@
 // 'YYYY-MM-DD'. The snapshot ships with the widgets in the same APK, so its
 // shape may change with them.
 import { departureAt, arrivalAt, parseClock } from './flightAlerts.js';
-import { tripRange, dayFor, activityRank } from './morningAlerts.js';
+import { tripRange, dayFor } from './morningAlerts.js';
 import { dayActivities } from './dayOrder.js';
+import { dayItems, personalItems, fixedTitle } from './dayPlan.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
@@ -103,30 +104,49 @@ function flightsOf(trip) {
 // widget says the day's number itself, so that name is no name.
 const ownName = (title) => (/^יום \d+$/.test(String(title || '').trim()) ? '' : String(title || '').trim());
 
-function daysOf(trip, days, range, now, plans) {
+// One line of the plan widget, from an item of the schedule (dayPlan.js).
+// placeId: the planning tab's place (by id, or by name as the tab matches
+// it), to link an expense to and to tick off as visited.
+function rowOf(it, plans) {
+  const time = it.slot.label || '';
+  if (it.kind === 'activity') {
+    const a = it.act;
+    const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
+    const placeId = a.placeId || place?.id;
+    return { time, title: a.title, ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}) };
+  }
+  if (it.kind === 'booking') {
+    return { time, title: it.booking.title || '', ...(it.booking.placeId ? { placeId: it.booking.placeId } : {}) };
+  }
+  return { time, title: fixedTitle(it) };
+}
+
+// Each coming day as the schedule shows it (DayPlanner): the day's
+// activities, the bookings, flights and hotel on that date, and the
+// member's own plan ("שלי", personal: their trips/{id}/personal/{uid}/days),
+// all in time order.
+function daysOf(trip, days, range, now, plans, bookings, personal) {
   const today = isoOf(now);
   const out = {};
   for (const iso of range.filter(d => d >= today).slice(0, WIDGET_DAYS)) {
     const day = dayFor(days, iso, range);
-    const acts = dayActivities(day?.activities).filter(a => a.title)
-      .sort((a, b) => activityRank(a) - activityRank(b));
+    const shared = dayActivities(day?.activities).filter(a => a.title);
+    const own = (personal || []).find(p => p.id === iso || (day && p.id === `id_${day.id}`));
+    const mine = dayActivities(own?.activities).filter(a => a.title);
+    const at = {
+      date: iso, bookings: bookings || [], hotel: trip.hotelDetails || null,
+      flights: { out: trip.outboundFlightDetails, ret: trip.returnFlightDetails },
+    };
+    const rows = (mine.length ? personalItems({ ...at, mine, shared }) : dayItems({ ...at, acts: shared }))
+      .map(it => rowOf(it, plans)).filter(r => r.title);
     const n = range.indexOf(iso);
     const name = ownName(day?.title);
     out[iso] = {
       title: [`יום ${n + 1}`, name].filter(Boolean).join(' · '),
       name,
       when: whenText(iso),
-      // placeId: the planning tab's place (by id, or by name as the tab
-      // matches it), to link an expense to and to tick off as visited.
-      items: acts.slice(0, PLAN_ITEMS).map(a => {
-        const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
-        const placeId = a.placeId || place?.id;
-        return {
-          time: a.timeLabel?.trim() || '', title: a.title,
-          ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}),
-        };
-      }),
-      more: Math.max(0, acts.length - PLAN_ITEMS),
+      items: rows.slice(0, PLAN_ITEMS),
+      more: Math.max(0, rows.length - PLAN_ITEMS),
     };
   }
   return out;
@@ -183,16 +203,16 @@ function spendOf(trip, list, plans) {
   };
 }
 
-// trips: [trip]; daysByTrip / checklistByTrip / remindersByTrip /
-// expensesByTrip / plansByTrip (the planning tab's places) /
-// bookingsByTrip: { [tripId]: [doc] }. palette: the app's palette key; the
+// trips: [trip]; daysByTrip / personalByTrip (the user's own plan of the
+// days) / checklistByTrip / remindersByTrip / expensesByTrip / plansByTrip
+// (the planning tab's places) / bookingsByTrip: { [tripId]: [doc] }. palette: the app's palette key; the
 // widget has each one's light and dark colours. theme: the app's setting,
 // 'light' or 'dark' whatever the phone is, else 'system' (the phone's).
 // rates: the expenses tab's (per euro), for the shekel value of an expense
 // the widget saves.
 // currencies: every one the app knows, for the expense widget's settings
 // (WidgetTripActivity), where its keypad's currencies are set.
-export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, bookingsByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
+export function widgetSnapshot({ trips, daysByTrip = {}, personalByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, bookingsByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
   const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(trip, expensesByTrip[trip.id], plansByTrip[trip.id]) }));
   const codes = new Set(['ILS', ...Object.keys(CURRENCY_META), ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
   return {
@@ -211,7 +231,7 @@ export function widgetSnapshot({ trips, daysByTrip = {}, checklistByTrip = {}, r
         start: range[0],
         end: range[range.length - 1],
         flights: flightsOf(trip),
-        days: daysOf(trip, daysByTrip[trip.id], range, now, plansByTrip[trip.id]),
+        days: daysOf(trip, daysByTrip[trip.id], range, now, plansByTrip[trip.id], bookingsByTrip[trip.id], personalByTrip[trip.id]),
         packed: { done: items.filter(it => it.completed).length, total: items.length },
         reminders: remindersOf(remindersByTrip[trip.id]),
         bookings: bookingsOf(bookingsByTrip[trip.id], isoOf(now)),

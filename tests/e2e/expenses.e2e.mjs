@@ -122,6 +122,10 @@ for (const theme of ['light', 'dark']) {
   await step(`${theme}: the full summary: each one's part, who owes whom from the splits, categories, currencies, the biggest`, async () => {
     await hero.click();
     await sheet.waitFor();
+    // It opens on "שלי"; "כולם" is the whole trip.
+    if (await sheet.getByRole('radio', { name: 'שלי' }).getAttribute('aria-checked') !== 'true') throw new Error('not on "שלי"');
+    await sheet.getByRole('radio', { name: 'כולם' }).click();
+    await has(sheet.locator('.expense-headlines'), '₪2,867');
     const people = sheet.locator('.expense-section', { has: page.locator('.section-header-toggle', { hasText: 'לכל משתתף' }) });
     await has(people.locator('.expense-row', { hasText: 'דנה' }), '₪1,043');
     await has(people.locator('.expense-row', { hasText: 'דנה' }), 'שילם ₪728');
@@ -154,16 +158,20 @@ for (const theme of ['light', 'dark']) {
     await hero.click();
     await sheet.waitFor();
     await sheet.getByRole('radio', { name: 'שלי' }).click();
-    const tiles = sheet.locator('.expense-tiles');
+    const tiles = sheet.locator('.expense-headlines');
     await has(tiles, '₪1,491');
     await has(tiles, '₪2,139');
-    await has(sheet, '5 הוצאות שלך');
+    await has(tiles, '5 הוצאות');
+    // My settling up, from where I stand: both pay me.
+    const balance = sheet.locator('.expense-balance');
+    await has(balance, 'מגיע לך');
+    await has(balance, '₪648');
     const mine = sheet.locator('.expense-row.transfer');
     if (await mine.count() !== 2) throw new Error(`${await mine.count()} of my transfers`);
-    for (const t of ['ההתחשבנות שלי', 'לינה', '₪725', 'ההוצאות הגדולות שלי', 'מתוך ₪1,450']) await has(sheet, t);
+    await has(mine.nth(0), 'מעביר/ה לך');
+    for (const t of ['לפי קטגוריה', 'לינה', '₪725', 'ההוצאות הגדולות שלי', 'מתוך ₪1,450']) await has(sheet, t);
     if ((await sheet.innerText()).includes('לכל משתתף')) throw new Error('"שלי" shows everyone');
     await shot(`${theme}-7-mine`);
-    await sheet.getByRole('radio', { name: 'כל הטיול' }).click();
     await sheet.getByRole('button', { name: 'סגור' }).click();
     await sheet.waitFor({ state: 'detached' });
   });
@@ -200,25 +208,42 @@ await step('a narrow phone: the card fits, nothing scrolls sideways', async () =
   await shot('dark-7-narrow');
 });
 
-await step('the form: a split with Dana and a new name; the name is there to pick next time', async () => {
+await step('the form: amount and currency in one field; a split with Dana and a new name, picked over the form', async () => {
   await page.setViewportSize({ width: 400, height: 860 });
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
-  const form = page.locator('.modal-content');
+  const form = page.locator('.modal-content').first();
+  const over = () => page.locator('.modal-content').last();
   await page.getByPlaceholder('0.00').fill('90');
+  // The currency is a menu at the end of the amount: euros, the trip's.
+  await form.locator('.exp-currency').click();
+  await over().getByPlaceholder('חיפוש מטבע').fill('EUR');
+  await over().getByRole('radio', { name: /יורו/ }).click();
+  await has(form.locator('.exp-currency'), 'EUR');
   await page.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill('ארוחה משותפת');
-  await has(form, 'בלי חלוקה, אף אחד לא חייב');
+  await has(form.locator('.exp-split'), 'בלי חלוקה, אף אחד לא חייב');
+  // The place is folded away until asked for.
+  if (await form.getByLabel('מיקום').count()) throw new Error('the place is not folded');
+  await shot('dark-8-form');
+  await form.locator('.exp-split').click();
   // Roni is there already: a name from an earlier split.
-  await form.locator('.split-chips button.chip', { hasText: 'רוני' }).waitFor();
-  await form.locator('.split-chips button.chip', { hasText: 'דנה' }).click();
-  await form.locator('.split-chips button.chip.add', { hasText: 'שם' }).click();
+  await over().getByRole('checkbox', { name: /רוני/ }).waitFor();
+  await over().getByRole('checkbox', { name: /דנה/ }).click();
+  await over().getByRole('button', { name: 'שם של מי שלא בטיול' }).click();
   await page.getByPlaceholder('שם של מי שלא בטיול').fill('יואב');
-  await form.getByRole('button', { name: 'הוסף שם' }).click();
-  await has(form, '3 אנשים');
-  await has(form, '30 כל אחד');
+  await over().getByRole('button', { name: 'הוסף שם' }).click();
+  await has(over(), '3 אנשים');
+  await has(over(), '30');
   await shot('dark-8-split');
-  await form.getByRole('radio', { name: 'רק הם' }).click();
-  await has(form, '2 אנשים');
-  await page.locator('.sheet-footer button[type="submit"]').click();
+  await over().getByRole('radio', { name: 'רק הם' }).click();
+  await has(over(), '2 אנשים');
+  await over().getByRole('button', { name: 'סיום' }).click();
+  await page.waitForTimeout(400);
+  await has(form.locator('.exp-split'), 'דנה, יואב');
+  await has(form.locator('.exp-split'), '45 כל אחד');
+  await form.getByRole('button', { name: 'עוד פרטים' }).click();
+  await form.getByLabel('מיקום').fill('טיים אאוט');
+  await shot('dark-9-form');
+  await page.locator('.sheet-footer button[type="submit"]').first().click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   let doc;
   for (let i = 0; i < 20 && !doc; i++) {
@@ -230,9 +255,11 @@ await step('the form: a split with Dana and a new name; the name is there to pic
   if (JSON.stringify(split) !== JSON.stringify([dana, 'name:יואב'].sort()) || doc.fields.splitSelf?.booleanValue !== false) {
     throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   }
+  if (doc.fields.currency?.stringValue !== 'EUR' || doc.fields.customPlace?.stringValue !== 'טיים אאוט') throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   await page.locator('.list-card', { hasText: 'ארוחה משותפת' }).getByText('מתחלק ל־2').waitFor();
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
-  await page.locator('.modal-content .split-chips button.chip', { hasText: 'יואב' }).waitFor();
+  await page.locator('.modal-content .exp-split').click();
+  await page.locator('.modal-content').last().getByRole('checkbox', { name: /יואב/ }).waitFor();
 });
 
 console.log(failed ? `${failed} failed` : 'all passed');
