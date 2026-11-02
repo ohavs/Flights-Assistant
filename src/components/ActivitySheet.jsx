@@ -20,7 +20,7 @@ const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
    The time is one value, saved as `timeLabel` like before: a part of the
    day, or a clock time (which falls in a part on its own).             */
 export default function ActivitySheet({
-  tripId, day, editing, plans, categories, usedOn, canEdit, currentUid,
+  tripId, day, editing, plans, categories, usedOn, currentUid, personal = false, onlyOwn = false,
   getCategoryColor, getCategoryIcon, metaOf, onAddCategory, onClose,
 }) {
   const planById = useMemo(() => new Map(plans.map(p => [p.id, p])), [plans]);
@@ -80,7 +80,7 @@ export default function ActivitySheet({
         createdBy: editing.createdBy || null,
       };
       if (!next.title) return;
-      write = updateActivity(db, tripId, day.id, day.rawActivities, next, !canEdit);
+      write = updateActivity(db, tripId, day.target ?? day.id, day.rawActivities, next, onlyOwn);
     } else {
       const stamp = Date.now();
       const added = chosen.length
@@ -95,7 +95,7 @@ export default function ActivitySheet({
           timeLabel: label, description, createdBy: currentUid || null,
         }] : [];
       if (!added.length) return;
-      write = addActivities(db, tripId, day.id, day.rawActivities, added);
+      write = addActivities(db, tripId, day.target ?? day.id, day.rawActivities, added);
     }
     write.catch(err => console.error('Activity save error:', err));
     close();
@@ -105,13 +105,14 @@ export default function ActivitySheet({
 
   return (
     <Sheet
-      title={editing ? 'עריכת פעילות' : 'הוספת פעילות ליום'}
+      title={editing ? 'עריכת פעילות' : (personal ? 'הוספה לתכנון שלי' : 'הוספת פעילות ליום')}
       onClose={onClose}
       dirty={dirty}
       style={{ maxHeight: '90vh' }}
     >
       {({ cancel, close }) => (<>
         <form onSubmit={save(close)} className="act-form">
+          {personal && <p className="act-form-private">התכנון האישי שלך: רק את/ה רואה אותו.</p>}
 
           {/* Where: a place from the list, or typed in */}
           <div className="act-form-block">

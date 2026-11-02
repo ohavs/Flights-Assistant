@@ -258,6 +258,34 @@ await step('moving an activity to another day says where it went', async () => {
   await page.waitForTimeout(350);
 });
 
+await step('my own plan: only mine, over the shared one dimmed, saved where only I read it', async () => {
+  await chip('יום 1').click();
+  await page.locator('.dp-mode').getByRole('radio', { name: 'שלי' }).click();
+  await page.getByText('עוד לא תכננת כלום ליום הזה.', { exact: false }).waitFor();
+  // The shared plan is still there, dimmed, with nothing to change on it.
+  await page.locator('.dp-row.shared', { hasText: 'Da Enzo' }).waitFor();
+  if (await page.locator('button[aria-label="פעולות: Da Enzo"]').count()) throw new Error('actions on the shared plan');
+  await page.getByRole('button', { name: 'הוסף לתכנון שלי' }).click();
+  await sheet().getByText('רק את/ה רואה אותו').waitFor();
+  await sheet().getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill('ריצת בוקר');
+  await sheet().locator('.act-part', { hasText: 'בוקר' }).click();
+  await sheet().locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  await page.locator('.dp-row:not(.shared)', { hasText: 'ריצת בוקר' }).waitFor();
+  await page.locator('button[aria-label="פעולות: ריצת בוקר"]').waitFor();
+  await shot('mine');
+  const doc = await until(async () => {
+    const r = await fetch(`${DB}/trips/sc/personal/${me}/days/2026-11-10`, { headers: admin }).then(x => x.json());
+    return (r.fields?.activities?.arrayValue.values || []).length === 1 && r;
+  }, 'saved in the personal plan');
+  if (doc.fields.activities.arrayValue.values[0].mapValue.fields.title.stringValue !== 'ריצת בוקר') throw new Error('saved wrong');
+  if ((await titlesOn('2026-11-10')).includes('ריצת בוקר')) throw new Error('in the shared plan');
+  // Back to the shared plan: not there.
+  await page.locator('.dp-mode').getByRole('radio', { name: 'משותף' }).click();
+  await card('Da Enzo').waitFor();
+  if (await page.getByText('ריצת בוקר').count()) throw new Error('shown in the shared plan');
+});
+
 await step('dark mode', async () => {
   theme = 'dark';
   await page.locator('button[aria-label="עבור למצב כהה"]').click();

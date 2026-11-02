@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
-  canSwap, isGenericTitle, swapDayFields, legMinutes,
+  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -131,4 +131,21 @@ test('minutes of a leg', () => {
   assert.equal(legMinutes({ duration: "1 שע' 5 דק'" }), 65);
   assert.equal(legMinutes({ duration: "12 דק'" }), 12);
   assert.equal(legMinutes(null), null);
+});
+
+test('the personal plan over the shared one, in one order', () => {
+  const mine = [{ id: 'm1', title: 'ריצה', timeLabel: '07:00' }, { id: 'm2', title: 'מסעדה', placeId: 'p1', timeLabel: 'ערב' }];
+  const shared = [{ id: 's1', title: 'מוזיאון', timeLabel: '10:00' }, { id: 's2', title: 'מסעדה', placeId: 'p1', timeLabel: 'ערב' }];
+  const bookings = [
+    { id: 'b1', placeId: 'p1', date: '2026-11-10', time: '20:00' },
+    { id: 'b2', date: '2026-11-10', time: '12:30', title: 'סיור' },
+  ];
+  const flights = { out: { date: '2026-11-10', scheduledDep: '06:00' } };
+  const items = personalItems({ mine, shared, date: '2026-11-10', bookings, flights });
+  assert.deepEqual(items.map(it => it.key), ['sh:fl:out', 'act:m1', 'sh:act:s1', 'sh:bk:b2', 'sh:act:s2', 'act:m2']);
+  // Mine are not marked; the booking for my place is on my row, not twice.
+  assert.equal(items.find(it => it.key === 'act:m2').booking.id, 'b1');
+  assert.equal(items.find(it => it.key === 'act:m2').shared, undefined);
+  assert.equal(items.find(it => it.key === 'sh:act:s2').booking, null);
+  assert.ok(items.filter(it => it.key.startsWith('sh:')).every(it => it.shared));
 });

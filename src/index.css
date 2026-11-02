@@ -4029,3 +4029,30 @@ button.dp-leg:active { background: var(--ink-4); }
 .act-part.on { background: var(--brand); color: var(--brand-fg); }
 .act-part.on.by-time { background: color-mix(in srgb, var(--brand) 24%, var(--surface-2)); color: var(--text); }
 .act-time { display: flex; align-items: flex-end; gap: 8px; }
+
+/* The schedule's two plans (8.74.0): the trip's, and my own over it, the
+   shared one dimmed under it. */
+.dp-mode-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: -4px; }
+.dp-mode {
+  display: inline-flex; padding: 3px; gap: 2px;
+  border-radius: 999px; background: var(--surface-2);
+}
+.dp-mode button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; padding: 0 14px; border: none; border-radius: 999px;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font-hebrew); font-size: 13.5px; font-weight: 800; cursor: pointer;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.dp-mode button[aria-checked="true"] { background: var(--card-bg-solid); color: var(--text); box-shadow: var(--shadow-sm); }
+.dp-mode button[aria-checked="true"]:last-child { background: var(--brand); color: var(--brand-fg); }
+.dp-mode-note { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.dp-row.shared .dp-card { opacity: 0.5; box-shadow: none; background: var(--surface-2); }
+.dp-row.shared .dp-card::before { opacity: 0.6; }
+.dp-row.shared .dp-time { opacity: 0.5; }
+.dp-add.mine { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.act-form-private {
+  margin: 0; padding: 8px 12px; border-radius: 12px;
+  background: var(--p-8); color: var(--accent); font-size: 12.5px; font-weight: 700;
+}
+.dp-empty.mine { padding: 4px 2px 0; text-align: start; }
