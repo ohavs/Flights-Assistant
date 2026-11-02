@@ -147,10 +147,12 @@ await step('expenses: a new expense is a ListCard with its category icon', async
 await step('expenses: tap opens the form; a swipe deletes, and so does the form', async () => {
   await card('קפה וקרואסון').locator('.list-card-title').tap();
   await page.locator('.sheet-footer button[type="submit"]').waitFor();
-  await page.locator('.modal-overlay .chip[aria-pressed="true"]').first().waitFor();   // currency, category
-  await page.locator('.modal-overlay .chip.add').first().tap();                       // "+ מטבע" opens its search
+  await page.locator('.modal-overlay .exp-currency').tap();     // the currency, at the amount's end, opens its search
+  await page.getByPlaceholder('חיפוש מטבע').waitFor();
   const min = await smallestField();
   if (min < 16) throw new Error(`a field is ${min}px`);
+  await page.locator('.modal-overlay button[aria-label="סגור"]').last().click();
+  await page.getByPlaceholder('חיפוש מטבע').waitFor({ state: 'detached' });
   await page.locator('.sheet-footer button', { hasText: 'ביטול' }).click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   await noMoreOnPhone('קפה וקרואסון');
@@ -466,14 +468,15 @@ await step('flight: the lookup message is words and an icon', async () => {
     await page.locator('.modal-overlay .notice').first().waitFor({ timeout: 3000 });
   } finally { await leaveForm(); }
 });
-await step('expenses: the new-category field cancels with the one in-form ✕', async () => {
+await step('expenses: the category menu adds a new one, with no second ✕', async () => {
   await tab('הוצאות');
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
   try {
-    await page.locator('.modal-overlay .chip.add', { hasText: 'קטגוריה' }).click();
-    await page.locator('.modal-overlay input[placeholder="שם קטגוריה חדשה"]').waitFor();
+    await page.locator('.modal-overlay .custom-dropdown-trigger').first().click();
+    await page.locator('.custom-dropdown-add', { hasText: 'קטגוריה חדשה' }).click();
+    await page.locator('input[placeholder="שם הקטגוריה החדשה"]').waitFor();
     await expectClean('.modal-overlay');
-  } finally { await leaveForm(); }
+  } finally { await page.keyboard.press('Escape').catch(() => {}); await leaveForm(); }
 });
 for (const name of ['טיסה ומלון', 'תכנון טיול', "צ'קליסט", 'הוצאות', 'הזמנות']) {
   await step(`${name}: no emoji in buttons and labels; one kind of ✕`, async () => {

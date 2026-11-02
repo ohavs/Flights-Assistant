@@ -21,7 +21,7 @@ import { getWeatherIcon } from '../hooks/useWeather';
 import { localDay, isoDay } from '../lib/dates';
 import { creatorOf } from '../lib/roles';
 import { dayActivities, removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays } from '../lib/dayActivities';
-import { dayItems, personalItems, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey } from '../lib/dayPlan';
+import { dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey } from '../lib/dayPlan';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -452,9 +452,7 @@ function DayPlanner({
     if (it.kind === 'flight' || it.kind === 'hotel') {
       const f = it.flight;
       const isFlight = it.kind === 'flight';
-      const title = isFlight
-        ? (it.leg === 'out' ? `טיסה ל${f.arrAirport?.city || 'יעד'}` : `טיסה ל${f.arrAirport?.city || 'הבית'}`)
-        : (it.what === 'in' ? 'צ׳ק־אין במלון' : 'צ׳ק־אאוט מהמלון');
+      const title = fixedTitle(it);
       const route = isFlight && f.depAirport?.code && f.arrAirport?.code ? `${f.depAirport.code} → ${f.arrAirport.code}` : '';
       const sub = isFlight
         ? <>{[f.flightNumber, time ? `המראה ${time}` : ''].filter(Boolean).join(' · ')}{route && <>{' · '}<bdi dir="ltr">{route}</bdi></>}</>

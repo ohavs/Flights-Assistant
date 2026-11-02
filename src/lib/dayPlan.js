@@ -137,6 +137,18 @@ export function personalItems({ mine = [], shared = [], date = null, bookings = 
   return sortItems([...own, ...rest]);
 }
 
+// What a fixed item is called, in the schedule and in the plan widget.
+export function fixedTitle(it) {
+  if (it?.kind === 'flight') {
+    const a = it.flight?.arrAirport || {};
+    if (a.city) return `טיסה ל${a.city}`;
+    if (a.code) return `טיסה ל־${a.code}`;
+    return it.leg === 'out' ? 'טיסת הלוך' : 'טיסת חזור';
+  }
+  if (it?.kind === 'hotel') return it.what === 'in' ? 'צ׳ק־אין במלון' : 'צ׳ק־אאוט מהמלון';
+  return '';
+}
+
 // The items in sections by part of the day ({ key, label, items }). With no
 // time on anything, one section without a title.
 export function groupItems(items) {

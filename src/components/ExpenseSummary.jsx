@@ -220,15 +220,58 @@ function TransferRows({ transfers, getPayerProfile, currentUid }) {
   ));
 }
 
+// One number that matters, big, with a line under it.
+function Headline({ label, value, sub, tone }) {
+  return (
+    <div className={`expense-headline${tone ? ' ' + tone : ''}`}>
+      <span className="expense-headline-label">{label}</span>
+      <span className="expense-headline-value">{value}</span>
+      {sub && <span className="expense-headline-sub">{sub}</span>}
+    </div>
+  );
+}
+
+// My settling up, said from where I stand: who pays me, whom I pay.
+function MyBalance({ balance, transfers, currentUid, getPayerProfile }) {
+  const name = (uid) => getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף';
+  const even = Math.abs(balance) < 0.5;
+  const tone = even ? '' : balance > 0 ? 'up' : 'down';
+  return (
+    <div className={`expense-balance${tone ? ' ' + tone : ''}`}>
+      <span className="expense-balance-head">
+        <span className="expense-balance-label">{even ? 'ההתחשבנות שלך' : balance > 0 ? 'מגיע לך' : 'עליך להעביר'}</span>
+        <span className="expense-balance-value">{even ? 'מאוזן' : shekels(balance)}</span>
+      </span>
+      {transfers.map(t => {
+        const toMe = t.to === currentUid;
+        const other = toMe ? t.from : t.to;
+        return (
+          <span key={`${t.from}-${t.to}`} className="expense-row transfer mine">
+            <MemberAvatar profile={getPayerProfile(other)} size={26} />
+            <span className="expense-row-name">{toMe ? `${name(other)} מעביר/ה לך` : `להעביר ל${name(other)}`}</span>
+            <span className={`expense-row-value ${toMe ? 'up' : 'down'}`}>{shekels(t.amount)}</span>
+          </span>
+        );
+      })}
+      {even && !transfers.length && (
+        <span className="expense-balance-note"><Check size={14} aria-hidden="true" />אין לך מה להעביר או לקבל</span>
+      )}
+    </div>
+  );
+}
+
 // own: the summary of the looker's own part (personalExpenses), for "שלי".
+// On a shared trip it opens on "שלי": my part, my settling up, then my
+// categories and biggest. "כולם": the trip's total, who pays whom, each
+// one's part, then categories, currencies and the biggest. The key numbers
+// are the big cards on top; the rest folds.
 export default function ExpenseSummarySheet({ summary: s, own, expenses, plans, currentUid, getPayerProfile, onClose }) {
   const anyPayer = expenses.some(e => e.paidBy);
   const foreign = s.byCurrency.some(c => c.code !== 'ILS');
   const [folded, toggle] = useFolded();
   const fold = (id) => ({ folded: !!folded[id], onToggle: () => toggle(id) });
-  // The whole trip, or the looker's own: only on a shared trip, with rates.
   const canScope = s.ils != null && s.people >= 2 && !!own;
-  const [scope, setScope] = useState('trip');
+  const [scope, setScope] = useState('me');
   const mineOnly = canScope && scope === 'me';
   const me = s.byPerson.find(p => p.uid === currentUid);
   const myTransfers = s.transfers.filter(t => t.from === currentUid || t.to === currentUid);
@@ -237,36 +280,30 @@ export default function ExpenseSummarySheet({ summary: s, own, expenses, plans, 
     <Sheet title="סיכום הוצאות" onClose={onClose}>
       <div className="expense-summary">
         {canScope && (
-          <Segmented label="של מי" value={scope} onChange={setScope} options={[
-            { key: 'trip', label: 'כל הטיול', Icon: Users },
-            { key: 'me', label: 'שלי', Icon: User },
-          ]} />
+          <div className="expense-scope">
+            <Segmented label="של מי" value={scope} onChange={setScope} options={[
+              { key: 'me', label: 'שלי', Icon: User },
+              { key: 'all', label: 'כולם', Icon: Users },
+            ]} />
+          </div>
         )}
 
         {mineOnly ? (<>
-          <div className="expense-tiles big" style={{ '--n': 2 }}>
-            <Tile label="החלק שלי" value={shekels(own.ils || 0)} />
-            <Tile label="שילמתי" value={shekels(me?.paid || 0)} />
+          <div className="expense-headlines">
+            <Headline label="החלק שלי" value={shekels(own.ils || 0)}
+              sub={plural(own.count, 'הוצאה אחת', 'הוצאות')} />
+            <Headline label="שילמתי" value={shekels(me?.paid || 0)} sub="מכיסי, כולל מה שחילקתי" />
           </div>
           <p className="expense-section-hint">
-            {plural(own.count, 'הוצאה אחת שלך', 'הוצאות שלך')}: כל הוצאה ששילמת ולא חילקת, וחלק שווה בכל הוצאה שחולקה איתך.
+            החלק שלי: כל הוצאה ששילמתי ולא חילקתי, וחלק שווה בכל הוצאה שחולקה איתי.
           </p>
 
           {s.splits > 0 && (
-            <Section title="ההתחשבנות שלי" {...fold('myTransfers')}>
-              {myTransfers.length
-                ? <TransferRows transfers={myTransfers} getPayerProfile={getPayerProfile} currentUid={currentUid} />
-                : (
-                  <div className="expense-row muted">
-                    <Check size={18} aria-hidden="true" />
-                    <span className="expense-row-name">אין לך מה להעביר או לקבל</span>
-                  </div>
-                )}
-            </Section>
+            <MyBalance balance={s.mine || 0} transfers={myTransfers} currentUid={currentUid} getPayerProfile={getPayerProfile} />
           )}
 
           {own.byCategory.length > 0 ? (
-            <Section title="לפי קטגוריה" count={own.byCategory.length} {...fold('categories')}>
+            <Section title="שלי, לפי קטגוריה" count={own.byCategory.length} {...fold('categories')}>
               <CategoryRows items={own.byCategory} />
             </Section>
           ) : (
@@ -282,9 +319,9 @@ export default function ExpenseSummarySheet({ summary: s, own, expenses, plans, 
           )}
         </>) : (<>
           {s.ils != null ? (
-            <div className="expense-tiles big" style={{ '--n': 2 }}>
-              <Tile label='סה"כ בשקלים' value={shekels(s.ils)} />
-              <Tile label="הוצאות" value={s.count.toLocaleString('he-IL')} />
+            <div className="expense-headlines">
+              <Headline label='סה"כ הטיול' value={shekels(s.ils)}
+                sub={[plural(s.count, 'הוצאה אחת', 'הוצאות'), s.people >= 2 ? `${s.people} משתתפים` : ''].filter(Boolean).join(' · ')} />
             </div>
           ) : (
             <Section title='סה"כ לפי מטבע' hint="ההמרה לשקלים, החלוקה וההתחשבנות יופיעו כשיהיו שערי המרה." {...fold('currency')}>
@@ -298,9 +335,28 @@ export default function ExpenseSummarySheet({ summary: s, own, expenses, plans, 
             </Section>
           )}
 
+          {s.ils != null && (s.splits > 0 || s.people >= 2) && (
+            <div className="expense-card">
+              <span className="expense-card-title">מי מעביר למי</span>
+              <span className="expense-section-hint">רק מהוצאות שחולקו: בכל הוצאה, המשלם בוחר עם מי היא מתחלקת.</span>
+              {!s.splits ? (
+                <div className="expense-row muted">
+                  <span className="expense-row-name">עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים, וכאן יופיע מי חייב למי.</span>
+                </div>
+              ) : s.transfers.length ? (
+                <TransferRows transfers={s.transfers} getPayerProfile={getPayerProfile} currentUid={currentUid} />
+              ) : (
+                <div className="expense-row muted">
+                  <Check size={18} aria-hidden="true" />
+                  <span className="expense-row-name">כולם מאוזנים, אין מה להעביר</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {s.byPerson.length > 0 && (anyPayer || s.people >= 2) && (
             <Section title="לכל משתתף" {...fold('payers')}
-              hint="החלק של כל אחד: הוצאה שלא חולקה היא של מי ששילם, והוצאה שחולקה מתחלקת שווה.">
+              hint="החלק של כל אחד, וכמה שילם. הוצאה שלא חולקה היא של מי ששילם.">
               {s.byPerson.map(({ uid, paid, share, balance }) => (
                 <div key={uid} className="expense-row">
                   <PersonName uid={uid} profile={getPayerProfile(uid)} currentUid={currentUid} />
@@ -310,7 +366,6 @@ export default function ExpenseSummarySheet({ summary: s, own, expenses, plans, 
                       {paid >= 0.5 ? `שילם ${shekels(paid)}` : 'לא שילם'}
                     </span>
                   </span>
-                  {/* Owed or owing, from the split expenses only. */}
                   {Math.abs(balance) >= 0.5 && (
                     <Pill size="sm" tone={balance > 0 ? 'mint' : 'red'}>
                       <span dir="ltr">{balance > 0 ? '+' : '−'}{shekels(balance)}</span>
@@ -322,24 +377,6 @@ export default function ExpenseSummarySheet({ summary: s, own, expenses, plans, 
                 <div className="expense-row muted">
                   <span className="expense-row-name">בלי משלם</span>
                   <span className="expense-row-value">{shekels(s.unassigned)}</span>
-                </div>
-              )}
-            </Section>
-          )}
-
-          {s.ils != null && (s.splits > 0 || s.people >= 2) && (
-            <Section title="מי מעביר למי" count={s.splits || null} {...fold('transfers')}
-              hint={s.splits ? 'רק מהוצאות שחולקו: בכל הוצאה, המשלם בוחר עם מי היא מתחלקת.' : null}>
-              {!s.splits ? (
-                <div className="expense-row muted">
-                  <span className="expense-row-name">עוד אין הוצאות שחולקו. בטופס ההוצאה, ב"חלוקה", בוחרים עם מי מתחלקים, וכאן יופיע מי חייב למי.</span>
-                </div>
-              ) : s.transfers.length ? (
-                <TransferRows transfers={s.transfers} getPayerProfile={getPayerProfile} currentUid={currentUid} />
-              ) : (
-                <div className="expense-row muted">
-                  <Check size={18} aria-hidden="true" />
-                  <span className="expense-row-name">כולם מאוזנים, אין מה להעביר</span>
                 </div>
               )}
             </Section>
