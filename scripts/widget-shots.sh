@@ -131,7 +131,7 @@ open_widget soon;    expect 2-soon "בעוד 3 שעות" "טיסת הלוך · L
 # After takeoff the widget follows the flight to its landing, by itself.
 open_widget inair;   expect 2b-in-air "בטיסה" "נוחתת ב־10:45 שעון פריז" "עוד שעתיים ו־15 דק׳" "TLV" "CDG"
 open_widget inair 170 190 CountdownWidget; expect 2c-countdown-in-air "בטיסה" "TLV → CDG"
-open_widget plan;    expect 3-plan "יום 2 מתוך 4" "היום · מוזיאונים" "בוקר" "הלובר" "צהריים" "גני טווילרי" "ועוד 3 פעילויות" "12/22"
+open_widget plan;    expect 3-plan "יום 2 מתוך 4" "היום · מוזיאונים" "10:00" "הלובר" "צהריים" "גני טווילרי" "ועוד 3 פעילויות" "12/22"
 open_widget return;  expect 4-return "בעוד 9 שעות" "טיסת חזור · LY 326" "CDG" "TLV"
 open_widget none;    expect 5-signed-out "התחברו באפליקציה"
 open_widget plan 250 110; expect 6-plan-small "יום 2 מתוך 4" "הלובר" "12/22"
@@ -139,7 +139,7 @@ open_widget plan-violet 360 300; expect 7-plan-tall "היום · מוזיאונ�
 open_widget flight 170 190; expect 8-trip-narrow "5 ימים" "טיסת הלוך"
 # The other widgets.
 open_widget flight 170 190 CountdownWidget; expect 9-countdown "5 ימים" "טיסת הלוך" "TLV → CDG"
-open_widget plan 170 190 CountdownWidget;   expect 10-countdown-trip "יום 2 מתוך 4" "בוקר · הלובר"
+open_widget plan 170 190 CountdownWidget;   expect 10-countdown-trip "יום 2 מתוך 4" "10:00 · הלובר"
 open_widget plan 360 290 PlanWidget;        expect 11-plan "היום · מוזיאונים" "פריז עם הילדים · יום 2 מתוך 4" "הלובר" "גני טווילרי"
 # The plan scrolls, and a place is ticked as visited (queued: nobody is signed in).
 scroll_list; expect 11b-plan-scrolled "מגדל אייפל בלילה"

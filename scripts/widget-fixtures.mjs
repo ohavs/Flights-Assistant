@@ -24,7 +24,7 @@ const rome = {
 const days = [
   { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין במלון', timeLabel: 'ערב' }] },
   { id: 'd2', order: 1, date: '2026-11-04', title: 'מוזיאונים', activities: [
-    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב' }, { title: 'הלובר', timeLabel: 'בוקר', placeId: 'pl-louvre' },
+    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב', placeId: 'pl-seine' }, { title: 'הלובר', timeLabel: 'בוקר', placeId: 'pl-louvre' },
     { title: 'גני טווילרי', timeLabel: 'צהריים' }, { title: 'גלידה ברטיון' }, { title: 'מגדל אייפל בלילה', timeLabel: 'לילה' },
   ] },
 ];
@@ -43,9 +43,11 @@ const plans = [
   { id: 'pl-eiffel', title: 'מגדל אייפל', visited: true },
 ];
 // The bookings widget: the soonest first, a cancelled one left out, one with no date last.
+// The two on 4.11 are of places on that day's plan: there each is one row,
+// at the booking's time (as in the schedule, 8.73.0).
 const bookings = [
-  { id: 'b1', title: 'ארוחת ערב ליד הסיין', date: '2026-11-04', time: '20:30', confirmation: 'XK42Q7', status: 'confirmed' },
-  { id: 'b2', title: 'סיור בלובר', date: '2026-11-04', time: '10:00', confirmation: 'LV-551', status: 'confirmed' },
+  { id: 'b1', title: 'ארוחת ערב ליד הסיין', placeId: 'pl-seine', date: '2026-11-04', time: '20:30', confirmation: 'XK42Q7', status: 'confirmed' },
+  { id: 'b2', title: 'סיור בלובר', placeId: 'pl-louvre', date: '2026-11-04', time: '10:00', confirmation: 'LV-551', status: 'confirmed' },
   { id: 'b3', title: 'שייט בסיין', date: '2026-11-05', time: '18:00', status: 'pending' },
   { id: 'b4', title: 'מופע שבוטל', date: '2026-11-05', time: '21:00', status: 'cancelled' },
   { id: 'b5', title: 'דיסנילנד', confirmation: 'DL-9' },
