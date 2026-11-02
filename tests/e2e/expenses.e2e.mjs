@@ -214,15 +214,22 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   const form = page.locator('.modal-content').first();
   const over = () => page.locator('.modal-content').last();
   await page.getByPlaceholder('0.00').fill('90');
-  // The currency is a menu at the end of the amount: euros, the trip's.
-  await form.locator('.exp-currency').click();
-  await over().getByPlaceholder('חיפוש מטבע').fill('EUR');
-  await over().getByRole('radio', { name: /יורו/ }).click();
+  // Lisbon: a new expense starts in euros, and the trip's own currencies
+  // (shekels, euros) head the currency menu.
   await has(form.locator('.exp-currency'), 'EUR');
+  await form.locator('.exp-currency').click();
+  const ours = over().locator('[role="radiogroup"][aria-label="בטיול הזה"]');
+  await has(ours, 'שקל');
+  await has(ours, 'יורו');
+  if ((await ours.innerText()).includes('לירה שטרלינג')) throw new Error('pounds are already the trip\'s');
+  // Another one, from all of them, is kept for the trip.
+  await over().getByPlaceholder('חיפוש מטבע').fill('GBP');
+  await over().getByRole('radio', { name: /לירה שטרלינג/ }).click();
+  await has(form.locator('.exp-currency'), 'GBP');
   await page.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill('ארוחה משותפת');
   await has(form.locator('.exp-split'), 'בלי חלוקה, אף אחד לא חייב');
-  // The place is folded away until asked for.
-  if (await form.getByLabel('מיקום').count()) throw new Error('the place is not folded');
+  // A place from the plan is right there, at the top.
+  await form.getByRole('button', { name: 'חיפוש מקום ברשימה' }).waitFor();
   await shot('dark-8-form');
   await form.locator('.exp-split').click();
   // Roni is there already: a name from an earlier split.
@@ -240,7 +247,7 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   await page.waitForTimeout(400);
   await has(form.locator('.exp-split'), 'דנה, יואב');
   await has(form.locator('.exp-split'), '45 כל אחד');
-  await form.getByRole('button', { name: 'עוד פרטים' }).click();
+  await form.getByRole('button', { name: 'מקום שלא ברשימה?' }).click();
   await form.getByLabel('מיקום').fill('טיים אאוט');
   await shot('dark-9-form');
   await page.locator('.sheet-footer button[type="submit"]').first().click();
@@ -255,11 +262,18 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   if (JSON.stringify(split) !== JSON.stringify([dana, 'name:יואב'].sort()) || doc.fields.splitSelf?.booleanValue !== false) {
     throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   }
-  if (doc.fields.currency?.stringValue !== 'EUR' || doc.fields.customPlace?.stringValue !== 'טיים אאוט') throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
+  if (doc.fields.currency?.stringValue !== 'GBP' || doc.fields.customPlace?.stringValue !== 'טיים אאוט') throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
+  const kept = await (await fetch(`${DB}/trips/exp`, { headers: admin })).json();
+  if (!(kept.fields?.expenseCurrencies?.arrayValue?.values || []).some(v => v.stringValue === 'GBP')) throw new Error('the pound was not kept for the trip');
   await page.locator('.list-card', { hasText: 'ארוחה משותפת' }).getByText('מתחלק ל־2').waitFor();
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
   await page.locator('.modal-content .exp-split').click();
   await page.locator('.modal-content').last().getByRole('checkbox', { name: /יואב/ }).waitFor();
+  await page.locator('.modal-overlay button[aria-label="סגור"]').last().click();
+  await page.waitForTimeout(350);
+  // The pound is the trip's now, with its own currencies.
+  await page.locator('.modal-content .exp-currency').first().click();
+  await has(page.locator('.modal-content').last().locator('[role="radiogroup"][aria-label="בטיול הזה"]'), 'לירה שטרלינג');
 });
 
 console.log(failed ? `${failed} failed` : 'all passed');

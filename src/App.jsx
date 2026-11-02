@@ -2222,6 +2222,9 @@ function AppInner() {
         currentUserProfile: { displayName: user.displayName, email: user.email, photoURL: user.photoURL },
         memberProfiles: memberProfiles,
         tripMembers: selectedTrip?.members || {},
+        // The trip document, for what a tab reads off it (the expense
+        // form's currencies: destination, saved ones).
+        trip: selectedTrip || null,
         // People who were on the trip and are not any more. Their work
         // stays; the tabs render them greyed so it is clear why they
         // can no longer be picked.
