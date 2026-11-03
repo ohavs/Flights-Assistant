@@ -76,8 +76,9 @@ function Tile({ label, value, tone }) {
 const plural = (n, one, many) => (n === 1 ? one : `${n.toLocaleString('he-IL')} ${many}`);
 
 
-function BalanceTile({ balance }) {
-  if (Math.abs(balance) < SETTLED) return <Tile label="ההתחשבנות שלך" value="מאוזן" />;
+// All paid back (nothing open, something closed) says so, not "מאוזן".
+function BalanceTile({ balance, allPaid }) {
+  if (Math.abs(balance) < SETTLED) return <Tile label="ההתחשבנות שלך" value={allPaid ? 'הכל שולם' : 'מאוזן'} tone={allPaid ? 'up' : ''} />;
   return balance > 0
     ? <Tile label="מגיע לך" value={shekels(balance)} tone="up" />
     : <Tile label="עליך להעביר" value={shekels(balance)} tone="down" />;
@@ -90,7 +91,8 @@ export function ExpenseHero({ summary: s, currentUid, onOpen }) {
   const tiles = [];
   const me = s.byPerson.find(p => p.uid === currentUid);
   if (s.ils != null && s.people >= 2 && currentUid) tiles.push(<Tile key="paid" label="שילמתי" value={shekels(me?.paid || 0)} />);
-  if (s.mine != null) tiles.push(<BalanceTile key="mine" balance={s.mine} />);
+  const allPaid = s.withMe.length > 0 && s.withMe.every(p => !p.open.length);
+  if (s.mine != null || allPaid) tiles.push(<BalanceTile key="mine" balance={s.mine || 0} allPaid={allPaid} />);
   if (tiles.length < 2 && s.top.length) tiles.push(<Tile key="top" label="הגדולה ביותר" value={shekels(s.top[0].ils)} />);
 
   return (
@@ -190,14 +192,14 @@ function Headline({ label, value, sub }) {
   );
 }
 
-// "שולם": marks what is open between two people paid back. Shown only
-// when every one of those expenses may be changed here (canMark).
-function PaidButton({ items, label, onMark, canMark }) {
+// Marks what is open between two people paid back. An action, worded as
+// one ("קיבלתי"/"העברתי"), not "שולם", which read as if it already was.
+// Shown only when every one of those expenses may be changed here (canMark).
+function PaidButton({ items, label, text, onMark, canMark }) {
   if (!onMark || !canMark?.(items)) return null;
   return (
     <button type="button" className="settle-btn" onClick={() => onMark(items, true)} aria-label={label} title={label}>
-      <Check size={14} strokeWidth={3} aria-hidden="true" />
-      שולם
+      {text}
     </button>
   );
 }
@@ -207,10 +209,11 @@ function PaidButton({ items, label, onMark, canMark }) {
 function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, canMark }) {
   const name = (uid) => (uid === currentUid ? 'אני' : getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף');
   const even = !transfers.length;
+  const allPaid = even && back >= SETTLED;
   return (
-    <div className="expense-balance">
+    <div className={`expense-balance${allPaid ? ' up' : ''}`}>
       <span className="expense-balance-label">מי מעביר למי</span>
-      {even && <span className="expense-balance-value">כולם מאוזנים</span>}
+      {even && <span className="expense-balance-value">{allPaid ? 'הכל שולם' : 'כולם מאוזנים'}</span>}
       {transfers.map(t => (
         <span key={`${t.from}-${t.to}`} className="expense-row transfer">
           <span className="expense-row-main">
@@ -223,7 +226,8 @@ function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, 
           </span>
           <span className="expense-row-end">
             <span className="expense-row-value">{shekels(t.amount)}</span>
-            <PaidButton items={t.open} label={`${name(t.from)} העביר/ה ל${name(t.to)} ${shekels(t.amount)}`} onMark={onMark} canMark={canMark} />
+            <PaidButton items={t.open} label={`${name(t.from)} העביר/ה ל${name(t.to)} ${shekels(t.amount)}`}
+              text={t.to === currentUid ? 'קיבלתי' : t.from === currentUid ? 'העברתי' : 'סמן ששולם'} onMark={onMark} canMark={canMark} />
           </span>
         </span>
       ))}
@@ -233,7 +237,7 @@ function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, 
           {`כבר הועברו ${shekels(back)}`}
         </span>
       )}
-      {even && (
+      {even && !allPaid && (
         <span className="expense-balance-note">
           <Check size={14} aria-hidden="true" />
           {splits ? 'אין מה להעביר' : 'עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים'}
@@ -244,18 +248,27 @@ function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, 
 }
 
 // Mine: where I stand, then each one I split with — what is open between
-// us, netted both ways, and "שולם" to close it. Those all paid back stay
-// under it, a tap to undo.
+// us, netted both ways, and "קיבלתי"/"העברתי" to close it. The headline
+// is what is still open: "הכל שולם" once nothing is, and what was paid
+// back already under it. Those all paid back stay under it, a tap to undo.
 function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark }) {
   const name = (uid) => getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף';
   const even = Math.abs(balance) < SETTLED;
-  const tone = even ? '' : balance > 0 ? 'up' : 'down';
   const open = withMe.filter(p => p.open.length);
   const closed = withMe.filter(p => !p.open.length && p.closed.length);
+  const allPaid = !open.length && closed.length > 0;
+  const got = withMe.reduce((n, p) => n + Math.max(p.back, 0), 0);
+  const gave = withMe.reduce((n, p) => n + Math.max(-p.back, 0), 0);
+  const backNote = [got >= SETTLED && `קיבלת ${shekels(got)}`, gave >= SETTLED && `העברת ${shekels(gave)}`].filter(Boolean).join(' · ');
+  const tone = allPaid ? 'up' : even ? '' : balance > 0 ? 'up' : 'down';
   return (
     <div className={`expense-balance${tone ? ' ' + tone : ''}`}>
       <span className="expense-balance-label">ההתחשבנות שלך</span>
-      <span className="expense-balance-value">{even ? 'מאוזן' : `${balance > 0 ? 'מגיע לך' : 'עליך להעביר'} ${shekels(balance)}`}</span>
+      <span className="expense-balance-value">
+        {allPaid ? <><Check size={22} strokeWidth={3} aria-hidden="true" />הכל שולם</>
+          : even ? 'מאוזן' : `${balance > 0 ? 'מגיע לך' : 'עליך להעביר'} ${shekels(balance)}`}
+      </span>
+      {backNote && <span className="expense-balance-note done">{allPaid ? backNote : `כבר שולם: ${backNote}`}</span>}
       {open.map(p => {
         const toMe = p.balance >= SETTLED;
         const fromMe = p.balance <= -SETTLED;
@@ -275,7 +288,7 @@ function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark })
               <span className={`expense-row-value${toMe ? ' up' : fromMe ? ' down' : ''}`}>{shekels(p.balance)}</span>
               <PaidButton items={p.open}
                 label={toMe ? `${name(p.uid)} שילם/ה לך ${shekels(p.balance)}` : fromMe ? `שילמתי ל${name(p.uid)} ${shekels(p.balance)}` : `סגירת החשבון עם ${name(p.uid)}`}
-                onMark={onMark} canMark={canMark} />
+                text={toMe ? 'קיבלתי' : fromMe ? 'העברתי' : 'סגירה'} onMark={onMark} canMark={canMark} />
             </span>
           </span>
         );
@@ -299,10 +312,10 @@ function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark })
           )}
         </span>
       ))}
-      {even && !open.length && (
+      {even && !open.length && !allPaid && (
         <span className="expense-balance-note">
           <Check size={14} aria-hidden="true" />
-          {splits ? (closed.length ? 'הכל שולם' : 'אין לך מה להעביר או לקבל')
+          {splits ? 'אין לך מה להעביר או לקבל'
             : 'עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים'}
         </span>
       )}
