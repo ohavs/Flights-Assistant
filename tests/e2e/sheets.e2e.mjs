@@ -248,8 +248,8 @@ const openExpense = async () => {
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
   await page.getByRole('heading', { name: 'הוצאה חדשה' }).waitFor();
 };
-// The expense form is short (8.74.0): on a phone it fits without scrolling,
-// so the scroll checks run on the summary, which is long.
+// The expense form is short (8.74.0): on a phone it fits without scrolling.
+// The scroll checks run on it with a typed place open, on a short screen.
 await dragClose('expense form', openExpense);
 await guardsUnsaved('expense form', openExpense, () => page.getByPlaceholder('0.00').fill('12'));
 // The full summary opens from the card over the list, once there is an expense.
@@ -270,8 +270,12 @@ await check('expense form', async () => {
 // edge: nothing scrolling under it shows above or beside it (with top: 0
 // it stuck inside the sheet's padding).
 try {
-  await openSummary();
+  await page.setViewportSize({ width: 390, height: 480 });
+  await openExpense();
+  await page.getByRole('button', { name: 'מקום שלא ברשימה?' }).click();
   await page.waitForTimeout(500);
+  const room = await page.evaluate(() => { const el = document.querySelector('.modal-content'); return el.scrollHeight - el.clientHeight; });
+  if (room < 80) throw new Error(`the form scrolls only ${room}px`);
   await page.evaluate(() => { document.querySelector('.modal-content').scrollTop = 300; });
   await page.waitForTimeout(300);
   const [sheet, head] = await page.evaluate(() => ['.modal-content', '.modal-header'].map(sel => {
@@ -279,7 +283,7 @@ try {
     return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right) };
   }));
   const ok = Math.abs(head.top - sheet.top) <= 1 && Math.abs(head.left - sheet.left) <= 1 && Math.abs(head.right - sheet.right) <= 1;
-  console.log(`  ${ok ? 'ok   ' : 'FAIL '} expense summary: scrolled, its title bar is at the sheet's top, edge to edge (${JSON.stringify(head)} in ${JSON.stringify(sheet)})`);
+  console.log(`  ${ok ? 'ok   ' : 'FAIL '} expense form: scrolled, its title bar is at the sheet's top, edge to edge (${JSON.stringify(head)} in ${JSON.stringify(sheet)})`);
   if (!ok) { failed++; await page.screenshot({ path: '.e2e/sheet-fail-sticky-header.png' }); }
 } catch (e) {
   failed++; console.log(`  FAIL  sticky title bar: ${e.message.split('\n')[0]}`);

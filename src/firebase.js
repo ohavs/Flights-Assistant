@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import {
   initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence,
-  GoogleAuthProvider, connectAuthEmulator, signInWithCredential,
+  GoogleAuthProvider, connectAuthEmulator, signInWithCredential, reauthenticateWithCredential,
 } from 'firebase/auth';
 
 // Local testing only: `VITE_USE_FIREBASE_EMULATORS=true` makes the app talk to
@@ -51,6 +51,12 @@ if (useEmulators) {
   window.__e2eSignIn = (email) => signInWithCredential(auth,
     GoogleAuthProvider.credential(JSON.stringify({ sub: email, email, email_verified: true })));
 }
+// The same fake account to confirm who you are ("שכחתי את הקוד"), in the
+// tests only; null otherwise.
+export const e2eReauth = useEmulators
+  ? (user) => reauthenticateWithCredential(user,
+    GoogleAuthProvider.credential(JSON.stringify({ sub: user.email, email: user.email, email_verified: true })))
+  : null;
 export const googleProvider = new GoogleAuthProvider();
 
 export { enableNetwork, disableNetwork };

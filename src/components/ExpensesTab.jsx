@@ -8,7 +8,7 @@ import {
   Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2, ArrowLeftRight,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
-import { expenseSummary, personalExpenses, splitGroup, GUEST } from '../lib/expenseSummary';
+import { expenseSummary, paidExpenses, splitGroup, GUEST } from '../lib/expenseSummary';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
@@ -336,16 +336,16 @@ export default function ExpensesTab({ tripId }) {
     setShowNewName(false);
   };
 
-  // The total, by category and currency, each one's part, who paid and
-  // who owes whom; and the same for the looker's own part ("שלי"), only
-  // while the summary is open (src/lib/expenseSummary.js).
+  // The total, by category and currency, who paid and who owes whom; and
+  // the same for what the looker paid ("שלי"), only while the summary is
+  // open (src/lib/expenseSummary.js).
   const summary = useMemo(
     () => expenseSummary(expenses, { rates, members: memberUids, currentUid }),
     [expenses, rates, memberUids, currentUid]
   );
-  const ownSummary = useMemo(
+  const paidSummary = useMemo(
     () => (showSummary && currentUid
-      ? expenseSummary(personalExpenses(expenses, currentUid, { members: memberUids }), { rates, members: memberUids, currentUid })
+      ? expenseSummary(paidExpenses(expenses, currentUid, { members: memberUids }), { rates, members: memberUids, currentUid })
       : null),
     [showSummary, expenses, rates, memberUids, currentUid]
   );
@@ -359,14 +359,12 @@ export default function ExpensesTab({ tripId }) {
 
       {/* The total, big, over the list; a tap opens the full summary. */}
       {expenses.length > 0 && (
-        <ExpenseHero summary={summary} onOpen={() => setShowSummary(true)} />
+        <ExpenseHero summary={summary} currentUid={currentUid} onOpen={() => setShowSummary(true)} />
       )}
       {showSummary && (
         <ExpenseSummarySheet
           summary={summary}
-          own={ownSummary}
-          expenses={expenses}
-          plans={plans}
+          paid={paidSummary}
           currentUid={currentUid}
           getPayerProfile={personProfile}
           onClose={() => setShowSummary(false)}

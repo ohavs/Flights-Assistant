@@ -3,7 +3,7 @@
 //   node --test tests/expenseSummary.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSummary, settle, splitGroup, shareOf, personalExpenses } from '../src/lib/expenseSummary.js';
+import { expenseSummary, settle, splitGroup, shareOf, paidExpenses } from '../src/lib/expenseSummary.js';
 
 const rates = { EUR: 1, ILS: 4, USD: 1 };   // €1 = ₪4 = $1
 const ex = (amount, currency, extra = {}) => ({ amount, currency, category: 'כללי', createdAt: '2026-11-13T10:00:00.000Z', ...extra });
@@ -79,7 +79,7 @@ test('a member who left and paid is still one of the people', () => {
   assert.deepEqual(s.byPerson.map(p => p.uid).sort(), ['a', 'c', 'gone']);
 });
 
-test('one person\'s own: each expense cut to their part', () => {
+test('each one\'s part of an expense', () => {
   const list = [
     ex(300, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'], category: 'אוכל ושתייה' }),   // 100 each
     ex(80, 'ILS', { paidBy: 'b', category: 'תחבורה' }),                                // all b's
@@ -89,13 +89,34 @@ test('one person\'s own: each expense cut to their part', () => {
   assert.equal(shareOf(list[0], 'b', 'a'), 1 / 3);
   assert.equal(shareOf(list[2], 'a', 'a'), 0);
   assert.equal(shareOf(list[3], 'b', 'c'), 0);
-  const mine = personalExpenses(list, 'b', { members: ['a', 'b', 'c'] });
-  assert.deepEqual(mine.map(e => e.amount), [100, 80, 60]);
-  const s = expenseSummary(mine, { rates, members: ['a', 'b', 'c'], currentUid: 'b' });
-  assert.equal(s.ils, 240);
-  assert.deepEqual(s.byCategory.map(c => [c.cat, c.total]), [['אוכל ושתייה', 100], ['תחבורה', 80], ['כללי', 60]]);
+});
+
+test('what one person paid ("שלי"): whole, split or not', () => {
+  const list = [
+    ex(300, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'], category: 'אוכל ושתייה' }),
+    ex(80, 'ILS', { paidBy: 'b', category: 'תחבורה' }),
+    ex(60, 'ILS', { paidBy: 'a', splitWith: ['b'], splitSelf: false }),
+    ex(40, 'ILS', {}),                                                                 // no payer, shared trip: no one's
+  ];
+  const mine = paidExpenses(list, 'a', { members: ['a', 'b', 'c'] });
+  assert.deepEqual(mine.map(e => e.amount), [300, 60]);
+  const s = expenseSummary(mine, { rates, members: ['a', 'b', 'c'], currentUid: 'a' });
+  assert.equal(s.ils, 360);
+  assert.deepEqual(s.byCategory.map(c => [c.cat, c.total]), [['אוכל ושתייה', 300], ['כללי', 60]]);
   // On a trip of one, an expense with no payer is theirs.
-  assert.deepEqual(personalExpenses([ex(50, 'ILS')], 'a', { members: ['a'] }).map(e => e.amount), [50]);
+  assert.deepEqual(paidExpenses([ex(50, 'ILS')], 'a', { members: ['a'] }).map(e => e.amount), [50]);
+  assert.deepEqual(paidExpenses(list, null), []);
+});
+
+test('a small split still owes: under a shekel is not "settled"', () => {
+  // ₪0.60 split in two: Dana owes 30 agorot (8.75.0 showed "מאוזן").
+  const s = expenseSummary([ex(0.6, 'ILS', { paidBy: 'a', splitWith: ['b'] }), ex(2000, 'ILS', { paidBy: 'a' })],
+    { rates, members: ['a', 'b'], currentUid: 'a' });
+  assert.ok(Math.abs(s.mine - 0.3) < 1e-9);
+  assert.equal(s.transfers.length, 1);
+  assert.deepEqual([s.transfers[0].from, s.transfers[0].to], ['b', 'a']);
+  // Float dust is still settled.
+  assert.deepEqual(settle([{ uid: 'a', balance: 1e-9 }, { uid: 'b', balance: -1e-9 }]), []);
 });
 
 test('no payer recorded: the one person on a trip of one, no one on a shared trip', () => {
@@ -108,10 +129,11 @@ test('no payer recorded: the one person on a trip of one, no one on a shared tri
   assert.deepEqual(shared.transfers, []);
 });
 
-test('settle: fewest transfers, nothing under half a shekel', () => {
+test('settle: fewest transfers, nothing under half an agora', () => {
   const t = settle([{ uid: 'a', balance: 150 }, { uid: 'b', balance: -100 }, { uid: 'c', balance: -50 }, { uid: 'd', balance: 0.3 }]);
   assert.deepEqual(t, [{ from: 'b', to: 'a', amount: 100 }, { from: 'c', to: 'a', amount: 50 }]);
-  assert.deepEqual(settle([{ uid: 'a', balance: 0.2 }, { uid: 'b', balance: -0.2 }]), []);
+  assert.deepEqual(settle([{ uid: 'a', balance: 0.004 }, { uid: 'b', balance: -0.004 }]), []);
+  assert.deepEqual(settle([{ uid: 'a', balance: 0.2 }, { uid: 'b', balance: -0.2 }]), [{ from: 'b', to: 'a', amount: 0.2 }]);
 });
 
 test('a number createdAt and an empty list do not throw', () => {

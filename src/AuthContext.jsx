@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { auth, googleProvider } from './firebase';
-import { signInWithPopup, browserPopupRedirectResolver, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { auth, googleProvider, e2eReauth } from './firebase';
+import { signInWithPopup, reauthenticateWithPopup, reauthenticateWithCredential, browserPopupRedirectResolver, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import { isNative } from './lib/platform';
 
 // Android app: popups don't work in a WebView, so Google sign-in runs natively
@@ -72,6 +72,22 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Who is signed in proves it again with Google: before a new delete
+  // code without the old one ("שכחתי את הקוד"). Another Google account
+  // fails (auth/user-mismatch), and nothing changes.
+  const reauthenticate = async () => {
+    const current = auth.currentUser;
+    if (!current) throw new Error('not signed in');
+    if (e2eReauth) { await e2eReauth(current); return; }
+    if (isNative) {
+      const { FirebaseAuthentication } = await nativeAuth();
+      const res = await FirebaseAuthentication.signInWithGoogle();
+      await reauthenticateWithCredential(current, GoogleAuthProvider.credential(res.credential?.idToken));
+      return;
+    }
+    await reauthenticateWithPopup(current, googleProvider, browserPopupRedirectResolver);
+  };
+
   const signOut = async () => {
     try {
       // This phone stops getting the account's pushes (N5), while still
@@ -85,7 +101,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const value = { user, loading, slow, signInWithGoogle, signOut };
+  const value = { user, loading, slow, signInWithGoogle, reauthenticate, signOut };
 
   return (
     <AuthContext.Provider value={value}>
