@@ -3,7 +3,7 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.75.0 (`changelog.md`)
+- גרסת ווב: 8.76.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - **הרשאת "הוספה" (8.70.0, בקשת הבעלים 2026-10-21):** תפקיד `contributor` ב־`members`. מוסיף הכל עם `createdBy`, עורך ומוחק רק את שלו (`createdBy`, או `addedBy` במקומות ובהזמנות), ומסמן של אחרים (`visited`/`completed`; במקום גם `distances`/`coords`). בלוז: רק פעילויות שלו בתוך המערך (`ownActivities` בחוקים, עד 8 בכתיבה; `onlyOwn` ב־`dayActivities.js` כדי לא לגעת בפעילויות של אחרים). לא ימים, לא `settings`, לא מסמך הטיול. ב־UI: `canAdd` ו־`mayChange(item)` מ־`useTrip()` (`src/lib/roles.js`), `canEdit` נשאר לכל השאר. **כל יצירה חדשה חייבת `createdBy: currentUid`** (גם בווידג'ט, `ExpenseStore.java`). בדיקות: `tests/rules.test.mjs`, `tests/e2e/roles.e2e.mjs`.
@@ -57,6 +57,9 @@
   - **טווח בכרטיס (8.70.1, בקשת הבעלים):** טווח תאריכים עם שעה = כל יום בשעות האלה. `placeWhen` מחזיר `top`/`main`/`sub` (העמודה והעלה), `until` (תגית), `line` (רשת, aria); ב־`daily` העמודה "כל יום / שעה / עד שעה" והתאריכים בתגית.
   - **מצב התאריך (8.71.0, בקשת הבעלים):** `src/lib/whenState.js` (טהור, `tests/whenState.test.mjs`) מחזיר `upcoming`/`live`/`past` לפי השעה. `placeWhen(ev, now)` מחזיר `state` ו־`past` ממנו. `WhenDot` (‏`.when-dot`) לפני השורה העליונה בעמודה ובעלה, ובמקום האייקון בשבב. בלי שעת סיום: `live` לשעה (`POINT_MINUTES`). `now` ב־`PlanningTab` מתעדכן כל דקה וכשהאפליקציה חוזרת לחזית.
   - **"טווח" בטופס (8.69.0, בקשת הבעלים):** `whenRange` בטופס; `CustomDateRangePicker`/`CustomTimeRangePicker` ב־`CustomDatePicker.jsx`. **מ־8.71.1** בלי תאריך קודם הבורר נפתח ריק (לא "היום"), והלחיצה הראשונה היא ההתחלה; ימים לפני ההתחלה `.before-range` (אפור, `range` ב־`CalendarBody`). הסיום נשמר רק כשהמתג דלוק (`endDateOn`/`endTimeOn`), לכל קטגוריה. סוף = התחלה לא נשמר.
+  - **סיכום הוצאות פשוט (8.76.0, בקשת הבעלים 2026-11-03):** "שלי" = `Headline` "שילמתי" (`paidSummary` = `expenseSummary(paidExpenses(...))`, מה ששילמתי שלם, גם כשחולק), `Settle` (ההתחשבנות, כותרת מימין מעל הסכום) ו־`Breakdown` לפי קטגוריה. "כולם" = סה"כ, `Settle` (מי מעביר למי), `Breakdown` עם כפתור `.expense-by` שפותח בחירה: קטגוריה / מי ששילם / מטבע (localStorage ‏`expenses.summaryBy`). שורות הפילוג `.share-row` (שם וסכום, פס לפי החלק מהכל, אחוז). הוסרו: "החלק שלי", "ההוצאות הגדולות", "לכל משתתף", סעיפים מתקפלים, `personalExpenses`. **סף "מאוזן" = `SETTLED` (חצי אגורה)**, ו־`shekels` מציג אגורות מתחת ל־₪10 (חוב של 30 אגורות הוצג "מאוזן" כשהסף היה חצי שקל; כנראה זה מה שהבעלים ראה).
+  - **"שכחתי את הקוד" (8.76.0):** `useAuth().reauthenticate()` (ווב: `reauthenticateWithPopup`; אפליקציה: Google נייטיב ואז `reauthenticateWithCredential`; ב־e2e ‏`e2eReauth` מ־`firebase.js`). חשבון אחר נכשל ב־`auth/user-mismatch`. אחרי זה קוד חדש בלי הישן: בהגדרות (`DeleteCodeSettings`, `reset`) ובחלון המחיקה (`codeReset` ב־`App.jsx`, אז `firstCode`). הודעות: `reauthError` ב־`deleteCode.js`. החוקים לא השתנו (רק המשתמש עצמו כותב ל־`users/{uid}/private`).
+  - **חיפוש ב־`CustomDropdown` (8.76.0):** מעל `SEARCH_MIN` (8) אפשרויות, שדה חיפוש דביק בראש הרשימה; פוקוס אוטומטי רק עם עכבר. עם `addable`, טקסט שאין לו התאמה מדויקת מקבל "הוסף "…"" (אותו `onCommit`). בזה נסגר הפריט האחרון של C8.
   - **מטבעות לטיול (8.75.0, בקשת הבעלים 2026-11-02):** `tripCurrencies(trip, DEFAULT_CURRENCIES)` (‏`src/lib/destinationCurrency.js`) בטופס ההוצאה ובווידג'ט: לפי היעד, ואחריו `trip.expenseCurrencies` (שדה רשות חדש, `arrayUnion` כשמוסיפים מטבע מ"כל המטבעות"; מי שאינו עורך שומר ב־localStorage ‏`expenseCurrencies_<tripId>`). `destinationCountry` נופל לטקסט של `destination`/`name` (טבלת `PLACES`, עברית ואנגלית, גם עם תחילית "ב"). הוצאה חדשה מתחילה ב־`destinationCurrency(trip)`. מסמך הטיול עובר לטאבים כ־`trip` ב־`TripContext`. המקום מהתכנון בראש הטופס (החלטת הבעלים), "עוד פרטים" ירד.
   - **תכנון אישי (8.74.0, בקשת הבעלים 2026-11-02):** החלטות הבעלים: רק אני רואה; במצב "שלי" המשותף מוצג מעומעם. נשמר ב־`trips/{id}/personal/{uid}/days/{date, או id_<dayId>}` (מערך `activities` כמו ביום משותף), החוק ב־`firestore.rules` מתיר רק ל־uid עצמו כשהוא חבר (כל תפקיד). `dayActivities.js` מקבל יום כ־`{ ref, upsert: true }` (הכתיבה הראשונה יוצרת את המסמך). `personalItems` ב־`dayPlan.js`. המצב ב־localStorage ‏`dayMode_<tripId>`. ב"שלי" אין FAB "יום חדש" ואין תפריט יום. הגיבוי והייצוא לא כוללים את התכנון האישי (פרטי); מחיקת טיול משאירה אותו יתום ובלתי נגיש.
   - **הוצאות (8.74.0, בקשת הבעלים):** טופס קצר (`.exp-amount`, `.exp-split`, "עוד פרטים"); המטבע, החלוקה והמקום נבחרים בחלוניות מעל הטופס. הסיכום נפתח על "שלי" (`Headline`, `MyBalance` ב־`ExpenseSummary.jsx`). מבנה ההוצאה לא השתנה, ולכן ווידג'ט ההוצאות לא הושפע. החלטות הבעלים: מתג שלי | כולם; מקום והערות מקופלים.
@@ -122,7 +125,7 @@
 **קוד מת:** נוקה ב־8.51.3. נשאר בכוונה: `required` ב־`CustomDatePicker` (הקוראים מעבירים אותו).
 **לא למחוק:** `release-notes.md` (‏`android.yml`), `firebase-android-setup.yml`, `scripts/android-icons.py` (היחיד שמייצר splash). `project_overview.md` מיושן (7.4.0): לעדכן.
 
-**רעיונות (לא להעמיס):** "מי חייב למי" בהוצאות; מסמכים אופליין; רענון טיסה רק סביב מועד הטיסה; "שכחתי קוד מחיקה". עם Blaze (פעיל): מפתח AeroDataBox מאחורי Function (עכשיו הוא גלוי ב־bundle); רענון טיסה אחד בשרת עם Push על עיכוב או שינוי שער.
+**רעיונות (לא להעמיס):** מסמכים אופליין; רענון טיסה רק סביב מועד הטיסה. **נדחו לבינתיים (הבעלים, 2026-11-03):** מפתח AeroDataBox מאחורי Function, ורענון טיסה בשרת עם Push. עם Blaze (פעיל): מפתח AeroDataBox מאחורי Function (עכשיו הוא גלוי ב־bundle); רענון טיסה אחד בשרת עם Push על עיכוב או שינוי שער.
 
 ## ווב ואפליקציה (בקשת הבעלים, 2026-10-15)
 - זה קוד אחד. אפליקציית האנדרואיד היא אותו קוד ווב בתוך Capacitor, ולכן כל שינוי ב־`src/` מעדכן את שניהם. האתר מתעדכן במיזוג, והאפליקציה מקבלת Release חדש אוטומטית (`v1.0.N`, דרך "בדוק עדכונים").
@@ -245,7 +248,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
   - קוד מחיקה אישי (hash, `src/lib/deleteCode.js`), מוגדר במחיקה הראשונה או בהגדרות.
   - `deleteAt` בעוד 24 שעות, עם "בטל מחיקה" בכרטיס ובכותרת. כשהזמן מגיע, האפליקציה של הבעלים מוחקת את הטיול.
   - נבדק ב־`delete.e2e.mjs`.
-  - **פתוח:** "שכחתי את הקוד" עוד לא קיים. בינתיים: למחוק את `users/{uid}/private/deleteCode` מהקונסול. לשאול את הבעלים איך לאפס (למשל כניסה מחדש עם Google ואז איפוס).
+  - "שכחתי את הקוד": התחברות מחדש עם Google ואז קוד חדש (8.76.0).
 - [x] 8.33.0: PDF בשפה של האפליקציה (`docs/PLAN-pdf.md`).
   - Rubik בשלושה משקלים (`scripts/pdf-fonts.py`), שער עם תוכן עניינים, ועזרי ציור (`chapter`, `table`, `box`, `pill`, `link`, `checkCircle`).
   - טקסט בלי עברית נכתב LTR.
@@ -288,7 +291,7 @@ Claude ממזג ופורס בעצמו. כל שינוי נבדק בפני עצמ�
     - בתכנון: גלולת קטגוריה ושני כפתורים עגולים לבנים (הגדרות, חיפוש).
     - מצב כהה: אפור פחם (`#212329`).
   - C10, C10ב ו־C11 נעשו (8.23.2–8.23.4). יישור הקו הושלם.
-  - נשאר מ־C8: רשימת המטבעות ורשימת המקומות בהוצאה נשארו פאנלים עם חיפוש. `CustomDropdown` עוד בלי חיפוש.
+  - ~~נשאר מ־C8~~: המטבע והמקום בהוצאה הם חלוניות עם חיפוש (8.74.0), ו־`CustomDropdown` עם חיפוש ברשימה ארוכה (8.76.0). C8 הושלם.
   - **שורת הסטטוס (8.60.1):** `--safe-top` (‏`env(safe-area-inset-top)`) הוא ה־padding של `.app-container`, ו־`.app-header::before` צובע אותו בצבע הפס. בדיקה: `flight.e2e` מגדיר `--safe-top: 30px`.
   - **שורה דביקה (8.55.2):** `top: 0` נעצר בתוך ה־padding של מי שגולל, ומעליו נשאר פס שהתוכן נראה דרכו. כותרת גיליון (`.modal-header`) יוצאת לקצוות במרווחים שליליים, עם `top: calc(-1 * var(--sheet-pad-t))`. בשורה בלי רקע (הסרגל בתכנון) זה לא משנה, ושם לכל כפתור צבע משלו (בקשת הבעלים).
   - `ListCard`: `lead` (למשל עיגול בוצע), `icon` (`CategoryDisc`), `title`, `meta`, `tags`, `onOpen`, `actions` [{key,label,Icon,run,danger,swipe}], `muted`. ה־children מוצגים מתחת לכותרת.
