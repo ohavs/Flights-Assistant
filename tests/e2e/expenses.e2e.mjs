@@ -67,7 +67,7 @@ const ex = (id, amount, currency, category, description, day, paidBy, extra = {}
 //   e3 ₪1450 mine, with Dana: she owes me 725.
 //   e8 ₪230 Dana's, with me and Roni (not on the trip): we owe her 76.67 each.
 //   e5 ₪256 Dana's, "רק הם", Roni alone: he owes her 256.
-// Me +648.33, Dana -315.67, Roni -332.67: Roni → me 332.67, Dana → me 315.67.
+// By pair (8.77.0): Dana → me 725 - 76.67 = 648.33, Roni → Dana 256 + 76.67 = 332.67.
 // Each one's part (not split: the payer's): me 170 + 39.2 + 480 + 725 + 76.67
 // = 1490.87; Dana 72 + 60 + 109.6 + 725 + 76.67 = 1043.27; Roni 256 + 76.67.
 await ex('e1', 42.5, 'EUR', 'אוכל ושתייה', 'ארוחת ערב באלפמה', 13, me);
@@ -135,12 +135,14 @@ for (const theme of ['light', 'dark']) {
     await has(sheet.locator('.expense-headline'), '2 משתתפים');
     const settle = sheet.locator('.expense-balance');
     await has(settle, 'מי מעביר למי');
+    // By pair: each straight from what the two shared, with "שולם".
     const transfer = settle.locator('.expense-row.transfer');
     if (await transfer.count() !== 2) throw new Error(`${await transfer.count()} transfers`);
-    await has(transfer.nth(0), 'רוני');
-    await has(transfer.nth(0), '₪333');
-    await has(transfer.nth(1), 'דנה');
-    await has(transfer.nth(1), '₪316');
+    await has(transfer.nth(0), 'דנה');
+    await has(transfer.nth(0), '₪648');
+    await has(transfer.nth(1), 'רוני');
+    await has(transfer.nth(1), '₪333');
+    await transfer.nth(1).getByRole('button', { name: 'רוני העביר/ה לדנה ₪333' }).waitFor();
     // Only the total, the settling up and the split.
     for (const gone of ['ההוצאות הגדולות', 'לכל משתתף', 'רק מהוצאות שחולקו', 'החלק שלי', 'לאדם', 'ממוצע ליום']) {
       if ((await sheet.innerText()).includes(gone)) throw new Error(`"${gone}" is still in the summary`);
@@ -200,9 +202,13 @@ for (const theme of ['light', 'dark']) {
     const [title, amount] = await Promise.all(['.expense-balance-label', '.expense-balance-value']
       .map(sel => balance.locator(sel).boundingBox()));
     if (Math.abs(title.x + title.width - (amount.x + amount.width)) > 2 || title.y >= amount.y) throw new Error('the title is not on the right, over the amount');
-    const mine = balance.locator('.expense-row.transfer');
-    if (await mine.count() !== 2) throw new Error(`${await mine.count()} of my transfers`);
+    // By pair: only Dana shared with me, both ways, netted.
+    const mine = balance.locator('.expense-row.settle');
+    if (await mine.count() !== 1) throw new Error(`${await mine.count()} of my rows`);
     await has(mine.nth(0), 'מעביר/ה לך');
+    await has(mine.nth(0), '2 הוצאות');
+    await has(mine.nth(0), '₪648');
+    await mine.nth(0).getByRole('button', { name: 'דנה שילם/ה לך ₪648' }).waitFor();
     // What I paid, by category: the room whole, though it was split.
     const cats = sheet.locator('.expense-card', { hasText: 'לפי קטגוריה' });
     await has(cats.locator('.share-row', { hasText: 'לינה' }), '₪1,450');
@@ -216,6 +222,44 @@ for (const theme of ['light', 'dark']) {
     await sheet.waitFor({ state: 'detached' });
   });
 }
+
+await step('"שולם": Dana paid me; both ways close, and it undoes', async () => {
+  const expDoc = async (id) => (await (await fetch(`${DB}/trips/exp/expenses/${id}`, { headers: admin })).json()).fields;
+  const paidOf = async (id) => ((await expDoc(id))?.splitPaid?.arrayValue?.values || []).map(v => v.stringValue);
+  const until = async (fn, what) => {
+    for (let i = 0; i < 30; i++) { if (await fn()) return; await page.waitForTimeout(200); }
+    throw new Error(what);
+  };
+  await hero.click();
+  await sheet.waitFor();
+  const balance = sheet.locator('.expense-balance');
+  await balance.getByRole('button', { name: 'דנה שילם/ה לך ₪648' }).click();
+  // Her part of my room, and mine of her insurance.
+  await until(async () => (await paidOf('e3')).includes(dana) && (await paidOf('e8')).includes(me), 'not marked paid');
+  if ((await paidOf('e8')).includes('name:רוני')) throw new Error('Roni was marked too');
+  await has(balance, 'מאוזן');
+  const done = balance.locator('.expense-row.settle.done');
+  await has(done, 'שילם/ה לך ₪648');
+  await shot('dark-7-paid');
+  // Everyone's: Dana's is gone, Roni's stays, and what was paid shows.
+  await sheet.getByRole('radio', { name: 'כולם' }).click();
+  const all = sheet.locator('.expense-balance');
+  if (await all.locator('.expense-row.transfer').count() !== 1) throw new Error('Dana still pays');
+  await has(all, 'כבר הועברו ₪802');
+  await sheet.getByRole('radio', { name: 'שלי' }).click();
+  await done.getByRole('button', { name: 'ביטול הסימון ששולם, דנה' }).click();
+  await until(async () => !(await paidOf('e3')).length && !(await paidOf('e8')).length, 'the undo did not clear it');
+  await has(balance, 'מגיע לך ₪648');
+  await sheet.getByRole('button', { name: 'סגור' }).click();
+  await sheet.waitFor({ state: 'detached' });
+  // The list says who paid, on the row.
+  await put('trips/exp/expenses/e3', { amount: 1450, currency: 'ILS', category: 'לינה', description: 'מקדמה למלון', paidBy: me,
+    linkedPlanId: null, customPlace: null, ilsSnapshot: null, createdAt: '2026-11-12T12:00:00.000Z', splitWith: [dana], splitPaid: [dana] });
+  await page.locator('.list-card', { hasText: 'מקדמה למלון' }).getByText('שולם').waitFor();
+  await put('trips/exp/expenses/e3', { amount: 1450, currency: 'ILS', category: 'לינה', description: 'מקדמה למלון', paidBy: me,
+    linkedPlanId: null, customPlace: null, ilsSnapshot: null, createdAt: '2026-11-12T12:00:00.000Z', splitWith: [dana] });
+  await page.locator('.list-card', { hasText: 'מקדמה למלון' }).getByText('מתחלק ל־2').waitFor();
+});
 
 await step('a narrow phone: the card fits, nothing scrolls sideways', async () => {
   await page.setViewportSize({ width: 340, height: 740 });
@@ -276,12 +320,41 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   await has(over(), '3 אנשים');
   await has(over(), '30');
   await shot('dark-8-split');
-  await over().getByRole('radio', { name: 'רק הם' }).click();
+  // "רק הם": the payer's own row, unticked.
+  await over().getByRole('checkbox', { name: /אני/ }).click();
   await has(over(), '2 אנשים');
+  const part = (name) => over().getByLabel(`החלק של ${name}`);
+  if (await part('יואב').inputValue() !== '45') throw new Error('not even');
+  // Dana's part typed: Yoav takes what is left.
+  await part('דנה').fill('60');
+  if (await part('יואב').inputValue() !== '30') throw new Error(`Yoav: ${await part('יואב').inputValue()}`);
+  // Both typed, over the amount: it says by how much, and it cannot close.
+  await part('יואב').fill('40');
+  await has(over().locator('.split-meter'), 'חריגה של');
+  if (!(await over().getByRole('button', { name: 'סיום' }).isDisabled())) throw new Error('closes over the amount');
+  await shot('dark-8-split-over');
+  // Back to even, then Dana's part again.
+  await over().getByRole('button', { name: 'חלוקה שווה' }).click();
+  if (await part('דנה').inputValue() !== '45') throw new Error('not even again');
+  await part('דנה').fill('60');
+  // Dana already paid me.
+  await over().getByRole('button', { name: 'דנה שילם/ה' }).click();
+  if (await over().getByRole('button', { name: 'דנה שילם/ה' }).getAttribute('aria-pressed') !== 'true') throw new Error('not marked');
+  await has(over(), 'לפי סכומים');
+  await shot('dark-8-split-uneven');
+  // A narrow phone: the names keep their room, nothing is cut.
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.waitForTimeout(300);
+  const cut = await page.evaluate(() => [...document.querySelectorAll('.split-row, .split-row-pick .list-row-label')]
+    .filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.textContent));
+  if (cut.length) throw new Error(`cut: ${cut.join(' | ')}`);
+  await shot('dark-8-split-narrow');
+  await page.setViewportSize({ width: 400, height: 860 });
   await over().getByRole('button', { name: 'סיום' }).click();
   await page.waitForTimeout(400);
   await has(form.locator('.exp-split'), 'דנה, יואב');
-  await has(form.locator('.exp-split'), '45 כל אחד');
+  await has(form.locator('.exp-split'), 'לפי סכומים');
+  await has(form.locator('.exp-split'), '1 שילמו');
   await form.getByRole('button', { name: 'מקום שלא ברשימה?' }).click();
   await form.getByLabel('מיקום').fill('טיים אאוט');
   await shot('dark-9-form');
@@ -297,10 +370,16 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   if (JSON.stringify(split) !== JSON.stringify([dana, 'name:יואב'].sort()) || doc.fields.splitSelf?.booleanValue !== false) {
     throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   }
+  const parts = doc.fields.splitAmounts?.mapValue?.fields || {};
+  const paidBack = (doc.fields.splitPaid?.arrayValue?.values || []).map(v => v.stringValue);
+  if (JSON.stringify(Object.keys(parts)) !== JSON.stringify([dana]) || Number(parts[dana].integerValue ?? parts[dana].doubleValue) !== 60
+    || JSON.stringify(paidBack) !== JSON.stringify([dana])) {
+    throw new Error(`the split saved: ${JSON.stringify(doc.fields)}`);
+  }
   if (doc.fields.currency?.stringValue !== 'GBP' || doc.fields.customPlace?.stringValue !== 'טיים אאוט' || doc.fields.category?.stringValue !== 'אוכל ושתייה') throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   const kept = await (await fetch(`${DB}/trips/exp`, { headers: admin })).json();
   if (!(kept.fields?.expenseCurrencies?.arrayValue?.values || []).some(v => v.stringValue === 'GBP')) throw new Error('the pound was not kept for the trip');
-  await page.locator('.list-card', { hasText: 'ארוחה משותפת' }).getByText('מתחלק ל־2').waitFor();
+  await page.locator('.list-card', { hasText: 'ארוחה משותפת' }).getByText('לא שווה ל־2 · 1 שילמו').waitFor();
   await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).click();
   await page.locator('.modal-content .exp-split').click();
   await page.locator('.modal-content').last().getByRole('checkbox', { name: /יואב/ }).waitFor();
