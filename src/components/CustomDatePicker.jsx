@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useBackHandler from '../hooks/useBackHandler';
-import { Calendar as CalendarIcon, CalendarClock, Clock, ChevronRight, ChevronLeft, ChevronDown, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, CalendarClock, Clock, ChevronRight, ChevronLeft, ChevronDown, Check, Search } from 'lucide-react';
 import { Segmented } from '../ui/Sheet';
 import { haptic } from '../lib/platform';
 
@@ -652,7 +652,13 @@ export function CustomDateTimePicker({ value, onChange, label, renderTrigger }) 
 
 /* ══════════════════════════════════════════════════════════
    CUSTOM DROPDOWN — fully styled select replacement
+   A long list (over SEARCH_MIN) has a search at its top; with `addable`,
+   what was typed and is not on the list is one tap from added (8.76.0).
    ══════════════════════════════════════════════════════════ */
+const SEARCH_MIN = 8;
+const optionText = (o) => [o.label, o.meta, o.value]
+  .filter(v => typeof v === 'string' || typeof v === 'number').join(' ').toLowerCase();
+
 export function CustomDropdown({ value, onChange, options, label, placeholder = 'בחר...', required, addable = false, addLabel = 'הוסף חדש', onCommit }) {
   const [isOpen, setIsOpen] = useState(false);
   // Back closes the picker, not the sheet underneath it.
@@ -660,6 +666,7 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
   const [popupRect, setPopupRect] = useState(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
+  const [query, setQuery] = useState('');
   const triggerRef = useRef(null);
   const popupRef = useRef(null);
   const draftInputRef = useRef(null);
@@ -668,6 +675,13 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
     typeof o === 'string' ? { value: o, label: o } : o
   ));
   const current = normalized.find(o => o.value === value);
+  const searchable = normalized.length > SEARCH_MIN;
+  const q = searchable ? query.trim().toLowerCase() : '';
+  const shown = q ? normalized.filter(o => optionText(o).includes(q)) : normalized;
+  const typedIsNew = !!q && !normalized.some(o => typeof o.label === 'string' && o.label.trim().toLowerCase() === q);
+  // The keyboard opens by itself only with a mouse: on a phone it would
+  // cover the list before anything was looked at.
+  const focusSearch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches;
 
   // Compute popup position directly from the trigger's bounding rect.
   // We also set right:'auto' in the popup inline style to prevent the
@@ -747,10 +761,17 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
     onCommit?.(val);
   };
 
-  // Reset adding mode when closing
+  // Reset adding mode and the search when closing
   useEffect(() => {
-    if (!isOpen) { setAdding(false); setDraft(''); }
+    if (!isOpen) { setAdding(false); setDraft(''); setQuery(''); }
   }, [isOpen]);
+
+  const commitTyped = () => {
+    const val = query.trim();
+    if (!val) return;
+    handleSelect(val);
+    onCommit?.(val);
+  };
 
   return (
     <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
@@ -786,7 +807,30 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
             maxHeight: popupRect.maxHeight,
           }}
         >
-          {normalized.map((opt) => {
+          {searchable && (
+            <div className="custom-dropdown-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                type="search"
+                enterKeyHint="search"
+                autoFocus={focusSearch}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  if (shown.length === 1) handleSelect(shown[0].value);
+                  else if (addable && typedIsNew && !shown.length) commitTyped();
+                }}
+                placeholder="חיפוש"
+                aria-label={label ? `חיפוש: ${label}` : 'חיפוש'}
+              />
+            </div>
+          )}
+          {searchable && !shown.length && !(addable && typedIsNew) && (
+            <div className="custom-dropdown-empty">לא נמצא</div>
+          )}
+          {shown.map((opt) => {
             const isActive = opt.value === value;
             return (
               <button
@@ -816,7 +860,25 @@ export function CustomDropdown({ value, onChange, options, label, placeholder = 
             );
           })}
 
-          {addable && !adding && (
+          {addable && !adding && typedIsNew && (
+            <button
+              type="button"
+              onClick={commitTyped}
+              className="custom-dropdown-option custom-dropdown-add"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </span>
+              <span style={{ flex: 1, textAlign: 'right', color: 'var(--accent)', fontWeight: 800, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                הוסף "{query.trim()}"
+              </span>
+            </button>
+          )}
+
+          {addable && !adding && !typedIsNew && (
             <button
               type="button"
               onClick={handleStartAdd}

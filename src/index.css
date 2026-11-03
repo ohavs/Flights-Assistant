@@ -2124,9 +2124,6 @@ textarea.form-control {
 .expense-amount-ils { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .expense-summary { display: flex; flex-direction: column; gap: 16px; padding-bottom: 8px; }
-.expense-section { display: flex; flex-direction: column; gap: 10px; }
-.expense-section-hint { margin: -6px 0 0; font-size: 12px; font-weight: 600; color: var(--text-muted); }
-.expense-rows { display: flex; flex-direction: column; gap: 8px; }
 .expense-row {
   display: flex; align-items: center; gap: 10px; min-width: 0;
   padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-2);
@@ -2138,8 +2135,6 @@ textarea.form-control {
 .expense-row-end { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
 .expense-row-value { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
 .expense-row-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.expense-meter { display: block; height: 6px; border-radius: 999px; background: var(--ink-6); overflow: hidden; }
-.expense-meter > span { display: block; height: 100%; border-radius: 999px; }
 .expense-cur-disc {
   width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -2677,6 +2672,20 @@ div.section-header-toggle { cursor: default; }
   color: var(--accent);
 }
 .custom-dropdown-option.active .custom-dropdown-option-icon { background: var(--card-bg-solid); }
+.custom-dropdown-search {
+  position: sticky; top: -6px; z-index: 1;
+  display: flex; align-items: center; gap: 8px;
+  margin: -6px -6px 4px; padding: 10px 14px;
+  background: var(--dropdown-bg); border-bottom: 1px solid var(--ink-8);
+  color: var(--text-muted);
+}
+.custom-dropdown-search > svg { flex-shrink: 0; }
+.custom-dropdown-search input {
+  flex: 1; min-width: 0; height: 32px; padding: 0; border: none; outline: none; background: none;
+  font-family: var(--font-hebrew); font-size: 15px; font-weight: 700; color: var(--text); text-align: right;
+}
+.custom-dropdown-search input::-webkit-search-cancel-button { display: none; }
+.custom-dropdown-empty { padding: 12px; text-align: center; font-size: 13px; font-weight: 700; color: var(--text-muted); }
 .custom-dropdown-add {
   border-top: 1px dashed var(--ink-10);
   margin-top: 4px;
@@ -4133,44 +4142,77 @@ button.dp-leg:active { background: var(--ink-4); }
 .exp-more-toggle[aria-expanded="true"] .exp-more-chev { transform: none; }
 .exp-more-body { display: flex; flex-direction: column; gap: 10px; }
 
-/* ── The expense summary (8.74.0): "שלי" | "כולם", the numbers that matter
-   as big cards on top, the rest in sections that fold. ── */
+/* ── The expense summary (8.76.0): "שלי" | "כולם", and in each a total,
+   the settling up and the split as bars. Everything reads from the right. ── */
 .expense-scope .segmented > button { flex-direction: row; justify-content: center; gap: 6px; min-height: 40px; font-size: 14px; font-weight: 800; }
-.expense-scope .segmented > button[aria-checked="true"]:first-child { background: var(--brand); color: var(--brand-fg); }
-.expense-headlines { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
+.expense-scope .segmented > button[aria-checked="true"] { background: var(--brand); color: var(--brand-fg); }
 .expense-headline {
   min-width: 0; display: flex; flex-direction: column; gap: 4px;
   padding: 14px 16px; border-radius: 20px;
-  background: var(--card-bg); border: var(--card-border); box-shadow: var(--shadow-sm);
+  background: color-mix(in srgb, var(--brand) 14%, var(--card-bg-solid));
 }
-.expense-headline:first-child { background: color-mix(in srgb, var(--brand) 14%, var(--card-bg-solid)); border-color: transparent; }
-.expense-headline-label { font-size: 12.5px; font-weight: 800; color: var(--text-muted); }
+.expense-headline-label { font-size: 13px; font-weight: 800; color: var(--text-muted); }
 .expense-headline-value {
-  font-size: 30px; font-weight: 900; line-height: 1.05; letter-spacing: -0.02em; color: var(--text);
+  font-size: 36px; font-weight: 900; line-height: 1.05; letter-spacing: -0.02em; color: var(--text);
   font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.expense-headline-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.expense-headline-sub { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
 .expense-balance, .expense-card {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 14px 14px 12px; border-radius: 20px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; text-align: start;
+  padding: 14px 16px; border-radius: 20px;
   background: var(--card-bg); border: var(--card-border); box-shadow: var(--shadow-sm);
 }
 .expense-balance.up { background: color-mix(in srgb, var(--c-green) 9%, var(--card-bg-solid)); }
 .expense-balance.down { background: color-mix(in srgb, var(--c-red) 7%, var(--card-bg-solid)); }
-.expense-balance-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.expense-balance-label { font-size: 15px; font-weight: 800; color: var(--text); }
-.expense-balance-value { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.expense-balance-label, .expense-card-title { font-size: 15px; font-weight: 800; color: var(--text); }
+.expense-balance-value { font-size: 24px; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
 .expense-balance.up .expense-balance-value { color: var(--c-green); }
 .expense-balance.down .expense-balance-value { color: var(--c-red); }
 .expense-balance-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.expense-balance-note > svg { flex-shrink: 0; }
 .expense-row.transfer.mine { gap: 10px; }
 .expense-row.transfer.mine .expense-row-name { flex: 1; min-width: 0; }
 .expense-row-value.up { color: var(--c-green); }
 .expense-row-value.down { color: var(--c-red); }
-.expense-card-title { font-size: 16px; font-weight: 800; color: var(--text); }
-.expense-card .expense-section-hint { margin: -4px 0 2px; }
+.expense-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
+/* The switch of the split: what it is now, a tap to change it (like the
+   currency in the expense form). */
+.expense-by {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  min-height: 34px; padding: 0 10px 0 12px; border: none; border-radius: 999px;
+  background: var(--surface-2); color: var(--text);
+  font-family: var(--font-hebrew); font-size: 13.5px; font-weight: 800; cursor: pointer;
+}
+.expense-by > svg { color: var(--text-muted); }
+.expense-by:active { transform: scale(0.97); }
+/* A part of the whole: name and amount, then a bar as long as its share. */
+.share-rows { display: flex; flex-direction: column; }
+.share-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "lead name value" "lead track pct";
+  column-gap: 12px; row-gap: 7px; align-items: center; padding: 10px 0;
+}
+.share-row + .share-row { border-top: 1px solid var(--ink-6); }
+.share-row-lead { grid-area: lead; display: flex; }
+.share-row-name {
+  grid-area: name; min-width: 0; font-size: 14.5px; font-weight: 800; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-row-note { margin-inline-start: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.share-row-value { grid-area: value; font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
+.share-row-track { grid-area: track; display: block; height: 8px; border-radius: 999px; background: var(--ink-6); overflow: hidden; }
+.share-row-track > span { display: block; height: 100%; border-radius: 999px; }
+.share-row-pct { grid-area: pct; min-width: 3ch; text-align: end; font-size: 12px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .custom-dropdown-popup > * { flex-shrink: 0; }
 .exp-other-place {
   align-self: flex-start; padding: 2px 4px; border: none; background: none;
   color: var(--accent); font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
 }
+
+/* "שכחתי את הקוד" (8.76.0): under the delete code, in settings and in the
+   delete dialog. A Google sign-in, then a new code. */
+.code-forgot {
+  align-self: flex-start; padding: 2px 4px; margin-top: -2px; border: none; background: none;
+  color: var(--accent); font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.code-forgot:disabled { opacity: 0.55; cursor: default; }

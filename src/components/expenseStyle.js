@@ -18,7 +18,12 @@ export const getCurrencyInfo = (code) => {
 };
 
 // "₪1,450", "€42.5": whole shekels, up to two decimals in the currency paid.
-export const shekels = (n) => `₪${Math.round(Math.abs(n)).toLocaleString('he-IL')}`;
+// Under ₪10 with agorot, so a small debt is not "₪0" ("₪0.35").
+export const shekels = (n) => {
+  const v = Math.abs(Number(n) || 0);
+  if (v < 10 && Math.round(v * 100) % 100) return `₪${v.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `₪${Math.round(v).toLocaleString('he-IL')}`;
+};
 export const money = (n, code) => `${getCurrencyInfo(code).symbol}${Number(n).toLocaleString('he-IL', { maximumFractionDigits: 2 })}`;
 
 // What a row is called: its description, else the place it is linked to,

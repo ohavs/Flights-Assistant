@@ -1,6 +1,6 @@
 // The expenses tab's numbers: the total, by category, by currency, the
 // biggest, each person's part and what they paid, and who owes whom; and
-// the same for one person alone (personalExpenses). Pure, without
+// the same for what one person paid (paidExpenses). Pure, without
 // Firebase (tests/expenseSummary.test.mjs). Shekel values are at today's
 // rates, like the total; with no rates there are only the totals per
 // currency.
@@ -12,7 +12,9 @@
 import { convert } from '../services/currency.js';
 
 const TOP = 3;
-const EVEN = 0.5;   // under half a shekel is settled: it shows as ₪0
+// Under half an agora is settled. Any debt above it shows, in agorot
+// when small (8.75.0 hid a split under half a shekel as "מאוזן").
+export const SETTLED = 0.005;
 export const GUEST = 'name:';
 
 // The people an expense is split among, payer first; [] when it is not.
@@ -40,16 +42,14 @@ function participantsOf(list, members, currentUid) {
   return participants;
 }
 
-// One person's expenses, each cut to their part ("שלי" in the summary):
-// summed by expenseSummary like the whole trip's.
-export function personalExpenses(expenses, uid, { members = [] } = {}) {
+// The expenses one person paid ("שלי" in the summary): summed by
+// expenseSummary like the whole trip's. One with no payer is the one
+// person's on a trip of one, and no one's when there are more.
+export function paidExpenses(expenses, uid, { members = [] } = {}) {
   const list = expenses || [];
   const participants = participantsOf(list, members, uid);
   const solo = participants.length === 1 ? participants[0] : null;
-  return list.flatMap(e => {
-    const part = shareOf(e, uid, e.paidBy || solo);
-    return part ? [{ ...e, amount: Number(e.amount || 0) * part, part }] : [];
-  });
+  return list.filter(e => uid && (e.paidBy || solo) === uid);
 }
 
 // expenses: the trip's expense documents. rates: per euro, or null.
@@ -142,10 +142,10 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
 }
 
 // The fewest transfers that even everyone out: the one who owes most pays
-// the one owed most, until no one is out by half a shekel or more.
+// the one owed most, until no one is out by more than SETTLED.
 export function settle(balances) {
-  const owe = balances.filter(b => b.balance <= -EVEN).map(b => ({ uid: b.uid, left: -b.balance }));
-  const owed = balances.filter(b => b.balance >= EVEN).map(b => ({ uid: b.uid, left: b.balance }));
+  const owe = balances.filter(b => b.balance <= -SETTLED).map(b => ({ uid: b.uid, left: -b.balance }));
+  const owed = balances.filter(b => b.balance >= SETTLED).map(b => ({ uid: b.uid, left: b.balance }));
   const out = [];
   while (owe.length && owed.length) {
     owe.sort((a, b) => b.left - a.left);
@@ -155,8 +155,8 @@ export function settle(balances) {
     out.push({ from: from.uid, to: to.uid, amount });
     from.left -= amount;
     to.left -= amount;
-    if (from.left < EVEN) owe.shift();
-    if (to.left < EVEN) owed.shift();
+    if (from.left < SETTLED) owe.shift();
+    if (to.left < SETTLED) owed.shift();
   }
   return out;
 }

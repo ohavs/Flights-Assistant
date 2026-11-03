@@ -1,9 +1,11 @@
 // The expenses tab on a full trip: two members, three currencies, six
 // categories, a linked place, three expenses split (one with someone not
-// on the trip). The card over the list (total, per person, per day, what
-// you get back), the full summary with who owes whom from the splits only,
-// its sections folding, the rows with their amount at the end, and the
-// form's split. Rates are fixed: €1 = $1 = ₪4.
+// on the trip). The card over the list (total, what I paid, what I get
+// back), the summary ("שלי": what I paid, my settling up, my categories;
+// "כולם": the total, who owes whom from the splits only, the split by
+// category, payer or currency, one button switching it), the rows with
+// their amount at the end, and the form's split. Rates are fixed:
+// €1 = $1 = ₪4.
 //   bash scripts/run-e2e.sh tests/e2e/expenses.e2e.mjs
 // Screenshots, light and dark: .e2e/expenses/
 import { chromium } from 'playwright';
@@ -53,6 +55,10 @@ await put('trips/exp', {
   members: { [me]: 'owner', [dana]: 'editor' }, memberIds: [me, dana],
 });
 await put('trips/exp/planning/p1', { title: 'מגדל בלם', category: 'מקומות לבקר' });
+// Two more categories from the plan: the category list is long enough
+// for its search.
+await put('trips/exp/planning/p2', { title: 'פראיה דה רוצ\'ה', category: 'חופים' });
+await put('trips/exp/planning/p3', { title: 'גולבנקיאן', category: 'מוזיאונים' });
 const ex = (id, amount, currency, category, description, day, paidBy, extra = {}) =>
   put(`trips/exp/expenses/${id}`, { amount, currency, category, description, paidBy, linkedPlanId: null, customPlace: null,
     ilsSnapshot: null, createdAt: `2026-11-${day}T12:00:00.000Z`, ...extra });
@@ -92,11 +98,11 @@ for (const theme of ['light', 'dark']) {
   await page.locator('.trip-card', { hasText: 'ליסבון' }).getByText('פתח טיול').click();
   await tab('הוצאות');
 
-  await step(`${theme}: the card over the list: the total, my part, what I get back`, async () => {
+  await step(`${theme}: the card over the list: the total, what I paid, what I get back`, async () => {
     await hero.getByText('₪2,867').waitFor();
     await has(hero, '9 הוצאות');
-    await has(hero, 'החלק שלי');
-    await has(hero, '₪1,491');
+    await has(hero, 'שילמתי');
+    await has(hero, '₪2,139');
     for (const gone of ['לאדם', 'ממוצע ליום']) {
       if ((await hero.innerText()).includes(gone)) throw new Error(`"${gone}" is still on the card`);
     }
@@ -119,83 +125,97 @@ for (const theme of ['light', 'dark']) {
     await page.mouse.wheel(0, -3000);
   });
 
-  await step(`${theme}: the full summary: each one's part, who owes whom from the splits, categories, currencies, the biggest`, async () => {
+  await step(`${theme}: "כולם": the total, who owes whom from the splits, the split by category, payer, currency`, async () => {
     await hero.click();
     await sheet.waitFor();
     // It opens on "שלי"; "כולם" is the whole trip.
     if (await sheet.getByRole('radio', { name: 'שלי' }).getAttribute('aria-checked') !== 'true') throw new Error('not on "שלי"');
     await sheet.getByRole('radio', { name: 'כולם' }).click();
-    await has(sheet.locator('.expense-headlines'), '₪2,867');
-    const people = sheet.locator('.expense-section', { has: page.locator('.section-header-toggle', { hasText: 'לכל משתתף' }) });
-    await has(people.locator('.expense-row', { hasText: 'דנה' }), '₪1,043');
-    await has(people.locator('.expense-row', { hasText: 'דנה' }), 'שילם ₪728');
-    await has(people.locator('.expense-row', { hasText: 'רוני' }), 'לא שילם');
-    for (const gone of ['לאדם', 'ממוצע ליום']) {
-      if ((await sheet.innerText()).includes(gone)) throw new Error(`"${gone}" is still in the summary`);
-    }
-    await sheet.locator('.expense-row.transfer', { hasText: 'דנה' }).waitFor();
-    const transfer = sheet.locator('.expense-row.transfer');
+    await has(sheet.locator('.expense-headline'), '₪2,867');
+    await has(sheet.locator('.expense-headline'), '2 משתתפים');
+    const settle = sheet.locator('.expense-balance');
+    await has(settle, 'מי מעביר למי');
+    const transfer = settle.locator('.expense-row.transfer');
     if (await transfer.count() !== 2) throw new Error(`${await transfer.count()} transfers`);
     await has(transfer.nth(0), 'רוני');
     await has(transfer.nth(0), '₪333');
     await has(transfer.nth(1), 'דנה');
     await has(transfer.nth(1), '₪316');
-    await has(sheet, 'רק מהוצאות שחולקו');
-    await has(sheet, '+₪648');
-    await has(sheet, '−₪316');
-    for (const t of ['לפי קטגוריה', 'לינה', '51%', 'לפי מטבע מקורי', '€176.7', '≈ ₪707', 'ההוצאות הגדולות', 'מקדמה למלון']) await has(sheet, t);
-    await shot(`${theme}-3-summary`);
-    for (const k of [4, 5, 6]) {
-      await page.mouse.move(200, 600);
-      await page.mouse.wheel(0, 600);
-      await shot(`${theme}-${k}-summary`);
+    // Only the total, the settling up and the split.
+    for (const gone of ['ההוצאות הגדולות', 'לכל משתתף', 'רק מהוצאות שחולקו', 'החלק שלי', 'לאדם', 'ממוצע ליום']) {
+      if ((await sheet.innerText()).includes(gone)) throw new Error(`"${gone}" is still in the summary`);
     }
+    if (await sheet.locator('.section-header-toggle').count()) throw new Error('sections that fold are back');
+    const split = sheet.locator('.expense-card', { has: page.locator('.expense-by') });
+    const row = (name) => split.locator('.share-row', { hasText: name });
+    const pick = async (label) => {
+      await split.locator('.expense-by').click();
+      const picker = page.locator('.modal-overlay', { has: page.locator('.modal-header', { hasText: 'פילוג' }) });
+      await picker.getByRole('radio', { name: label }).click();
+      await picker.waitFor({ state: 'detached' });
+      await has(split.locator('.expense-by'), label);
+    };
+    // It opens split by category; the second time, as it was left.
+    if (theme === 'dark') {
+      await has(split.locator('.expense-by'), 'לפי מטבע');
+      await pick('לפי קטגוריה');
+    }
+    await has(split.locator('.expense-by'), 'לפי קטגוריה');
+    if (await split.locator('.share-row').count() !== 6) throw new Error('not a row per category');
+    await has(row('לינה'), '₪1,450');
+    await has(row('לינה'), '51%');
+    await shot(`${theme}-3-summary`);
+    await page.mouse.move(200, 600);
+    await page.mouse.wheel(0, 600);
+    await shot(`${theme}-4-summary`);
+
+    await pick('לפי מי ששילם');
+    if (await split.locator('.share-row').count() !== 2) throw new Error('not a row per payer');
+    await has(row('אני'), '₪2,139');
+    await has(row('אני'), '75%');
+    await has(row('דנה'), '₪728');
+    await shot(`${theme}-5-by-payer`);
+    await pick('לפי מטבע');
+    await has(row('יורו'), '₪707');
+    await has(row('יורו'), '€176.7');
+    await has(row('דולר'), '₪480');
+    await shot(`${theme}-6-by-currency`);
     await sheet.getByRole('button', { name: 'סגור' }).click();
     await sheet.waitFor({ state: 'detached' });
   });
 
-  await step(`${theme}: "שלי": my part, what I paid, my settling up, my categories and biggest`, async () => {
+  await step(`${theme}: "שלי": what I paid, my settling up, my categories`, async () => {
     await hero.click();
     await sheet.waitFor();
     await sheet.getByRole('radio', { name: 'שלי' }).click();
-    const tiles = sheet.locator('.expense-headlines');
-    await has(tiles, '₪1,491');
-    await has(tiles, '₪2,139');
-    await has(tiles, '5 הוצאות');
-    // My settling up, from where I stand: both pay me.
+    const paid = sheet.locator('.expense-headline');
+    await has(paid, 'שילמתי');
+    await has(paid, '₪2,139');
+    await has(paid, '4 הוצאות');
+    // My settling up, from where I stand: both pay me. The title reads
+    // from the right, over the amount.
     const balance = sheet.locator('.expense-balance');
-    await has(balance, 'מגיע לך');
-    await has(balance, '₪648');
-    const mine = sheet.locator('.expense-row.transfer');
+    await has(balance, 'ההתחשבנות שלך');
+    await has(balance, 'מגיע לך ₪648');
+    const [title, amount] = await Promise.all(['.expense-balance-label', '.expense-balance-value']
+      .map(sel => balance.locator(sel).boundingBox()));
+    if (Math.abs(title.x + title.width - (amount.x + amount.width)) > 2 || title.y >= amount.y) throw new Error('the title is not on the right, over the amount');
+    const mine = balance.locator('.expense-row.transfer');
     if (await mine.count() !== 2) throw new Error(`${await mine.count()} of my transfers`);
     await has(mine.nth(0), 'מעביר/ה לך');
-    for (const t of ['לפי קטגוריה', 'לינה', '₪725', 'ההוצאות הגדולות שלי', 'מתוך ₪1,450']) await has(sheet, t);
-    if ((await sheet.innerText()).includes('לכל משתתף')) throw new Error('"שלי" shows everyone');
+    // What I paid, by category: the room whole, though it was split.
+    const cats = sheet.locator('.expense-card', { hasText: 'לפי קטגוריה' });
+    await has(cats.locator('.share-row', { hasText: 'לינה' }), '₪1,450');
+    await has(cats.locator('.share-row', { hasText: 'תחבורה' }), '₪480');
+    if (await cats.locator('.share-row').count() !== 3) throw new Error('not my three categories');
+    for (const gone of ['החלק שלי', 'ההוצאות הגדולות', 'מי מעביר למי']) {
+      if ((await sheet.innerText()).includes(gone)) throw new Error(`"${gone}" is in "שלי"`);
+    }
     await shot(`${theme}-7-mine`);
     await sheet.getByRole('button', { name: 'סגור' }).click();
     await sheet.waitFor({ state: 'detached' });
   });
 }
-
-await step('a summary section folds, and stays folded the next time', async () => {
-  await hero.click();
-  await sheet.waitFor();
-  const toggle = sheet.locator('.section-header-toggle', { hasText: 'לפי קטגוריה' });
-  await toggle.click();
-  const rows = sheet.locator('.expense-section', { has: page.locator('.section-header-toggle', { hasText: 'לפי קטגוריה' }) })
-    .locator('.expense-rows');
-  if ((await toggle.getAttribute('aria-expanded')) !== 'false') throw new Error('did not fold');
-  if (await rows.count()) throw new Error('the section did not fold');
-  await sheet.getByRole('button', { name: 'סגור' }).click();
-  await sheet.waitFor({ state: 'detached' });
-  await hero.click();
-  await sheet.waitFor();
-  if ((await toggle.getAttribute('aria-expanded')) !== 'false') throw new Error('folded, then open again');
-  await toggle.click();
-  await rows.waitFor();
-  await sheet.getByRole('button', { name: 'סגור' }).click();
-  await sheet.waitFor({ state: 'detached' });
-});
 
 await step('a narrow phone: the card fits, nothing scrolls sideways', async () => {
   await page.setViewportSize({ width: 340, height: 740 });
@@ -227,6 +247,21 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   await over().getByRole('radio', { name: /לירה שטרלינג/ }).click();
   await has(form.locator('.exp-currency'), 'GBP');
   await page.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...').fill('ארוחה משותפת');
+  // A long list has a search: it narrows, offers to add what is not there,
+  // and Enter takes the one left.
+  await form.locator('.custom-dropdown-trigger').first().click();
+  const list = page.locator('.custom-dropdown-popup');
+  const search = list.getByRole('searchbox', { name: 'חיפוש: קטגוריה' });
+  await search.fill('מוז');
+  if (await list.getByRole('option').count() !== 1) throw new Error('the search did not narrow the list');
+  await has(list, 'מוזיאונים');
+  await search.fill('גלידה');
+  await list.getByRole('button', { name: 'הוסף "גלידה"' }).waitFor();
+  await shot('dark-8-dropdown-search');
+  await search.fill('אוכל');
+  await search.press('Enter');
+  await list.waitFor({ state: 'detached' });
+  await has(form.locator('.custom-dropdown-trigger').first(), 'אוכל ושתייה');
   await has(form.locator('.exp-split'), 'בלי חלוקה, אף אחד לא חייב');
   // A place from the plan is right there, at the top.
   await form.getByRole('button', { name: 'חיפוש מקום ברשימה' }).waitFor();
@@ -262,7 +297,7 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   if (JSON.stringify(split) !== JSON.stringify([dana, 'name:יואב'].sort()) || doc.fields.splitSelf?.booleanValue !== false) {
     throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   }
-  if (doc.fields.currency?.stringValue !== 'GBP' || doc.fields.customPlace?.stringValue !== 'טיים אאוט') throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
+  if (doc.fields.currency?.stringValue !== 'GBP' || doc.fields.customPlace?.stringValue !== 'טיים אאוט' || doc.fields.category?.stringValue !== 'אוכל ושתייה') throw new Error(`saved: ${JSON.stringify(doc?.fields)}`);
   const kept = await (await fetch(`${DB}/trips/exp`, { headers: admin })).json();
   if (!(kept.fields?.expenseCurrencies?.arrayValue?.values || []).some(v => v.stringValue === 'GBP')) throw new Error('the pound was not kept for the trip');
   await page.locator('.list-card', { hasText: 'ארוחה משותפת' }).getByText('מתחלק ל־2').waitFor();
