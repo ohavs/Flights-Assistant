@@ -7,7 +7,7 @@ import {
   query, where, updateDoc, arrayUnion, arrayRemove,
   getDoc, writeBatch, deleteField, getDocsFromServer
 } from 'firebase/firestore';
-import { DELETE_DELAY_MS, useDeleteCode, validCode, checkCode, saveCode, pendingDelete, deleteAtText } from './lib/deleteCode';
+import { DELETE_DELAY_MS, useDeleteCode, validCode, checkCode, saveCode, pendingDelete, deleteAtText, reauthError } from './lib/deleteCode';
 import { TripProvider } from './TripContext';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import useBackHandler, { installBackGuard } from './hooks/useBackHandler';
@@ -1140,7 +1140,7 @@ function tick(ms = 8) {
 }
 
 function AppInner() {
-  const { user, loading, slow, signInWithGoogle, signOut } = useAuth();
+  const { user, loading, slow, signInWithGoogle, reauthenticate, signOut } = useAuth();
   const confirm = useConfirm();
   const [screen, setScreen] = useState('home'); // 'home' | 'trip'
   const [activeTab, setActiveTab] = useState('flight');
@@ -1828,8 +1828,24 @@ function AppInner() {
   const [deleteError, setDeleteError] = useState('');
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteCodeAgain, setDeleteCodeAgain] = useState('');
+  // "שכחתי את הקוד": signed in with Google again, a new code is set here.
+  const [codeReset, setCodeReset] = useState(false);
+  const [reauthBusy, setReauthBusy] = useState(false);
   const closeDeleteDialog = () => {
-    setConfirmDelete(null); setDeleteError(''); setDeleteCode(''); setDeleteCodeAgain('');
+    setConfirmDelete(null); setDeleteError(''); setDeleteCode(''); setDeleteCodeAgain(''); setCodeReset(false);
+  };
+  const forgotDeleteCode = async () => {
+    setDeleteError('');
+    setReauthBusy(true);
+    try {
+      await reauthenticate();
+      setCodeReset(true); setDeleteCode(''); setDeleteCodeAgain('');
+    } catch (err) {
+      const text = reauthError(err);
+      if (text) setDeleteError(text);
+    } finally {
+      setReauthBusy(false);
+    }
   };
 
   const requestDeleteTrip = (tripId, isOwner) => {
@@ -1849,7 +1865,7 @@ function AppInner() {
   const scheduleDelete = async () => {
     const tripId = confirmDelete.tripId;
     if (!navigator.onLine) { setDeleteError('מחיקת טיול דורשת חיבור לאינטרנט'); return false; }
-    if (!deleteCodeHash) {
+    if (!deleteCodeHash || codeReset) {
       if (!validCode(deleteCode)) { setDeleteError('קוד של 4 עד 8 ספרות'); return false; }
       if (deleteCode !== deleteCodeAgain) { setDeleteError('האימות לא תואם לקוד'); return false; }
       await saveCode(user.uid, deleteCode);
@@ -2101,7 +2117,8 @@ function AppInner() {
 
         {confirmDelete && (() => {
           const leave = confirmDelete.mode === 'leave';
-          const firstCode = !leave && deleteCodeHash === null;   // no code yet: set it here
+          // No code yet, or a forgotten one after signing in again: set it here.
+          const firstCode = !leave && (deleteCodeHash === null || (codeReset && deleteCodeHash !== undefined));
           const ready = leave || (deleteCodeHash !== undefined && deleteCode.length >= 4 && (!firstCode || deleteCodeAgain.length >= 4));
           const codeField = (id, label, value, set, autoFocus) => (
             <div className="form-group" style={{ marginBottom: 10 }}>
@@ -2164,11 +2181,18 @@ function AppInner() {
                 <div style={{ marginTop: 16 }}>
                   {firstCode && (
                     <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.5, margin: '0 0 10px' }}>
-                      עוד אין לך קוד מחיקה. בחר קוד של 4 עד 8 ספרות. הוא יישמר, ואפשר לשנות אותו בהגדרות.
+                      {codeReset
+                        ? 'זיהינו אותך. בחר/י קוד מחיקה חדש של 4 עד 8 ספרות. הוא יחליף את הקודם.'
+                        : 'עוד אין לך קוד מחיקה. בחר קוד של 4 עד 8 ספרות. הוא יישמר, ואפשר לשנות אותו בהגדרות.'}
                     </p>
                   )}
                   {deleteCodeHash !== undefined && codeField('delete-code', firstCode ? 'קוד מחיקה חדש' : 'קוד מחיקה', deleteCode, setDeleteCode, true)}
                   {firstCode && codeField('delete-code-again', 'שוב, לאימות', deleteCodeAgain, setDeleteCodeAgain, false)}
+                  {deleteCodeHash && !firstCode && (
+                    <button type="button" className="code-forgot" onClick={forgotDeleteCode} disabled={reauthBusy || deleteBusy}>
+                      {reauthBusy ? 'מאמת...' : 'שכחתי את הקוד'}
+                    </button>
+                  )}
                 </div>
               )}
               {deleteError && (

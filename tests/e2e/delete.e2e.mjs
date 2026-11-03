@@ -1,7 +1,8 @@
 // Deleting a trip safely: the owner's personal delete code (set the first
 // time, in the dialog), then 24 hours in which the card says when and the
-// owner can cancel. Settings change the code with the current one. When
-// the time comes, the owner's app deletes the trip.
+// owner can cancel. Settings change the code with the current one, or,
+// forgotten, after signing in with Google again (in settings and in the
+// dialog). When the time comes, the owner's app deletes the trip.
 //   bash scripts/run-e2e.sh tests/e2e/delete.e2e.mjs
 import { chromium } from 'playwright';
 
@@ -102,15 +103,47 @@ await step('settings: change the code with the current one', async () => {
   await sheet.waitFor({ state: 'detached' });
 });
 
-await step('the new code schedules the delete', async () => {
+await step('settings: a forgotten code, a Google sign-in, then a new one without the old', async () => {
+  await page.getByRole('button', { name: 'הגדרות', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'הגדרות' });
+  await sheet.locator('#code-current').waitFor();
+  await sheet.getByRole('button', { name: 'שכחתי את הקוד' }).click();
+  await sheet.getByText('זיהינו אותך').waitFor();
+  if (await sheet.locator('#code-current').count()) throw new Error('still asks for the old code');
+  await sheet.locator('#code-new').fill('24680');
+  await sheet.locator('#code-again').fill('24680');
+  await page.screenshot({ path: '.e2e/delete-forgot-settings.png' });
+  await sheet.getByRole('button', { name: 'שמור קוד חדש' }).click();
+  await sheet.getByText('הקוד הוחלף').waitFor();
+  // The next change asks for the code again.
+  await sheet.locator('#code-current').waitFor();
+  await sheet.getByRole('button', { name: 'סגור' }).first().click();
+  await sheet.waitFor({ state: 'detached' });
+});
+
+await step('the old code is refused; forgotten in the dialog, a new one there schedules the delete', async () => {
   await trash().click();
-  await dialog().locator('#delete-code').fill('2468');
+  await dialog().locator('#delete-code').fill('13579');
   await dialog().getByRole('button', { name: 'מחק בעוד 24 שעות' }).click();
   await dialog().getByText('קוד שגוי').waitFor();
-  await dialog().locator('#delete-code').fill('13579');
+  await dialog().getByRole('button', { name: 'שכחתי את הקוד' }).click();
+  await dialog().getByText('זיהינו אותך').waitFor();
+  await dialog().locator('#delete-code').fill('97531');
+  await dialog().locator('#delete-code-again').fill('97531');
+  await page.screenshot({ path: '.e2e/delete-forgot-dialog.png' });
   await dialog().getByRole('button', { name: 'מחק בעוד 24 שעות' }).click();
   await dialog().waitFor({ state: 'detached' });
   await card().locator('.delete-notice').waitFor();
+  // The code is the new one now.
+  await page.getByRole('button', { name: 'הגדרות', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'הגדרות' });
+  await sheet.locator('#code-current').fill('97531');
+  await sheet.locator('#code-new').fill('1234');
+  await sheet.locator('#code-again').fill('1234');
+  await sheet.getByRole('button', { name: 'החלף קוד' }).click();
+  await sheet.getByText('הקוד הוחלף').waitFor();
+  await sheet.getByRole('button', { name: 'סגור' }).first().click();
+  await sheet.waitFor({ state: 'detached' });
 });
 
 await step('when the time comes, the owner\'s app deletes the trip', async () => {

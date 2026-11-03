@@ -55,6 +55,18 @@ export function useDeleteCode(uid) {
 
 export const pendingDelete = (trip) => typeof trip?.deleteAt === 'number';
 
+// "שכחתי את הקוד": a new code without the old one, after the user signs
+// in with Google again (useAuth().reauthenticate). The 24 hours to cancel
+// still hold. What to say when that sign-in did not go through; null when
+// the user closed it.
+export function reauthError(err) {
+  const code = err?.code || '';
+  if (/popup-closed|cancelled-popup|canceled|cancelled/i.test(code + ' ' + (err?.message || ''))) return null;
+  if (code === 'auth/user-mismatch') return 'זה חשבון Google אחר. צריך להיכנס עם החשבון שמחובר לאפליקציה.';
+  if (code === 'auth/network-request-failed') return 'אין חיבור לאינטרנט. נסו שוב כשיש חיבור.';
+  return 'האימות לא הצליח. נסו שוב.';
+}
+
 // "16.10 בשעה 08:41"
 export function deleteAtText(ms) {
   const d = new Date(ms);

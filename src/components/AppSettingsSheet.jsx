@@ -17,7 +17,8 @@ import { appVersion, isNative } from '../lib/platform';
 import { canInstallUpdates, checkForUpdate, installUpdate, openInstallSettings } from '../lib/updater';
 import { loadTripExportData, exportTripPdf, exportTripDocx, exportTripXlsx } from '../services/exportTrip';
 import { exportTripBackup, saveBackupFile, importTripBackup } from '../services/backupTrip';
-import { useDeleteCode, validCode, checkCode, saveCode } from '../lib/deleteCode';
+import { useDeleteCode, validCode, checkCode, saveCode, reauthError } from '../lib/deleteCode';
+import { useAuth } from '../AuthContext';
 
 /* Settings, on the web and in the Android app.
    Both: export a trip to PDF, Word or Excel; back a trip up to a file and
@@ -382,20 +383,41 @@ function LookSettings() {
 // changed with the current one. The delete itself waits 24 hours.
 function DeleteCodeSettings({ uid }) {
   const hash = useDeleteCode(uid);
+  const { reauthenticate } = useAuth();
   const [cur, setCur] = useState('');
   const [code, setCode] = useState('');
   const [again, setAgain] = useState('');
   const [msg, setMsg] = useState(null);
+  // "שכחתי את הקוד": signed in with Google again, a new code without the old.
+  const [reset, setReset] = useState(false);
+  const [busy, setBusy] = useState(false);
   const has = !!hash;
+  const needOld = has && !reset;
+
+  const forgot = async () => {
+    setMsg(null);
+    if (!navigator.onLine) { setMsg({ tone: 'offline', text: 'צריך חיבור לאינטרנט כדי לאמת שזה את/ה.' }); return; }
+    setBusy(true);
+    try {
+      await reauthenticate();
+      setReset(true); setCur('');
+      setMsg({ tone: 'success', text: 'זיהינו אותך. בחר/י קוד חדש.' });
+    } catch (err) {
+      const text = reauthError(err);
+      if (text) setMsg({ tone: 'error', text });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setMsg(null);
-    if (has && !(await checkCode(uid, cur, hash))) { setMsg({ tone: 'error', text: 'הקוד הנוכחי שגוי' }); return; }
+    if (needOld && !(await checkCode(uid, cur, hash))) { setMsg({ tone: 'error', text: 'הקוד הנוכחי שגוי' }); return; }
     if (!validCode(code)) { setMsg({ tone: 'error', text: 'קוד של 4 עד 8 ספרות' }); return; }
     if (code !== again) { setMsg({ tone: 'error', text: 'האימות לא תואם לקוד' }); return; }
     await saveCode(uid, code);
-    setCur(''); setCode(''); setAgain('');
+    setCur(''); setCode(''); setAgain(''); setReset(false);
     setMsg({ tone: 'success', text: has ? 'הקוד הוחלף' : 'קוד המחיקה נשמר' });
   };
 
@@ -416,12 +438,17 @@ function DeleteCodeSettings({ uid }) {
       </div>
       {hash !== undefined && (
         <form className="settings-card" onSubmit={submit}>
-          <div className="field-label">{has ? 'שינוי קוד' : 'הגדרת קוד (4 עד 8 ספרות)'}</div>
-          {has && field('code-current', 'הקוד הנוכחי', cur, setCur)}
+          <div className="field-label">{reset ? 'קוד חדש (4 עד 8 ספרות)' : has ? 'שינוי קוד' : 'הגדרת קוד (4 עד 8 ספרות)'}</div>
+          {needOld && field('code-current', 'הקוד הנוכחי', cur, setCur)}
+          {needOld && (
+            <button type="button" className="code-forgot" onClick={forgot} disabled={busy}>
+              {busy ? 'מאמת...' : 'שכחתי את הקוד'}
+            </button>
+          )}
           {field('code-new', has ? 'קוד חדש' : 'קוד', code, setCode)}
           {field('code-again', 'שוב, לאימות', again, setAgain)}
-          <button type="submit" className="btn-primary" disabled={!code || !again || (has && !cur)}>
-            {has ? 'החלף קוד' : 'שמור קוד'}
+          <button type="submit" className="btn-primary" disabled={!code || !again || (needOld && !cur)}>
+            {reset ? 'שמור קוד חדש' : has ? 'החלף קוד' : 'שמור קוד'}
           </button>
           {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
         </form>
