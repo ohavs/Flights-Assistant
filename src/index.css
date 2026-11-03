@@ -4229,7 +4229,8 @@ button.dp-leg:active { background: var(--ink-4); }
 .expense-balance.up { background: color-mix(in srgb, var(--c-green) 9%, var(--card-bg-solid)); }
 .expense-balance.down { background: color-mix(in srgb, var(--c-red) 7%, var(--card-bg-solid)); }
 .expense-balance-label, .expense-card-title { font-size: 15px; font-weight: 800; color: var(--text); }
-.expense-balance-value { font-size: 24px; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
+.expense-balance-value { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 24px; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
+.expense-balance-value > svg { flex-shrink: 0; }
 .expense-balance.up .expense-balance-value { color: var(--c-green); }
 .expense-balance.down .expense-balance-value { color: var(--c-red); }
 .expense-balance-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
@@ -4238,8 +4239,9 @@ button.dp-leg:active { background: var(--ink-4); }
 .expense-row.transfer.mine .expense-row-name { flex: 1; min-width: 0; }
 .expense-row-value.up { color: var(--c-green); }
 .expense-row-value.down { color: var(--c-red); }
-/* Settling up by pair (8.77.0): the amount, and under it "שולם". One all
-   paid back is quiet, with its undo. */
+/* Settling up by pair (8.77.0): the amount, and under it the action,
+   "קיבלתי"/"העברתי" (8.77.1; "שולם" read as done). One all paid back is
+   quiet, with its undo. */
 .expense-row.settle { gap: 10px; }
 .expense-row.settle .expense-row-sub, .expense-row.transfer .expense-row-sub { overflow: hidden; text-overflow: ellipsis; }
 .expense-row.settle.done { background: transparent; box-shadow: inset 0 0 0 1px var(--ink-6); }

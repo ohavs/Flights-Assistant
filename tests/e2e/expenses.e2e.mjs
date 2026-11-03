@@ -237,7 +237,9 @@ await step('"שולם": Dana paid me; both ways close, and it undoes', async () 
   // Her part of my room, and mine of her insurance.
   await until(async () => (await paidOf('e3')).includes(dana) && (await paidOf('e8')).includes(me), 'not marked paid');
   if ((await paidOf('e8')).includes('name:רוני')) throw new Error('Roni was marked too');
-  await has(balance, 'מאוזן');
+  // The headline changes too, not only the row.
+  await has(balance, 'הכל שולם');
+  await has(balance, 'קיבלת ₪648');
   const done = balance.locator('.expense-row.settle.done');
   await has(done, 'שילם/ה לך ₪648');
   await shot('dark-7-paid');
