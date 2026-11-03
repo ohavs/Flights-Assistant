@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronDown, ArrowLeft, Check, Users, User, Tags, Coins } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ArrowLeft, Check, Users, User, Tags, Coins, RotateCcw } from 'lucide-react';
 import Sheet, { Segmented } from '../ui/Sheet';
 import { CategoryDisc } from '../ui/kit';
 import { SETTLED } from '../lib/expenseSummary';
@@ -10,7 +10,8 @@ import { expenseCategoryStyle, getCurrencyInfo, shekels, money } from './expense
    category, and what the looker paid and gets back; and
    ExpenseSummarySheet, which the card opens: for the looker alone
    ("שלי") or the whole trip ("כולם"), a total, the settling up and the
-   split, nothing more (the owner's ask, 8.76.0). */
+   split, nothing more (the owner's ask, 8.76.0). Settling up is by pair,
+   and each pair's "שולם" marks what is open between them paid (8.77.0). */
 
 export function MemberAvatar({ profile, size = 22 }) {
   if (profile?.photoURL) {
@@ -189,50 +190,119 @@ function Headline({ label, value, sub }) {
   );
 }
 
-// Settling up, from the splits only. Mine (`balance` set): where I stand,
-// and who pays me or whom I pay. Everyone's: each transfer.
-function Settle({ balance, transfers, splits, currentUid, getPayerProfile }) {
-  const mine = balance !== undefined;
-  const name = (uid) => getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף';
-  const even = mine ? Math.abs(balance) < SETTLED : !transfers.length;
-  const tone = !mine || even ? '' : balance > 0 ? 'up' : 'down';
-  const status = even ? (mine ? 'מאוזן' : 'כולם מאוזנים')
-    : mine ? `${balance > 0 ? 'מגיע לך' : 'עליך להעביר'} ${shekels(balance)}` : null;
+// "שולם": marks what is open between two people paid back. Shown only
+// when every one of those expenses may be changed here (canMark).
+function PaidButton({ items, label, onMark, canMark }) {
+  if (!onMark || !canMark?.(items)) return null;
   return (
-    <div className={`expense-balance${tone ? ' ' + tone : ''}`}>
-      <span className="expense-balance-label">{mine ? 'ההתחשבנות שלך' : 'מי מעביר למי'}</span>
-      {status && <span className="expense-balance-value">{status}</span>}
-      {transfers.map(t => {
-        if (!mine) {
-          return (
-            <span key={`${t.from}-${t.to}`} className="expense-row transfer">
-              <span className="expense-row-main">
-                <PersonName uid={t.from} profile={getPayerProfile(t.from)} currentUid={currentUid} />
-                <span className="expense-transfer-to">
-                  <ArrowLeft size={14} aria-hidden="true" />
-                  אל
-                  <PersonName uid={t.to} profile={getPayerProfile(t.to)} currentUid={currentUid} size={18} />
-                </span>
-              </span>
-              <span className="expense-row-value">{shekels(t.amount)}</span>
+    <button type="button" className="settle-btn" onClick={() => onMark(items, true)} aria-label={label} title={label}>
+      <Check size={14} strokeWidth={3} aria-hidden="true" />
+      שולם
+    </button>
+  );
+}
+
+// Settling up, from the splits only, by pair. Everyone's: who pays whom,
+// each with "שולם"; under them what was paid back already.
+function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, canMark }) {
+  const name = (uid) => (uid === currentUid ? 'אני' : getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף');
+  const even = !transfers.length;
+  return (
+    <div className="expense-balance">
+      <span className="expense-balance-label">מי מעביר למי</span>
+      {even && <span className="expense-balance-value">כולם מאוזנים</span>}
+      {transfers.map(t => (
+        <span key={`${t.from}-${t.to}`} className="expense-row transfer">
+          <span className="expense-row-main">
+            <PersonName uid={t.from} profile={getPayerProfile(t.from)} currentUid={currentUid} />
+            <span className="expense-transfer-to">
+              <ArrowLeft size={14} aria-hidden="true" />
+              אל
+              <PersonName uid={t.to} profile={getPayerProfile(t.to)} currentUid={currentUid} size={18} />
             </span>
-          );
-        }
-        const toMe = t.to === currentUid;
-        const other = toMe ? t.from : t.to;
-        return (
-          <span key={`${t.from}-${t.to}`} className="expense-row transfer mine">
-            <MemberAvatar profile={getPayerProfile(other)} size={26} />
-            <span className="expense-row-name">{toMe ? `${name(other)} מעביר/ה לך` : `להעביר ל${name(other)}`}</span>
-            <span className={`expense-row-value ${toMe ? 'up' : 'down'}`}>{shekels(t.amount)}</span>
           </span>
-        );
-      })}
+          <span className="expense-row-end">
+            <span className="expense-row-value">{shekels(t.amount)}</span>
+            <PaidButton items={t.open} label={`${name(t.from)} העביר/ה ל${name(t.to)} ${shekels(t.amount)}`} onMark={onMark} canMark={canMark} />
+          </span>
+        </span>
+      ))}
+      {back >= SETTLED && (
+        <span className="expense-balance-note done">
+          <Check size={14} aria-hidden="true" />
+          {`כבר הועברו ${shekels(back)}`}
+        </span>
+      )}
       {even && (
         <span className="expense-balance-note">
           <Check size={14} aria-hidden="true" />
-          {splits
-            ? (mine ? 'אין לך מה להעביר או לקבל' : 'אין מה להעביר')
+          {splits ? 'אין מה להעביר' : 'עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Mine: where I stand, then each one I split with — what is open between
+// us, netted both ways, and "שולם" to close it. Those all paid back stay
+// under it, a tap to undo.
+function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark }) {
+  const name = (uid) => getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף';
+  const even = Math.abs(balance) < SETTLED;
+  const tone = even ? '' : balance > 0 ? 'up' : 'down';
+  const open = withMe.filter(p => p.open.length);
+  const closed = withMe.filter(p => !p.open.length && p.closed.length);
+  return (
+    <div className={`expense-balance${tone ? ' ' + tone : ''}`}>
+      <span className="expense-balance-label">ההתחשבנות שלך</span>
+      <span className="expense-balance-value">{even ? 'מאוזן' : `${balance > 0 ? 'מגיע לך' : 'עליך להעביר'} ${shekels(balance)}`}</span>
+      {open.map(p => {
+        const toMe = p.balance >= SETTLED;
+        const fromMe = p.balance <= -SETTLED;
+        const sub = [
+          toMe ? 'מעביר/ה לך' : fromMe ? 'עליך להעביר' : 'מתקזז',
+          plural(p.open.length, 'הוצאה אחת', 'הוצאות'),
+        ];
+        if (Math.abs(p.back) >= SETTLED) sub.push(`${shekels(p.back)} כבר שולם`);
+        return (
+          <span key={p.uid} className="expense-row settle">
+            <MemberAvatar profile={getPayerProfile(p.uid)} size={32} />
+            <span className="expense-row-main">
+              <span className={`expense-row-name${getPayerProfile(p.uid)?.former ? ' person-former' : ''}`}>{name(p.uid)}</span>
+              <span className="expense-row-sub">{sub.join(' · ')}</span>
+            </span>
+            <span className="expense-row-end">
+              <span className={`expense-row-value${toMe ? ' up' : fromMe ? ' down' : ''}`}>{shekels(p.balance)}</span>
+              <PaidButton items={p.open}
+                label={toMe ? `${name(p.uid)} שילם/ה לך ${shekels(p.balance)}` : fromMe ? `שילמתי ל${name(p.uid)} ${shekels(p.balance)}` : `סגירת החשבון עם ${name(p.uid)}`}
+                onMark={onMark} canMark={canMark} />
+            </span>
+          </span>
+        );
+      })}
+      {closed.map(p => (
+        <span key={p.uid} className="expense-row settle done">
+          <MemberAvatar profile={getPayerProfile(p.uid)} size={32} />
+          <span className="expense-row-main">
+            <span className="expense-row-name">{name(p.uid)}</span>
+            <span className="expense-row-sub paid">
+              <Check size={12} strokeWidth={3} aria-hidden="true" />
+              {p.back >= 0 ? `שילם/ה לך ${shekels(p.back)}` : `שילמת ${shekels(p.back)}`}
+            </span>
+          </span>
+          {onMark && canMark?.(p.closed) && (
+            <button type="button" className="settle-undo" onClick={() => onMark(p.closed, false)}
+              aria-label={`ביטול הסימון ששולם, ${name(p.uid)}`} title="ביטול הסימון">
+              <RotateCcw size={14} aria-hidden="true" />
+              ביטול
+            </button>
+          )}
+        </span>
+      ))}
+      {even && !open.length && (
+        <span className="expense-balance-note">
+          <Check size={14} aria-hidden="true" />
+          {splits ? (closed.length ? 'הכל שולם' : 'אין לך מה להעביר או לקבל')
             : 'עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים'}
         </span>
       )}
@@ -294,11 +364,12 @@ function useBy() {
 // On a shared trip it opens on "שלי": what I paid, my settling up, and
 // where my money went. "כולם": the trip's total, who pays whom, and the
 // split by category, by who paid or by currency (one button switches).
-export default function ExpenseSummarySheet({ summary: s, paid, currentUid, getPayerProfile, onClose }) {
+// onMark(items, paid): marks parts paid back (or not); canMark(items):
+// whether this phone may.
+export default function ExpenseSummarySheet({ summary: s, paid, currentUid, getPayerProfile, onClose, onMark, canMark }) {
   const canScope = s.ils != null && s.people >= 2 && !!paid;
   const [scope, setScope] = useState('me');
   const mineOnly = canScope && scope === 'me';
-  const myTransfers = s.transfers.filter(t => t.from === currentUid || t.to === currentUid);
   const [by, setBy] = useBy();
 
   const options = BY_OPTIONS.filter(o => o.key === 'category'
@@ -344,14 +415,15 @@ export default function ExpenseSummarySheet({ summary: s, paid, currentUid, getP
         {mineOnly ? (<>
           <Headline label="שילמתי" value={shekels(paid.ils || 0)}
             sub={paid.count ? plural(paid.count, 'הוצאה אחת', 'הוצאות') : 'עוד לא שילמת על הוצאה בטיול הזה'} />
-          <Settle balance={s.mine || 0} transfers={myTransfers} splits={s.splits}
-            currentUid={currentUid} getPayerProfile={getPayerProfile} />
+          <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits}
+            getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} />
           {paid.count > 0 && <Breakdown title="לפי קטגוריה" rows={categoryRows(paid.byCategory)} />}
         </>) : s.ils != null ? (<>
           <Headline label='סה"כ הטיול' value={shekels(s.ils)}
             sub={[plural(s.count, 'הוצאה אחת', 'הוצאות'), s.people >= 2 ? `${s.people} משתתפים` : ''].filter(Boolean).join(' · ')} />
           {s.people >= 2 && (
-            <Settle transfers={s.transfers} splits={s.splits} currentUid={currentUid} getPayerProfile={getPayerProfile} />
+            <Settle transfers={s.transfers} splits={s.splits} back={s.paidBack} currentUid={currentUid}
+              getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} />
           )}
           <Breakdown title="פילוג" by={shown} options={options} onBy={setBy} rows={rows} />
         </>) : (

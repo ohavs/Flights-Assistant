@@ -1,20 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
-import { collection, doc, setDoc, updateDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Search, X, Check,
   Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2, ArrowLeftRight,
 } from 'lucide-react';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
-import { expenseSummary, paidExpenses, splitGroup, GUEST } from '../lib/expenseSummary';
+import { expenseSummary, paidExpenses, splitGroup, splitParts, allocateSplit, partAmount, paidBack, GUEST } from '../lib/expenseSummary';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
 import { tripCurrencies, destinationCurrency } from '../lib/destinationCurrency';
 import { useConfirm } from '../ConfirmContext';
-import Sheet, { Segmented } from '../ui/Sheet';
+import Sheet from '../ui/Sheet';
 import { CustomDropdown } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { useTrip } from '../TripContext';
@@ -82,6 +82,10 @@ export default function ExpensesTab({ tripId }) {
   // owes anyone for it.
   const [splitWith, setSplitWith] = useState([]);
   const [splitSelf, setSplitSelf] = useState(true);
+  // 8.77.0: a part someone set (as typed, { id: '150' }); the rest share
+  // what is left evenly. And who already paid the payer back.
+  const [splitAmounts, setSplitAmounts] = useState({});
+  const [splitPaid, setSplitPaid] = useState([]);
   const [showNewName, setShowNewName] = useState(false);
   const [newNameDraft, setNewNameDraft] = useState('');
   const [sessionNames, setSessionNames] = useState([]);
@@ -175,7 +179,7 @@ export default function ExpensesTab({ tripId }) {
   // What the form held when it opened: closing it unchanged is free.
   const [formBaseline, setFormBaseline] = useState(null);
   const [openedWith, setOpenedWith] = useState(null);   // the form's values when it opened
-  const expenseKey = (f) => JSON.stringify([f.amount, f.currency, f.category, f.description, f.linkedPlanId, f.customPlace, f.paidBy, f.splitWith, f.splitSelf]);
+  const expenseKey = (f) => JSON.stringify([f.amount, f.currency, f.category, f.description, f.linkedPlanId, f.customPlace, f.paidBy, f.splitWith, f.splitSelf, f.splitAmounts, f.splitPaid]);
 
   const openForm = (expense = null) => {
     const base = [...new Set([...persistentQuickCurrencies])];
@@ -189,6 +193,9 @@ export default function ExpensesTab({ tripId }) {
       paidBy: expense.paidBy || currentUid || '',
       splitWith: expense.splitWith || [],
       splitSelf: expense.splitSelf !== false,
+      splitAmounts: Object.fromEntries(Object.entries(expense.splitAmounts || {})
+        .filter(([, v]) => partAmount(v) !== null).map(([k, v]) => [k, String(v)])),
+      splitPaid: Array.isArray(expense.splitPaid) ? expense.splitPaid : [],
     } : {
       amount: '',
       currency: startCurrency,
@@ -199,6 +206,8 @@ export default function ExpensesTab({ tripId }) {
       paidBy: currentUid || '',
       splitWith: [],
       splitSelf: true,
+      splitAmounts: {},
+      splitPaid: [],
     };
     if (expense && !base.includes(expense.currency)) base.push(expense.currency);
     setEditingId(expense ? expense.id : null);
@@ -211,6 +220,8 @@ export default function ExpensesTab({ tripId }) {
     setPaidBy(f.paidBy);
     setSplitWith(f.splitWith);
     setSplitSelf(f.splitSelf);
+    setSplitAmounts(f.splitAmounts);
+    setSplitPaid(f.splitPaid);
     setShowNewName(false);
     setNewNameDraft('');
     setFormBaseline(expenseKey(f));
@@ -224,11 +235,18 @@ export default function ExpensesTab({ tripId }) {
     setShowForm(true);
   };
 
-  const formDirty = () => expenseKey({ amount, currency, category, description, linkedPlanId, customPlace, paidBy, splitWith, splitSelf }) !== formBaseline;
+  const formDirty = () => expenseKey({ amount, currency, category, description, linkedPlanId, customPlace, paidBy, splitWith, splitSelf, splitAmounts, splitPaid }) !== formBaseline;
+
+  // The split as the form holds it: who is in it, and each one's part.
+  const formPayer = paidBy || currentUid;
+  const formGroup = splitGroup({ splitWith, splitSelf }, formPayer);
+  const formAlloc = allocateSplit(parseFloat(amount) > 0 ? parseFloat(amount) : 0, formGroup, splitAmounts);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!amount || !tripId) return;
+    // Parts that do not add up to the amount: back to the split to fix.
+    if (formGroup.length && formAlloc.gap !== 0) { setSplitOpen(true); return; }
     const id = editingId || 'exp-' + Date.now();
     const existing = editingId ? expenses.find(x => x.id === editingId) : null;
     const parsedAmount = parseFloat(amount);
@@ -249,33 +267,78 @@ export default function ExpensesTab({ tripId }) {
     setShowForm(false);
     setEditingId(null);
 
-    const fieldsOf = (f) => ({
-      amount: parseFloat(f.amount),
-      currency: f.currency,
-      category: f.category || 'כללי',
-      description: f.description.trim(),
-      linkedPlanId: f.linkedPlanId || null,
-      customPlace: f.customPlace.trim() || null,
-      paidBy: f.paidBy || currentUid || null,
-      splitWith: (f.splitWith || []).filter(id => id !== (f.paidBy || currentUid)),
-      splitSelf: f.splitSelf !== false,
-    });
-    const fields = fieldsOf({ amount, currency, category, description, linkedPlanId, customPlace, paidBy, splitWith, splitSelf });
+    // Who is in the split, as saved; a part only of someone in it, and
+    // only one set (the rest share what is left, src/lib/expenseSummary.js).
+    const groupOf = (f) => splitGroup({ splitWith: f.splitWith, splitSelf: f.splitSelf }, f.paidBy || currentUid);
+    const fieldsOf = (f) => {
+      const group = groupOf(f);
+      const parts = {};
+      for (const pid of group) {
+        const n = partAmount(f.splitAmounts?.[pid]);
+        if (n !== null) parts[pid] = Math.round(n * 100) / 100;
+      }
+      return {
+        amount: parseFloat(f.amount),
+        currency: f.currency,
+        category: f.category || 'כללי',
+        description: f.description.trim(),
+        linkedPlanId: f.linkedPlanId || null,
+        customPlace: f.customPlace.trim() || null,
+        paidBy: f.paidBy || currentUid || null,
+        splitWith: (f.splitWith || []).filter(pid => pid !== (f.paidBy || currentUid)),
+        splitSelf: f.splitSelf !== false,
+        splitAmounts: Object.keys(parts).length ? parts : null,
+      };
+    };
+    const now = { amount, currency, category, description, linkedPlanId, customPlace, paidBy, splitWith, splitSelf, splitAmounts, splitPaid };
+    const fields = fieldsOf(now);
+    // Paid back: only those in the split now, never the payer.
+    const paidOf = (f) => { const g = groupOf(f); return (f.splitPaid || []).filter(pid => g.includes(pid) && pid !== (f.paidBy || currentUid)); };
+    const paid = paidOf(now);
     const ref = doc(db, 'trips', tripId, 'expenses', id);
     // A new expense; an edit of one a partner deleted meanwhile stays deleted
     // (its update fails), rather than coming back.
     if (!editingId) {
-      setDoc(ref, { ...fields, ilsSnapshot, createdAt: new Date().toISOString(), createdBy: currentUid || null })
-        .catch(err => console.error('Expense save error:', err));
+      const { splitAmounts: parts, ...rest } = fields;
+      setDoc(ref, {
+        ...rest, ...(parts ? { splitAmounts: parts } : {}), ...(paid.length ? { splitPaid: paid } : {}),
+        ilsSnapshot, createdAt: new Date().toISOString(), createdBy: currentUid || null,
+      }).catch(err => console.error('Expense save error:', err));
       return;
     }
-    // An edit writes only what it changed (src/lib/changes.js).
+    // An edit writes only what it changed (src/lib/changes.js). Paid back
+    // is a set: only who was added or taken off, so a mark made meanwhile
+    // (from the summary, another phone) stays.
     const updates = changedFields(openedWith ? fieldsOf(openedWith) : {}, fields);
     if ('amount' in updates || 'currency' in updates) updates.ilsSnapshot = ilsSnapshot;
+    const before = openedWith?.splitPaid || [];
+    const added = paid.filter(pid => !before.includes(pid));
+    const removed = before.filter(pid => !paid.includes(pid));
+    if (added.length) updates.splitPaid = arrayUnion(...added);
     if (Object.keys(updates).length) {
       updateDoc(ref, updates).catch(err => console.error('Expense save error:', err));
     }
+    if (removed.length) {
+      updateDoc(ref, { splitPaid: arrayRemove(...removed) }).catch(err => console.error('Expense save error:', err));
+    }
   };
+
+  // "שולם" from the summary: the parts between me and someone, paid back
+  // (or not, to undo). One write per expense, each a set change, so a
+  // partner's marks stay; offline they wait for the network.
+  const markPaid = useCallback((items, paid) => {
+    if (!tripId) return;
+    for (const { expenseId, id } of items) {
+      updateDoc(doc(db, 'trips', tripId, 'expenses', expenseId), { splitPaid: paid ? arrayUnion(id) : arrayRemove(id) })
+        .catch(err => console.error('Mark paid failed:', err));
+    }
+  }, [tripId]);
+  // Only when every one of those expenses is mine to change ("הוספה"
+  // changes only the ones they added).
+  const canMark = useCallback((items) => items.length > 0 && items.every(({ expenseId }) => {
+    const x = expenses.find(e => e.id === expenseId);
+    return x && mayChange(x);
+  }), [expenses, mayChange]);
 
   const handleDelete = async (id) => {
     if (!tripId) return;
@@ -325,7 +388,30 @@ export default function ExpensesTab({ tripId }) {
     ...sessionNames,
   ])], [expenses, sessionNames]);
 
-  const toggleSplit = (id) => setSplitWith(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  // Taking someone off the split takes their part and their mark with them.
+  const dropPart = (id) => setSplitAmounts(prev => {
+    if (!(id in prev)) return prev;
+    const next = { ...prev };
+    delete next[id];
+    return next;
+  });
+  const toggleSplit = (id) => {
+    if (splitWith.includes(id)) {
+      setSplitWith(prev => prev.filter(x => x !== id));
+      dropPart(id);
+      setSplitPaid(prev => prev.filter(x => x !== id));
+    } else {
+      setSplitWith(prev => [...prev, id]);
+    }
+  };
+  // A part as typed: digits and one point (a comma is a point); empty sets
+  // it back to an even share of what is left.
+  const setPart = (id, raw) => {
+    const v = String(raw).replace(/,/g, '.').replace(/[^\d.]/g, '').replace(/^(\d*\.\d*).*$/, '$1');
+    if (v === '') { dropPart(id); return; }
+    setSplitAmounts(prev => ({ ...prev, [id]: v }));
+  };
+  const togglePaid = (id) => setSplitPaid(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const addGuest = () => {
     const name = newNameDraft.trim();
     if (!name) return;
@@ -368,6 +454,8 @@ export default function ExpensesTab({ tripId }) {
           currentUid={currentUid}
           getPayerProfile={personProfile}
           onClose={() => setShowSummary(false)}
+          onMark={markPaid}
+          canMark={canMark}
         />
       )}
 
@@ -420,7 +508,12 @@ export default function ExpensesTab({ tripId }) {
                         : null;
                       const payer = expense.paidBy ? getPayerProfile(expense.paidBy) : null;
                       const payerName = payer?.displayName || payer?.email || '';
-                      const group = splitGroup(expense, expense.paidBy || (payerUids.length === 1 ? payerUids[0] : null));
+                      const rowPayer = expense.paidBy || (payerUids.length === 1 ? payerUids[0] : null);
+                      const parts = splitParts(expense, rowPayer);
+                      const owers = parts.filter(p => p.id !== rowPayer);
+                      const backCount = owers.filter(p => paidBack(expense, p.id)).length;
+                      const allBack = owers.length > 0 && backCount === owers.length;
+                      const uneven = !!expense.splitAmounts && Object.keys(expense.splitAmounts).length > 0;
                       return (
                         <ListCard
                           key={expense.id}
@@ -438,10 +531,13 @@ export default function ExpensesTab({ tripId }) {
                                 <Pill size="sm" icon={<MemberAvatar profile={payer} size={14} />}>{payerName || 'שילם'}</Pill>
                               </span>
                             ),
-                            group.length > 0 && (
-                              <Pill key="split" size="sm" tone="sky" icon={<Users size={11} />}
-                                title={group.map(id => personProfile(id)?.displayName || '').join(', ')}>
-                                {`מתחלק ל־${group.length}`}
+                            parts.length > 0 && (
+                              <Pill key="split" size="sm" tone={allBack ? 'mint' : 'sky'}
+                                icon={allBack ? <Check size={11} strokeWidth={3} /> : <Users size={11} />}
+                                title={parts.map(p => `${personProfile(p.id)?.displayName || ''} ${money(p.amount, expense.currency)}${p.id !== rowPayer && paidBack(expense, p.id) ? ' ✓' : ''}`).join(' · ')}>
+                                {allBack
+                                  ? (owers.length === 1 ? 'שולם' : 'כולם שילמו')
+                                  : `${uneven ? 'לא שווה' : 'מתחלק'} ל־${parts.length}${backCount ? ` · ${backCount} שילמו` : ''}`}
                               </Pill>
                             ),
                           ]}
@@ -572,7 +668,7 @@ export default function ExpensesTab({ tripId }) {
                   <CustomDropdown
                     label="שילם/ה"
                     value={paidBy || currentUid}
-                    onChange={(uid) => { setPaidBy(uid); setSplitWith(prev => prev.filter(id => id !== uid)); }}
+                    onChange={(uid) => { setPaidBy(uid); setSplitWith(prev => prev.filter(id => id !== uid)); setSplitPaid(prev => prev.filter(id => id !== uid)); }}
                     options={payerUids.map(uid => {
                       const prof = getPayerProfile(uid);
                       return {
@@ -588,26 +684,31 @@ export default function ExpensesTab({ tripId }) {
               {/* Split: one line; the choice opens over the form. Who owes
                   whom comes only from here (the owner's ask). */}
               {(() => {
-                const payer = paidBy || currentUid;
+                const payer = formPayer;
                 const chosen = splitWith.filter(id => id !== payer);
-                const n = chosen.length + (splitSelf ? 1 : 0);
-                const each = chosen.length && parseFloat(amount) > 0 ? parseFloat(amount) / n : null;
+                const n = formGroup.length;
+                const total = parseFloat(amount) > 0 ? parseFloat(amount) : 0;
+                const each = n && total ? total / n : null;
                 const names = chosen.map(id => personProfile(id)?.displayName || personProfile(id)?.email || '').filter(Boolean);
                 const payerName = payer === currentUid ? 'אני' : (personProfile(payer)?.displayName || 'המשלם');
+                const back = splitPaid.filter(id => formGroup.includes(id) && id !== payer).length;
+                const off = n > 0 && formAlloc.gap !== 0;
                 return (
-                  <button type="button" className="exp-split" onClick={() => setSplitOpen(true)} aria-haspopup="dialog">
+                  <button type="button" className={`exp-split${off ? ' off' : ''}`} onClick={() => setSplitOpen(true)} aria-haspopup="dialog">
                     <span className="exp-split-icon" aria-hidden="true"><Users size={17} /></span>
                     <span className="exp-split-text">
-                      <span className="exp-split-label">חלוקה</span>
+                      <span className="exp-split-label">חלוקה{n > 0 && back > 0 ? ` · ${back === n - (splitSelf ? 1 : 0) ? 'כולם שילמו' : `${back} שילמו`}` : ''}</span>
                       <span className="exp-split-value">
                         {chosen.length
                           ? `${names.join(', ')}${splitSelf ? ` + ${payerName}` : ''}`
                           : 'בלי חלוקה, אף אחד לא חייב'}
                       </span>
                     </span>
-                    {chosen.length > 0 && (
-                      <span className="exp-split-each">
-                        {each != null ? `${money(each, currency)} כל אחד` : `${n} אנשים`}
+                    {n > 0 && (
+                      <span className={`exp-split-each${off ? ' off' : ''}`}>
+                        {off ? 'לא מסתכם'
+                          : formAlloc.custom ? 'לפי סכומים'
+                          : each != null ? `${money(each, currency)} כל אחד` : `${n} אנשים`}
                       </span>
                     )}
                     <ChevronLeft size={16} className="exp-split-chev" aria-hidden="true" />
@@ -684,35 +785,77 @@ export default function ExpensesTab({ tripId }) {
         </Sheet>
       )}
 
-      {/* The split: who shares it with the payer. */}
+      {/* The split: who shares it with the payer, and each one's part —
+          even, unless a part is typed; then the rest share what is left
+          (8.77.0, the owner's ask). And who already paid the payer back. */}
       {showForm && splitOpen && (() => {
-        const payer = paidBy || currentUid;
-        const people = [...payerUids.filter(uid => uid !== payer), ...guestNames];
+        const payer = formPayer;
+        const others = [...payerUids.filter(uid => uid !== payer), ...guestNames];
         const chosen = splitWith.filter(id => id !== payer);
-        const n = chosen.length + (splitSelf ? 1 : 0);
-        const each = chosen.length && parseFloat(amount) > 0 ? parseFloat(amount) / n : null;
-        const payerName = payer === currentUid ? 'אותי' : (personProfile(payer)?.displayName || 'המשלם');
+        const group = formGroup;
+        const total = parseFloat(amount) > 0 ? parseFloat(amount) : 0;
+        const alloc = formAlloc;
+        const active = group.length > 0;
+        const sym = getCurrencyInfo(currency).symbol;
+        const nameOf = (id) => (id === currentUid ? 'אני' : (personProfile(id)?.displayName || personProfile(id)?.email || ''));
+        const show = (n) => String(Math.round(n * 100) / 100);
+        const allocated = group.reduce((t, id) => t + alloc.amounts[id], 0);
+        const row = (id, isPayer) => {
+          const prof = personProfile(id);
+          const on = isPayer ? splitSelf : chosen.includes(id);
+          const inIt = active && group.includes(id);
+          const set = id in splitAmounts;
+          const paid = !isPayer && splitPaid.includes(id);
+          const name = nameOf(id);
+          const hint = isPayer ? (id === currentUid ? 'שילמתי' : 'שילם/ה') : prof?.guest ? 'לא בטיול' : null;
+          return (
+            <div key={id} className={`split-row${on ? ' on' : ''}${inIt && total > 0 ? ' in' : ''}${inIt && !isPayer ? ' owes' : ''}`}>
+              <button type="button" role="checkbox" aria-checked={on} className="split-row-pick"
+                onClick={() => {
+                  if (!isPayer) { toggleSplit(id); return; }
+                  if (splitSelf) dropPart(id);
+                  setSplitSelf(!splitSelf);
+                }}>
+                <span className={`place-pick-tick${on ? ' on' : ''}`} aria-hidden="true">{on && <Check size={14} strokeWidth={3} />}</span>
+                <MemberAvatar profile={prof} size={26} />
+                <span className="list-row-label">
+                  {name}
+                  {hint && <span className="list-row-hint">{hint}</span>}
+                </span>
+              </button>
+              {inIt && !isPayer && (
+                <button type="button" className={`split-paid${paid ? ' on' : ''}`} aria-pressed={paid}
+                  aria-label={`${name} שילם/ה`} title={paid ? 'שילם/ה. לחיצה מבטלת' : 'סימון ששילם/ה'}
+                  onClick={() => togglePaid(id)}>
+                  <Check size={12} strokeWidth={3} aria-hidden="true" />
+                  שילם
+                </button>
+              )}
+              {inIt && total > 0 && (
+                <label className={`split-amt${set ? ' set' : ''}`} dir="ltr">
+                  <span className="split-amt-cur" aria-hidden="true">{sym}</span>
+                  <input type="text" inputMode="decimal" enterKeyHint="done"
+                    aria-label={`החלק של ${name}`}
+                    value={set ? splitAmounts[id] : show(alloc.amounts[id])}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPart(id, e.target.value)} />
+                </label>
+              )}
+            </div>
+          );
+        };
         return (
           <Sheet title="חלוקה" onClose={() => setSplitOpen(false)}>
             {({ close }) => (
               <div className="exp-split-sheet">
-                <p className="dp-sheet-note" style={{ marginTop: 0 }}>עם מי מתחלקים בהוצאה. בלי חלוקה, אף אחד לא חייב עליה.</p>
-                <div className="list-group" role="group" aria-label="עם מי מתחלקים">
-                  {people.map(id => {
-                    const prof = personProfile(id);
-                    const on = chosen.includes(id);
-                    return (
-                      <button key={id} type="button" role="checkbox" aria-checked={on}
-                        className={`list-row place-pick-row${on ? ' on' : ''}`} onClick={() => toggleSplit(id)}>
-                        <MemberAvatar profile={prof} size={26} />
-                        <span className="list-row-label">
-                          {prof?.displayName || prof?.email || ''}
-                          {prof?.guest && <span className="list-row-hint">לא בטיול</span>}
-                        </span>
-                        <span className={`place-pick-tick${on ? ' on' : ''}`} aria-hidden="true">{on && <Check size={14} strokeWidth={3} />}</span>
-                      </button>
-                    );
-                  })}
+                <p className="dp-sheet-note" style={{ marginTop: 0 }}>
+                  {active && total > 0
+                    ? 'הסכום מתחלק שווה. אפשר לשנות את החלק של כל אחד, והשאר יתחלקו ביתרה.'
+                    : 'עם מי מתחלקים בהוצאה. בלי חלוקה, אף אחד לא חייב עליה.'}
+                </p>
+                <div className="list-group split-rows" role="group" aria-label="עם מי מתחלקים">
+                  {payer && row(payer, true)}
+                  {others.map(id => row(id, false))}
                   {showNewName ? (
                     <div className="list-row exp-new-name">
                       <input
@@ -739,17 +882,32 @@ export default function ExpensesTab({ tripId }) {
                     </button>
                   )}
                 </div>
-                {chosen.length > 0 && (
-                  <Segmented label="מי בחלוקה" value={splitSelf ? 'all' : 'them'} onChange={(k) => setSplitSelf(k === 'all')}
-                    options={[{ key: 'all', label: `כולל ${payerName}` }, { key: 'them', label: 'רק הם' }]} />
+                {active && total > 0 && (
+                  <div className={`split-meter${alloc.gap !== 0 ? ' off' : ''}`} role="status">
+                    <span className="split-meter-track" aria-hidden="true">
+                      <span style={{ width: `${Math.min(allocated / total, 1) * 100}%` }} />
+                    </span>
+                    <span className="split-meter-line">
+                      <span className="split-meter-text">
+                        {alloc.gap > 0 ? <>נשארו <b>{money(alloc.gap, currency)}</b> לחלק</>
+                          : alloc.gap < 0 ? <>חריגה של <b>{money(-alloc.gap, currency)}</b></>
+                          : <>{money(allocated, currency)} מתוך {money(total, currency)}</>}
+                      </span>
+                      {alloc.custom && (
+                        <button type="button" className="split-even" onClick={() => setSplitAmounts({})}>
+                          חלוקה שווה
+                        </button>
+                      )}
+                    </span>
+                  </div>
                 )}
                 <p className="exp-split-sum">
                   {chosen.length
-                    ? <>{n === 1 ? 'אדם אחד' : `${n} אנשים`}{each != null && <> · <b>{money(each, currency)}</b> כל אחד</>}</>
+                    ? <>{group.length === 1 ? 'אדם אחד' : `${group.length} אנשים`}{total > 0 && !alloc.custom && <> · <b>{money(total / group.length, currency)}</b> כל אחד</>}{alloc.custom && ' · לפי סכומים'}</>
                     : 'בלי חלוקה'}
                 </p>
                 <div className="sheet-footer">
-                  <button type="button" className="btn-primary" onClick={close}>סיום</button>
+                  <button type="button" className="btn-primary" onClick={close} disabled={active && alloc.gap !== 0}>סיום</button>
                 </div>
               </div>
             )}

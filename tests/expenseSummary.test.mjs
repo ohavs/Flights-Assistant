@@ -3,7 +3,7 @@
 //   node --test tests/expenseSummary.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSummary, settle, splitGroup, shareOf, paidExpenses } from '../src/lib/expenseSummary.js';
+import { expenseSummary, splitGroup, shareOf, paidExpenses, allocateSplit, splitParts, paidBack } from '../src/lib/expenseSummary.js';
 
 const rates = { EUR: 1, ILS: 4, USD: 1 };   // €1 = ₪4 = $1
 const ex = (amount, currency, extra = {}) => ({ amount, currency, category: 'כללי', createdAt: '2026-11-13T10:00:00.000Z', ...extra });
@@ -62,7 +62,8 @@ test('"רק הם": the payer is out of the split; a guest by name owes too', () 
   assert.equal(s.mine, 70);
   assert.equal(s.myShare, 30);
   assert.equal(s.byPerson.find(p => p.uid === 'name:דני').share, 130);
-  assert.deepEqual(s.transfers, [{ from: 'name:דני', to: 'a', amount: 70 }, { from: 'name:דני', to: 'b', amount: 60 }]);
+  // By pair: Dani owes a 100, and b 30; a owes b 30.
+  assert.deepEqual(s.transfers.map(t => [t.from, t.to, t.amount]), [['name:דני', 'a', 100], ['a', 'b', 30], ['name:דני', 'b', 30]]);
 });
 
 test('splitGroup: the payer first, never twice; nothing without a payer or others', () => {
@@ -116,7 +117,8 @@ test('a small split still owes: under a shekel is not "settled"', () => {
   assert.equal(s.transfers.length, 1);
   assert.deepEqual([s.transfers[0].from, s.transfers[0].to], ['b', 'a']);
   // Float dust is still settled.
-  assert.deepEqual(settle([{ uid: 'a', balance: 1e-9 }, { uid: 'b', balance: -1e-9 }]), []);
+  const dust = expenseSummary([ex(0.00000001, 'ILS', { paidBy: 'a', splitWith: ['b'] })], { rates, members: ['a', 'b'] });
+  assert.deepEqual(dust.transfers, []);
 });
 
 test('no payer recorded: the one person on a trip of one, no one on a shared trip', () => {
@@ -129,11 +131,15 @@ test('no payer recorded: the one person on a trip of one, no one on a shared tri
   assert.deepEqual(shared.transfers, []);
 });
 
-test('settle: fewest transfers, nothing under half an agora', () => {
-  const t = settle([{ uid: 'a', balance: 150 }, { uid: 'b', balance: -100 }, { uid: 'c', balance: -50 }, { uid: 'd', balance: 0.3 }]);
-  assert.deepEqual(t, [{ from: 'b', to: 'a', amount: 100 }, { from: 'c', to: 'a', amount: 50 }]);
-  assert.deepEqual(settle([{ uid: 'a', balance: 0.004 }, { uid: 'b', balance: -0.004 }]), []);
-  assert.deepEqual(settle([{ uid: 'a', balance: 0.2 }, { uid: 'b', balance: -0.2 }]), [{ from: 'b', to: 'a', amount: 0.2 }]);
+test('who pays whom: by pair, netted both ways', () => {
+  const s = expenseSummary([
+    ex(300, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'] }),   // b and c owe a 100 each
+    ex(60, 'ILS', { paidBy: 'b', splitWith: ['a'] }),          // a owes b 30
+    ex(0.4, 'ILS', { paidBy: 'c', splitWith: ['d'], splitSelf: false }),   // d owes c 40 agorot
+  ], { rates, members: ['a', 'b', 'c', 'd'], currentUid: 'a' });
+  assert.deepEqual(s.transfers.map(t => [t.from, t.to, Math.round(t.amount * 100) / 100]),
+    [['c', 'a', 100], ['b', 'a', 70], ['d', 'c', 0.4]]);
+  assert.deepEqual(s.withMe.map(p => [p.uid, Math.round(p.balance)]), [['c', 100], ['b', 70]]);
 });
 
 test('a number createdAt and an empty list do not throw', () => {
@@ -141,4 +147,74 @@ test('a number createdAt and an empty list do not throw', () => {
   const none = expenseSummary([], { rates, members: ['a'] });
   assert.equal(none.count, 0);
   assert.equal(none.ils, null);
+});
+
+test('allocateSplit: a set part is theirs, the rest share what is left', () => {
+  // Nothing set: even.
+  assert.deepEqual(allocateSplit(300, ['a', 'b', 'c']), { amounts: { a: 100, b: 100, c: 100 }, gap: 0, custom: false, free: 3 });
+  // Dana 150: the other two share 150.
+  let r = allocateSplit(300, ['a', 'b', 'c'], { b: '150' });
+  assert.deepEqual(r.amounts, { a: 75, b: 150, c: 75 });
+  assert.equal(r.gap, 0);
+  assert.equal(r.custom, true);
+  // Everyone else set: the payer gets what is left ("he owes me this, she owes me that").
+  r = allocateSplit(300, ['a', 'b', 'c'], { b: 120, c: '80,5' });
+  assert.equal(r.amounts.a, 99.5);
+  // All set, short or over: the gap says by how much.
+  assert.equal(allocateSplit(300, ['a', 'b'], { a: 100, b: 150 }).gap, 50);
+  assert.equal(allocateSplit(300, ['a', 'b'], { a: 200, b: 150 }).gap, -50);
+  // Over with someone free: they get nothing, and it is over.
+  r = allocateSplit(100, ['a', 'b', 'c'], { b: 80, c: 40 });
+  assert.equal(r.amounts.a, 0);
+  assert.equal(r.gap, -20);
+  // Empty, bad or negative is not set; a part of someone not in it is ignored.
+  r = allocateSplit(90, ['a', 'b'], { a: '', b: 'x', z: 50 });
+  assert.deepEqual(r.amounts, { a: 45, b: 45 });
+  assert.equal(r.custom, false);
+  assert.equal(allocateSplit(90, ['a', 'b'], { a: -5 }).custom, false);
+});
+
+test('an uneven split: each one\'s part, who owes whom', () => {
+  // ₪300 a paid: b owes 200, c owes 40, a's own is 60.
+  const e = ex(300, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'], splitAmounts: { b: 200, c: 40 } });
+  assert.deepEqual(splitParts(e, 'a').map(p => [p.id, p.amount]), [['a', 60], ['b', 200], ['c', 40]]);
+  assert.equal(shareOf(e, 'b', 'a'), 200 / 300);
+  const s = expenseSummary([e], { rates, members: ['a', 'b', 'c'], currentUid: 'a' });
+  assert.deepEqual(s.byPerson.map(p => [p.uid, Math.round(p.share), Math.round(p.balance)]), [['b', 200, -200], ['a', 60, 240], ['c', 40, -40]]);
+  assert.equal(s.mine, 240);
+  // A part of someone no longer in the split is ignored; "רק הם" too.
+  const only = ex(100, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'], splitSelf: false, splitAmounts: { a: 50, b: 70 } });
+  assert.deepEqual(splitParts(only, 'a').map(p => [p.id, p.amount]), [['b', 70], ['c', 30]]);
+  // An amount an older app changed: the parts still add up to the whole.
+  const stale = ex(600, 'ILS', { paidBy: 'a', splitWith: ['b'], splitAmounts: { a: 100, b: 200 } });
+  assert.deepEqual(splitParts(stale, 'a').map(p => Math.round(p.frac * 600)), [200, 400]);
+});
+
+test('paid back: no longer owed, and withMe shows both ways', () => {
+  const list = [
+    { ...ex(300, 'ILS', { paidBy: 'a', splitWith: ['b', 'c'] }), id: 'e1', splitPaid: ['b'] },   // b paid me back
+    { ...ex(90, 'ILS', { paidBy: 'b', splitWith: ['a'] }), id: 'e2' },                            // I owe b 45
+    { ...ex(60, 'ILS', { paidBy: 'c', splitWith: ['b'] }), id: 'e3' },                            // not mine
+  ];
+  assert.equal(paidBack(list[0], 'b'), true);
+  assert.equal(paidBack(list[0], 'c'), false);
+  const s = expenseSummary(list, { rates, members: ['a', 'b', 'c'], currentUid: 'a' });
+  // c owes me 100; I owe b 45; b's 100 is paid.
+  assert.equal(Math.round(s.mine), 55);
+  assert.equal(Math.round(s.paidBack), 100);
+  const c = s.withMe.find(p => p.uid === 'c');
+  const b = s.withMe.find(p => p.uid === 'b');
+  assert.equal(Math.round(c.balance), 100);
+  assert.deepEqual(c.open, [{ expenseId: 'e1', id: 'c' }]);
+  assert.equal(Math.round(b.balance), -45);
+  assert.equal(Math.round(b.back), 100);
+  assert.deepEqual(b.open, [{ expenseId: 'e2', id: 'a' }]);
+  assert.deepEqual(b.closed, [{ expenseId: 'e1', id: 'b' }]);
+  assert.deepEqual(s.withMe.map(p => p.uid), ['c', 'b']);
+  // Everyone's: what is left leaves out what was paid. c → a 100,
+  // a → b 45, b → c 30; b's 100 to a is paid.
+  assert.deepEqual(s.transfers.map(t => [t.from, t.to, Math.round(t.amount)]), [['c', 'a', 100], ['a', 'b', 45], ['b', 'c', 30]]);
+  assert.deepEqual(s.transfers[0].open, [{ expenseId: 'e1', id: 'c' }]);
+  // The parts still count as theirs.
+  assert.equal(Math.round(s.byPerson.find(p => p.uid === 'b').share), 100 + 45 + 30);
 });
