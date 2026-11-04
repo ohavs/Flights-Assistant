@@ -153,28 +153,40 @@ service cloud.firestore {
           return changed().hasOnly(['activities'])
             && ownActs(after.removeAll(before)) && ownActs(before.removeAll(after));
         }
+        // A payment between two people ("בינינו") is the two in it and
+        // whoever wrote it down; the trip's owner sees them all. Anyone
+        // else neither reads nor changes it (the app asks for its own with
+        // one query per field: src/lib/paymentsQuery.js). Asked only of a
+        // payment, so a read of a missing doc elsewhere stays allowed.
+        function seesPayment(d) {
+          return pRole(request.auth.uid) == 'owner'
+            || d.from == request.auth.uid
+            || d.to == request.auth.uid
+            || d.createdBy == request.auth.uid;
+        }
 
         allow read: if request.auth != null
           && (
             (parent().memberIds != null && request.auth.uid in parent().memberIds)
             || (parent().members != null && parent().members[request.auth.uid] != null)
-          );
+          )
+          && (subcollection != 'payments' || seesPayment(resource.data));
 
         allow create: if request.auth != null && (
           isEditor()
           || (isContributor() && addsHere() && request.resource.data.get('createdBy', null) == request.auth.uid)
-        );
+        ) && (subcollection != 'payments' || seesPayment(request.resource.data));
         allow update: if request.auth != null && (
           isEditor()
           || (isContributor() && addsHere() && (
                 (creatorOf(resource.data) == request.auth.uid && creatorOf(request.resource.data) == request.auth.uid)
                 || ticks()))
           || (isContributor() && subcollection == 'days' && ownActivities())
-        );
+        ) && (subcollection != 'payments' || (seesPayment(resource.data) && seesPayment(request.resource.data)));
         allow delete: if request.auth != null && (
           isEditor()
           || (isContributor() && addsHere() && creatorOf(resource.data) == request.auth.uid)
-        );
+        ) && (subcollection != 'payments' || seesPayment(resource.data));
       }
     }
   }
