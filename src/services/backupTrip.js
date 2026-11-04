@@ -1,6 +1,7 @@
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { readAll } from '../lib/readFresh';
+import { paymentQueries, mergeById } from '../lib/paymentsQuery';
 import { saveFile } from '../lib/saveFile';
 
 const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders', 'expenses', 'payments', 'settings'];
@@ -9,10 +10,15 @@ const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders
 export async function exportTripBackup(tripId, tripDoc) {
   const subcollections = {};
   const mark = {};
+  const uid = auth.currentUser?.uid;
   for (const name of SUBCOLS) {
     try {
-      const snap = await readAll(collection(db, 'trips', tripId, name), mark);
-      subcollections[name] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Payments between two people: only mine, unless I own the trip (8.80.0).
+      const refs = name === 'payments'
+        ? paymentQueries(db, tripId, uid, tripDoc?.members?.[uid] === 'owner')
+        : [collection(db, 'trips', tripId, name)];
+      const snaps = await Promise.all(refs.map(ref => readAll(ref, mark)));
+      subcollections[name] = mergeById(snaps.map(snap => snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     } catch {
       subcollections[name] = [];
       mark.fromPhone = true;

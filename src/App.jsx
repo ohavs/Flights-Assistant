@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import { listen } from './lib/listen';
+import { paymentQueries } from './lib/paymentsQuery';
 import {
   collection, doc, onSnapshot, setDoc, deleteDoc,
   query, where, updateDoc, arrayUnion, arrayRemove,
@@ -1383,14 +1384,19 @@ function AppInner() {
   // app alike: a trip not opened lately is all there offline too, not just
   // what its last visit happened to load. Firestore shares one listener per
   // query, so the tabs and the widget add nothing on top of these.
-  const offlineKey = offlineTrips(trips).map(t => t.id).join(',');
+  // Payments between two people: only mine, unless I own the trip (8.80.0).
+  const offlineKey = offlineTrips(trips).map(t => `${t.id}:${t.members?.[signedInUid] === 'owner' ? 'owner' : ''}`).join(',');
   useEffect(() => {
     if (!signedInUid || !offlineKey) return undefined;
-    const offs = offlineKey.split(',').flatMap(id => [
-      ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'payments', 'info', 'bookings', 'settings']
-        .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})),
-      listen(collection(db, 'trips', id, 'personal', signedInUid, 'days'), () => {}, () => {}),
-    ]);
+    const offs = offlineKey.split(',').flatMap(key => {
+      const [id, role] = key.split(':');
+      return [
+        ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings']
+          .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})),
+        ...paymentQueries(db, id, signedInUid, role === 'owner').map(q => listen(q, () => {}, () => {})),
+        listen(collection(db, 'trips', id, 'personal', signedInUid, 'days'), () => {}, () => {}),
+      ];
+    });
     return () => offs.forEach(off => off());
   }, [offlineKey, signedInUid]);
 

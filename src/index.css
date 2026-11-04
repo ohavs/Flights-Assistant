@@ -4297,6 +4297,14 @@ button.dp-leg:active { background: var(--ink-4); }
   font-family: var(--font-hebrew); font-size: 12.5px; font-weight: 800; cursor: pointer;
 }
 .pay-fill:active { transform: scale(0.96); }
+/* "קיבלתי" (8.80.0): who owes whom and from what, over the amount. */
+.settle-who {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 16px; background: var(--surface-2);
+}
+.settle-who-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.settle-who-text { font-size: 15px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.settle-who-sub { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
 .expense-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
 /* The switch of the split: what it is now, a tap to change it (like the
    currency in the expense form). */

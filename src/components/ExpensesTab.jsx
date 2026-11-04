@@ -25,7 +25,8 @@ import ListCard from '../ui/ListCard';
 import SheetDelete from '../ui/SheetDelete';
 import SectionHeader from '../ui/SectionHeader';
 import CurrencySheet from './CurrencySheet';
-import { PaymentsView, PaymentSheet } from './PaymentsPanel';
+import { PaymentsView, PaymentSheet, SettleSheet } from './PaymentsPanel';
+import { paymentQueries, mergeById } from '../lib/paymentsQuery';
 import { Pill, CategoryDisc } from '../ui/kit';
 
 
@@ -48,6 +49,8 @@ export default function ExpensesTab({ tripId }) {
     try { localStorage.setItem('expenses.view', v); } catch { /* private mode */ }
   };
   const [payForm, setPayForm] = useState(null);
+  // "קיבלתי"/"העברתי": how much came back (SettleSheet, 8.80.0).
+  const [settle, setSettle] = useState(null);
 
   // Form state
   const [editingId, setEditingId] = useState(null);
@@ -84,7 +87,7 @@ export default function ExpensesTab({ tripId }) {
 
   const confirm = useConfirm();
   // "הוספה" adds expenses, and changes only the ones they added.
-  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canAdd, canEdit, mayChange, trip } = useTrip();
+  const { currentUid, currentUserProfile, memberProfiles, tripMembers, formerMembers, canAdd, canEdit, mayChange, trip, isOwner } = useTrip();
 
   // Payer state
   const [paidBy, setPaidBy] = useState('');
@@ -149,11 +152,14 @@ export default function ExpensesTab({ tripId }) {
 
   useEffect(() => {
     if (!tripId) return;
-    const unsub = listen(collection(db, 'trips', tripId, 'payments'), snap => {
-      setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, [tripId]);
+    // Mine only, unless I am the trip's owner (8.80.0, src/lib/paymentsQuery.js).
+    const parts = [];
+    const offs = paymentQueries(db, tripId, currentUid, isOwner).map((q, i) => listen(q, snap => {
+      parts[i] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPayments(mergeById(parts));
+    }));
+    return () => offs.forEach(off => off());
+  }, [tripId, currentUid, isOwner]);
 
   useEffect(() => {
     refreshRatesIfStale().then(r => setRates(r.rates)).catch(() => {});
@@ -373,14 +379,17 @@ export default function ExpensesTab({ tripId }) {
   }), [expenses, payments, mayChange]);
 
   // A payment between two people: a new one, or only what an edit changed.
+  const addPayment = (fields, extra = {}) => {
+    if (!tripId) return;
+    setDoc(doc(db, 'trips', tripId, 'payments', 'pay-' + Date.now()), {
+      ...fields, settled: false, createdAt: new Date().toISOString(), createdBy: currentUid || null, ...extra,
+    }).catch(err => console.error('Payment save error:', err));
+  };
   const savePayment = (fields) => {
     if (!tripId) return;
     const before = payForm?.payment;
     if (!before) {
-      const id = 'pay-' + Date.now();
-      setDoc(doc(db, 'trips', tripId, 'payments', id), {
-        ...fields, settled: false, createdAt: new Date().toISOString(), createdBy: currentUid || null,
-      }).catch(err => console.error('Payment save error:', err));
+      addPayment(fields);
       return;
     }
     const updates = changedFields(before, fields);
@@ -537,6 +546,8 @@ export default function ExpensesTab({ tripId }) {
           onClose={() => setShowSummary(false)}
           onMark={markPaid}
           canMark={canMark}
+          onSettle={setSettle}
+          seesAll={isOwner}
         />
       )}
 
@@ -552,6 +563,7 @@ export default function ExpensesTab({ tripId }) {
           onDelete={deletePayment}
           onMark={markPaid}
           canMark={canMark}
+          onSettle={setSettle}
         />
       ) : expenses.length === 0 ? (
         <EmptyState
@@ -998,6 +1010,19 @@ export default function ExpensesTab({ tripId }) {
           onSave={savePayment}
           onDelete={payForm.payment && mayChange(payForm.payment) ? deletePayment : null}
           onClose={() => setPayForm(null)}
+        />
+      )}
+      {settle && rates && (
+        <SettleSheet
+          settle={settle}
+          currentUid={currentUid}
+          personProfile={personProfile}
+          rates={rates}
+          quickCurrencies={persistentQuickCurrencies}
+          onKeepCurrency={keepCurrency}
+          onMark={markPaid}
+          onRecord={addPayment}
+          onClose={() => setSettle(null)}
         />
       )}
 

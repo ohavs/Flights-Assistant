@@ -234,6 +234,12 @@ await step('"שולם": Dana paid me; both ways close, and it undoes', async () 
   await sheet.waitFor();
   const balance = sheet.locator('.expense-balance');
   await balance.getByRole('button', { name: 'דנה שילם/ה לך ₪648' }).click();
+  // How much came back (8.80.0): all of it, as the sheet opens.
+  const settleForm = page.locator('.modal-content', { has: page.locator('#settle-amount') });
+  await has(settleForm.locator('.settle-who'), 'מגיע לך ₪648');
+  await has(settleForm.locator('.pay-context'), 'סוגר את כל החוב');
+  await settleForm.getByRole('button', { name: 'שמור' }).click();
+  await settleForm.waitFor({ state: 'detached' });
   // Her part of my room, and mine of her insurance.
   await until(async () => (await paidOf('e3')).includes(dana) && (await paidOf('e8')).includes(me), 'not marked paid');
   if ((await paidOf('e8')).includes('name:רוני')) throw new Error('Roni was marked too');
@@ -497,6 +503,80 @@ await step('"בינינו": Dana sent part of what she owes, I paid for her; edi
   if (await hero.locator('.expense-hero-total').innerText() !== total) throw new Error('the total changed');
   await page.locator('.list-card', { hasText: 'מונית מהשדה' }).waitFor();
   if (await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).count() !== 1) throw new Error('the add button');
+});
+
+// 8.80.0: "קיבלתי" asks how much came back, and a note.
+await step('"קיבלתי": part of it is a transfer with its note; all of it with a note closes it and keeps it', async () => {
+  for (let i = 0; i < 4 && await page.locator('.modal-overlay').count(); i++) {
+    await page.locator('.modal-overlay button[aria-label="סגור"]').last().click();
+    await page.waitForTimeout(450);
+  }
+  await page.getByRole('radio', { name: 'בינינו' }).click();
+  const view = page.locator('.pay-view');
+  const danaRow = view.locator('.expense-row.settle', { hasText: 'דנה' }).first();
+  const num = (t) => Number(t.replace(/[^\d.]/g, ''));
+  const before = num(await danaRow.locator('.expense-row-value').innerText());
+  const form = page.locator('.modal-content', { has: page.locator('#settle-amount') });
+
+  await danaRow.getByRole('button', { name: /^דנה שילם\/ה לך/ }).click();
+  await has(form.locator('.settle-who'), 'מגיע לך');
+  await has(form.locator('.settle-who'), 'מ־2 הוצאות ורישום אחד');
+  if (num(await form.locator('#settle-amount').inputValue()) < 1) throw new Error('not the full amount to start');
+  await form.locator('#settle-amount').fill('50');
+  await has(form.locator('.pay-context'), 'נשארו');
+  await form.locator('.pay-fill', { hasText: 'כל החוב' }).waitFor();
+  await form.getByLabel('הערה').fill('מזומן');
+  await shot('dark-13-settle-part');
+  await form.getByRole('button', { name: 'שמור' }).click();
+  await form.waitFor({ state: 'detached' });
+  const part = view.locator('.list-card', { hasText: 'מזומן' });
+  await has(part, 'קיבלתי מדנה');
+  await has(part, '₪50');
+  await has(danaRow.locator('.settle-progress-text'), 'הועברו');
+  const after = num(await danaRow.locator('.expense-row-value').innerText());
+  if (Math.abs(before - 50 - after) > 1) throw new Error(`Dana: ${before} then ${after}`);
+  if (await part.getByText('נסגר').count()) throw new Error('part of it closed the debt');
+
+  // All of it, with a note: nothing is left open, and the note stays.
+  await danaRow.getByRole('button', { name: /^דנה שילם\/ה לך/ }).click();
+  await form.getByLabel('הערה').fill('בהעברה בנקאית');
+  await form.getByRole('button', { name: 'שמור' }).click();
+  await form.waitFor({ state: 'detached' });
+  await view.locator('.expense-row.settle.done', { hasText: 'דנה' }).waitFor();
+  if (await view.locator('.expense-row.settle:not(.done)', { hasText: 'דנה' }).count()) throw new Error('still open with Dana');
+  const all = view.locator('.list-card', { hasText: 'בהעברה בנקאית' });
+  await has(all, 'קיבלתי מדנה');
+  await has(all, 'נסגר');
+  await shot('dark-14-settle-all');
+});
+
+// 8.80.0 (the owner's ask): each sees only their own settling up; the
+// owner sees it all. Dana is an editor here.
+await step('Dana: only her payments, and no one else\'s "מי מעביר למי"', async () => {
+  await put('trips/exp/payments/pay-roni', {
+    kind: 'for', from: me, to: 'name:רוני', amount: 70, currency: 'ILS', note: 'רק שלי ושל רוני', settled: false,
+    createdAt: '2026-11-04T10:00:00.000Z', createdBy: me,
+  });
+  const view = page.locator('.pay-view');
+  // The owner sees it.
+  await view.locator('.list-card', { hasText: 'רק שלי ושל רוני' }).waitFor();
+  await signIn('dana@example.com');
+  await page.goto('http://localhost:5173/');
+  await page.locator('.trip-card', { hasText: 'ליסבון' }).getByText('פתח טיול').click();
+  await tab('הוצאות');
+  await page.getByRole('radio', { name: 'בינינו' }).click();
+  await view.locator('.list-card', { hasText: 'מזומן' }).waitFor();
+  await page.waitForTimeout(800);
+  if (await view.locator('.list-card', { hasText: 'רק שלי ושל רוני' }).count()) throw new Error('Dana sees the owner\'s payment with Roni');
+  await page.getByRole('radio', { name: 'הוצאות' }).click();
+  await hero.click();
+  await sheet.waitFor();
+  await sheet.getByRole('radio', { name: 'כולם' }).click();
+  await has(sheet, 'סה"כ הטיול');
+  if (await sheet.getByText('מי מעביר למי').count()) throw new Error('"מי מעביר למי" for Dana');
+  await sheet.getByRole('radio', { name: 'שלי' }).click();
+  await has(sheet, 'ההתחשבנות שלך');
+  await shot('dark-15-dana-summary');
 });
 
 console.log(failed ? `${failed} failed` : 'all passed');
