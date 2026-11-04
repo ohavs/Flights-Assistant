@@ -322,10 +322,19 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   await has(over(), '3 אנשים');
   await has(over(), '30');
   await shot('dark-8-split');
+  const part = (name) => over().getByLabel(`החלק של ${name}`);
+  // My part cleared stays empty while typing (it used to jump back to the
+  // even share), and 0: the other two share it all.
+  await part('אני').fill('');
+  if (await part('אני').inputValue() !== '') throw new Error(`cleared: ${await part('אני').inputValue()}`);
+  await part('אני').fill('0');
+  if (await part('יואב').inputValue() !== '45' || await part('דנה').inputValue() !== '45') throw new Error('0 for me: not split between them');
+  await part('דנה').fill('50');
+  if (await part('יואב').inputValue() !== '40') throw new Error(`0 for me, Dana 50: Yoav ${await part('יואב').inputValue()}`);
+  await over().getByRole('button', { name: 'חלוקה שווה' }).click();
   // "רק הם": the payer's own row, unticked.
   await over().getByRole('checkbox', { name: /אני/ }).click();
   await has(over(), '2 אנשים');
-  const part = (name) => over().getByLabel(`החלק של ${name}`);
   if (await part('יואב').inputValue() !== '45') throw new Error('not even');
   // Dana's part typed: Yoav takes what is left.
   await part('דנה').fill('60');
@@ -360,6 +369,20 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   await form.getByRole('button', { name: 'מקום שלא ברשימה?' }).click();
   await form.getByLabel('מיקום').fill('טיים אאוט');
   await shot('dark-9-form');
+  // The keyboard opens over a low field (the screen gets shorter): the
+  // sheet scrolls it into sight, above the save bar.
+  await page.setViewportSize({ width: 400, height: 420 });
+  await page.waitForTimeout(700);
+  const seen = await page.evaluate(() => {
+    const el = document.activeElement;
+    const box = el.closest('.modal-content');
+    return { label: el.getAttribute('aria-label'), bottom: el.getBoundingClientRect().bottom,
+      foot: box.querySelector('.sheet-footer').getBoundingClientRect().top, h: innerHeight, scrolled: box.scrollTop };
+  });
+  if (seen.label !== 'מיקום' || seen.bottom > seen.foot || seen.bottom > seen.h) throw new Error(`under the keyboard: ${JSON.stringify(seen)}`);
+  console.log(`  (keyboard: scrolled ${Math.round(seen.scrolled)}px)`);
+  await page.setViewportSize({ width: 400, height: 860 });
+  await page.waitForTimeout(300);
   await page.locator('.sheet-footer button[type="submit"]').first().click();
   await page.locator('.modal-overlay').waitFor({ state: 'detached' });
   let doc;
