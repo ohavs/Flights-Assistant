@@ -218,3 +218,57 @@ test('paid back: no longer owed, and withMe shows both ways', () => {
   // The parts still count as theirs.
   assert.equal(Math.round(s.byPerson.find(p => p.uid === 'b').share), 100 + 45 + 30);
 });
+
+// 8.79.0: payments between two people ("בינינו").
+const pay = (id, from, to, amount, currency, kind, extra = {}) => ({ id, from, to, amount, currency, kind, ...extra });
+
+test('payments: paid for someone is a debt, a transfer pays it back, neither is an expense', () => {
+  const s = expenseSummary([ex(400, 'ILS', { id: 'e1', paidBy: 'a', splitWith: ['b'] })], {
+    rates, members: ['a', 'b', 'c'], currentUid: 'a',
+    payments: [
+      pay('p1', 'a', 'b', 25, 'EUR', 'for', { note: 'מונית' }),   // ₪100 more from b
+      pay('p2', 'b', 'a', 150, 'ILS', 'gave'),                     // b sent ₪150
+      pay('p3', 'c', 'a', 30, 'ILS', 'for'),                       // c paid for me
+    ],
+  });
+  // The total is the expenses only.
+  assert.equal(Math.round(s.ils), 400);
+  assert.equal(s.payments, 3);
+  const b = s.withMe.find(p => p.uid === 'b');
+  // b owes 200 (split) + 100 (taxi) - 150 (sent) = 150: 150 sent of 300.
+  assert.equal(Math.round(b.balance), 150);
+  assert.equal(Math.round(b.debt), 300);
+  assert.equal(Math.round(b.moved), -150);
+  assert.deepEqual(b.open, [{ expenseId: 'e1', id: 'b' }, { paymentId: 'p1' }, { paymentId: 'p2' }]);
+  const c = s.withMe.find(p => p.uid === 'c');
+  assert.equal(Math.round(c.balance), -30);
+  assert.equal(Math.round(s.mine), 150 - 30);
+  assert.deepEqual(s.transfers.map(t => [t.from, t.to, Math.round(t.amount)]), [['b', 'a', 150], ['a', 'c', 30]]);
+});
+
+test('payments: closed with the pair, only the debts count as paid back', () => {
+  const s = expenseSummary([ex(400, 'ILS', { id: 'e1', paidBy: 'a', splitWith: ['b'], splitPaid: ['b'] })], {
+    rates, members: ['a', 'b'], currentUid: 'a',
+    payments: [
+      pay('p1', 'a', 'b', 100, 'ILS', 'for', { settled: true }),
+      pay('p2', 'b', 'a', 150, 'ILS', 'gave', { settled: true }),
+    ],
+  });
+  const b = s.withMe.find(p => p.uid === 'b');
+  assert.equal(b.open.length, 0);
+  // 200 + 100 owed, all paid (150 of it sent before the close).
+  assert.equal(Math.round(b.back), 300);
+  assert.equal(Math.round(s.paidBack), 300);
+  assert.deepEqual(s.transfers, []);
+});
+
+test('payments alone: no expenses, still who owes whom; bad ones are left out', () => {
+  const s = expenseSummary([], {
+    rates, members: ['a', 'b'], currentUid: 'b',
+    payments: [pay('p1', 'a', 'b', 50, 'ILS', 'gave'), pay('p2', 'a', 'a', 50, 'ILS', 'gave'), pay('p3', 'a', 'b', 0, 'ILS', 'for')],
+  });
+  assert.equal(s.ils, null);
+  assert.equal(s.payments, 1);
+  assert.equal(Math.round(s.mine), -50);
+  assert.deepEqual(s.transfers.map(t => [t.from, t.to, Math.round(t.amount)]), [['b', 'a', 50]]);
+});

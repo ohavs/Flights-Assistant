@@ -5,16 +5,16 @@ import { collection, doc, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove 
 import { changedFields } from '../lib/changes';
 import {
   Plus, Trash2, Search, X, Check,
-  Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2, ArrowLeftRight,
+  Wallet, Pencil, ChevronDown, ChevronLeft, MapPin, Users, Link2, ArrowLeftRight, Receipt, HandCoins,
 } from 'lucide-react';
-import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
+import { convert, refreshRatesIfStale, getInitialRates } from '../services/currency';
 import { expenseSummary, paidExpenses, splitGroup, splitParts, allocateSplit, partAmount, paidBack, GUEST } from '../lib/expenseSummary';
 import { expenseCategoryStyle, getCurrencyInfo, shekels, money, expenseLabel, expenseDay } from './expenseStyle';
 import ExpenseSummarySheet, { ExpenseHero, MemberAvatar } from './ExpenseSummary';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from '../lib/expenseDefaults';
 import { tripCurrencies, destinationCurrency } from '../lib/destinationCurrency';
 import { useConfirm } from '../ConfirmContext';
-import Sheet from '../ui/Sheet';
+import Sheet, { Segmented } from '../ui/Sheet';
 import { CustomDropdown } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { useTrip } from '../TripContext';
@@ -24,9 +24,10 @@ import EmptyState from './EmptyState';
 import ListCard from '../ui/ListCard';
 import SheetDelete from '../ui/SheetDelete';
 import SectionHeader from '../ui/SectionHeader';
+import CurrencySheet from './CurrencySheet';
+import { PaymentsView, PaymentSheet } from './PaymentsPanel';
 import { Pill, CategoryDisc } from '../ui/kit';
 
-const ALL_CURRENCIES = Object.entries(CURRENCY_META).map(([code, meta]) => ({ code, ...meta }));
 
 
 export default function ExpensesTab({ tripId }) {
@@ -35,6 +36,18 @@ export default function ExpensesTab({ tripId }) {
   const [loading, setLoading] = useState(true);
   const [showSummary, setShowSummary] = useState(false);   // the full summary sheet
   const [showForm, setShowForm] = useState(false);
+  // "בינינו" (8.79.0): payments between two people, apart from the
+  // expenses (src/components/PaymentsPanel.jsx). The view is kept on this
+  // phone; payForm: { payment } while the form is open (null: a new one).
+  const [payments, setPayments] = useState([]);
+  const [view, setViewState] = useState(() => {
+    try { return localStorage.getItem('expenses.view') === 'between' ? 'between' : 'list'; } catch { return 'list'; }
+  });
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem('expenses.view', v); } catch { /* private mode */ }
+  };
+  const [payForm, setPayForm] = useState(null);
 
   // Form state
   const [editingId, setEditingId] = useState(null);
@@ -56,7 +69,6 @@ export default function ExpensesTab({ tripId }) {
   // form, the owner's ask; a place not on the list is a line under it).
   const [formQuickCurrencies, setFormQuickCurrencies] = useState([...DEFAULT_CURRENCIES]);
   const [currencyOpen, setCurrencyOpen] = useState(false);
-  const [currencySearch, setCurrencySearch] = useState('');
   const [splitOpen, setSplitOpen] = useState(false);
   const [placePickOpen, setPlacePickOpen] = useState(false);
   // "מקום שלא ברשימה": the typed place, shown when asked for or when set.
@@ -132,6 +144,14 @@ export default function ExpensesTab({ tripId }) {
       setExpenses(data);
       setLoading(false);
     }, () => setLoading(false));   // refused for good: the empty list, not a skeleton forever
+    return () => unsub();
+  }, [tripId]);
+
+  useEffect(() => {
+    if (!tripId) return;
+    const unsub = listen(collection(db, 'trips', tripId, 'payments'), snap => {
+      setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
     return () => unsub();
   }, [tripId]);
 
@@ -231,7 +251,6 @@ export default function ExpensesTab({ tripId }) {
     setOpenedWith(f);
     setFormQuickCurrencies(base);
     setCurrencyOpen(false);
-    setCurrencySearch('');
     setSplitOpen(false);
     setPlacePickOpen(false);
     setOtherPlace(!!f.customPlace);
@@ -335,17 +354,53 @@ export default function ExpensesTab({ tripId }) {
   // partner's marks stay; offline they wait for the network.
   const markPaid = useCallback((items, paid) => {
     if (!tripId) return;
-    for (const { expenseId, id } of items) {
+    for (const { expenseId, id, paymentId } of items) {
+      // A payment between the two is closed with them (8.79.0).
+      if (paymentId) {
+        updateDoc(doc(db, 'trips', tripId, 'payments', paymentId), { settled: !!paid })
+          .catch(err => console.error('Mark paid failed:', err));
+        continue;
+      }
       updateDoc(doc(db, 'trips', tripId, 'expenses', expenseId), { splitPaid: paid ? arrayUnion(id) : arrayRemove(id) })
         .catch(err => console.error('Mark paid failed:', err));
     }
   }, [tripId]);
   // Only when every one of those expenses is mine to change ("הוספה"
   // changes only the ones they added).
-  const canMark = useCallback((items) => items.length > 0 && items.every(({ expenseId }) => {
-    const x = expenses.find(e => e.id === expenseId);
+  const canMark = useCallback((items) => items.length > 0 && items.every(({ expenseId, paymentId }) => {
+    const x = paymentId ? payments.find(m => m.id === paymentId) : expenses.find(e => e.id === expenseId);
     return x && mayChange(x);
-  }), [expenses, mayChange]);
+  }), [expenses, payments, mayChange]);
+
+  // A payment between two people: a new one, or only what an edit changed.
+  const savePayment = (fields) => {
+    if (!tripId) return;
+    const before = payForm?.payment;
+    if (!before) {
+      const id = 'pay-' + Date.now();
+      setDoc(doc(db, 'trips', tripId, 'payments', id), {
+        ...fields, settled: false, createdAt: new Date().toISOString(), createdBy: currentUid || null,
+      }).catch(err => console.error('Payment save error:', err));
+      return;
+    }
+    const updates = changedFields(before, fields);
+    if (Object.keys(updates).length) {
+      updateDoc(doc(db, 'trips', tripId, 'payments', before.id), updates).catch(err => console.error('Payment save error:', err));
+    }
+  };
+  const deletePayment = async (m) => {
+    if (!tripId) return false;
+    const ok = await confirm({
+      title: 'מחיקת רישום',
+      message: 'האם למחוק את הרישום? הוא יצא גם מ"מי מעביר למי".',
+      confirmText: 'מחק',
+      cancelText: 'בטל',
+      danger: true,
+    });
+    if (!ok) return false;
+    deleteDoc(doc(db, 'trips', tripId, 'payments', m.id)).catch(err => console.error('Delete payment failed:', err));
+    return true;
+  };
 
   const handleDelete = async (id) => {
     if (!tripId) return;
@@ -392,8 +447,17 @@ export default function ExpensesTab({ tripId }) {
   // name is there to pick again.
   const guestNames = useMemo(() => [...new Set([
     ...expenses.flatMap(e => (e.splitWith || []).filter(id => id.startsWith(GUEST))),
+    ...payments.flatMap(m => [m.from, m.to]).filter(id => id?.startsWith(GUEST)),
     ...sessionNames,
-  ])], [expenses, sessionNames]);
+  ])], [expenses, payments, sessionNames]);
+  // Who a payment can be between: the trip's, whoever is on one already
+  // (someone who left), then names of people not on the trip.
+  const payPeople = useMemo(() => [...new Set([
+    ...payerUids,
+    ...payments.flatMap(m => [m.from, m.to]).filter(id => id && !id.startsWith(GUEST)),
+    ...guestNames,
+  ])], [payerUids, payments, guestNames]);
+  const showBetween = payPeople.length > 1 || payments.length > 0;
 
   // Taking someone off the split takes their part and their mark with them.
   const dropPart = (id) => setSplitAmounts(prev => {
@@ -434,8 +498,8 @@ export default function ExpensesTab({ tripId }) {
   // the same for what the looker paid ("שלי"), only while the summary is
   // open (src/lib/expenseSummary.js).
   const summary = useMemo(
-    () => expenseSummary(expenses, { rates, members: memberUids, currentUid }),
-    [expenses, rates, memberUids, currentUid]
+    () => expenseSummary(expenses, { rates, members: memberUids, currentUid, payments }),
+    [expenses, rates, memberUids, currentUid, payments]
   );
   const paidSummary = useMemo(
     () => (showSummary && currentUid
@@ -451,8 +515,17 @@ export default function ExpensesTab({ tripId }) {
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+      {/* "הוצאות | בינינו": the trip's expenses, or money between two
+          people (8.79.0). The card with the total is the expenses'. */}
+      {showBetween && (
+        <Segmented label="תצוגה" value={view} onChange={setView} options={[
+          { key: 'list', label: 'הוצאות', Icon: Receipt },
+          { key: 'between', label: 'בינינו', Icon: HandCoins },
+        ]} />
+      )}
+
       {/* The total, big, over the list; a tap opens the full summary. */}
-      {expenses.length > 0 && (
+      {expenses.length > 0 && !(showBetween && view === 'between') && (
         <ExpenseHero summary={summary} currentUid={currentUid} onOpen={() => setShowSummary(true)} />
       )}
       {showSummary && (
@@ -467,8 +540,20 @@ export default function ExpensesTab({ tripId }) {
         />
       )}
 
-      {/* Expense list — grouped by category */}
-      {expenses.length === 0 ? (
+      {showBetween && view === 'between' ? (
+        <PaymentsView
+          summary={summary}
+          payments={payments}
+          rates={rates}
+          currentUid={currentUid}
+          personProfile={personProfile}
+          mayChange={mayChange}
+          onOpen={(m) => setPayForm({ payment: m })}
+          onDelete={deletePayment}
+          onMark={markPaid}
+          canMark={canMark}
+        />
+      ) : expenses.length === 0 ? (
         <EmptyState
           icon={Wallet}
           title="עוד לא תועדו הוצאות"
@@ -737,61 +822,12 @@ export default function ExpensesTab({ tripId }) {
 
       {/* The currency: the trip's own on top, every other under them. */}
       {showForm && currencyOpen && (
-        <Sheet
-          label="מטבע"
-          onClose={() => setCurrencyOpen(false)}
-          style={{ maxHeight: '80vh' }}
-          header={({ close }) => (
-            <div className="modal-header origin-picker-head">
-              <div className="origin-picker-title">
-                <h2>מטבע</h2>
-                <button type="button" aria-label="סגור" className="btn-close" onClick={close}>✕</button>
-              </div>
-              <div className="origin-picker-search">
-                <Search size={18} aria-hidden="true" />
-                <input type="search" enterKeyHint="search" className="form-control" placeholder="חיפוש מטבע"
-                  aria-label="חיפוש מטבע" value={currencySearch} onChange={(e) => setCurrencySearch(e.target.value)} />
-              </div>
-            </div>
-          )}
-        >
-          {({ close }) => {
-            const q = currencySearch.trim().toLowerCase();
-            const match = (c) => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
-            const quick = formQuickCurrencies.map(getCurrencyInfo).filter(match);
-            const rest = ALL_CURRENCIES.filter(c => !formQuickCurrencies.includes(c.code)).filter(match);
-            const row = (c) => (
-              <button key={c.code} type="button" role="radio" aria-checked={currency === c.code} className="list-row"
-                onClick={() => {
-                  setCurrency(c.code);
-                  if (!formQuickCurrencies.includes(c.code)) setFormQuickCurrencies(prev => [...prev, c.code]);
-                  keepCurrency(c.code);
-                  close();
-                }}>
-                <span className="exp-cur-symbol" aria-hidden="true">{c.symbol}</span>
-                <span className="list-row-label">{c.name}<span className="list-row-hint">{c.code}</span></span>
-                {currency === c.code && <Check size={16} aria-hidden="true" />}
-              </button>
-            );
-            return (
-              <div className="place-picker">
-                {quick.length > 0 && (
-                  <section className="origin-picker-group">
-                    <SectionHeader title="בטיול הזה" />
-                    <div className="list-group" role="radiogroup" aria-label="בטיול הזה">{quick.map(row)}</div>
-                  </section>
-                )}
-                {rest.length > 0 && (
-                  <section className="origin-picker-group">
-                    <SectionHeader title="כל המטבעות" />
-                    <div className="list-group" role="radiogroup" aria-label="כל המטבעות">{rest.map(row)}</div>
-                  </section>
-                )}
-                {!quick.length && !rest.length && <div className="place-picker-empty">לא נמצא מטבע</div>}
-              </div>
-            );
-          }}
-        </Sheet>
+        <CurrencySheet value={currency} quick={formQuickCurrencies} onClose={() => setCurrencyOpen(false)}
+          onPick={(code) => {
+            setCurrency(code);
+            if (!formQuickCurrencies.includes(code)) setFormQuickCurrencies(prev => [...prev, code]);
+            keepCurrency(code);
+          }} />
       )}
 
       {/* The split: who shares it with the payer, and each one's part —
@@ -948,7 +984,26 @@ export default function ExpensesTab({ tripId }) {
       )}
 
       {/* Adding lives in the app-wide floating button, same as every tab. */}
-      {canAdd && <Fab label="הוצאה חדשה" onClick={() => openForm()} />}
+      {payForm && (
+        <PaymentSheet
+          payment={payForm.payment}
+          people={payPeople}
+          currentUid={currentUid}
+          personProfile={personProfile}
+          summary={summary}
+          rates={rates}
+          quickCurrencies={persistentQuickCurrencies}
+          startCurrency={startCurrency}
+          onKeepCurrency={keepCurrency}
+          onSave={savePayment}
+          onDelete={payForm.payment && mayChange(payForm.payment) ? deletePayment : null}
+          onClose={() => setPayForm(null)}
+        />
+      )}
+
+      {canAdd && (showBetween && view === 'between'
+        ? <Fab label="רישום חדש" onClick={() => setPayForm({ payment: null })} />
+        : <Fab label="הוצאה חדשה" onClick={() => openForm()} />)}
 
     </div>
   );

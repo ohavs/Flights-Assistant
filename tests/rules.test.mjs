@@ -197,7 +197,7 @@ const item = (who, tripId, coll, id) => doc(who.db, 'trips', tripId, coll, id);
 
 test('a contributor adds in every list, as themselves', async () => {
   const tripId = await createTripWithAdder();
-  for (const coll of ['planning', 'checklist', 'reminders', 'info', 'expenses', 'bookings']) {
+  for (const coll of ['planning', 'checklist', 'reminders', 'info', 'expenses', 'bookings', 'payments']) {
     await setDoc(item(adder, tripId, coll, 'mine'), { title: 'x', createdBy: adder.uid });
     // Not without saying so, and not in someone else's name.
     await assert.rejects(setDoc(item(adder, tripId, coll, 'anon'), { title: 'x' }), denied);

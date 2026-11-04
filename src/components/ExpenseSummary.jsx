@@ -251,7 +251,9 @@ function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, 
 // us, netted both ways, and "קיבלתי"/"העברתי" to close it. The headline
 // is what is still open: "הכל שולם" once nothing is, and what was paid
 // back already under it. Those all paid back stay under it, a tap to undo.
-function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark }) {
+// Also the top of "בינינו" (PaymentsPanel.jsx), where a transfer shows as
+// "הועברו X מתוך Y" under the row.
+export function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark, emptyText }) {
   const name = (uid) => getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף';
   const even = Math.abs(balance) < SETTLED;
   const open = withMe.filter(p => p.open.length);
@@ -272,17 +274,30 @@ function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark })
       {open.map(p => {
         const toMe = p.balance >= SETTLED;
         const fromMe = p.balance <= -SETTLED;
+        const nExp = p.open.filter(i => i.expenseId).length;
+        const nPay = p.open.length - nExp;
         const sub = [
           toMe ? 'מעביר/ה לך' : fromMe ? 'עליך להעביר' : 'מתקזז',
-          plural(p.open.length, 'הוצאה אחת', 'הוצאות'),
-        ];
+          nExp > 0 && plural(nExp, 'הוצאה אחת', 'הוצאות'),
+          nPay > 0 && plural(nPay, 'רישום אחד', 'רישומים'),
+        ].filter(Boolean);
         if (Math.abs(p.back) >= SETTLED) sub.push(`${shekels(p.back)} כבר שולם`);
+        // A transfer against the debt: how much of it went already.
+        const debt = Math.abs(p.debt || 0);
+        const sent = Math.sign(p.moved || 0) === -Math.sign(p.debt || 0) ? Math.abs(p.moved || 0) : 0;
+        const part = sent >= SETTLED && debt >= SETTLED ? Math.min(sent / debt, 1) : null;
         return (
           <span key={p.uid} className="expense-row settle">
             <MemberAvatar profile={getPayerProfile(p.uid)} size={32} />
             <span className="expense-row-main">
               <span className={`expense-row-name${getPayerProfile(p.uid)?.former ? ' person-former' : ''}`}>{name(p.uid)}</span>
               <span className="expense-row-sub">{sub.join(' · ')}</span>
+              {part != null && (
+                <span className="settle-progress">
+                  <span className="settle-progress-track" aria-hidden="true"><span style={{ width: `${part * 100}%` }} /></span>
+                  <span className="settle-progress-text">{`הועברו ${shekels(Math.min(sent, debt))} מתוך ${shekels(debt)}`}</span>
+                </span>
+              )}
             </span>
             <span className="expense-row-end">
               <span className={`expense-row-value${toMe ? ' up' : fromMe ? ' down' : ''}`}>{shekels(p.balance)}</span>
@@ -316,7 +331,7 @@ function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark })
         <span className="expense-balance-note">
           <Check size={14} aria-hidden="true" />
           {splits ? 'אין לך מה להעביר או לקבל'
-            : 'עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים'}
+            : emptyText || 'עוד אין הוצאות שחולקו. ב"חלוקה" בטופס בוחרים עם מי מתחלקים'}
         </span>
       )}
     </div>
@@ -428,14 +443,14 @@ export default function ExpenseSummarySheet({ summary: s, paid, currentUid, getP
         {mineOnly ? (<>
           <Headline label="שילמתי" value={shekels(paid.ils || 0)}
             sub={paid.count ? plural(paid.count, 'הוצאה אחת', 'הוצאות') : 'עוד לא שילמת על הוצאה בטיול הזה'} />
-          <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits}
+          <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits + s.payments}
             getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} />
           {paid.count > 0 && <Breakdown title="לפי קטגוריה" rows={categoryRows(paid.byCategory)} />}
         </>) : s.ils != null ? (<>
           <Headline label='סה"כ הטיול' value={shekels(s.ils)}
             sub={[plural(s.count, 'הוצאה אחת', 'הוצאות'), s.people >= 2 ? `${s.people} משתתפים` : ''].filter(Boolean).join(' · ')} />
           {s.people >= 2 && (
-            <Settle transfers={s.transfers} splits={s.splits} back={s.paidBack} currentUid={currentUid}
+            <Settle transfers={s.transfers} splits={s.splits + s.payments} back={s.paidBack} currentUid={currentUid}
               getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} />
           )}
           <Breakdown title="פילוג" by={shown} options={options} onBy={setBy} rows={rows} />

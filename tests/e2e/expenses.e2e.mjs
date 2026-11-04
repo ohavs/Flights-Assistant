@@ -415,6 +415,90 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   await has(page.locator('.modal-content').last().locator('[role="radiogroup"][aria-label="בטיול הזה"]'), 'לירה שטרלינג');
 });
 
+// "בינינו" (8.79.0): money between two people, apart from the expenses.
+await step('"בינינו": Dana sent part of what she owes, I paid for her; edit, delete; not in the total', async () => {
+  // The step before leaves its sheets open.
+  for (let i = 0; i < 4 && await page.locator('.modal-overlay').count(); i++) {
+    await page.locator('.modal-overlay button[aria-label="סגור"]').last().click();
+    await page.waitForTimeout(450);
+  }
+  const total = await hero.locator('.expense-hero-total').innerText();
+  await page.getByRole('radio', { name: 'בינינו' }).click();
+  const view = page.locator('.pay-view');
+  const danaRow = view.locator('.expense-row.settle', { hasText: 'דנה' }).first();
+  await danaRow.waitFor();
+  const num = (t) => Number(t.replace(/[^\d.]/g, ''));
+  const before = num(await danaRow.locator('.expense-row-value').innerText());
+  await has(view, 'עוד אין רישומים ביניכם');
+  await shot('dark-10-between-empty');
+
+  // A transfer: Dana owes me, so it is from her, against what she owes.
+  await page.locator('button.fab', { hasText: 'רישום חדש' }).click();
+  const form = page.locator('.modal-content', { has: page.locator('.pay-form') });
+  await has(form.locator('.pay-pair'), 'דנה');
+  await form.getByRole('radio', { name: 'העביר כסף' }).click();
+  await has(form.getByRole('button', { name: /^מי העביר/ }), 'דנה');
+  await has(form.getByRole('button', { name: /^למי/ }), 'אני');
+  await has(form.locator('.pay-context'), 'מגיע לך');
+  await form.locator('.pay-fill', { hasText: 'כל החוב' }).waitFor();
+  await has(form.locator('.exp-currency'), 'EUR');
+  await form.locator('#pay-amount').fill('25');
+  await has(form.locator('.pay-context'), 'נשארו');
+  await has(form.locator('.pay-context'), 'מתוך');
+  await form.getByLabel('על מה').fill('ביט');
+  await shot('dark-11-pay-form');
+  await form.getByRole('button', { name: 'שמור' }).click();
+  await page.locator('.modal-overlay').waitFor({ state: 'detached' });
+  const got = view.locator('.list-card', { hasText: 'קיבלתי מדנה' });
+  await has(got, '€25');
+  await has(got, '≈ ₪100');
+  await has(got, 'ביט');
+  await has(danaRow.locator('.settle-progress-text'), 'הועברו ₪100 מתוך');
+  const after = num(await danaRow.locator('.expense-row-value').innerText());
+  if (Math.abs(before - 100 - after) > 1) throw new Error(`Dana: ${before} then ${after}`);
+  let docs = [];
+  for (let i = 0; i < 20 && !docs.length; i++) {
+    docs = (await (await fetch(`${DB}/trips/exp/payments?pageSize=50`, { headers: admin })).json()).documents || [];
+    if (!docs.length) await page.waitForTimeout(300);
+  }
+  const f = docs[0]?.fields || {};
+  if (f.kind?.stringValue !== 'gave' || f.from?.stringValue !== dana || f.to?.stringValue !== me
+    || Number(f.amount?.integerValue ?? f.amount?.doubleValue) !== 25 || f.currency?.stringValue !== 'EUR' || f.createdBy?.stringValue !== me) {
+    throw new Error(`saved: ${JSON.stringify(f)}`);
+  }
+
+  // Paid for her: from me, €10 more she owes.
+  await page.locator('button.fab', { hasText: 'רישום חדש' }).click();
+  await has(form.getByRole('button', { name: /^מי שילם/ }), 'אני');
+  await has(form.getByRole('button', { name: /^על מי/ }), 'דנה');
+  await form.locator('#pay-amount').fill('10');
+  await has(form.locator('.pay-context'), 'ביניכם אחרי זה: מגיע לך');
+  await form.getByRole('button', { name: 'שמור' }).click();
+  await page.locator('.modal-overlay').waitFor({ state: 'detached' });
+  await view.locator('.list-card', { hasText: 'שילמתי על דנה' }).waitFor();
+  if (Math.abs(num(await danaRow.locator('.expense-row-value').innerText()) - (before - 100 + 40)) > 1) throw new Error('paid for her: not owed');
+  await shot('dark-12-between');
+
+  // An edit writes what changed; a delete takes it out.
+  await got.click();
+  await form.locator('#pay-amount').fill('30');
+  await form.getByRole('button', { name: 'שמור' }).click();
+  await page.locator('.modal-overlay').waitFor({ state: 'detached' });
+  await has(got, '€30');
+  await view.locator('.list-card', { hasText: 'שילמתי על דנה' }).click();
+  await form.getByRole('button', { name: 'מחיקה', exact: true }).click();
+  await page.getByRole('button', { name: 'מחק', exact: true }).click();
+  await view.locator('.list-card', { hasText: 'שילמתי על דנה' }).waitFor({ state: 'detached' });
+  if (Math.abs(num(await danaRow.locator('.expense-row-value').innerText()) - (before - 120)) > 1) throw new Error('after the edit and delete');
+
+  // Not an expense: the total stays; the list is a tap away.
+  if (await hero.count()) throw new Error('the card with the total in "בינינו"');
+  await page.getByRole('radio', { name: 'הוצאות' }).click();
+  if (await hero.locator('.expense-hero-total').innerText() !== total) throw new Error('the total changed');
+  await page.locator('.list-card', { hasText: 'מונית מהשדה' }).waitFor();
+  if (await page.locator('button.fab', { hasText: 'הוצאה חדשה' }).count() !== 1) throw new Error('the add button');
+});
+
 console.log(failed ? `${failed} failed` : 'all passed');
 await browser.close();
 process.exit(failed ? 1 : 0);

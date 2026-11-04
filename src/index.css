@@ -4255,6 +4255,48 @@ button.dp-leg:active { background: var(--ink-4); }
 .settle-undo { background: var(--surface-2); color: var(--text); }
 .settle-btn:active, .settle-undo:active { transform: scale(0.96); }
 .expense-balance-note.done { color: var(--c-green); }
+/* A transfer against what is owed ("בינינו", 8.79.0): how much went, as a
+   thin bar under the row's line. */
+.settle-progress { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.settle-progress-track { height: 5px; border-radius: 999px; background: var(--ink-7); overflow: hidden; }
+.settle-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--c-green); }
+.settle-progress-text { font-size: 12px; font-weight: 700; color: var(--c-green); font-variant-numeric: tabular-nums; }
+
+/* "בינינו": my settling up, then the payments. */
+.pay-view { display: flex; flex-direction: column; gap: 16px; }
+.pay-list { display: flex; flex-direction: column; gap: 8px; }
+.pay-form { display: flex; flex-direction: column; gap: 14px; }
+/* Who, to whom: two tiles like fields, the swap between them. */
+.pay-pair { display: flex; align-items: stretch; gap: 8px; }
+.pay-person {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  padding: 8px 12px; min-height: 64px;
+  border-radius: 16px; border: 1.5px solid var(--field-line);
+  background: var(--field-bg); box-shadow: 0 2px 0 var(--field-lip);
+  color: var(--text); font-family: var(--font-hebrew); text-align: start; cursor: pointer;
+}
+.pay-person:active { transform: translateY(1px); }
+.pay-person-label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+.pay-person-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pay-person-who > svg { flex-shrink: 0; color: var(--text-muted); margin-inline-start: auto; }
+.pay-person-name { min-width: 0; font-size: 15px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay-person-empty { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; border: 1.5px dashed var(--field-line); }
+.pay-swap { align-self: center; flex-shrink: 0; }
+/* What it leaves between them, under the amount. */
+.pay-context {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px;
+  padding: 10px 12px; border-radius: 14px; background: var(--surface-2);
+  font-size: 13.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.pay-context.up { background: color-mix(in srgb, var(--c-green) 10%, var(--surface-2)); color: var(--c-green); }
+.pay-context-text { min-width: 0; }
+.pay-fill {
+  flex-shrink: 0; min-height: 30px; padding: 0 12px; border: none; border-radius: 999px;
+  background: var(--brand); color: var(--brand-fg);
+  font-family: var(--font-hebrew); font-size: 12.5px; font-weight: 800; cursor: pointer;
+}
+.pay-fill:active { transform: scale(0.96); }
 .expense-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
 /* The switch of the split: what it is now, a tap to change it (like the
    currency in the expense form). */
