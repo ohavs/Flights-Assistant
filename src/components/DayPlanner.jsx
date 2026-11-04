@@ -576,9 +576,9 @@ function DayPlanner({
                 </span>
                 {sub && <span className="dp-card-sub">{sub}</span>}
                 {act.description && <span className="dp-card-note">{act.description}</span>}
-                {(visited || toBook || elsewhere || it.slot.custom) && (
+                {(visited || toBook || elsewhere || it.slot.custom || it.slot.parts.length > 1) && (
                   <span className="dp-card-tags">
-                    {it.slot.custom && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
+                    {(it.slot.custom || it.slot.parts.length > 1) && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
                     {visited && <Pill size="sm" tone="muted">ביקרנו</Pill>}
                     {toBook && <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>להזמין</Pill>}
                     {elsewhere && (

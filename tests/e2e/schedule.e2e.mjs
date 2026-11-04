@@ -337,6 +337,30 @@ await step('a date of the trip with no day shows as missing, and a tap brings it
   await card('צ׳ק־אאוט מהמלון').waitFor();
 });
 
+// 8.82.0: from morning to evening, the three parts picked; saved as one label.
+await step('an activity over several parts of the day: morning to evening', async () => {
+  await chip('יום 2').click();
+  await page.locator('button[aria-label="פעולות: הקולוסיאום"]').click();
+  await sheet().getByText('עריכה', { exact: true }).click();
+  const part = (p) => sheet().locator('.act-part', { hasText: p });
+  await part('צהריים').click();
+  await part('ערב').click();
+  for (const p of ['בוקר', 'צהריים', 'ערב']) {
+    if (await part(p).getAttribute('aria-pressed') !== 'true') throw new Error(`${p} not on`);
+  }
+  await shot('parts-form');
+  await sheet().locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  await until(async () => {
+    const day = (await list('days')).find(d => d.fields.date?.stringValue === '2026-11-11');
+    const a = (day?.fields.activities?.arrayValue.values || []).map(v => v.mapValue.fields)
+      .find(f => f.title.stringValue === 'הקולוסיאום');
+    return a?.timeLabel?.stringValue === 'בוקר–ערב';
+  }, 'saved as one label');
+  await card('הקולוסיאום').getByText('בוקר–ערב').waitFor();
+  await shot('parts');
+});
+
 await step('a booking: search the places; a linked place replaces its name and address', async () => {
   await page.locator('nav button.nav-item[aria-label="הזמנות"]').click();
   await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();

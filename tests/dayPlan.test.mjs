@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
-  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays,
+  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -26,10 +26,10 @@ test('the part of the day of a time', () => {
 });
 
 test('a saved time label: a part, a clock, free text or none', () => {
-  assert.deepEqual(slotOf('ערב'), { label: 'ערב', part: 'ערב', minutes: null, custom: false });
-  assert.deepEqual(slotOf('9:30'), { label: '09:30', part: 'בוקר', minutes: 570, custom: false });
-  assert.deepEqual(slotOf('אחרי הסיור'), { label: 'אחרי הסיור', part: null, minutes: null, custom: true });
-  assert.deepEqual(slotOf(''), { label: '', part: null, minutes: null, custom: false });
+  assert.deepEqual(slotOf('ערב'), { label: 'ערב', part: 'ערב', parts: ['ערב'], minutes: null, custom: false });
+  assert.deepEqual(slotOf('9:30'), { label: '09:30', part: 'בוקר', parts: ['בוקר'], minutes: 570, custom: false });
+  assert.deepEqual(slotOf('אחרי הסיור'), { label: 'אחרי הסיור', part: null, parts: [], minutes: null, custom: true });
+  assert.deepEqual(slotOf(''), { label: '', part: null, parts: [], minutes: null, custom: false });
 });
 
 test('bookings on a date leave out the cancelled ones', () => {
@@ -183,4 +183,25 @@ test('a day brought back goes in its place by date, its number as its title', ()
     [['2026-11-03', 1, 'יום 1'], ['2026-11-04', 2, 'יום 2']]);
   // Only days with no date: after them.
   assert.deepEqual(placeDays([{ id: 'x', order: 1 }], ['2026-11-03']), [{ date: '2026-11-03', order: 2, title: 'יום 2' }]);
+});
+
+// 8.82.0: an activity over several parts of the day, from morning to evening.
+test('several parts of the day: one label, standing at the first', () => {
+  assert.equal(partsLabel(['ערב', 'בוקר', 'צהריים']), 'בוקר–ערב');
+  assert.equal(partsLabel(['בוקר', 'צהריים']), 'בוקר–צהריים');
+  assert.equal(partsLabel(['ערב', 'בוקר']), 'בוקר, ערב');
+  assert.equal(partsLabel(['ערב']), 'ערב');
+  assert.equal(partsLabel([]), '');
+  assert.deepEqual(slotOf('בוקר–ערב'), { label: 'בוקר–ערב', part: 'בוקר', parts: ['בוקר', 'צהריים', 'ערב'], minutes: null, custom: false });
+  assert.deepEqual(slotOf('בוקר - צהריים').parts, ['בוקר', 'צהריים']);
+  assert.deepEqual(slotOf('ערב, בוקר'), { label: 'בוקר, ערב', part: 'בוקר', parts: ['בוקר', 'ערב'], minutes: null, custom: false });
+  // Text that only looks like it stays text.
+  assert.equal(slotOf('ערב-בוקר').custom, true);
+  assert.equal(slotOf('בוקר - מוזיאון').custom, true);
+  // In the day: with the morning, after what starts earlier in it.
+  const items = dayItems({ acts: [
+    { id: 'eve', timeLabel: 'ערב' }, { id: 'all', timeLabel: 'בוקר–ערב' }, { id: 'early', timeLabel: '08:00' },
+  ] });
+  assert.deepEqual(items.map(it => it.act.id), ['all', 'early', 'eve']);
+  assert.deepEqual(groupItems(items).map(g => g.label), ['בוקר', 'ערב']);
 });
