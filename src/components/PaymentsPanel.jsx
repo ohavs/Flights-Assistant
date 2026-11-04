@@ -70,7 +70,7 @@ function owes(summary, x, y, skip, rates) {
 }
 
 export function PaymentsView({
-  summary: s, payments, rates, currentUid, personProfile, mayChange, onOpen, onDelete, onMark, canMark,
+  summary: s, payments, rates, currentUid, personProfile, mayChange, onOpen, onDelete, onMark, canMark, onSettle,
 }) {
   const nameOf = (id) => (id === currentUid ? 'אני' : personProfile(id)?.displayName || personProfile(id)?.email || 'משתתף');
   const list = useMemo(
@@ -80,8 +80,8 @@ export function PaymentsView({
   return (
     <div className="pay-view">
       {rates && (
-        <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits + s.payments}
-          getPayerProfile={personProfile} onMark={onMark} canMark={canMark}
+        <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits + s.payments} currentUid={currentUid}
+          getPayerProfile={personProfile} onMark={onMark} canMark={canMark} onSettle={onSettle}
           emptyText="עוד אין מה להתחשבן. שילמת על מישהו, או שמישהו העביר לך? רושמים כאן." />
       )}
       {list.length === 0 ? (
@@ -341,6 +341,124 @@ export function PaymentSheet({
       {curOpen && (
         <CurrencySheet value={currency} quick={quick} onClose={() => setCurOpen(false)}
           onPick={(code) => {
+            setCurrency(code);
+            if (!quick.includes(code)) setQuick(prev => [...prev, code]);
+            onKeepCurrency?.(code);
+          }} />
+      )}
+    </>
+  );
+}
+
+// "קיבלתי"/"העברתי" (8.80.0, the owner's ask): how much came back, all of
+// it or part, and a note under the details. settle: { debtor, creditor,
+// balance (shekels debtor owes), items (what is open between them) }. All
+// of it closes those items, as the button did before, and keeps a closed
+// transfer when there is something to remember (a note, another currency);
+// part of it, or more, is an open transfer from whoever owes (PAY_GAVE),
+// so the row says "הועברו X מתוך Y". onRecord(fields, extra): a new payment.
+export function SettleSheet({
+  settle, currentUid, personProfile, rates, quickCurrencies, onKeepCurrency, onMark, onRecord, onClose,
+}) {
+  const { debtor, creditor, balance, items } = settle;
+  const nameOf = (id) => (id === currentUid ? 'אני' : personProfile(id)?.displayName || personProfile(id)?.email || 'משתתף');
+  const other = debtor === currentUid ? creditor : debtor;
+  const title = creditor === currentUid ? `קיבלתי ${withPrefix('מ', nameOf(debtor))}`
+    : debtor === currentUid ? `העברתי ${withPrefix('ל', nameOf(creditor))}`
+      : `${nameOf(debtor)} העביר/ה ${withPrefix('ל', nameOf(creditor))}`;
+  const full = (cur) => Math.round(convert(balance, 'ILS', cur, rates) * 100) / 100;
+  const [currency, setCurrency] = useState('ILS');
+  const [amount, setAmount] = useState(() => String(full('ILS')));
+  const [typed, setTyped] = useState(false);   // the full amount, until changed
+  const [note, setNote] = useState('');
+  const [curOpen, setCurOpen] = useState(false);
+  const [quick, setQuick] = useState(() => [...new Set(['ILS', ...quickCurrencies])]);
+
+  const value = parseFloat(String(amount).replace(',', '.'));
+  const v = value > 0 ? convert(value, currency, 'ILS', rates) : 0;
+  // Within half a cent of the currency it is all of it.
+  const all = v > 0 && Math.abs(v - balance) <= convert(0.005, currency, 'ILS', rates) + SETTLED;
+  const after = balance - v;
+  const dirty = typed || currency !== 'ILS' || note.trim() !== '';
+  const nExp = new Set(items.filter(i => i.expenseId).map(i => i.expenseId)).size;
+  const nPay = items.filter(i => i.paymentId).length;
+  const from = [nExp && (nExp === 1 ? 'הוצאה אחת' : `${nExp} הוצאות`), nPay && (nPay === 1 ? 'רישום אחד' : `${nPay} רישומים`)]
+    .filter(Boolean).join(' ו');
+
+  const submit = (e, close) => {
+    e.preventDefault();
+    if (!(value > 0)) return;
+    const text = note.trim() || null;
+    const fields = { kind: PAY_GAVE, from: debtor, to: creditor, amount: Math.round(value * 100) / 100, currency, note: text };
+    if (all) {
+      if (text || currency !== 'ILS') onRecord(fields, { settled: true });
+      onMark(items, true);
+    } else {
+      onRecord(fields);
+    }
+    close();
+  };
+
+  let sub = null;
+  let tone = '';
+  if (all) { sub = 'סוגר את כל החוב'; tone = 'up'; }
+  else if (v && after >= SETTLED) sub = `נשארו ${shekels(after)} מתוך ${shekels(balance)}`;
+  else if (v) sub = `יותר מהחוב. עכשיו ${owesText(creditor, debtor, -after, currentUid, nameOf)}`;
+
+  return (
+    <>
+      <Sheet title={title} onClose={onClose} dirty={dirty}>
+        {({ cancel, close }) => (
+          <form onSubmit={(e) => submit(e, close)} className="pay-form">
+            <div className="settle-who">
+              <MemberAvatar profile={personProfile(other)} size={36} />
+              <span className="settle-who-main">
+                <span className="settle-who-text">{owesText(debtor, creditor, balance, currentUid, nameOf)}</span>
+                {from && <span className="settle-who-sub">{`מ־${from}`}</span>}
+              </span>
+            </div>
+
+            <div className="exp-amount">
+              <label htmlFor="settle-amount" className="exp-amount-label">כמה הועבר</label>
+              <div className="exp-amount-field">
+                <input id="settle-amount" type="number" min="0" step="0.01" inputMode="decimal" required
+                  placeholder="0.00" value={amount} onChange={e => { setAmount(e.target.value); setTyped(true); }} />
+                <button type="button" className="exp-currency" onClick={() => setCurOpen(true)}
+                  aria-haspopup="dialog" aria-label={`מטבע: ${getCurrencyInfo(currency).name}`}>
+                  <span className="exp-currency-symbol">{getCurrencyInfo(currency).symbol}</span>
+                  <span className="exp-currency-code">{currency}</span>
+                  <ChevronDown size={15} strokeWidth={2.6} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            {(sub || !all) && (
+              <div className={`pay-context${tone ? ' ' + tone : ''}`} role="status">
+                {sub && <span className="pay-context-text">{sub}</span>}
+                {!all && (
+                  <button type="button" className="pay-fill" onClick={() => { setAmount(String(full(currency))); setTyped(false); }}>
+                    {`כל החוב: ${money(full(currency), currency)}`}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <input type="text" className="form-control" aria-label="הערה" value={note} onChange={e => setNote(e.target.value)}
+              placeholder="הערה (רשות): ביט, מזומן…" />
+
+            <div className="sheet-footer">
+              <button type="submit" className="btn-primary" disabled={!(value > 0)}>שמור</button>
+              <button type="button" onClick={cancel} className="btn-secondary">ביטול</button>
+            </div>
+          </form>
+        )}
+      </Sheet>
+
+      {curOpen && (
+        <CurrencySheet value={currency} quick={quick} onClose={() => setCurOpen(false)}
+          onPick={(code) => {
+            // Still the full amount: the full amount in the new currency.
+            if (!typed) setAmount(String(full(code)));
             setCurrency(code);
             if (!quick.includes(code)) setQuick(prev => [...prev, code]);
             onKeepCurrency?.(code);

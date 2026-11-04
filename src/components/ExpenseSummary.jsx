@@ -195,10 +195,14 @@ function Headline({ label, value, sub }) {
 // Marks what is open between two people paid back. An action, worded as
 // one ("קיבלתי"/"העברתי"), not "שולם", which read as if it already was.
 // Shown only when every one of those expenses may be changed here (canMark).
-function PaidButton({ items, label, text, onMark, canMark }) {
+// settle: { debtor, creditor, balance }. With onSettle the tap asks how
+// much came back (SettleSheet in PaymentsPanel.jsx, 8.80.0); without, or
+// with nothing owed, it marks it all paid at once.
+function PaidButton({ items, label, text, onMark, canMark, onSettle, settle }) {
   if (!onMark || !canMark?.(items)) return null;
+  const run = onSettle && settle ? () => onSettle({ ...settle, items }) : () => onMark(items, true);
   return (
-    <button type="button" className="settle-btn" onClick={() => onMark(items, true)} aria-label={label} title={label}>
+    <button type="button" className="settle-btn" onClick={run} aria-label={label} title={label}>
       {text}
     </button>
   );
@@ -206,7 +210,7 @@ function PaidButton({ items, label, text, onMark, canMark }) {
 
 // Settling up, from the splits only, by pair. Everyone's: who pays whom,
 // each with "שולם"; under them what was paid back already.
-function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, canMark }) {
+function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, canMark, onSettle }) {
   const name = (uid) => (uid === currentUid ? 'אני' : getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף');
   const even = !transfers.length;
   const allPaid = even && back >= SETTLED;
@@ -227,7 +231,8 @@ function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, 
           <span className="expense-row-end">
             <span className="expense-row-value">{shekels(t.amount)}</span>
             <PaidButton items={t.open} label={`${name(t.from)} העביר/ה ל${name(t.to)} ${shekels(t.amount)}`}
-              text={t.to === currentUid ? 'קיבלתי' : t.from === currentUid ? 'העברתי' : 'סמן ששולם'} onMark={onMark} canMark={canMark} />
+              text={t.to === currentUid ? 'קיבלתי' : t.from === currentUid ? 'העברתי' : 'סמן ששולם'} onMark={onMark} canMark={canMark}
+              onSettle={onSettle} settle={{ debtor: t.from, creditor: t.to, balance: t.amount }} />
           </span>
         </span>
       ))}
@@ -253,7 +258,7 @@ function Settle({ transfers, splits, back, currentUid, getPayerProfile, onMark, 
 // back already under it. Those all paid back stay under it, a tap to undo.
 // Also the top of "בינינו" (PaymentsPanel.jsx), where a transfer shows as
 // "הועברו X מתוך Y" under the row.
-export function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark, emptyText }) {
+export function MySettle({ balance, withMe, splits, getPayerProfile, onMark, canMark, onSettle, currentUid, emptyText }) {
   const name = (uid) => getPayerProfile(uid)?.displayName || getPayerProfile(uid)?.email || 'משתתף';
   const even = Math.abs(balance) < SETTLED;
   const open = withMe.filter(p => p.open.length);
@@ -303,7 +308,9 @@ export function MySettle({ balance, withMe, splits, getPayerProfile, onMark, can
               <span className={`expense-row-value${toMe ? ' up' : fromMe ? ' down' : ''}`}>{shekels(p.balance)}</span>
               <PaidButton items={p.open}
                 label={toMe ? `${name(p.uid)} שילם/ה לך ${shekels(p.balance)}` : fromMe ? `שילמתי ל${name(p.uid)} ${shekels(p.balance)}` : `סגירת החשבון עם ${name(p.uid)}`}
-                text={toMe ? 'קיבלתי' : fromMe ? 'העברתי' : 'סגירה'} onMark={onMark} canMark={canMark} />
+                text={toMe ? 'קיבלתי' : fromMe ? 'העברתי' : 'סגירה'} onMark={onMark} canMark={canMark} onSettle={onSettle}
+                settle={toMe ? { debtor: p.uid, creditor: currentUid, balance: p.balance }
+                  : fromMe ? { debtor: currentUid, creditor: p.uid, balance: -p.balance } : null} />
             </span>
           </span>
         );
@@ -394,7 +401,11 @@ function useBy() {
 // split by category, by who paid or by currency (one button switches).
 // onMark(items, paid): marks parts paid back (or not); canMark(items):
 // whether this phone may.
-export default function ExpenseSummarySheet({ summary: s, paid, currentUid, getPayerProfile, onClose, onMark, canMark }) {
+// seesAll: the trip's owner; anyone else sees only their own settling up
+// (8.80.0, the owner's ask), so "כולם" has no "מי מעביר למי" for them.
+export default function ExpenseSummarySheet({
+  summary: s, paid, currentUid, getPayerProfile, onClose, onMark, canMark, onSettle, seesAll,
+}) {
   const canScope = s.ils != null && s.people >= 2 && !!paid;
   const [scope, setScope] = useState('me');
   const mineOnly = canScope && scope === 'me';
@@ -443,15 +454,15 @@ export default function ExpenseSummarySheet({ summary: s, paid, currentUid, getP
         {mineOnly ? (<>
           <Headline label="שילמתי" value={shekels(paid.ils || 0)}
             sub={paid.count ? plural(paid.count, 'הוצאה אחת', 'הוצאות') : 'עוד לא שילמת על הוצאה בטיול הזה'} />
-          <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits + s.payments}
-            getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} />
+          <MySettle balance={s.mine || 0} withMe={s.withMe} splits={s.splits + s.payments} currentUid={currentUid}
+            getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} onSettle={onSettle} />
           {paid.count > 0 && <Breakdown title="לפי קטגוריה" rows={categoryRows(paid.byCategory)} />}
         </>) : s.ils != null ? (<>
           <Headline label='סה"כ הטיול' value={shekels(s.ils)}
             sub={[plural(s.count, 'הוצאה אחת', 'הוצאות'), s.people >= 2 ? `${s.people} משתתפים` : ''].filter(Boolean).join(' · ')} />
-          {s.people >= 2 && (
+          {s.people >= 2 && seesAll && (
             <Settle transfers={s.transfers} splits={s.splits + s.payments} back={s.paidBack} currentUid={currentUid}
-              getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} />
+              getPayerProfile={getPayerProfile} onMark={onMark} canMark={canMark} onSettle={onSettle} />
           )}
           <Breakdown title="פילוג" by={shown} options={options} onBy={setBy} rows={rows} />
         </>) : (
