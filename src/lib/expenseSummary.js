@@ -15,6 +15,13 @@
 // splitPaid: who already paid the payer back; their part is no longer owed.
 // Settling up is by pair (who owes whom straight from what they shared,
 // netted both ways), so a "שולם" mark is always on what is shown.
+//
+// 8.79.0 (the owner's ask): payments between two people ("בינינו", the
+// trips/{id}/payments collection): { from, to, amount, currency, kind,
+// note, date, settled }. Either kind is money from `from` to `to`, so `to`
+// owes `from` that much more: 'for' (paid for them, a debt) or 'gave' (a
+// transfer, which pays a debt back). Not an expense: not in the total.
+// settled: closed with the pair's "קיבלתי"/"העברתי", like splitPaid.
 import { convert } from '../services/currency.js';
 
 const TOP = 3;
@@ -22,6 +29,8 @@ const TOP = 3;
 // when small (8.75.0 hid a split under half a shekel as "מאוזן").
 export const SETTLED = 0.005;
 export const GUEST = 'name:';
+export const PAY_FOR = 'for';
+export const PAY_GAVE = 'gave';
 
 // The people an expense is split among, payer first; [] when it is not.
 export function splitGroup(e, payer) {
@@ -102,8 +111,10 @@ export function paidExpenses(expenses, uid, { members = [] } = {}) {
 
 // expenses: the trip's expense documents. rates: per euro, or null.
 // members: the trip's uids now. currentUid: whoever is looking.
-export function expenseSummary(expenses, { rates = null, members = [], currentUid = null } = {}) {
+// payments: the trip's payments between people (above).
+export function expenseSummary(expenses, { rates = null, members = [], currentUid = null, payments = [] } = {}) {
   const list = expenses || [];
+  const moves = (payments || []).filter(p => p && p.from && p.to && p.from !== p.to && Number(p.amount) > 0);
   const ilsOf = (e) => convert(e.amount, e.currency, 'ILS', rates);
 
   const perCurrency = {};
@@ -120,13 +131,13 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
     byCurrency,
     people,
     ils: null,
-    byCategory: [], top: [], byPerson: [], transfers: [], unassigned: 0, splits: 0, mine: null, myShare: null,
+    byCategory: [], top: [], byPerson: [], transfers: [], unassigned: 0, splits: 0, payments: 0, mine: null, myShare: null,
     withMe: [], paidBack: 0,
   };
-  if (!rates || !list.length) return base;
+  if (!rates || (!list.length && !moves.length)) return base;
 
   const valued = list.map(e => ({ e, ils: ilsOf(e) }));
-  const ils = valued.reduce((s, x) => s + x.ils, 0);
+  const ils = list.length ? valued.reduce((s, x) => s + x.ils, 0) : null;
 
   const perCat = {};
   for (const { e, ils: v } of valued) {
@@ -159,7 +170,7 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
   const ledger = {};
   const pairOf = (x, y) => {
     const [a, b] = x < y ? [x, y] : [y, x];
-    return (ledger[`${a}\u0000${b}`] ||= { a, b, net: 0, back: 0, open: [], closed: [] });
+    return (ledger[`${a}\u0000${b}`] ||= { a, b, net: 0, back: 0, debt: 0, moved: 0, open: [], closed: [] });
   };
   let splits = 0;
   let back = 0;
@@ -180,11 +191,31 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
       const sign = pair.a === payer ? 1 : -1;
       const item = { expenseId: e.id, id };
       if (paid) { pair.back += sign * part; pair.closed.push(item); }
-      else { pair.net += sign * part; pair.open.push(item); }
+      else { pair.net += sign * part; pair.debt += sign * part; pair.open.push(item); }
       if (paid) { back += part; continue; }
       owed[id] = (owed[id] || 0) - part;
       owed[payer] = (owed[payer] || 0) + part;
     }
+  }
+  // Payments: `to` owes `from` that much more. debt and moved apart, for
+  // "הועברו X מתוך Y"; a closed transfer is how a debt was paid, so only a
+  // closed debt counts in what was paid back.
+  for (const m of moves) {
+    const v = convert(m.amount, m.currency, 'ILS', rates);
+    const pair = pairOf(m.from, m.to);
+    const sign = pair.a === m.from ? 1 : -1;
+    const item = { paymentId: m.id };
+    const gave = m.kind === PAY_GAVE;
+    if (m.settled) {
+      if (!gave) { pair.back += sign * v; back += v; }
+      pair.closed.push(item);
+      continue;
+    }
+    pair.net += sign * v;
+    if (gave) pair.moved += sign * v; else pair.debt += sign * v;
+    pair.open.push(item);
+    owed[m.to] = (owed[m.to] || 0) - v;
+    owed[m.from] = (owed[m.from] || 0) + v;
   }
   const byPerson = [...new Set([...Object.keys(paid), ...Object.keys(share)])]
     .map(uid => ({ uid, paid: paid[uid] || 0, share: share[uid] || 0, balance: owed[uid] || 0 }))
@@ -198,6 +229,7 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
     byPerson,
     unassigned,
     splits,
+    payments: moves.length,
     mine: currentUid && currentUid in owed ? owed[currentUid] : null,
     myShare: currentUid ? share[currentUid] || 0 : null,
     // Who pays whom: each pair still out by more than SETTLED, most first.
@@ -210,7 +242,10 @@ export function expenseSummary(expenses, { rates = null, members = [], currentUi
     withMe: currentUid ? Object.values(ledger).filter(p => p.a === currentUid || p.b === currentUid)
       .map(p => {
         const sign = p.a === currentUid ? 1 : -1;
-        return { uid: p.a === currentUid ? p.b : p.a, balance: sign * p.net, back: sign * p.back, open: p.open, closed: p.closed };
+        return {
+          uid: p.a === currentUid ? p.b : p.a, balance: sign * p.net, back: sign * p.back,
+          debt: sign * p.debt, moved: sign * p.moved, open: p.open, closed: p.closed,
+        };
       })
       .sort((x, y) => (y.open.length > 0) - (x.open.length > 0)
         || Math.abs(y.balance) - Math.abs(x.balance) || Math.abs(y.back) - Math.abs(x.back)) : [],

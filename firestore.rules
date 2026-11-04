@@ -131,7 +131,7 @@ service cloud.firestore {
         // createdBy; a reminder's addedByUid is whose it is, not who wrote it.
         function creatorOf(d) { return d.get('createdBy', d.get('addedBy', null)); }
         function addsHere() {
-          return subcollection in ['planning', 'checklist', 'reminders', 'info', 'expenses', 'bookings'];
+          return subcollection in ['planning', 'checklist', 'reminders', 'info', 'expenses', 'bookings', 'payments'];
         }
         function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
         // A tick on anyone's item. A place also keeps its measured travel

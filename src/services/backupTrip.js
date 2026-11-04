@@ -3,7 +3,7 @@ import { collection, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { readAll } from '../lib/readFresh';
 import { saveFile } from '../lib/saveFile';
 
-const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders', 'expenses', 'settings'];
+const SUBCOLS = ['planning', 'days', 'checklist', 'info', 'bookings', 'reminders', 'expenses', 'payments', 'settings'];
 
 // `fromPhone`: made offline, from the phone's copy (src/lib/readFresh.js).
 export async function exportTripBackup(tripId, tripDoc) {

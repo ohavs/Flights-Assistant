@@ -1387,7 +1387,7 @@ function AppInner() {
   useEffect(() => {
     if (!signedInUid || !offlineKey) return undefined;
     const offs = offlineKey.split(',').flatMap(id => [
-      ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings']
+      ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'payments', 'info', 'bookings', 'settings']
         .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})),
       listen(collection(db, 'trips', id, 'personal', signedInUid, 'days'), () => {}, () => {}),
     ]);
@@ -1749,7 +1749,7 @@ function AppInner() {
     const tripRef = doc(db, 'trips', tripId);
 
     // Delete all docs in the known subcollections, batched.
-    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'settings'];
+    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'payments', 'settings'];
     for (const name of subcollections) {
       const snap = await getDocsFromServer(collection(db, 'trips', tripId, name));
       if (snap.size === 0) continue;
