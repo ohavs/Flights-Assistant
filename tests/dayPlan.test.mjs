@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
-  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems,
+  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -148,4 +148,39 @@ test('the personal plan over the shared one, in one order', () => {
   assert.equal(items.find(it => it.key === 'act:m2').shared, undefined);
   assert.equal(items.find(it => it.key === 'sh:act:s2').booking, null);
   assert.ok(items.filter(it => it.key.startsWith('sh:')).every(it => it.shared));
+});
+
+// A day of the trip is never taken away (8.81.0); a date with none shows as
+// missing, and comes back in its place.
+test('the dates of the trip with no day: the flights, and gaps between days', () => {
+  const day = (date, order) => ({ id: date, date, order });
+  const days = [day('2026-11-25', 2), day('2026-11-26', 3), day('2026-11-28', 5)];
+  assert.deepEqual(missingDates(days, '2026-11-24', '2026-11-28'), ['2026-11-24', '2026-11-27']);
+  assert.deepEqual(missingDates(days, '2026-11-24T10:00', '2026-11-29'), ['2026-11-24', '2026-11-27', '2026-11-29']);
+  // No flights: only the gaps.
+  assert.deepEqual(missingDates(days, null, null), ['2026-11-27']);
+  assert.deepEqual(missingDates([{ id: 'x', order: 1 }], null, null), []);
+  assert.deepEqual(missingDates([], '2026-11-03', '2026-11-05'), ['2026-11-03', '2026-11-04', '2026-11-05']);
+  // Across a month, and never a backwards range.
+  assert.deepEqual(missingDates([], '2026-11-30', '2026-12-01'), ['2026-11-30', '2026-12-01']);
+  assert.deepEqual(missingDates([], '2026-11-05', '2026-11-03'), []);
+});
+
+test('a day brought back goes in its place by date, its number as its title', () => {
+  const days = [
+    { id: 'b', date: '2026-11-25', order: 2, title: 'יום 2' },
+    { id: 'c', date: '2026-11-26', order: 3, title: 'יום 3' },
+    { id: 'x', order: 4, title: 'יום 4' },                 // no date, added after
+    { id: 'e', date: '2026-11-28', order: 5, title: 'יום 5' },
+  ];
+  assert.deepEqual(placeDays(days, ['2026-11-24']), [{ date: '2026-11-24', order: 1, title: 'יום 1' }]);
+  // Between two days: between their orders.
+  assert.deepEqual(placeDays(days, ['2026-11-27']), [{ date: '2026-11-27', order: 4.5, title: 'יום 4' }]);
+  // After the last: after it.
+  assert.deepEqual(placeDays(days, ['2026-11-29']), [{ date: '2026-11-29', order: 6, title: 'יום 5' }]);
+  // Several at once, each counting the ones before it.
+  assert.deepEqual(placeDays([], ['2026-11-04', '2026-11-03']).map(d => [d.date, d.order, d.title]),
+    [['2026-11-03', 1, 'יום 1'], ['2026-11-04', 2, 'יום 2']]);
+  // Only days with no date: after them.
+  assert.deepEqual(placeDays([{ id: 'x', order: 1 }], ['2026-11-03']), [{ date: '2026-11-03', order: 2, title: 'יום 2' }]);
 });

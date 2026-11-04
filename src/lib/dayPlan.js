@@ -193,6 +193,61 @@ export function swapDayFields(a, b, posA, posB) {
   };
 }
 
+/* ── The trip's days stay (8.81.0) ─────────────────────────────────
+   A day of the trip is never taken away. Clearing it takes out its
+   activities, and the day stays with whatever is fixed to its date. A date
+   of the trip with no day (taken away before this) shows in the strip as
+   missing, to bring back in a tap. */
+const isoOf = (s) => (/^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(0, 10) : null);
+const DAY_MS = 86400000;
+function datesFrom(lo, hi, max = 45) {
+  const out = [];
+  const end = Date.parse(`${hi}T00:00:00Z`);
+  for (let t = Date.parse(`${lo}T00:00:00Z`); t <= end && out.length < max; t += DAY_MS) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+// The dates of the trip with no day, sorted: from the flight out to the
+// flight back, and any gap between the days.
+export function missingDates(days, out, ret) {
+  const have = new Set((days || []).map(d => isoOf(d.date)).filter(Boolean));
+  const dated = [...have].sort();
+  const want = new Set();
+  const o = isoOf(out);
+  const r = isoOf(ret);
+  if (o && r && o <= r) datesFrom(o, r).forEach(d => want.add(d));
+  if (dated.length > 1) datesFrom(dated[0], dated[dated.length - 1]).forEach(d => want.add(d));
+  return [...want].filter(d => !have.has(d)).sort();
+}
+
+// Where days brought back on `dates` go: each before the first day after
+// its date (or after the last day with a date), its title the number of
+// its place. The others keep theirs.
+//   days  the day documents ({ order, date })
+// Returns [{ date, order, title }], by date.
+export function placeDays(days, dates) {
+  const list = [...(days || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+  return [...dates].sort().map(date => {
+    let at = list.findIndex(d => isoOf(d.date) && isoOf(d.date) > date);
+    if (at < 0) {
+      const last = list.map(d => !!isoOf(d.date)).lastIndexOf(true);
+      at = last < 0 ? list.length : last + 1;
+    }
+    const before = list[at - 1];
+    const after = list[at];
+    const o = (d) => Number(d.order) || 0;
+    const order = before && after ? (o(before) + o(after)) / 2
+      : after ? o(after) - 1
+        : before ? o(before) + 1
+          : 1;
+    const day = { date, order, title: `יום ${at + 1}` };
+    list.splice(at, 0, day);
+    return day;
+  });
+}
+
 // Minutes of a leg's duration ({ seconds } or '1 שע' 5 דק''), or null.
 export function legMinutes(leg) {
   if (!leg) return null;
