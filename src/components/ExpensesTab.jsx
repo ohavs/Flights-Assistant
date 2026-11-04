@@ -86,6 +86,9 @@ export default function ExpensesTab({ tripId }) {
   // what is left evenly. And who already paid the payer back.
   const [splitAmounts, setSplitAmounts] = useState({});
   const [splitPaid, setSplitPaid] = useState([]);
+  // The part being typed ({ id, text }): it may be empty (or 0) while
+  // typing; empty goes back to an even share of what is left on leaving.
+  const [partDraft, setPartDraft] = useState(null);
   const [showNewName, setShowNewName] = useState(false);
   const [newNameDraft, setNewNameDraft] = useState('');
   const [sessionNames, setSessionNames] = useState([]);
@@ -272,10 +275,14 @@ export default function ExpensesTab({ tripId }) {
     const groupOf = (f) => splitGroup({ splitWith: f.splitWith, splitSelf: f.splitSelf }, f.paidBy || currentUid);
     const fieldsOf = (f) => {
       const group = groupOf(f);
+      const payerId = f.paidBy || currentUid;
+      // The payer's part typed as 0 is "רק הם": the same split, and one
+      // an older app (it does not know splitAmounts) reads right too.
+      const payerOut = group.includes(payerId) && partAmount(f.splitAmounts?.[payerId]) === 0;
       const parts = {};
       for (const pid of group) {
         const n = partAmount(f.splitAmounts?.[pid]);
-        if (n !== null) parts[pid] = Math.round(n * 100) / 100;
+        if (n !== null && !(payerOut && pid === payerId)) parts[pid] = Math.round(n * 100) / 100;
       }
       return {
         amount: parseFloat(f.amount),
@@ -286,7 +293,7 @@ export default function ExpensesTab({ tripId }) {
         customPlace: f.customPlace.trim() || null,
         paidBy: f.paidBy || currentUid || null,
         splitWith: (f.splitWith || []).filter(pid => pid !== (f.paidBy || currentUid)),
-        splitSelf: f.splitSelf !== false,
+        splitSelf: f.splitSelf !== false && !payerOut,
         splitAmounts: Object.keys(parts).length ? parts : null,
       };
     };
@@ -408,6 +415,7 @@ export default function ExpensesTab({ tripId }) {
   // it back to an even share of what is left.
   const setPart = (id, raw) => {
     const v = String(raw).replace(/,/g, '.').replace(/[^\d.]/g, '').replace(/^(\d*\.\d*).*$/, '$1');
+    setPartDraft({ id, text: v });
     if (v === '') { dropPart(id); return; }
     setSplitAmounts(prev => ({ ...prev, [id]: v }));
   };
@@ -691,6 +699,7 @@ export default function ExpensesTab({ tripId }) {
                 const each = n && total ? total / n : null;
                 const names = chosen.map(id => personProfile(id)?.displayName || personProfile(id)?.email || '').filter(Boolean);
                 const payerName = payer === currentUid ? 'אני' : (personProfile(payer)?.displayName || 'המשלם');
+                const payerIn = splitSelf && partAmount(splitAmounts[payer]) !== 0;
                 const back = splitPaid.filter(id => formGroup.includes(id) && id !== payer).length;
                 const off = n > 0 && formAlloc.gap !== 0;
                 return (
@@ -700,7 +709,7 @@ export default function ExpensesTab({ tripId }) {
                       <span className="exp-split-label">חלוקה{n > 0 && back > 0 ? ` · ${back === n - (splitSelf ? 1 : 0) ? 'כולם שילמו' : `${back} שילמו`}` : ''}</span>
                       <span className="exp-split-value">
                         {chosen.length
-                          ? `${names.join(', ')}${splitSelf ? ` + ${payerName}` : ''}`
+                          ? `${names.join(', ')}${payerIn ? ` + ${payerName}` : ''}`
                           : 'בלי חלוקה, אף אחד לא חייב'}
                       </span>
                     </span>
@@ -836,8 +845,15 @@ export default function ExpensesTab({ tripId }) {
                   <span className="split-amt-cur" aria-hidden="true">{sym}</span>
                   <input type="text" inputMode="decimal" enterKeyHint="done"
                     aria-label={`החלק של ${name}`}
-                    value={set ? splitAmounts[id] : show(alloc.amounts[id])}
-                    onFocus={(e) => e.target.select()}
+                    value={partDraft?.id === id ? partDraft.text : set ? splitAmounts[id] : show(alloc.amounts[id])}
+                    placeholder={show(alloc.amounts[id])}
+                    onFocus={(e) => {
+                      const t = e.target;
+                      setPartDraft({ id, text: t.value });
+                      // After the tap places the caret: typing replaces it.
+                      requestAnimationFrame(() => { if (document.activeElement === t) t.select(); });
+                    }}
+                    onBlur={() => setPartDraft(null)}
                     onChange={(e) => setPart(id, e.target.value)} />
                 </label>
               )}
@@ -850,7 +866,7 @@ export default function ExpensesTab({ tripId }) {
               <div className="exp-split-sheet">
                 <p className="dp-sheet-note" style={{ marginTop: 0 }}>
                   {active && total > 0
-                    ? 'הסכום מתחלק שווה. אפשר לשנות את החלק של כל אחד, והשאר יתחלקו ביתרה.'
+                    ? 'הסכום מתחלק שווה. אפשר לשנות את החלק של כל אחד, גם ל־0, והשאר יתחלקו ביתרה.'
                     : 'עם מי מתחלקים בהוצאה. בלי חלוקה, אף אחד לא חייב עליה.'}
                 </p>
                 <div className="list-group split-rows" role="group" aria-label="עם מי מתחלקים">

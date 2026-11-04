@@ -9,6 +9,10 @@ import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { db, enableNetwork, disableNetwork } from './firebase.js'
 import { isNative } from './lib/platform.js'
+import { installKeepFocusVisible } from './lib/keepFocusVisible.js'
+
+// A field low on the screen scrolls above the keyboard when it opens.
+installKeepFocusVisible();
 
 // ── Service Worker: a new version takes over ──
 // Web only. In the Android app the files ship inside the APK, and a worker
