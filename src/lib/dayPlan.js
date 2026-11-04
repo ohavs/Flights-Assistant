@@ -8,7 +8,8 @@
 //
 // An activity's time is its `timeLabel`, as every reader already shows it
 // (the widget, the morning summary, the exports): a part of the day
-// ('בוקר'), a clock time ('10:30'), or free text saved before.
+// ('בוקר'), several ('בוקר–ערב', 8.82.0), a clock time ('10:30'), or free
+// text saved before.
 import { parseClock } from './flightAlerts.js';
 
 export const PARTS = ['בוקר', 'צהריים', 'ערב', 'לילה'];
@@ -32,14 +33,45 @@ export function partOf(mins) {
   return 'לילה';
 }
 
-// A saved time label, read: { label, part, minutes, custom }.
+// Several parts of the day as one label (8.82.0): 'בוקר–ערב' when they
+// follow each other, else 'בוקר, ערב'. One part is itself; none is ''.
+// Old readers show the label as it is, as text.
+export function partsLabel(parts) {
+  const ps = PARTS.filter(p => (parts || []).includes(p));
+  if (ps.length < 2) return ps[0] || '';
+  const inRow = ps.every((p, i) => i === 0 || PARTS.indexOf(p) === PARTS.indexOf(ps[i - 1]) + 1);
+  return inRow ? `${ps[0]}–${ps[ps.length - 1]}` : ps.join(', ');
+}
+
+// The parts in a label of several ('בוקר–ערב', 'בוקר, ערב'), or null.
+function spanOf(t) {
+  const range = t.split(/\s*[–—-]\s*/);
+  if (range.length === 2) {
+    const [a, b] = range.map(x => PARTS.indexOf(x));
+    if (a >= 0 && b > a) return PARTS.slice(a, b + 1);
+  }
+  const list = t.split(/\s*[,،]\s*/);
+  if (list.length > 1 && list.every(x => PARTS.includes(x))) {
+    const ps = PARTS.filter(p => list.includes(p));
+    if (ps.length > 1) return ps;
+  }
+  return null;
+}
+
+// A saved time label, read: { label, part, parts, minutes, custom }.
+// `part` is where it stands in the day: for several parts, the first.
 export function slotOf(label) {
   const t = String(label || '').trim();
-  if (!t) return { label: '', part: null, minutes: null, custom: false };
+  if (!t) return { label: '', part: null, parts: [], minutes: null, custom: false };
   const minutes = clockMinutes(t);
-  if (minutes != null) return { label: fmtClock(minutes), part: partOf(minutes), minutes, custom: false };
-  if (PARTS.includes(t)) return { label: t, part: t, minutes: null, custom: false };
-  return { label: t, part: null, minutes: null, custom: true };
+  if (minutes != null) {
+    const part = partOf(minutes);
+    return { label: fmtClock(minutes), part, parts: [part], minutes, custom: false };
+  }
+  if (PARTS.includes(t)) return { label: t, part: t, parts: [t], minutes: null, custom: false };
+  const span = spanOf(t);
+  if (span) return { label: partsLabel(span), part: span[0], parts: span, minutes: null, custom: false };
+  return { label: t, part: null, parts: [], minutes: null, custom: true };
 }
 
 // After midnight is still the night before (01:00 comes after 23:00).

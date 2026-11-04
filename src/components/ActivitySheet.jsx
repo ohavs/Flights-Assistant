@@ -6,7 +6,7 @@ import { CategoryDisc } from '../ui/kit';
 import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { addActivities, updateActivity } from '../lib/dayActivities';
-import { PARTS, slotOf } from '../lib/dayPlan';
+import { PARTS, slotOf, partsLabel } from '../lib/dayPlan';
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
 const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
@@ -17,8 +17,9 @@ const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
    one is chosen; what a place doesn't know (when, notes) stays. Adding,
    several places can be chosen at once, each its own activity.
 
-   The time is one value, saved as `timeLabel` like before: a part of the
-   day, or a clock time (which falls in a part on its own).             */
+   The time is one value, saved as `timeLabel` like before: parts of the
+   day (one, or several: 'בוקר–ערב', 8.82.0), or a clock time (which falls
+   in a part on its own).                                               */
 export default function ActivitySheet({
   tripId, day, editing, plans, categories, usedOn, currentUid, personal = false, onlyOwn = false,
   getCategoryColor, getCategoryIcon, metaOf, onAddCategory, onClose,
@@ -101,7 +102,17 @@ export default function ActivitySheet({
     close();
   };
 
-  const partOn = (part) => slot.part === part;
+  const partOn = (part) => slot.parts.includes(part);
+  // Each part turns on and off on its own; several make one label. With an
+  // exact time, its own part drops the time, and another adds itself.
+  const togglePart = (part) => {
+    if (slot.minutes != null) {
+      setTimeLabel(part === slot.part ? part : partsLabel([slot.part, part]));
+      return;
+    }
+    const next = slot.parts.includes(part) ? slot.parts.filter(p => p !== part) : [...slot.parts, part];
+    setTimeLabel(partsLabel(next));
+  };
 
   return (
     <Sheet
@@ -183,7 +194,10 @@ export default function ActivitySheet({
 
           {/* When: a part of the day, or an exact time */}
           <div className="act-form-block">
-            <span className="act-form-label">מתי{chosen.length > 1 ? ' (לכל המקומות)' : ''}</span>
+            <span className="act-form-label">
+              מתי{chosen.length > 1 ? ' (לכל המקומות)' : ''}
+              <span className="act-form-hint">אפשר לבחור כמה</span>
+            </span>
             <div className="act-parts" role="group" aria-label="חלק ביום">
               {PARTS.map(part => {
                 const Icon = PART_ICONS[part];
@@ -194,7 +208,7 @@ export default function ActivitySheet({
                     type="button"
                     className={`act-part${on ? ' on' : ''}${on && slot.minutes != null ? ' by-time' : ''}`}
                     aria-pressed={on}
-                    onClick={() => setTimeLabel(on && slot.minutes == null ? '' : part)}
+                    onClick={() => togglePart(part)}
                   >
                     <Icon size={16} aria-hidden="true" />
                     <span>{part}</span>

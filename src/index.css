@@ -4018,6 +4018,7 @@ button.dp-leg:active { background: var(--ink-4); }
 .act-form { display: flex; flex-direction: column; gap: 14px; }
 .act-form-block { display: flex; flex-direction: column; gap: 10px; }
 .act-form-label { font-size: 13px; font-weight: 800; color: var(--text); }
+.act-form-hint { margin-inline-start: 8px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .act-form-note { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .act-place {
   display: flex; align-items: center; gap: 10px;
