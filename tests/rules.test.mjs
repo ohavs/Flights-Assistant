@@ -7,7 +7,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import {
   getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayRemove, arrayUnion,
-  onSnapshot, writeBatch,
+  onSnapshot, writeBatch, collection, query, where, getDocs,
 } from 'firebase/firestore';
 
 const apps = [];
@@ -288,4 +288,55 @@ test('a viewer still adds nothing', async () => {
   await assert.rejects(setDoc(item(viewer, tripId, 'planning', 'v'), { title: 'x', createdBy: viewer.uid }), denied);
   await setDoc(item(owner, tripId, 'checklist', 'c'), { text: 'C', completed: false });
   await assert.rejects(updateDoc(item(viewer, tripId, 'checklist', 'c'), { completed: true }), denied);
+});
+
+/* ── "בינינו": whose a payment is (8.80.0) ─────────────────────────── */
+
+test('a payment: the two in it and whoever wrote it see it, and the owner all; no one else', async () => {
+  const tripId = `trip_pay_${Date.now()}_${tripCount++}`;
+  await setDoc(doc(owner.db, 'trips', tripId), {
+    name: 'Trip',
+    members: { [owner.uid]: 'owner', [editor.uid]: 'editor', [adder.uid]: 'contributor', [viewer.uid]: 'viewer' },
+    memberIds: [owner.uid, editor.uid, adder.uid, viewer.uid],
+  });
+  const pay = (who, id) => item(who, tripId, 'payments', id);
+  const payments = (who) => collection(who.db, 'trips', tripId, 'payments');
+  const ids = async (q) => (await getDocs(q)).docs.map(d => d.id).sort();
+  const p = (from, to, createdBy) => ({ kind: 'for', from, to, amount: 10, currency: 'ILS', note: null, settled: false, createdBy });
+  await setDoc(pay(editor, 'p1'), p(editor.uid, adder.uid, editor.uid));
+  await setDoc(pay(owner, 'p2'), p(owner.uid, 'name:רוני', owner.uid));
+  // Written down by the editor, between two others: the editor sees it.
+  await setDoc(pay(editor, 'p3'), p(owner.uid, adder.uid, editor.uid));
+
+  // The owner: all of them, the whole collection at once.
+  assert.deepEqual(await ids(payments(owner)), ['p1', 'p2', 'p3']);
+  // Anyone else: not the whole collection, only theirs, field by field.
+  for (const who of [editor, adder, viewer]) await assert.rejects(getDocs(payments(who)), denied);
+  assert.deepEqual(await ids(query(payments(editor), where('createdBy', '==', editor.uid))), ['p1', 'p3']);
+  assert.deepEqual(await ids(query(payments(editor), where('from', '==', editor.uid))), ['p1']);
+  assert.deepEqual(await ids(query(payments(adder), where('to', '==', adder.uid))), ['p1', 'p3']);
+  assert.deepEqual(await ids(query(payments(viewer), where('to', '==', viewer.uid))), []);
+  // Not someone else's by another field, nor one by one.
+  await assert.rejects(getDocs(query(payments(viewer), where('from', '==', editor.uid))), denied);
+  await assert.rejects(getDoc(pay(viewer, 'p1')), denied);
+  await assert.rejects(getDoc(pay(editor, 'p2')), denied);
+  assert.equal((await getDoc(pay(adder, 'p1'))).exists(), true);
+
+  // An editor changes only what they can see, and cannot write themselves
+  // out of it, nor in.
+  await updateDoc(pay(editor, 'p1'), { settled: true });
+  await assert.rejects(updateDoc(pay(editor, 'p2'), { settled: true }), denied);
+  await assert.rejects(deleteDoc(pay(editor, 'p2')), denied);
+  await assert.rejects(updateDoc(pay(editor, 'p1'), { from: owner.uid, createdBy: owner.uid }), denied);
+  await assert.rejects(updateDoc(pay(editor, 'p2'), { createdBy: editor.uid }), denied);
+  // Not one in others' names only.
+  await assert.rejects(setDoc(pay(editor, 'p4'), p(owner.uid, adder.uid, owner.uid)), denied);
+  // The owner changes any.
+  await updateDoc(pay(owner, 'p1'), { settled: false });
+  await deleteDoc(pay(owner, 'p3'));
+
+  // The rest of the trip reads as before, a missing doc too.
+  assert.equal((await getDoc(item(viewer, tripId, 'settings', 'nothing'))).exists(), false);
+  await setDoc(item(owner, tripId, 'expenses', 'e1'), { amount: 5, createdBy: owner.uid });
+  assert.deepEqual(await ids(collection(viewer.db, 'trips', tripId, 'expenses')), ['e1']);
 });
