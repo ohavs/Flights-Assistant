@@ -3783,6 +3783,16 @@ button.travel-from:active { background: var(--p-8); }
 .dp-chip[aria-selected="true"] .dp-chip-top,
 .dp-chip[aria-selected="true"] .dp-chip-bottom { color: var(--brand-fg); opacity: 0.85; }
 .dp-chip[aria-selected="true"] .dp-chip-dots i { background: var(--brand-fg); }
+/* A date of the trip with no day (8.81.0): dashed, a tap brings it back */
+.dp-chip.missing {
+  background: transparent; box-shadow: none;
+  border: 2px dashed var(--ink-20); color: var(--text-muted);
+}
+.dp-chip.missing .dp-chip-num { opacity: 0.7; }
+.dp-chip-add {
+  display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px;
+  border-radius: 50%; background: var(--brand); color: var(--brand-fg);
+}
 
 /* The chosen day */
 .dp-day { display: flex; flex-direction: column; gap: 12px; }

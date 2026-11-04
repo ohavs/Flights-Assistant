@@ -11,9 +11,9 @@ import {
 } from 'firebase/firestore';
 import {
   dayActivities, addActivities, updateActivity, removeActivity, swapActivities,
-  moveActivityToDay, swapDays,
+  moveActivityToDay, swapDays, clearActivities, putBack, restoreDays,
 } from '../src/lib/dayActivities.js';
-import { swapDayFields, anchoredIds } from '../src/lib/dayPlan.js';
+import { swapDayFields, anchoredIds, placeDays } from '../src/lib/dayPlan.js';
 
 const phone = async (name) => {
   const app = initializeApp({ projectId: 'demo-flights', apiKey: 'demo-key' }, name);
@@ -161,4 +161,43 @@ test('reading: old days by position, and a day an old app edited in place', () =
   const mixed = [{ ...breakfast, order: 1 }, { ...museum }, { ...lunch, order: 3 }];
   assert.deepEqual(dayActivities(mixed).map(a => a.id), ['a-1', 'a-2', 'a-3']);
   assert.deepEqual(dayActivities(undefined), []);
+});
+
+// 8.81.0: a day is never taken away. Clearing it takes out its activities
+// but what is kept; the day and the kept ones stay, and undo puts the rest
+// back in their places, next to what the other phone added meanwhile.
+test('clearing a day: the day stays, what is fixed stays, undo puts it back', async () => {
+  const trip = await newDay('days-clear', [breakfast, museum, lunch]);
+  const { removed, done } = clearActivities(A.db, trip, 'd1', await raw(A.db, trip), new Set([museum.id]));
+  await done;
+  assert.deepEqual(await titles(trip), ['מוזיאון']);
+  await bAddsBeach(trip);
+  await putBack(A.db, trip, 'd1', removed);
+  const back = await titles(trip);
+  assert.deepEqual(back.slice(0, 2), ['ארוחת בוקר', 'מוזיאון']);
+  assert.deepEqual([...back].sort(), ['ארוחת בוקר', 'חוף', 'מוזיאון', 'צהריים'].sort());
+  // Nothing to clear: no write.
+  const none = clearActivities(A.db, trip, 'd1', [], new Set());
+  assert.deepEqual(none.removed, []);
+  await none.done;
+});
+
+test('bringing a day back: in its place, and two phones at once make one day', async () => {
+  const trip = await newDay('days-back');
+  await updateDoc(doc(B.db, 'trips', trip, 'days', 'd1'), { date: '2026-11-25', order: 2, title: 'יום 2' });
+  const days = [{ id: 'd1', date: '2026-11-25', order: 2 }];
+  const made = placeDays(days, ['2026-11-24']).map(d => ({ ...d, id: `day-${d.date}` }));
+  await whileOffline(
+    () => restoreDays(A.db, trip, made, { plannerDaysFromFlight: { out: '2026-11-24', ret: '2026-11-25' } }),
+    async () => {
+      await restoreDays(B.db, trip, made);
+      await addActivities(B.db, trip, 'day-2026-11-24', [], [beach]);
+    },
+  );
+  const back = (await getDoc(doc(B.db, 'trips', trip, 'days', 'day-2026-11-24'))).data();
+  assert.deepEqual([back.date, back.order, back.title], ['2026-11-24', 1, 'יום 1']);
+  // A's late write did not erase what B added to it.
+  assert.deepEqual(dayActivities(back.activities).map(a => a.title), ['חוף']);
+  assert.equal((await getDoc(doc(B.db, 'trips', trip))).data().plannerDaysFromFlight.out, '2026-11-24');
+  assert.equal(dayActivities((await getDoc(doc(B.db, 'trips', trip, 'days', 'd1'))).data().activities).length, 3);
 });

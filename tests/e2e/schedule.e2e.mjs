@@ -294,6 +294,49 @@ await step('dark mode', async () => {
   theme = 'light';
 });
 
+// 8.81.0: a day of the trip is never taken away. "ניקוי היום" takes out its
+// activities, and the day stays with what is booked for it; a date with no
+// day (taken away before) shows in the strip, and a tap brings it back.
+await step('clearing a day keeps the day and its booking; undo brings the rest back', async () => {
+  await page.locator('nav button.nav-item[aria-label="תכנון טיול"]').click();
+  await page.getByRole('tab', { name: /לוח זמנים/ }).click();
+  await chip('יום 1').click();
+  await card('Da Enzo').waitFor();
+  const before = await titlesOn('2026-11-10');
+  if (before.length < 2) throw new Error(`nothing to clear: ${before.join()}`);
+  await page.getByRole('button', { name: 'פעולות ליום' }).click();
+  if (await sheet().getByText('מחיקת היום').count()) throw new Error('a day can still be deleted');
+  if (await sheet().getByText('הסרת היום').count()) throw new Error('a trip date can be removed');
+  await sheet().getByText('ניקוי היום').click();
+  await page.getByRole('button', { name: 'נקה', exact: true }).click();
+  await page.locator('.toast', { hasText: 'יום 1 נוקה' }).waitFor();
+  await page.locator('.toast', { hasText: 'מה שהוזמן ליום הזה נשאר' }).waitFor();
+  await until(async () => same(await titlesOn('2026-11-10'), ['Da Enzo']), 'only the booked one left');
+  await card('Da Enzo').waitFor();
+  await card('טיסה לרומא').waitFor();
+  if (await page.locator('.dp-chip').count() !== 3) throw new Error('a day went');
+  await shot('cleared');
+  await page.locator('.toast').getByRole('button', { name: 'ביטול' }).click();
+  await until(async () => same(await titlesOn('2026-11-10'), before), 'all back');
+});
+
+await step('a date of the trip with no day shows as missing, and a tap brings it back', async () => {
+  // Taken away by an older version.
+  const d3 = (await list('days')).find(d => d.fields.date?.stringValue === '2026-11-12');
+  await fetch(`http://127.0.0.1:8080/v1/${d3.name}`, { method: 'DELETE', headers: admin });
+  const gap = page.locator('.dp-chip.missing');
+  await gap.waitFor();
+  if (await gap.getAttribute('aria-label') !== 'החזרת יום: ה׳ 12.11') throw new Error(await gap.getAttribute('aria-label'));
+  await shot('missing-day');
+  await gap.click();
+  await page.locator('.toast', { hasText: 'חזר' }).waitFor();
+  const back = await until(async () => (await list('days')).find(d => d.fields.date?.stringValue === '2026-11-12'), 'the day back');
+  if (back.fields.title.stringValue !== 'יום 3') throw new Error(`title: ${back.fields.title.stringValue}`);
+  await gap.waitFor({ state: 'detached' });
+  if (await chip('יום 3').getAttribute('aria-selected') !== 'true') throw new Error('not shown');
+  await card('צ׳ק־אאוט מהמלון').waitFor();
+});
+
 await step('a booking: search the places; a linked place replaces its name and address', async () => {
   await page.locator('nav button.nav-item[aria-label="הזמנות"]').click();
   await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();

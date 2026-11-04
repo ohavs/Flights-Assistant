@@ -129,3 +129,39 @@ export function swapDays(db, tripId, a, b, fields, stayA = new Set(), stayB = ne
   if (fromB.length) batch.update(ra, { activities: arrayUnion(...fromB) });
   return batch.commit();
 }
+
+// Clears a day (8.81.0): takes out its activities but those in `keep` (ids:
+// what is fixed to the date, anchoredIds), in one batch. The day itself
+// stays. Returns { removed, done }: the activities taken out, each with its
+// place, for `putBack`; and the write.
+export function clearActivities(db, tripId, dayId, raw, keep = new Set()) {
+  const all = rows(raw);
+  const gone = shownRows(all).filter(r => r.act?.id != null && !keep.has(r.act.id));
+  if (!gone.length) return { removed: [], done: Promise.resolve() };
+  const { out, put } = settle(all, new Set(gone.map(r => r.act.id)));
+  return {
+    removed: gone.map(r => ({ ...r.act, order: r.rank })),
+    done: commit(db, tripId, dayId, out, put),
+  };
+}
+
+// Puts back activities taken out by clearActivities, each in its place.
+export function putBack(db, tripId, dayId, acts) {
+  if (!acts.length) return Promise.resolve();
+  return updateDoc(dayRef(db, tripId, dayId), { activities: arrayUnion(...acts) });
+}
+
+// Brings back days of the trip (8.81.0): `made` is [{ id, date, order,
+// title }] (placeDays in dayPlan.js). Merged, so a day another phone
+// brought back at the same moment, under the same id, keeps what it has.
+// `trip`: fields of the trip document to write in the same batch.
+export function restoreDays(db, tripId, made, trip = null) {
+  const batch = writeBatch(db);
+  made.forEach(({ id, date, order, title }) => batch.set(
+    doc(db, 'trips', tripId, 'days', id),
+    { title, date, order, activities: arrayUnion() },
+    { merge: true },
+  ));
+  if (trip) batch.update(doc(db, 'trips', tripId), trip);
+  return batch.commit();
+}

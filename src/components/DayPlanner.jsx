@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, setDoc, updateDoc, deleteDoc, writeBatch, collection } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, collection, arrayUnion } from 'firebase/firestore';
 import {
   Calendar, CheckCircle2, MoreHorizontal, Pencil, Trash2, ArrowLeftRight, ArrowUp, ArrowDown,
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
   Navigation, Phone, ExternalLink, Copy, Users, UserRound, Sunrise, Sun, Sunset, Moon, Clock,
-  ChevronDown, Loader2, CornerDownLeft, User, Lock,
+  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
@@ -20,8 +20,14 @@ import { typeOf, statusOf, PAYMENT_LABEL, telHref, mapsHref } from './bookingKin
 import { getWeatherIcon } from '../hooks/useWeather';
 import { localDay, isoDay } from '../lib/dates';
 import { creatorOf } from '../lib/roles';
-import { dayActivities, removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays } from '../lib/dayActivities';
-import { dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey } from '../lib/dayPlan';
+import {
+  dayActivities, removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays,
+  clearActivities, putBack, restoreDays,
+} from '../lib/dayActivities';
+import {
+  dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey,
+  missingDates, placeDays,
+} from '../lib/dayPlan';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -37,6 +43,11 @@ import { dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, 
    does whatever is fixed to it: a booking, and an activity whose place is
    booked that day (src/lib/dayPlan.js). A message says what happened,
    with a way back.
+
+   A day of the trip is never taken away (8.81.0): "ניקוי היום" takes out
+   its activities, and the day stays with what is fixed to its date. A date
+   of the trip with no day shows in the strip as missing, and a tap brings
+   it back.
    ══════════════════════════════════════════════════════════ */
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
@@ -238,42 +249,36 @@ function DayPlanner({
   const [justSynced, setJustSynced] = useState(false);
   const syncedTimer = useRef(null);
   useEffect(() => () => clearTimeout(syncedTimer.current), []);
-  const handleInitDaysFromFlight = async () => {
+  // Days for dates of the trip that have none, each placed by its date
+  // (placeDays). The id is the date, so two phones bringing back the same
+  // day write one document.
+  const newDays = (dates) => {
+    const taken = new Set(days.map(d => d.id));
+    return placeDays(days, dates).map(d => ({
+      ...d, id: taken.has(`day-${d.date}`) ? `day-${d.date}-${Date.now()}` : `day-${d.date}`,
+    }));
+  };
+  // From the flight dates: adds the dates that have no day. Never takes a
+  // day away (8.81.0); the days already there keep what they have.
+  const handleInitDaysFromFlight = () => {
     if (!tripId || !tripFlightDates.out || !tripFlightDates.ret) return;
-    if (days.length > 0) {
-      const ok = await confirm({
-        title: 'החלפת ימי הטיול',
-        message: 'כבר קיימים ימים מתוכננים. האם למחוק אותם וליצור מחדש לפי תאריכי הטיסה?',
-        confirmText: 'כן, החלף',
-        cancelText: 'ביטול',
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    const start = localDay(String(tripFlightDates.out).slice(0, 10));
-    const end = localDay(String(tripFlightDates.ret).slice(0, 10));
-    if (!start || !end) return;
-    // One batch, not awaited: the old days go and the new ones come in the
-    // same write, offline too.
-    const batch = writeBatch(db);
-    days.forEach(d => batch.delete(doc(db, 'trips', tripId, 'days', d.id)));
-    let n = 1;
-    const cur = new Date(start);
-    while (cur <= end && n <= 30) {
-      batch.set(doc(db, 'trips', tripId, 'days', `day-${Date.now()}-${n}`), {
-        title: `יום ${n}`, date: isoDay(cur), order: n, activities: [],
-      });
-      cur.setDate(cur.getDate() + 1);
-      n++;
-    }
-    batch.update(doc(db, 'trips', tripId), {
+    const made = newDays(missingDates(days, tripFlightDates.out, tripFlightDates.ret));
+    // One batch, not awaited: works offline too.
+    restoreDays(db, tripId, made, {
       plannerDaysFromFlight: { out: tripFlightDates.out, ret: tripFlightDates.ret },
-    });
-    batch.commit().catch(err => console.error('Make days failed:', err));
-    setPickedId(null);
+    }).catch(err => console.error('Make days failed:', err));
+    if (!days.length) setPickedId(null);
     clearTimeout(syncedTimer.current);
     setJustSynced(true);
     syncedTimer.current = setTimeout(() => setJustSynced(false), 4000);
+  };
+
+  // A date of the trip with no day, back in a tap.
+  const restoreDay = (date) => {
+    const [made] = newDays([date]);
+    restoreDays(db, tripId, [made]).catch(err => console.error('Restore day failed:', err));
+    pick(made.id);
+    say({ icon: <CalendarPlus size={18} />, title: `${made.title} (${shortDate(date)}) חזר`, text: 'מה שקבוע לתאריך הזה מופיע בו שוב.' });
   };
 
   const saveTitle = () => {
@@ -284,19 +289,63 @@ function DayPlanner({
       .catch(err => console.error('Save day title error:', err));
   };
 
-  const deleteDay = async () => {
+  // Takes out the day's activities. The day stays, and so does what is
+  // fixed to its date: the flights, the hotel, the bookings, and an
+  // activity whose place is booked that day.
+  const clearDay = async () => {
     if (!day) return;
+    const gone = (day.activities || []).filter(a => !anchored.has(a.id));
+    if (!gone.length) return;
     const ok = await confirm({
-      title: 'מחיקת יום טיול',
-      message: <>האם למחוק את <strong>{day.title || 'היום'}</strong> וכל הפעילויות שבו?</>,
-      confirmText: 'מחק יום',
-      cancelText: 'בטל',
+      title: 'ניקוי היום',
+      message: <>למחוק את {gone.length === 1 ? 'הפעילות' : `${gone.length} הפעילויות`} של <strong>{day.title}</strong>? היום עצמו נשאר, עם הטיסות, המלון וההזמנות שלו.</>,
+      confirmText: 'נקה',
+      cancelText: 'ביטול',
       danger: true,
     });
     if (!ok) return;
+    const dayId = day.id;
+    const { removed, done } = clearActivities(db, tripId, dayId, day.rawActivities, anchored);
+    done.catch(err => console.error('Clear day failed:', err));
+    say({
+      icon: <Eraser size={18} />,
+      title: `${day.title} נוקה`,
+      text: anchored.size ? 'מה שהוזמן ליום הזה נשאר.' : undefined,
+      action: {
+        label: 'ביטול',
+        run: () => {
+          putBack(db, tripId, dayId, removed).catch(err => console.error('Put back failed:', err));
+          say({ icon: <CornerDownLeft size={18} />, title: 'הפעילויות חזרו' });
+        },
+      },
+    });
+  };
+
+  // Only an empty day that is not a date of the trip can go: one with no
+  // date, or outside the flights (after the trip got shorter).
+  const flightRange = tripFlightDates.out && tripFlightDates.ret
+    ? [String(tripFlightDates.out).slice(0, 10), String(tripFlightDates.ret).slice(0, 10)] : null;
+  const removable = !!day && !(day.rawActivities || []).length && (
+    !day.date || (!!flightRange && (day.date < flightRange[0] || day.date > flightRange[1])));
+  const removeDay = () => {
+    if (!removable) return;
+    const gone = day;
     const next = days[dayIdx + 1] || days[dayIdx - 1];
     if (next) pick(next.id);
-    deleteDoc(doc(db, 'trips', tripId, 'days', day.id)).catch(err => console.error('Delete day error:', err));
+    deleteDoc(doc(db, 'trips', tripId, 'days', gone.id)).catch(err => console.error('Remove day error:', err));
+    say({
+      icon: <Trash2 size={18} />,
+      title: `${gone.title} הוסר`,
+      action: {
+        label: 'ביטול',
+        run: () => {
+          setDoc(doc(db, 'trips', tripId, 'days', gone.id), {
+            title: gone.title || '', order: gone.order ?? 0, ...(gone.date ? { date: gone.date } : {}), activities: arrayUnion(),
+          }, { merge: true }).catch(err => console.error('Undo remove day failed:', err));
+          pick(gone.id);
+        },
+      },
+    });
   };
 
   // The days and bookings as they are now, for an undo that runs after
@@ -559,6 +608,14 @@ function DayPlanner({
   };
 
   /* ── The view ───────────────────────────────────────────────────── */
+  // The strip: the days, and in their places the dates of the trip that
+  // have none (to bring back; only for who can change the days).
+  const strip = useMemo(() => {
+    const gaps = canEdit && !personalMode
+      ? placeDays(days, missingDates(days, tripFlightDates.out, tripFlightDates.ret)) : [];
+    const all = [...days.map(d => ({ d, at: Number(d.order) || 0 })), ...gaps.map(g => ({ gap: g, at: g.order }))];
+    return all.sort((a, b) => a.at - b.at);
+  }, [days, canEdit, personalMode, tripFlightDates.out, tripFlightDates.ret]);
   const syncable = canEdit && tripFlightDates.out && tripFlightDates.ret &&
     !(tripFlightDates.plannerSync?.out === tripFlightDates.out && tripFlightDates.plannerSync?.ret === tripFlightDates.ret);
   const dayDate = day?.date ? localDay(day.date) : null;
@@ -626,7 +683,25 @@ function DayPlanner({
 
         {/* The days */}
         <div className="dp-strip hide-scroll" role="tablist" aria-label="ימי הטיול" ref={stripRef}>
-          {days.map((d, i) => {
+          {strip.map(({ d, gap }) => {
+            if (gap) {
+              const gd = localDay(gap.date);
+              return (
+                <button
+                  key={`gap-${gap.date}`}
+                  type="button"
+                  aria-label={`החזרת יום: ${shortDate(gap.date)}`}
+                  title="יום של הטיול שאין לו מקום בלוח. לחיצה מחזירה אותו."
+                  className="dp-chip missing"
+                  onClick={() => restoreDay(gap.date)}
+                >
+                  <span className="dp-chip-top">{DOW[gd.getDay()]}</span>
+                  <span className="dp-chip-num">{gd.getDate()}</span>
+                  <span className="dp-chip-bottom">{shortMonth(gd)}</span>
+                  <span className="dp-chip-add" aria-hidden="true"><Plus size={12} strokeWidth={3} /></span>
+                </button>
+              );
+            }
             const dd = d.date ? localDay(d.date) : null;
             const w = d.date ? weatherByDate[d.date] : null;
             const n = personalMode
@@ -644,7 +719,7 @@ function DayPlanner({
                 onClick={() => pick(d.id)}
               >
                 <span className="dp-chip-top">{dd ? DOW[dd.getDay()] : 'יום'}</span>
-                <span className="dp-chip-num">{dd ? dd.getDate() : i + 1}</span>
+                <span className="dp-chip-num">{dd ? dd.getDate() : days.indexOf(d) + 1}</span>
                 <span className="dp-chip-bottom">
                   {w ? <>{getWeatherIcon(w.code)} {w.max}°</> : dd ? shortMonth(dd) : ' '}
                 </span>
@@ -833,10 +908,24 @@ function DayPlanner({
                   </span>
                 </button>
               )}
-              <button type="button" className="list-row danger" onClick={() => { close(); deleteDay(); }}>
-                <Trash2 size={18} className="list-row-icon" />
-                <span className="list-row-label">מחיקת היום</span>
-              </button>
+              {(day.activities || []).some(a => !anchored.has(a.id)) && (
+                <button type="button" className="list-row danger" onClick={() => { close(); clearDay(); }}>
+                  <Eraser size={18} className="list-row-icon" />
+                  <span className="list-row-label">
+                    ניקוי היום
+                    <span className="list-row-hint">הפעילויות נמחקות. היום, הטיסות, המלון וההזמנות נשארים</span>
+                  </span>
+                </button>
+              )}
+              {removable && (
+                <button type="button" className="list-row danger" onClick={() => { close(); removeDay(); }}>
+                  <Trash2 size={18} className="list-row-icon" />
+                  <span className="list-row-label">
+                    הסרת היום
+                    <span className="list-row-hint">{day.date ? 'יום ריק מחוץ לתאריכי הטיסה' : 'יום ריק בלי תאריך'}</span>
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </Sheet>
