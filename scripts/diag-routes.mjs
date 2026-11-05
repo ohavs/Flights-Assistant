@@ -1,38 +1,21 @@
 const KEY = process.env.KEY;
-const anchor = { latitude: 47.4979, longitude: 19.0402 };
-async function find(q) {
+const NEAR = 150;
+const m = (a, b) => { const r = d => d * Math.PI / 180; const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
+async function near(c, text) {
+  const dLat = NEAR / 111000, dLng = dLat / Math.cos(c.lat * Math.PI / 180);
   const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': 'places.id,places.location,places.displayName' },
-    body: JSON.stringify({ textQuery: q, locationBias: { circle: { center: anchor, radius: 50000 } } }),
+    body: JSON.stringify({ textQuery: text, pageSize: 5, locationRestriction: { rectangle: { low: { latitude: c.lat - dLat, longitude: c.lng - dLng }, high: { latitude: c.lat + dLat, longitude: c.lng + dLng } } } }),
   });
   const d = await r.json();
-  if (!r.ok) { console.log('places', r.status, JSON.stringify(d).slice(0, 300)); return null; }
-  const p = d.places?.[0];
-  console.log(q, '→', p?.displayName?.text, p?.location, p?.id);
-  return p;
+  if (!r.ok) return `HTTP ${r.status} ${JSON.stringify(d).slice(0, 300)}`;
+  return (d.places || []).map(p => `${p.displayName?.text} ${Math.round(m(c, { lat: p.location.latitude, lng: p.location.longitude }))}m ${p.id}`).join(' ; ') || 'none';
 }
-async function route(o, d, mode) {
-  const r = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
-    body: JSON.stringify({ origin: o, destination: d, travelMode: mode }),
-  });
-  const j = await r.json();
-  if (!r.ok) return `${r.status} ${JSON.stringify(j).slice(0, 200)}`;
-  const x = j.routes?.[0];
-  return x ? `${Math.round(parseInt(x.duration) / 60)}min ${x.distanceMeters}m` : 'no route';
-}
-const names = ['Buda Castle, Budapest', 'Sándor Palace, Budapest', "Fisherman's Bastion, Budapest", 'Cirkusz Cafe, Budapest', 'Hungarian National Gallery, Budapest'];
-const ps = [];
-for (const n of names) ps.push(await find(n));
-const ll = p => ({ location: { latLng: p.location } });
-const pid = p => ({ placeId: p.id });
-const pairs = [[0, 1], [1, 2], [3, 0], [4, 1], [0, 2]];
-for (const [a, b] of pairs) {
-  const A = ps[a], B = ps[b];
-  if (!A || !B) continue;
-  for (const mode of ['WALK', 'TRANSIT']) {
-    console.log(`${names[a]} → ${names[b]} ${mode}: latlng=${await route(ll(A), ll(B), mode)} | placeId=${await route(pid(A), pid(B), mode)}`);
-  }
-}
+const cases = [
+  [{ lat: 47.4962048 + 0.0004, lng: 19.0395666 }, ['הארמון המלכותי', 'Buda Castle']],
+  [{ lat: 47.4979898, lng: 19.0381875 + 0.0005 }, ['החלפת משמרות בשעה 12', 'Sándor-palota']],
+  [{ lat: 47.5021827, lng: 19.0347813 }, ['באסטיון הדייגים']],
+  [{ lat: 47.4984569, lng: 19.061539 }, ['Cirkusz cafe']],
+];
+for (const [c, texts] of cases) for (const t of texts) console.log(t, '→', await near(c, t));
