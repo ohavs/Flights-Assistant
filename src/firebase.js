@@ -60,3 +60,11 @@ export const e2eReauth = useEmulators
 export const googleProvider = new GoogleAuthProvider();
 
 export { enableNetwork, disableNetwork };
+
+// A Cloud Function callable by the signed-in user (functions/index.js),
+// loaded on first use so the SDK is not in the first bundle.
+export async function callFunction(name, data, { timeout = 20000 } = {}) {
+  const { getFunctions, httpsCallable } = await import('firebase/functions');
+  const res = await httpsCallable(getFunctions(app, 'europe-west1'), name, { timeout })(data);
+  return res.data;
+}

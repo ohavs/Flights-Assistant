@@ -5,7 +5,8 @@
 // then opened, a link changed on another phone, the hotel moved, a time
 // saved before 8.88.0. In a steady state nothing is asked of the network.
 //   bash scripts/run-e2e.sh tests/e2e/locations.e2e.mjs
-// The Maps calls and the short-link proxies are answered here.
+// The Maps calls, the server that opens short links (openMapsLink, 8.89.0)
+// and the short-link proxies are answered here.
 // Output: <argv[2]>/locations/<nn>-<name>.png. Exits non-zero if a step fails.
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -21,6 +22,7 @@ const HOTEL = { lat: 41.9009, lng: 12.5012 };
 const HOTEL2 = { lat: 41.8800, lng: 12.4700 };
 const NAMESAKE = { lat: 41.9200, lng: 12.4600 };  // what a search by the name finds
 const LINKED = { lat: 41.8986, lng: 12.4769 };    // where the short link points
+const SHARED = { lat: 41.8955, lng: 12.4823 };    // the place an iPhone's link names
 const A = { lat: 41.8887, lng: 12.4776 };
 const B = { lat: 41.9060, lng: 12.4823 };
 const meters = (a, b) => {
@@ -34,7 +36,7 @@ const point = (w) => {
   const ll = w?.location?.latLng;
   return ll ? { lat: ll.latitude, lng: ll.longitude } : { address: w?.address || '' };
 };
-const calls = { routes: [], places: [], proxy: 0 };
+const calls = { routes: [], places: [], proxy: 0, server: [] };
 await ctx.route('https://routes.googleapis.com/**', async (route) => {
   const body = JSON.parse(route.request().postData() || '{}');
   const o = point(body.origin), d = point(body.destination);
@@ -46,18 +48,28 @@ await ctx.route('https://routes.googleapis.com/**', async (route) => {
 await ctx.route('https://places.googleapis.com/**', async (route) => {
   const body = JSON.parse(route.request().postData() || '{}');
   calls.places.push(body.textQuery);
-  const p = body.textQuery === 'רומא, איטליה' ? CITY : NAMESAKE;
+  const p = body.textQuery === 'רומא, איטליה' ? CITY : body.textQuery === 'Caffè Tazza, Via Roma 1, 00184 Roma' ? SHARED : NAMESAKE;
   await route.fulfill({ json: { places: [{
     location: { latitude: p.lat, longitude: p.lng },
     displayName: { text: 'Namesake' }, formattedAddress: 'Via Sbagliata 1',
   }] } });
 });
-// The short-link proxies: down at first, as they often are, then up.
-let proxyUp = false;
+// The server that opens short links: down at first, then up. A link
+// shared from an iPhone leads to a name and address, not coordinates.
+let serverUp = false;
+await ctx.route('**/openMapsLink', async (route) => {
+  const url = JSON.parse(route.request().postData() || '{}').data?.url || '';
+  calls.server.push(url);
+  if (!serverUp) return route.abort();
+  const result = url.includes('g_st=ic')
+    ? { url: 'https://maps.google.com/?q=Caff%C3%A8+Tazza', at: null, query: 'Caffè Tazza, Via Roma 1, 00184 Roma' }
+    : { url: 'https://www.google.com/maps/place/X', at: `${LINKED.lat},${LINKED.lng}`, query: null };
+  return route.fulfill({ json: { result } });
+});
+// The public proxies, tried only when the server can't be reached: down.
 await ctx.route(/api\.allorigins\.win|corsproxy\.io|r\.jina\.ai/, async (route) => {
   calls.proxy++;
-  if (!proxyUp) return route.abort();
-  return route.fulfill({ json: { status: { url: `https://www.google.com/maps/place/X/@41.9,12.5,15z/data=!3d${LINKED.lat}!4d${LINKED.lng}` }, contents: '' } });
+  return route.abort();
 });
 
 const page = await ctx.newPage();
@@ -186,7 +198,7 @@ await step('the options say it keeps itself current; no "חשב ושמור מר�
 });
 
 await step('next session: the short link opens, and the guess is replaced by it', async () => {
-  proxyUp = true;
+  serverUp = true;
   calls.routes.length = 0;
   await page.reload();
   await open();
@@ -231,6 +243,16 @@ await step('a place added with a short link (as a share from Google Maps): locat
   await until(async () => (await getPlace(id)).distances?.hotel?.toAt === atText(LINKED), 'measured');
 });
 
+await step('a link shared from an iPhone (a name and address): located by it, not flagged', async () => {
+  await place('q4', 'שיתוף מאייפון', { address: 'https://maps.app.goo.gl/lc2?g_st=ic' });
+  await until(async () => (await getPlace('q4')).coords?.src === 'link', 'q4 located by its link');
+  if (!near((await getPlace('q4')).coords, SHARED)) throw new Error(`q4 at ${JSON.stringify((await getPlace('q4')).coords)}`);
+  if (!calls.places.includes('Caffè Tazza, Via Roma 1, 00184 Roma')) throw new Error(`searched: ${calls.places.join(' | ')}`);
+  await until(async () => (await getPlace('q4')).distances?.hotel?.toAt === atText(SHARED), 'q4 measured');
+  await page.locator('.pstub-title', { hasText: 'שיתוף מאייפון' }).waitFor();
+  if (await page.locator('.pstub-wrap', { hasText: 'שיתוף מאייפון' }).getByText('מיקום משוער').count()) throw new Error('flagged as a guess');
+});
+
 await step('a leg to a typed address is saved for the trip, and not measured again', async () => {
   await patch('trips/lc/days/d1', { title: 'יום 1', order: 1, date: '2026-11-10', activities: [
     { id: 'a1', title: 'מקום עם קישור', placeId: 'q2', timeLabel: 'בוקר', order: 1, address: '', description: '', category: 'אחר', createdBy: me },
@@ -255,11 +277,12 @@ await step('a steady state asks nothing of the network', async () => {
   calls.routes.length = 0;
   calls.places.length = 0;
   calls.proxy = 0;
+  calls.server.length = 0;
   await page.reload();
   await open();
   await page.waitForTimeout(3000);
-  if (calls.routes.length || calls.places.length || calls.proxy) {
-    throw new Error(`asked: ${calls.routes.length} routes, ${calls.places.length} searches (${calls.places.join(' | ')}), ${calls.proxy} proxy`);
+  if (calls.routes.length || calls.places.length || calls.proxy || calls.server.length) {
+    throw new Error(`asked: ${calls.routes.length} routes, ${calls.places.length} searches (${calls.places.join(' | ')}), ${calls.proxy} proxy, ${calls.server.length} server`);
   }
 });
 
