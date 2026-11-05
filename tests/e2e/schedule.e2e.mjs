@@ -27,14 +27,18 @@ const point = (w) => {
   const ll = w?.location?.latLng;
   return ll ? { lat: ll.latitude, lng: ll.longitude } : COLOSSEUM;
 };
+const routeLog = [];   // every route asked for: { o, d } points
 await ctx.route('https://routes.googleapis.com/**', async (route) => {
   const body = JSON.parse(route.request().postData() || '{}');
+  routeLog.push({ o: point(body.origin), d: point(body.destination) });
   const m = Math.round(meters(point(body.origin), point(body.destination)));
   const secs = body.travelMode === 'WALK' ? Math.round(m / 1.3) : 300 + Math.round(m / 6);
   await route.fulfill({ json: { routes: [{ duration: `${secs}s`, distanceMeters: m }] } });
 });
+// What a search by name finds (changed by a step below).
+let placesAnswer = { location: { latitude: COLOSSEUM.lat, longitude: COLOSSEUM.lng } };
 await ctx.route('https://places.googleapis.com/**', (route) =>
-  route.fulfill({ json: { places: [{ location: { latitude: COLOSSEUM.lat, longitude: COLOSSEUM.lng } }] } }));
+  route.fulfill({ json: { places: [placesAnswer] } }));
 const at = (lat, lng) => [{ label: 'מפה', url: `https://www.google.com/maps/place/@${lat},${lng},17z` }];
 
 const page = await ctx.newPage();
@@ -196,8 +200,8 @@ await step('the way from the stop before, and another start in a tap', async () 
   const toDinner = page.locator('.dp-leg-row').filter({ has: page.locator('.dp-leg-walk') })
     .and(page.locator('.dp-leg-row:has(+ .dp-row .dp-card:has-text("Da Enzo"))'));
   await toDinner.waitFor();
-  // From the fountain: no "from" on the chip, it is the stop above.
-  if (await toDinner.locator('.dp-leg-from').count()) throw new Error('says where from');
+  // From the fountain, the stop above, and it says so (8.86.0).
+  await toDinner.locator('.dp-leg-from', { hasText: 'מ־פונטנה די טרווי' }).waitFor();
   await page.locator('.dp-stats', { hasText: 'הליכה' }).waitFor();
   await shot('legs');
   await toDinner.locator('button.dp-leg').click();
@@ -457,6 +461,47 @@ await step('a toast: a bar of the time left; swiped to the side, it goes', async
   await page.mouse.up();
   await page.waitForTimeout(400);
   if (!(await again.count())) throw new Error('a short drag sent it away');
+});
+
+// 8.86.0: each leg says where it is from and is measured from there; a
+// place with no address or link is found by its name, and what was found
+// is shown, so a wrong guess is seen (the guard change found at another
+// palace than the one meant).
+await step('a leg is from the stop before it; a place found by name only is flagged', async () => {
+  const PIETRO = { lat: 41.9022, lng: 12.4539 };
+  const TREVI = { lat: 41.9009, lng: 12.4833 };
+  placesAnswer = {
+    location: { latitude: PIETRO.lat, longitude: PIETRO.lng },
+    displayName: { text: 'Piazza San Pietro' }, formattedAddress: '00120 Città del Vaticano',
+  };
+  await place('p6', 'החלפת משמרות', 'אטרקציות ודברים לעשות');   // no address, no link
+  await place('p7', 'פנתיאון', 'מקומות לבקר', { links: at(41.8986, 12.4769) });
+  await put('trips/sc/days/d6', { title: 'יום המשמרות', order: 50, date: '2026-11-20', activities: [
+    act('a61', 'פונטנה די טרווי', 'p3', 'בוקר', 1, 'מקומות לבקר'),
+    act('a62', 'החלפת משמרות', 'p6', 'בוקר', 2, 'אטרקציות ודברים לעשות'),
+    act('a63', 'פנתיאון', 'p7', 'בוקר', 3, 'מקומות לבקר'),
+  ] });
+  routeLog.length = 0;
+  await chip('יום המשמרות').click();
+  const leg = (to) => page.locator(`.dp-leg[aria-label="זמן הגעה אל ${to}, בחירת נקודת יציאה"]`);
+  await leg('החלפת משמרות').getByText('מ־פונטנה די טרווי').waitFor();
+  await leg('פנתיאון').getByText('מ־החלפת משמרות').waitFor();
+  await leg('החלפת משמרות').locator('.dp-leg-guess').waitFor();
+  await leg('פנתיאון').locator('.dp-leg-guess').waitFor();
+  if (await leg('פונטנה די טרווי').locator('.dp-leg-guess').count()) throw new Error('a leg with no guess flagged');
+  const near = (a, b) => meters(a, b) < 30;
+  await until(async () => routeLog.some(r => near(r.o, TREVI) && near(r.d, PIETRO)), 'measured from the place before it');
+  await until(async () => routeLog.some(r => near(r.o, PIETRO) && meters(r.d, { lat: 41.8986, lng: 12.4769 }) < 30), 'and on from there');
+  if (routeLog.some(r => near(r.d, PIETRO) && !near(r.o, TREVI))) throw new Error('measured to it from somewhere else');
+  await shot('legs-from');
+  await card('החלפת משמרות').locator('.dp-card-main').click();
+  const guess = sheet().locator('.dp-guess');
+  await guess.getByText('Piazza San Pietro, 00120 Città del Vaticano').waitFor();
+  const href = await guess.getByRole('link', { name: 'איפה זה במפה' }).getAttribute('href');
+  if (!href.includes('41.9022')) throw new Error(`map link: ${href}`);
+  await shot('place-guess');
+  await sheet().getByRole('button', { name: 'סגור' }).first().click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
 });
 
 await step('a booking: search the places; a linked place replaces its name and address', async () => {

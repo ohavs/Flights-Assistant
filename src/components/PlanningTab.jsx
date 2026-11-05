@@ -1815,10 +1815,14 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     const online = isOnlineNow();
     const hint = resolveOriginString(hotelDetails, null, tripDestination);
     const region = { coords: regionCoords, text: tripDestination };
-    const where = async (stop) => {
+    // What the start really was ('hotel', 'custom', or 'city' when the
+    // hotel had no location), so the label says so (8.86.0).
+    let originKind = null;
+    const where = async (stop, isFrom = false) => {
       if (stop.key === 'hotel' || distanceOrigins.some(o => o.id === stop.key)) {
         const custom = distanceOrigins.find(o => o.id === stop.key) || null;
         const c = await buildOriginCandidates(hotelDetails, custom, tripDestination, { online });
+        if (isFrom) originKind = c[0]?.kind || null;
         return c[0]?.value || null;
       }
       if (stop.plan) {
@@ -1829,12 +1833,12 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     };
     let value;
     try {
-      const [a, b] = await Promise.all([where(from), where(to)]);
+      const [a, b] = await Promise.all([where(from, true), where(to)]);
       if (!a || !b) value = online ? { noLocation: true } : { offline: true };
       else {
         const r = await fetchTravelTimes(a, b);
         value = r?.networkError ? { offline: true }
-          : (r && (r.walk || r.transit) && isSaneTravel(r)) ? { walk: r.walk || null, transit: r.transit || null }
+          : (r && (r.walk || r.transit) && isSaneTravel(r)) ? { walk: r.walk || null, transit: r.transit || null, originKind }
           : { noLocation: true };
       }
     } catch {

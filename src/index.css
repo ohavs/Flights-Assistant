@@ -3881,6 +3881,21 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-leg-note { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .dp-leg-from { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
 .dp-leg-chev { flex-shrink: 0; opacity: 0.7; }
+.dp-leg-guess { flex-shrink: 0; color: var(--c-orange); }
+/* A place found by its name only (8.86.0): what was found, and the fix */
+.dp-guess {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: start;
+  padding: 10px 12px; border-radius: 14px;
+  background: color-mix(in srgb, var(--c-orange) 10%, var(--card-bg-solid));
+  font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--text);
+}
+.dp-guess-icon { color: var(--c-orange); margin-top: 2px; }
+.dp-guess-text bdi { font-weight: 800; }
+.dp-guess-actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.dp-guess-actions a, .dp-guess-actions button {
+  padding: 0; border: none; background: none; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800; color: var(--accent); text-decoration: underline;
+}
 
 /* A stop */
 .dp-card {

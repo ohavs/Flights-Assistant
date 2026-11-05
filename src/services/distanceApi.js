@@ -15,6 +15,7 @@ const ROUTES_URL  = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const PLACES_URL  = 'https://places.googleapis.com/v1/places:searchText';
 const SHORT_CACHE = 'gmaps_short_v1_';  // short-URL expansion results
 const PLACE_CACHE = 'gmaps_place_v2_';  // Places-search results
+const FOUND_CACHE = 'gmaps_found_v1_';  // what that search found: { name, address }
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
@@ -187,7 +188,30 @@ export function isSaneTravel(value) {
 // Forget a title-based Places match that produced a bogus location, so the
 // place can be resolved again from scratch.
 export function clearPlaceCache(planId) {
-  try { localStorage.removeItem(PLACE_CACHE + planId); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(PLACE_CACHE + planId);
+    localStorage.removeItem(FOUND_CACHE + planId);
+  } catch { /* ignore */ }
+}
+
+// A place with no address and no link is found by searching its name
+// (findPlaceCoords), which can land on another place with a similar name:
+// "החלפת משמרות" at the parliament instead of the palace (8.86.0). Returns
+// null for a place with an address or a link, else what is known of the
+// guess: `at` ("lat,lng", if searched on this phone or saved), and the
+// `name` and `address` the search found (if searched since 8.86.0).
+export function nameOnlyLocation(plan) {
+  if (!plan) return null;
+  const links = Array.isArray(plan.links) ? plan.links.filter(l => l?.url) : [];
+  if ((plan.address || '').trim() || links.length) return null;
+  let at = null;
+  let found = null;
+  try {
+    at = localStorage.getItem(PLACE_CACHE + plan.id);
+    found = JSON.parse(localStorage.getItem(FOUND_CACHE + plan.id) || 'null');
+  } catch { /* private mode */ }
+  if (!at && plan.coords && Number.isFinite(plan.coords.lat)) at = `${plan.coords.lat},${plan.coords.lng}`;
+  return { at, name: found?.name || '', address: found?.address || '' };
 }
 
 // Parse a "lat,lng" string into numeric coordinates.
@@ -238,7 +262,9 @@ async function findPlaceCoords(planId, title, { originHint, regionCoords, region
 
     const res = await fetch(PLACES_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location' },
+      // The name and address are of the same tier as the location (Text
+      // Search Pro): shown with the guess, so a wrong one is seen.
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location,places.displayName,places.formattedAddress' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10000),
     });
@@ -254,6 +280,8 @@ async function findPlaceCoords(planId, title, { originHint, regionCoords, region
       if (away != null && away > MAX_REGION_METERS) return null;
     }
     localStorage.setItem(cacheKey, coords);
+    const found = { name: data.places[0].displayName?.text || '', address: data.places[0].formattedAddress || '' };
+    if (found.name || found.address) localStorage.setItem(FOUND_CACHE + planId, JSON.stringify(found));
     return coords;
   } catch { return null; }
 }

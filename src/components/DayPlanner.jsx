@@ -4,7 +4,7 @@ import {
   Calendar, CheckCircle2, MoreHorizontal, Pencil, Trash2, ArrowLeftRight, ArrowUp, ArrowDown,
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
   Navigation, Phone, ExternalLink, Copy, Users, UserRound, Sunrise, Sun, Sunset, Moon, Clock,
-  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus, CircleDashed,
+  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus, CircleDashed, AlertTriangle,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
@@ -29,6 +29,7 @@ import {
   missingDates, placeDays, nextDate, orderFor,
 } from '../lib/dayPlan';
 import { DatePickerDialog } from './CustomDatePicker';
+import { nameOnlyLocation } from '../services/distanceApi';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -210,8 +211,10 @@ function DayPlanner({
   }, [legSig, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const originIds = useMemo(() => distanceOrigins.map(o => o.id), [distanceOrigins]);
-  const fromLabel = (stop) => (stop.key === 'hotel'
-    ? (hotelDetails?.name ? 'מהמלון' : 'ממרכז העיר')
+  // `v`: the measurement. One from the hotel that fell back to the city
+  // centre (the hotel had no location) says so (originKind, 8.86.0).
+  const fromLabel = (stop, v = null) => (stop.key === 'hotel'
+    ? (hotelDetails?.name && v?.originKind !== 'city' ? 'מהמלון' : 'ממרכז העיר')
     : `מ־${stop.title}`);
   const legValue = (leg) => (leg ? distanceCache[legKey(leg.from, leg.to, originIds)] : null);
   const walkTotal = [...legs.values()].reduce((sum, l) => sum + (legMinutes(legValue(l)?.walk) || 0), 0);
@@ -511,7 +514,10 @@ function DayPlanner({
     if (!leg) return null;
     const v = legValue(leg);
     const canPick = canChange(it);
-    const fromText = leg.custom || leg.first || leg.from.key === 'hotel' ? fromLabel(leg.from) : '';
+    // Always where from (8.86.0): the previous stop, the hotel, or the one
+    // picked. A guessed end (a place found by its name only) is flagged.
+    const fromText = fromLabel(leg.from, v);
+    const guessed = [leg.from, leg.to].some(s => s.plan && nameOnlyLocation(s.plan));
     let body;
     if (!v || v.loading) body = <span className="dp-leg-note"><Loader2 size={12} className="spinning" aria-hidden="true" />מחשב…</span>;
     else if (v.offline) body = <span className="dp-leg-note">יחושב כשיהיה חיבור</span>;
@@ -525,6 +531,7 @@ function DayPlanner({
     const inner = (<>
       {body}
       {fromText && <span className="dp-leg-from">{fromText}</span>}
+      {guessed && <AlertTriangle size={13} className="dp-leg-guess" aria-label="מיקום משוער לפי השם" />}
       {canPick && <ChevronDown size={13} aria-hidden="true" className="dp-leg-chev" />}
     </>);
     return (
@@ -1190,14 +1197,29 @@ function DayPlanner({
               {leg && (
                 canChange(it)
                   ? <button type="button" className="travel-from" onClick={() => { close(); setLegQuery(''); setLegFor(it.key); }}>
-                      <span className="travel-from-head"><span>{`זמן הגעה ${fromLabel(leg.from)}`}</span><ChevronDown size={14} aria-hidden="true" /></span>
+                      <span className="travel-from-head"><span>{`זמן הגעה ${fromLabel(leg.from, v)}`}</span><ChevronDown size={14} aria-hidden="true" /></span>
                       <LegTimes v={v} />
                     </button>
                   : <div className="travel-from">
-                      <span className="travel-from-head"><span>{`זמן הגעה ${fromLabel(leg.from)}`}</span></span>
+                      <span className="travel-from-head"><span>{`זמן הגעה ${fromLabel(leg.from, v)}`}</span></span>
                       <LegTimes v={v} />
                     </div>
               )}
+
+              {leg && [leg.to, leg.from].filter(s => s.plan).map(s => ({ s, g: nameOnlyLocation(s.plan) })).filter(x => x.g).map(({ s, g }) => (
+                <div key={s.key} className="dp-guess" role="note">
+                  <AlertTriangle size={16} aria-hidden="true" className="dp-guess-icon" />
+                  <span className="dp-guess-text">
+                    ל<strong>{s.title}</strong> אין כתובת, ולכן המיקום נמצא לפי השם
+                    {g.name || g.address ? <>: <bdi>{[g.name, g.address].filter(Boolean).join(', ')}</bdi></> : ''}.
+                    {' '}אם זה לא המקום, הזמן לא נכון.
+                  </span>
+                  <span className="dp-guess-actions">
+                    {g.at && <a href={`https://www.google.com/maps/search/?api=1&query=${g.at}`} target="_blank" rel="noreferrer">איפה זה במפה</a>}
+                    <button type="button" onClick={() => { close(); onOpenPlace(s.plan.id); }}>הוספת כתובת</button>
+                  </span>
+                </div>
+              ))}
 
               {address && (
                 <a href={mapsHref(address)} target="_blank" rel="noreferrer" className="dp-detail-row">
