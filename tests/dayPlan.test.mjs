@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
-  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel, nextDate, orderFor,
+  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel, nextDate, orderFor, blockDrop,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -230,4 +230,48 @@ test('a day given another date moves to its place by date', () => {
   assert.equal(orderFor(days, 'c', '2026-11-27'), 3);
   assert.equal(orderFor(days, 'a', '2026-11-29'), 4);
   assert.equal(orderFor(days, 'c', '2026-11-20'), 0);
+});
+
+// 8.87.0: free blocks sit after an item, in their own order, with no time.
+test('a block sits after its item, in its section; one whose item went is last', () => {
+  const a = (id, timeLabel, order) => ({ id, title: id, timeLabel, order });
+  const b = (id, after, order, block = 'text') => ({ id, block, after, order, text: id });
+  const acts = [
+    a('x', 'בוקר', 1), b('n1', 'act:x', 2), a('y', '13:00', 3), b('n0', null, 4),
+    b('n2', 'act:x', 5), b('lost', 'act:gone', 6), a('z', 'ערב', 7),
+  ];
+  const items = dayItems({ acts });
+  assert.deepEqual(items.map(it => it.key), ['blk:n0', 'act:x', 'blk:n1', 'blk:n2', 'act:y', 'act:z', 'blk:lost']);
+  const groups = groupItems(items);
+  assert.deepEqual(groups.map(g => [g.label, g.items.map(it => it.key)]), [
+    ['', ['blk:n0']],
+    ['בוקר', ['act:x', 'blk:n1', 'blk:n2']],
+    ['צהריים', ['act:y']],
+    ['ערב', ['act:z', 'blk:lost']],
+  ]);
+  // A block is no stop and has no time.
+  assert.equal(items.find(it => it.key === 'blk:n1').slot.label, '');
+});
+
+test('blocks in "שלי": mine after a shared item too, the shared ones marked', () => {
+  const items = personalItems({
+    mine: [{ id: 'm', block: 'check', after: 'act:s', order: 1, items: [] }],
+    shared: [{ id: 's', title: 'S', timeLabel: 'בוקר', order: 1 }, { id: 'sb', block: 'text', after: 'act:s', order: 2 }],
+  });
+  assert.deepEqual(items.map(it => it.key), ['sh:act:s', 'blk:m', 'sh:blk:sb']);
+  assert.equal(items[2].shared, true);
+});
+
+test('where a dropped block goes: after the item above, between its neighbours', () => {
+  const a = (id, timeLabel, order) => ({ id, title: id, timeLabel, order });
+  const b = (id, after, order) => ({ id, block: 'text', after, order });
+  const items = dayItems({ acts: [a('x', 'בוקר', 1), b('n1', 'act:x', 2), b('n2', 'act:x', 3), a('y', 'ערב', 4), b('d', 'act:y', 5)] });
+  // as shown: x n1 n2 y d. Dragging d:
+  assert.deepEqual(blockDrop(items, 'blk:d', 0), { after: null, order: null });
+  assert.deepEqual(blockDrop(items, 'blk:d', 1), { after: 'act:x', order: 1 });
+  assert.deepEqual(blockDrop(items, 'blk:d', 2), { after: 'act:x', order: 2.5 });
+  assert.deepEqual(blockDrop(items, 'blk:d', 3), { after: 'act:x', order: 4 });
+  assert.deepEqual(blockDrop(items, 'blk:d', 4), { after: 'act:y', order: null });
+  // The shared plan's item, without its "sh:".
+  assert.equal(blockDrop([{ key: 'sh:act:s', kind: 'activity' }], 'blk:m', 1).after, 'act:s');
 });

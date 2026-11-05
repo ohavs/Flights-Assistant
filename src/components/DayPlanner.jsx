@@ -4,7 +4,7 @@ import {
   Calendar, CheckCircle2, MoreHorizontal, Pencil, Trash2, ArrowLeftRight, ArrowUp, ArrowDown,
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
   Navigation, Phone, ExternalLink, Copy, Users, UserRound, Sunrise, Sun, Sunset, Moon, Clock,
-  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus, CircleDashed, AlertTriangle,
+  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus, CircleDashed, AlertTriangle, GripVertical,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
@@ -22,12 +22,14 @@ import { localDay, isoDay } from '../lib/dates';
 import { creatorOf } from '../lib/roles';
 import {
   dayActivities, removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays,
-  clearActivities, putBack, restoreDays,
+  clearActivities, putBack, restoreDays, addActivities,
 } from '../lib/dayActivities';
 import {
   dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey,
-  missingDates, placeDays, nextDate, orderFor,
+  missingDates, placeDays, nextDate, orderFor, blockDrop, baseKey,
 } from '../lib/dayPlan';
+import DayBlock, { AddBlockRow } from './DayBlock';
+import { newBlock } from '../lib/blocks';
 import { DatePickerDialog } from './CustomDatePicker';
 import { nameOnlyLocation } from '../services/distanceApi';
 
@@ -113,7 +115,7 @@ function DayPlanner({
     };
   };
   // An item that can be changed here: an activity of the plan on screen.
-  const canChange = (it) => it?.kind === 'activity' && !it.shared && (personalMode || mine(it.act));
+  const canChange = (it) => (it?.kind === 'activity' || it?.kind === 'block') && !it.shared && (personalMode || mine(it.act));
   // Writes go to the plan on screen; "הוספה" changes only its own shared ones.
   const onlyOwn = personalMode ? false : !canEdit;
 
@@ -229,6 +231,7 @@ function DayPlanner({
   const [dayMenu, setDayMenu] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const [renaming, setRenaming] = useState(null); // the title being typed
+  const [editBlock, setEditBlock] = useState(null); // id of the free block being edited
   const [redating, setRedating] = useState(false);
   const [toast, setToast] = useState(null);
   const say = (t) => setToast({ id: ++toastSeq, ...t });
@@ -451,7 +454,7 @@ function DayPlanner({
       .catch(err => console.error('Move to day failed:', err));
     say({
       icon: <Calendar size={18} />,
-      title: `${act.title} עבר ל${target.title}${target.date ? ` (${shortDate(target.date)})` : ''}`,
+      title: `${act.title || 'הבלוק'} עבר ל${target.title}${target.date ? ` (${shortDate(target.date)})` : ''}`,
       action: {
         label: 'ביטול',
         run: () => {
@@ -479,6 +482,117 @@ function DayPlanner({
     const next = patched(act, { description: text });
     updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, next, onlyOwn)
       .catch(err => console.error('Note failed:', err));
+  };
+
+  /* ── Free blocks (8.87.0) ───────────────────────────────────────── */
+  // A new one goes at the end of the day, open for typing.
+  const addBlock = (kind) => {
+    if (!planDay) return;
+    const last = [...items].reverse().find(it => it.kind !== 'block');
+    const blk = newBlock(kind, last ? baseKey(last.key) : null, currentUid, Date.now());
+    addActivities(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, [blk])
+      .catch(err => console.error('Add block failed:', err));
+    setEditBlock(blk.id);
+  };
+  const setBlock = (act, patch) => {
+    updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, patched(act, patch), onlyOwn)
+      .catch(err => console.error('Block save failed:', err));
+  };
+  const toggleCheck = (act, itemId) => {
+    const items2 = (lastWrite(act).items || []).map(i => (i.id === itemId ? { ...i, done: !i.done } : i));
+    setBlock(act, { items: items2 });
+  };
+  // `quiet`: an empty one left behind, gone with no message.
+  const deleteBlock = (act, quiet = false) => {
+    const dayId = planDay.target ?? planDay.id;
+    const raw = planDay.rawActivities;
+    removeActivity(db, tripId, dayId, raw, act.id, onlyOwn).catch(err => console.error('Block delete failed:', err));
+    setEditBlock(e => (e === act.id ? null : e));
+    if (quiet) return;
+    const back = lastWrite(act);
+    say({
+      icon: <Trash2 size={18} />,
+      title: 'הבלוק נמחק',
+      action: {
+        label: 'ביטול',
+        run: () => addActivities(db, tripId, dayId, raw, [back]).catch(err => console.error('Undo block delete failed:', err)),
+      },
+    });
+  };
+
+  // Dragging a block by its handle: anywhere in the day (a line shows where
+  // it lands), or onto a day in the strip. The page scrolls near its edges.
+  const dragRef = useRef(null);
+  const [drag, setDrag] = useState(null);   // { key, dy, index, day }
+  const dragUpdate = () => {
+    const d = dragRef.current;
+    if (!d) return;
+    const st = d.scroller.scrollTop;
+    d.index = d.rows.filter(r => r.mid < d.y + st).length;
+    // The block itself is under the finger: look through it.
+    const chip = document.elementsFromPoint(d.x, d.y).map(el => el.closest?.('.dp-chip[data-day]')).find(Boolean);
+    d.day = chip ? chip.dataset.day : null;
+    const strip = stripRef.current?.getBoundingClientRect();
+    d.strip = !!strip && d.y >= strip.top - 20 && d.y <= strip.bottom + 20;
+    setDrag({ key: d.key, dy: d.y - d.y0 + st - d.s0, index: d.index, day: d.day, strip: d.strip });
+  };
+  const startDrag = (it, e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    const scroller = e.currentTarget.closest('.app-content') || document.scrollingElement;
+    const st = scroller.scrollTop;
+    const rows2 = [...document.querySelectorAll('.dp-timeline [data-item]')]
+      .filter(r => r.dataset.item !== it.key)
+      .map(r => { const b = r.getBoundingClientRect(); return { key: r.dataset.item, mid: b.top + b.height / 2 + st }; });
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const d = { key: it.key, act: it.act, x: e.clientX, y: e.clientY, y0: e.clientY, s0: st, rows: rows2, scroller, raf: 0 };
+    d.from = items.findIndex(x => x.key === it.key);   // its place, in the list without it
+    dragRef.current = d;
+    const tick = () => {
+      const c = dragRef.current;
+      if (!c) return;
+      const box = c.scroller.getBoundingClientRect();
+      const top = Math.max(box.top, 0) + 70;
+      const bottom = Math.min(box.bottom, window.innerHeight) - 100;
+      const step = c.y < top ? -Math.min(16, (top - c.y) / 4 + 2) : c.y > bottom ? Math.min(16, (c.y - bottom) / 4 + 2) : 0;
+      if (step) { c.scroller.scrollTop += step; dragUpdate(); }
+      // Over the strip of days, near its sides: it scrolls to the others.
+      const sr = c.strip && stripRef.current?.getBoundingClientRect();
+      if (sr) {
+        const side = c.x < sr.left + 48 ? -1 : c.x > sr.right - 48 ? 1 : 0;
+        if (side) { stripRef.current.scrollBy({ left: side * 9 }); dragUpdate(); }
+      }
+      c.raf = requestAnimationFrame(tick);
+    };
+    d.raf = requestAnimationFrame(tick);
+    dragUpdate();
+  };
+  const moveDrag = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    d.x = e.clientX;
+    d.y = e.clientY;
+    dragUpdate();
+  };
+  const stopDrag = () => {
+    const d = dragRef.current;
+    if (d) cancelAnimationFrame(d.raf);
+    dragRef.current = null;
+    setDrag(null);
+    return d;
+  };
+  const endDrag = () => {
+    const d = stopDrag();
+    if (!d) return;
+    if (d.day) {
+      const target = days.find(x => x.id === d.day);
+      if (target && target.id !== day.id) moveTo(d.act, target);
+      return;
+    }
+    if (d.index === d.from) return;   // where it was
+    const { after, order } = blockDrop(items, d.key, d.index);
+    updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, patched(d.act, { after }), onlyOwn, order)
+      .catch(err => console.error('Block move failed:', err));
   };
 
   const setTravelFrom = (act, key) => {
@@ -509,7 +623,7 @@ function DayPlanner({
   }, [days]);
 
   /* ── Pieces ─────────────────────────────────────────────────────── */
-  const legChip = (it) => {
+  const legChip = (it, drop = '') => {
     const leg = legs.get(it.key);
     if (!leg) return null;
     const v = legValue(leg);
@@ -535,7 +649,7 @@ function DayPlanner({
       {canPick && <ChevronDown size={13} aria-hidden="true" className="dp-leg-chev" />}
     </>);
     return (
-      <div className="dp-row dp-leg-row">
+      <div className={`dp-row dp-leg-row${drop}`}>
         <span className="dp-rail" aria-hidden="true" />
         {canPick
           ? <button type="button" className="dp-leg" onClick={() => { setLegQuery(''); setLegFor(it.key); }} aria-label={`זמן הגעה אל ${leg.to.title}, בחירת נקודת יציאה`}>{inner}</button>
@@ -553,8 +667,58 @@ function DayPlanner({
       </span>
   );
 
+  // While a block is dragged: the line where it would land, above the item
+  // at its place (above that item's way there), or under the last.
+  const shownWithout = drag ? items.filter(x => x.key !== drag.key) : null;
+  const dropAt = (key) => {
+    if (!drag || drag.day) return '';
+    if (shownWithout[drag.index]?.key === key) return ' drop-before';
+    if (drag.index >= shownWithout.length && shownWithout[shownWithout.length - 1]?.key === key) return ' drop-after';
+    return '';
+  };
+
   const renderItem = (it) => {
     const time = it.slot.minutes != null ? it.slot.label : '';
+    const drop = dropAt(it.key);
+    if (it.kind === 'block') {
+      const editable = canChange(it);
+      const dragging = drag?.key === it.key;
+      return (
+        <div
+          key={it.key}
+          data-item={it.key}
+          className={`dp-row dp-block-row${it.shared ? ' shared' : ''}${dragging ? ` dragging${drag.strip ? ' over-strip' : ''}` : ''}${drop}`}
+          style={dragging ? { transform: `translateY(${drag.dy}px)` } : undefined}
+        >
+          <span className="dp-rail" aria-hidden="true" />
+          <div className={`dp-block kind-${it.act.block}`}>
+            {editable && editBlock !== it.act.id && (
+              <button
+                type="button"
+                className="dp-block-grip"
+                aria-label="גרירת הבלוק"
+                title="גרירה למקום אחר ביום, או ליום אחר בפס"
+                onPointerDown={(e) => startDrag(it, e)}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={stopDrag}
+              >
+                <GripVertical size={16} />
+              </button>
+            )}
+            <DayBlock
+              act={it.act}
+              editable={editable}
+              editing={editBlock === it.act.id}
+              onEditing={(on) => setEditBlock(on ? it.act.id : null)}
+              onSave={(patch) => setBlock(it.act, patch)}
+              onDelete={(quiet) => deleteBlock(it.act, quiet)}
+              onToggle={(id) => toggleCheck(it.act, id)}
+            />
+          </div>
+        </div>
+      );
+    }
     if (it.kind === 'flight' || it.kind === 'hotel') {
       const f = it.flight;
       const isFlight = it.kind === 'flight';
@@ -564,7 +728,7 @@ function DayPlanner({
         ? <>{[f.flightNumber, time ? `המראה ${time}` : ''].filter(Boolean).join(' · ')}{route && <>{' · '}<bdi dir="ltr">{route}</bdi></>}</>
         : (it.hotel?.name || '');
       return (
-        <div key={it.key} className={`dp-row${it.shared ? ' shared' : ''}`}>
+        <div key={it.key} data-item={it.key} className={`dp-row${it.shared ? ' shared' : ''}${drop}`}>
           <span className="dp-rail" aria-hidden="true"><span className="dp-time">{time}</span></span>
           <div className="dp-card fixed" style={{ '--c': isFlight ? 'var(--c-blue)' : '#7c3aed' }}>
             <div className="dp-card-main as-div">
@@ -585,8 +749,8 @@ function DayPlanner({
       const facts = b.bookedUnder ? `על שם ${b.bookedUnder}` : '';
       return (
         <React.Fragment key={it.key}>
-          {legChip(it)}
-          <div className={`dp-row${it.shared ? ' shared' : ''}`}>
+          {legChip(it, drop === ' drop-before' ? drop : '')}
+          <div data-item={it.key} className={`dp-row${it.shared ? ' shared' : ''}${legs.has(it.key) && drop !== ' drop-after' ? '' : drop}`}>
             <span className="dp-rail" aria-hidden="true"><span className="dp-time">{time}</span></span>
             <div className="dp-card booking" style={{ '--c': t.color }}>
               <button type="button" className="dp-card-main" onClick={() => setDetailKey(it.key)}>
@@ -616,8 +780,8 @@ function DayPlanner({
     const toBook = plan && !visited && !it.booking && !elsewhere && plan.needsReservation;
     return (
       <React.Fragment key={it.key}>
-        {legChip(it)}
-        <div className={`dp-row${it.shared ? ' shared' : ''}`}>
+        {legChip(it, drop === ' drop-before' ? drop : '')}
+        <div data-item={it.key} className={`dp-row${it.shared ? ' shared' : ''}${legs.has(it.key) && drop !== ' drop-after' ? '' : drop}`}>
           <span className="dp-rail" aria-hidden="true">
             <span className="dp-time">{time}</span>
           </span>
@@ -679,7 +843,7 @@ function DayPlanner({
   const dayDate = day?.date ? localDay(day.date) : null;
   const nextDay = afterLast ? localDay(afterLast) : null;
   const dayW = day?.date ? weatherByDate[day.date] : null;
-  const actCount = planDay ? (planDay.activities || []).length : 0;
+  const actCount = planDay ? (planDay.activities || []).filter(a => !a.block).length : 0;
   const bookingCount = items.filter(it => it.booking && !it.shared).length;
 
   return (
@@ -769,8 +933,8 @@ function DayPlanner({
             const dd = d.date ? localDay(d.date) : null;
             const w = d.date ? weatherByDate[d.date] : null;
             const n = personalMode
-              ? (personal[keyOf(d)]?.activities || []).length
-              : (d.activities || []).length + bookingsOn(bookings, d.date).filter(b => !b.placeId || !(d.activities || []).some(a => a.placeId === b.placeId)).length;
+              ? (personal[keyOf(d)]?.activities || []).filter(a => !a.block).length
+              : (d.activities || []).filter(a => !a.block).length + bookingsOn(bookings, d.date).filter(b => !b.placeId || !(d.activities || []).some(a => a.placeId === b.placeId)).length;
             const on = d.id === day.id;
             return (
               <button
@@ -779,7 +943,8 @@ function DayPlanner({
                 role="tab"
                 aria-selected={on}
                 aria-label={`${d.title}${d.date ? `, ${shortDate(d.date)}` : ''}`}
-                className={`dp-chip${d.date === today ? ' today' : ''}${d.date && d.date < today ? ' past' : ''}`}
+                data-day={d.id}
+                className={`dp-chip${d.date === today ? ' today' : ''}${d.date && d.date < today ? ' past' : ''}${drag?.day === d.id && d.id !== day.id ? ' drop-target' : ''}`}
                 onClick={() => pick(d.id)}
               >
                 <span className="dp-chip-top">{dd ? DOW[dd.getDay()] : 'יום'}</span>
@@ -867,6 +1032,8 @@ function DayPlanner({
           ) : (
             <p className="dp-empty">{personalMode ? 'עוד לא תכננת כלום ליום הזה.' : 'אין עדיין פעילויות ליום זה.'}</p>
           )}
+
+          {(canAdd || personalMode) && <AddBlockRow onAdd={addBlock} />}
 
         </section>
       </>)}

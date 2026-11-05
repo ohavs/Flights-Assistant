@@ -105,7 +105,63 @@ function departure(f) {
 // Each item: { key, kind: 'activity' | 'booking' | 'flight' | 'hotel', slot, … }.
 // An activity whose place is booked that day carries the booking (`booking`)
 // and takes its time: one row, not two.
-export function dayItems({ acts = [], date = null, bookings = [], flights = {}, hotel = null } = {}) {
+export function dayItems({ acts = [], ...at } = {}) {
+  return placeBlocks(timedItems({ acts: acts.filter(a => !isBlock(a)), ...at }), blockItems(acts));
+}
+
+// Free blocks (8.87.0): a text, a checklist or a link, kept in the day's
+// activities array like an activity (`block`: 'text' | 'check' | 'link'),
+// with no title, so whatever reads activities by title (the widget, the
+// morning summary) passes them by. A block has no time: it sits after an
+// item (`after`: that item's key as dayItems gives it, without the "sh:" of
+// the shared plan; null = the top of the day), in the array's order among
+// the blocks after the same one. One whose item is gone goes to the end.
+export const isBlock = (a) => !!a?.block;
+const NO_SLOT = { label: '', part: null, parts: [], minutes: null, custom: false };
+export const baseKey = (k) => String(k || '').replace(/^sh:/, '');
+function blockItems(acts, shared = false) {
+  return acts.filter(isBlock).map((act, i) => ({
+    key: `${shared ? 'sh:' : ''}blk:${act.id}`, kind: 'block', act, slot: NO_SLOT, seq: i,
+    ...(shared ? { shared: true } : {}),
+  }));
+}
+export function placeBlocks(items, blocks) {
+  if (!blocks.length) return items;
+  const keys = new Set(items.map(it => baseKey(it.key)));
+  const after = new Map();
+  const lost = [];
+  blocks.forEach(b => {
+    const k = b.act.after ? baseKey(b.act.after) : '';
+    if (k && !keys.has(k)) { lost.push(b); return; }
+    if (!after.has(k)) after.set(k, []);
+    after.get(k).push(b);
+  });
+  const out = [...(after.get('') || [])];
+  items.forEach(it => { out.push(it, ...(after.get(baseKey(it.key)) || [])); });
+  return [...out, ...lost];
+}
+
+// Where a block dropped at `index` goes (8.87.0): after the item above it
+// (`after`), and its `order` between the blocks next to it there.
+//   items  the day as shown; index: its place in that list without it.
+export function blockDrop(items, key, index) {
+  const list = items.filter(it => it.key !== key);
+  let after = null;
+  for (let i = Math.min(index, list.length) - 1; i >= 0; i--) {
+    if (list[i].kind !== 'block') { after = baseKey(list[i].key); break; }
+  }
+  const sib = (it) => it?.kind === 'block' && (it.act.after ? baseKey(it.act.after) : null) === after;
+  const prev = sib(list[index - 1]) ? list[index - 1] : null;
+  const next = sib(list[index]) ? list[index] : null;
+  const o = (it) => Number(it.act.order) || 0;
+  const order = prev && next ? (o(prev) + o(next)) / 2
+    : prev ? o(prev) + 1
+      : next ? o(next) - 1
+        : null;
+  return { after, order };
+}
+
+function timedItems({ acts = [], date = null, bookings = [], flights = {}, hotel = null } = {}) {
   const items = [];
   const onDay = bookingsOn(bookings, date);
   const byPlace = new Map();
@@ -163,10 +219,10 @@ export function sortItems(items) {
 export function personalItems({ mine = [], shared = [], date = null, bookings = [], flights = {}, hotel = null } = {}) {
   const places = new Set(mine.map(a => a?.placeId).filter(Boolean));
   const ours = (b) => !!b?.placeId && places.has(b.placeId);
-  const own = dayItems({ acts: mine, date, bookings: bookings.filter(ours) });
-  const rest = dayItems({ acts: shared, date, bookings: bookings.filter(b => !ours(b)), flights, hotel })
+  const own = timedItems({ acts: mine.filter(a => !isBlock(a)), date, bookings: bookings.filter(ours) });
+  const rest = timedItems({ acts: shared.filter(a => !isBlock(a)), date, bookings: bookings.filter(b => !ours(b)), flights, hotel })
     .map(it => ({ ...it, key: `sh:${it.key}`, shared: true, seq: it.seq + 10000 }));
-  return sortItems([...own, ...rest]);
+  return placeBlocks(sortItems([...own, ...rest]), [...blockItems(mine), ...blockItems(shared, true)]);
 }
 
 // What a fixed item is called, in the schedule and in the plan widget.
@@ -187,6 +243,12 @@ export function groupItems(items) {
   if (!items.some(it => it.slot.label)) return items.length ? [{ key: '', label: '', items }] : [];
   const out = [];
   items.forEach(it => {
+    // A block stays in the section of the item above it.
+    if (it.kind === 'block') {
+      if (!out.length) out.push({ key: '·top', label: '', items: [] });
+      out[out.length - 1].items.push(it);
+      return;
+    }
     const key = it.slot.part || (it.slot.custom ? it.slot.label : '');
     let g = out[out.length - 1];
     if (!g || g.key !== key) { g = { key, label: key || 'בלי שעה', items: [] }; out.push(g); }

@@ -59,12 +59,13 @@ export function addActivities(db, tripId, dayId, raw, acts) {
 }
 
 // Replaces the activity with id `next.id` by `next`, in the same place.
-export function updateActivity(db, tripId, dayId, raw, next, onlyOwn = false) {
+// `rank`: another place for it (a block dropped elsewhere, 8.87.0).
+export function updateActivity(db, tripId, dayId, raw, next, onlyOwn = false, rank = null) {
   const all = rows(raw);
   const was = shownRows(all).find(r => r.act?.id === next.id);
   if (!was) return Promise.resolve();
   const { out, put } = settle(all, new Set([next.id]), onlyOwn);
-  return commit(db, tripId, dayId, out, [...put, { ...next, order: was.rank, updatedAt: Date.now() }]);
+  return commit(db, tripId, dayId, out, [...put, { ...next, order: rank ?? was.rank, updatedAt: Date.now() }]);
 }
 
 export function removeActivity(db, tripId, dayId, raw, id, onlyOwn = false) {

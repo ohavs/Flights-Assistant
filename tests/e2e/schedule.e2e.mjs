@@ -504,6 +504,87 @@ await step('a leg is from the stop before it; a place found by name only is flag
   await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
 });
 
+// 8.87.0: free blocks between the activities: text, a checklist, a link;
+// dragged by the handle anywhere in the day, or onto a day in the strip.
+const dayDoc = async (date) => (await list('days')).find(d => d.fields.date?.stringValue === date);
+const blocksOn = async (date) => ((await dayDoc(date))?.fields.activities?.arrayValue.values || [])
+  .map(v => v.mapValue.fields).filter(f => f.block);
+const shownKeys = () => page.locator('.dp-timeline [data-item]').evaluateAll(els => els.map(e => e.dataset.item));
+
+await step('free blocks: a text, a checklist and a link, at the end of the day', async () => {
+  await page.locator('.dp-block-add').getByRole('button', { name: /טקסט/ }).click();
+  await page.getByLabel('טקסט', { exact: true }).fill('לקנות כרטיסים מראש');
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  await until(async () => (await blocksOn('2026-11-20')).some(b => b.text?.stringValue === 'לקנות כרטיסים מראש'), 'text saved');
+  const keys = await shownKeys();
+  if (!keys[keys.length - 1].startsWith('blk:')) throw new Error(`not at the end: ${keys.join()}`);
+
+  await page.locator('.dp-block-add').getByRole('button', { name: /רשימה/ }).click();
+  await page.getByLabel('כותרת הרשימה').fill('לקחת');
+  await page.getByLabel('פריט 1').fill('מים');
+  await page.getByLabel('פריט 1').press('Enter');
+  await page.getByLabel('פריט 2').fill('כובע');
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  const list2 = page.locator('.dp-block.kind-check');
+  await list2.getByText('0/2').waitFor();
+  await list2.getByRole('checkbox', { name: 'מים' }).click();
+  await list2.getByText('1/2').waitFor();
+  await until(async () => {
+    const b = (await blocksOn('2026-11-20')).find(x => x.block.stringValue === 'check');
+    const items = (b?.items?.arrayValue.values || []).map(v => v.mapValue.fields);
+    return items.length === 2 && items.find(i => i.text.stringValue === 'מים')?.done?.booleanValue === true;
+  }, 'ticked on the server');
+
+  await page.locator('.dp-block-add').getByRole('button', { name: /קישור/ }).click();
+  await page.getByLabel('כתובת הקישור').fill('example.com/tickets');
+  await page.getByLabel('שם הקישור').fill('כרטיסים');
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  const link = page.locator('.dp-block-link', { hasText: 'כרטיסים' });
+  if (await link.getAttribute('href') !== 'https://example.com/tickets') throw new Error(await link.getAttribute('href'));
+  // Not activities: the count says 3.
+  await page.locator('.dp-stats').getByText('3 פעילויות').waitFor();
+  await shot('blocks');
+});
+
+await step('free blocks: dragged by the handle between two activities, and onto another day', async () => {
+  const text = page.locator('.dp-block-row', { hasText: 'לקנות כרטיסים מראש' });
+  await text.scrollIntoViewIfNeeded();
+  const grip = text.getByRole('button', { name: 'גרירת הבלוק' });
+  const g = await grip.boundingBox();
+  const mid = async (key) => { const b = await page.locator(`[data-item="${key}"]`).boundingBox(); return b.y + b.height / 2; };
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  const y = ((await mid('act:a62')) + (await mid('act:a63'))) / 2;
+  await page.mouse.move(g.x + g.width / 2, y, { steps: 12 });
+  await page.locator('.dp-row.drop-before').waitFor();
+  await shot('block-drag');
+  await page.mouse.up();
+  await until(async () => {
+    const k = await shownKeys();
+    const i = k.findIndex(x => x.startsWith('blk:') && x !== undefined && k[k.indexOf(x) - 1] === 'act:a62');
+    return i > 0 && k[i + 1] === 'act:a63';
+  }, 'between the two');
+  const b = (await blocksOn('2026-11-20')).find(x => x.text?.stringValue === 'לקנות כרטיסים מראש');
+  if (b.after?.stringValue !== 'act:a62') throw new Error(`after: ${JSON.stringify(b.after)}`);
+
+  // Onto another day in the strip: up to the top, the page scrolls there.
+  const check = page.locator('.dp-block-row', { hasText: 'לקחת' });
+  await check.scrollIntoViewIfNeeded();
+  const g2 = await check.getByRole('button', { name: 'גרירת הבלוק' }).boundingBox();
+  await page.mouse.move(g2.x + g2.width / 2, g2.y + g2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g2.x + g2.width / 2, 40, { steps: 10 });
+  await page.waitForFunction(() => document.querySelector('.app-content').scrollTop === 0, null, { timeout: 8000 });
+  const c = await chip('יום 6').boundingBox();
+  await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2, { steps: 6 });
+  await page.locator('.dp-chip.drop-target').waitFor();
+  await shot('block-to-day');
+  await page.mouse.up();
+  await page.locator('.toast', { hasText: 'עבר ליום 6' }).waitFor();
+  await until(async () => (await blocksOn('2026-11-17')).some(x => x.text?.stringValue === 'לקחת'), 'on the other day');
+  if ((await blocksOn('2026-11-20')).some(x => x.text?.stringValue === 'לקחת')) throw new Error('still on its old day');
+});
+
 await step('a booking: search the places; a linked place replaces its name and address', async () => {
   await page.locator('nav button.nav-item[aria-label="הזמנות"]').click();
   await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();
