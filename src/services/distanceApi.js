@@ -3,12 +3,13 @@
 //
 // A place's location is found once and saved on it (findPlaceLocation,
 // src/lib/placeLocation.js): coordinates in a Maps link, a short link
-// (maps.app.goo.gl) expanded via a CORS proxy, the typed address, and only
+// (maps.app.goo.gl) opened on the server (openMapsLink), the typed address, and only
 // then a Places Text Search by its name inside the trip's destination.
 
 // Browser tests run an emulator build with a fake key (`__e2eGmapsKey`, set
 // before the app loads) and answer the Maps calls themselves.
 import { placeUrls, typedAddress, MAPS_SHORT } from '../lib/placeLocation';
+import { callFunction } from '../firebase';
 
 const GMAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY
   || (import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true' && globalThis.__e2eGmapsKey) || '';
@@ -61,7 +62,18 @@ function extractCoordsFromHtml(html) {
   return null;
 }
 
-// ── Short-URL expansion via CORS proxies ──────────────────────────────────────
+// ── Short-URL expansion ──────────────────────────────────────────────────────
+// On the server first (8.89.0, functions/mapsLink.js): a short link can't
+// be read from the browser, and the public CORS proxies below are often
+// down, which left places shared as short links located by name for good.
+// → { at, query } (an answer, maybe empty), or null when it failed.
+async function openOnServer(url) {
+  try {
+    const r = await callFunction('openMapsLink', { url });
+    return { at: parseLatLng(r?.at) ? r.at : null, query: typeof r?.query === 'string' ? r.query.trim() : '' };
+  } catch { return null; }
+}
+
 // Resolve with the first task that yields a truthy value, without waiting for
 // the slower ones. Promise.any rejects only once every task has failed, so a
 // hung proxy can never hold up a proxy that already answered.
@@ -91,25 +103,33 @@ async function tryProxy(proxyUrl) {
   } catch { return null; }
 }
 
-async function expandShortUrl(url) {
-  if (!url || !/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return null;
+// A link shared from an iPhone leads to the place's name and address, not
+// its coordinates: that text is Google's own, so finding it is the link's
+// answer, not a guess by the name. `anchor`: the trip's destination.
+async function expandShortUrl(url, { anchor = null } = {}) {
+  if (!url || !MAPS_SHORT.test(url)) return null;
 
   const cacheKey = SHORT_CACHE + url;
-  const cached = localStorage.getItem(cacheKey);
+  const cached = readShortUrlCache(url);
   if (cached) return cached;
   // Offline: the cache above is all we can offer — don't wait on timeouts.
   if (!isOnlineNow()) return null;
 
-  const enc = encodeURIComponent(url);
-  // Both proxies at once, first real answer wins — previously this awaited
-  // Promise.allSettled, so a proxy that hung until its timeout delayed the
-  // result even when the other had already responded.
-  const coords = await firstSuccess([
-    () => tryProxy(`https://api.allorigins.win/get?url=${enc}`),
-    () => tryProxy(`https://corsproxy.io/?url=${enc}`),
-    () => tryProxy(`https://r.jina.ai/${url}`),
-  ]);
-  if (coords) localStorage.setItem(cacheKey, coords);
+  const server = await openOnServer(url);
+  let coords = server?.at || null;
+  if (!coords && server?.query && GMAPS_KEY) {
+    coords = (await searchPlace(server.query, { anchor, restrict: false }).catch(() => null))?.at || null;
+  }
+  if (!server) {
+    const enc = encodeURIComponent(url);
+    // All proxies at once, first real answer wins.
+    coords = await firstSuccess([
+      () => tryProxy(`https://api.allorigins.win/get?url=${enc}`),
+      () => tryProxy(`https://corsproxy.io/?url=${enc}`),
+      () => tryProxy(`https://r.jina.ai/${url}`),
+    ]);
+  }
+  if (coords) { try { localStorage.setItem(cacheKey, coords); } catch { /* no storage */ } }
   return coords;
 }
 
@@ -282,7 +302,7 @@ export async function findPlaceLocation(plan, region = {}, { linkOnly = false } 
   if (!GMAPS_KEY || !isOnlineNow()) return { loc: null, offline: true };
   let failed = false;
   if (shorts.length) {
-    const at = await firstSuccess(shorts.map(url => () => expandShortUrl(url)));
+    const at = await firstSuccess(shorts.map(url => () => expandShortUrl(url, { anchor: region.coords || null })));
     const hit = pt(at, 'link');
     if (hit) return hit;
     failed = true;   // a link we could not open now: not an answer

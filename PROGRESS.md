@@ -3,11 +3,13 @@
 ## מצב נוכחי
 - ענף ראשי: `master` (ברירת המחדל). כל merge ל־`master` נפרס אוטומטית ל־Hosting (`deploy.yml`).
 - אתר חי: https://listify-84018.web.app
-- גרסת ווב: 8.88.1 (`changelog.md`)
+- גרסת ווב: 8.89.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
 - **בתחילת השיחה הבאה:**
   - 8.85.0–8.88.0 (PR #132) מוזגו ובאוויר (2026-11-05): Deploy + בדיקת האתר החי, חוקי Firestore (`aLeg`) נפרסו, CI ב־master ירוק.
   - 8.88.1: מונה "מעדכן מיקומים…" סופר מקומות (`pending` ב־`nextLocationJob`, `seen` בלולאה), לא עבודות. היה עולה עד פי 2 ממספר המקומות.
+  - 8.88.1 (PR #133) מוזג.
+  - 8.89.0: קישור קצר נפתח בשרת: `openMapsLink` (callable, `functions/mapsLink.js`, בדיקות `tests/mapsLink.test.mjs`). עוקב אחרי redirect בלי לטעון את הדף; מאייפון (`?g_st=ic`) מגיע `maps.google.com/?q=<שם, כתובת>&ftid=` בלי קואורדינטות → `query`, והאפליקציה מחפשת אותו ב־Places ושומרת `src: 'link'`. בלקוח: `callFunction` ב־`firebase.js` (טעינה עצלה), `openOnServer` ב־`distanceApi.js`. הפרוקסי הציבוריים רק כשהשרת לא עונה. ⚠ לא אומת מול קישור אמיתי (הרשת של הסשן חסומה ל־goo.gl): אחרי הפריסה לבדוק שמקום "פופ אנד רול" כבר לא משוער.
   - **הבא:** לשאול את הבעלים. פתוח מ־8.87.0: בלוקים לא בייצוא, ופעילויות עצמן עדיין לא נגררות.
   - **מיקומים וזמני הגעה אוטומטיים (8.88.0, בקשת הבעלים 2026-11-05), הושלם:**
     - מיקום אחד לכל מקום, שמור עליו: `coords: { lat, lng, fp, src, name?, addr? }`. `fp` = `locationFp` (כתובת+קישורים+שם), `src` = `link`/`address`/`title`/`none` (`t`, נוסה שוב אחרי 3 ימים). הכל טהור ב־`src/lib/placeLocation.js` (בדיקות: `tests/placeLocation.test.mjs`).

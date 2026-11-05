@@ -11,8 +11,10 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { onDocumentCreatedWithAuthContext, onDocumentUpdatedWithAuthContext } from 'firebase-functions/v2/firestore';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { makeHandlers } from './handlers.js';
+import { expandMapsLink, isShortMapsLink } from './mapsLink.js';
 
 initializeApp();
 const db = getFirestore();
@@ -56,3 +58,17 @@ export const pushActivity = onDocumentUpdatedWithAuthContext('trips/{tripId}/day
 
 export const pushTrip = onDocumentUpdatedWithAuthContext('trips/{tripId}',
   (event) => on.tripUpdated(actorOf(event), event.params.tripId, event.data?.before.data(), event.data?.after.data()));
+
+// A short Maps link of a place, a hotel or a starting point, opened for the
+// app (mapsLink.js). Signed-in users only, and Google's short links only.
+export const openMapsLink = onCall({ timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'sign in');
+  const url = String(request.data?.url || '').trim();
+  if (url.length > 500 || !isShortMapsLink(url)) throw new HttpsError('invalid-argument', 'not a short Maps link');
+  try {
+    return await expandMapsLink(url);
+  } catch (err) {
+    logger.warn('openMapsLink failed', { url, err: String(err?.message || err) });
+    throw new HttpsError('unavailable', 'could not open the link');
+  }
+});

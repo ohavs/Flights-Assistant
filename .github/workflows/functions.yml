@@ -35,12 +35,12 @@ jobs:
         run: npm ci --prefix functions --no-audit --no-fund
 
       - name: Unit tests
-        run: node --test tests/push.test.mjs
+        run: node --test tests/push.test.mjs tests/mapsLink.test.mjs
 
       - name: Deploy, until all the functions are live
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          WANT: pushExpense pushPlace pushActivity pushTrip
+          WANT: pushExpense pushPlace pushActivity pushTrip openMapsLink
         run: |
           set -uo pipefail
           [ -n "$FIREBASE_TOKEN" ] || { echo "::error::FIREBASE_TOKEN is not set"; exit 1; }
