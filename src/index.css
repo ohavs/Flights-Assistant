@@ -3985,9 +3985,30 @@ button.dp-leg:active { background: var(--ink-4); }
   padding: 12px 12px 12px 14px; border-radius: 18px;
   background: var(--text); color: var(--card-bg-solid);
   box-shadow: var(--shadow-lg);
-  transform: translateX(-50%);
+  overflow: hidden; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  /* --dx: dragged sideways (8.85.0); a swipe past a third sends it off */
+  transform: translateX(calc(-50% + var(--dx, 0px)));
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) ease;
   animation: toast-in var(--dur-slow) var(--ease-out);
 }
+.toast.gone { transition: transform 220ms ease-in, opacity 220ms ease-in; pointer-events: none; }
+/* The time left: a bar along the bottom that empties (8.85.0) */
+.toast-left {
+  position: absolute; inset-inline: 0; bottom: 0; height: 3px;
+  background: color-mix(in srgb, var(--card-bg-solid) 14%, transparent);
+}
+.toast-left i {
+  display: block; height: 100%; background: var(--brand);
+  transform-origin: right; /* RTL: empties toward the end */
+  animation: toast-left var(--toast-ms, 5500ms) linear forwards;
+}
+/* It tells the time, so it runs with reduced motion too */
+@media (prefers-reduced-motion: reduce) {
+  .toast-left i { animation-duration: var(--toast-ms, 5500ms) !important; }
+}
+[dir="ltr"] .toast-left i { transform-origin: left; }
+.toast.held .toast-left i, .toast.gone .toast-left i { animation-play-state: paused; }
+@keyframes toast-left { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes toast-in {
   from { opacity: 0; transform: translate(-50%, 14px) scale(0.97); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }

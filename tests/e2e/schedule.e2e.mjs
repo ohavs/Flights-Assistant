@@ -426,6 +426,39 @@ await step('a day after the last one, from the end of the strip; then another da
   await until(async () => await next.getAttribute('aria-label') === 'הוספת יום: ב׳ 16.11', 'next after the new date');
 });
 
+// 8.85.0: a toast shows the time it has left, and a swipe sends it away.
+await step('a toast: a bar of the time left; swiped to the side, it goes', async () => {
+  await page.locator('.dp-chip.next').click();
+  const toast = page.locator('.toast', { hasText: 'נוסף' });
+  await toast.waitFor();
+  const bar = toast.locator('.toast-left i');
+  const w0 = (await bar.boundingBox()).width;
+  await page.waitForTimeout(1200);
+  const w1 = (await bar.boundingBox()).width;
+  if (!(w1 < w0 - 5)) throw new Error(`the bar doesn't empty: ${w0} -> ${w1}`);
+  await shot('toast-left');
+  const box = await toast.boundingBox();
+  const y = box.y + box.height / 2;
+  const x = box.x + box.width * 0.4;   // on the text, not the button
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(x + i * 25, y);
+  await page.mouse.up();
+  await toast.waitFor({ state: 'detached', timeout: 2000 });
+  // A short drag comes back, and stays.
+  await page.locator('.dp-chip.next').click();
+  const again = page.locator('.toast', { hasText: 'נוסף' });
+  await again.waitFor();
+  const b2 = await again.boundingBox();
+  await page.mouse.move(b2.x + b2.width * 0.4, b2.y + b2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b2.x + b2.width * 0.4 + 30, b2.y + b2.height / 2, { steps: 6 });
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  if (!(await again.count())) throw new Error('a short drag sent it away');
+});
+
 await step('a booking: search the places; a linked place replaces its name and address', async () => {
   await page.locator('nav button.nav-item[aria-label="הזמנות"]').click();
   await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();
