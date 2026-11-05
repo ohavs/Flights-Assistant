@@ -31,7 +31,7 @@ import {
 import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
 import { DatePickerDialog } from './CustomDatePicker';
-import { nameOnlyLocation } from '../services/distanceApi';
+import { guessedLocation, savedLocation, atOf } from '../lib/placeLocation';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -203,9 +203,12 @@ function DayPlanner({
     return out;
   }, [items, distancesOn, planById, distanceOrigins, hotelStop]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Measure what isn't known yet: on opening a day, after a change, and
+  // Measure what isn't known yet: on opening a day, after a change, when
+  // an end moves (a place found again, the hotel edited: 8.88.0), and
   // again when the connection is back.
-  const legSig = [...legs.values()].map(l => `${l.from.key}>${l.to.key}`).join('|');
+  const atStop = (s) => (s.plan ? atOf(savedLocation(s.plan)) || s.plan.id : s.key === 'hotel'
+    ? [hotelDetails?.address, hotelDetails?.link, hotelDetails?.name].join('|') : s.key);
+  const legSig = [...legs.values()].map(l => `${l.from.key}@${atStop(l.from)}>${l.to.key}@${atStop(l.to)}`).join('|');
   useEffect(() => {
     if (!legs.size) return undefined;
     const t = setTimeout(() => legs.forEach(l => measureLeg(l.from, l.to)), 0);
@@ -631,7 +634,7 @@ function DayPlanner({
     // Always where from (8.86.0): the previous stop, the hotel, or the one
     // picked. A guessed end (a place found by its name only) is flagged.
     const fromText = fromLabel(leg.from, v);
-    const guessed = [leg.from, leg.to].some(s => s.plan && nameOnlyLocation(s.plan));
+    const guessed = [leg.from, leg.to].some(s => s.plan && guessedLocation(s.plan));
     let body;
     if (!v || v.loading) body = <span className="dp-leg-note"><Loader2 size={12} className="spinning" aria-hidden="true" />מחשב…</span>;
     else if (v.offline) body = <span className="dp-leg-note">יחושב כשיהיה חיבור</span>;
@@ -1373,17 +1376,21 @@ function DayPlanner({
                     </div>
               )}
 
-              {leg && [leg.to, leg.from].filter(s => s.plan).map(s => ({ s, g: nameOnlyLocation(s.plan) })).filter(x => x.g).map(({ s, g }) => (
+              {leg && [leg.to, leg.from].filter(s => s.plan).map(s => ({ s, g: guessedLocation(s.plan) })).filter(x => x.g).map(({ s, g }) => (
                 <div key={s.key} className="dp-guess" role="note">
                   <AlertTriangle size={16} aria-hidden="true" className="dp-guess-icon" />
                   <span className="dp-guess-text">
-                    ל<strong>{s.title}</strong> אין כתובת, ולכן המיקום נמצא לפי השם
+                    {g.hasLink
+                      ? <>הקישור של <strong>{s.title}</strong> לא נפתח עדיין, ולכן בינתיים המיקום נמצא לפי השם</>
+                      : g.hasAddress
+                        ? <>הכתובת של <strong>{s.title}</strong> לא נמצאה, ולכן המיקום נמצא לפי השם</>
+                        : <>ל<strong>{s.title}</strong> אין כתובת, ולכן המיקום נמצא לפי השם</>}
                     {g.name || g.address ? <>: <bdi>{[g.name, g.address].filter(Boolean).join(', ')}</bdi></> : ''}.
                     {' '}אם זה לא המקום, הזמן לא נכון.
                   </span>
                   <span className="dp-guess-actions">
                     {g.at && <a href={`https://www.google.com/maps/search/?api=1&query=${g.at}`} target="_blank" rel="noreferrer">איפה זה במפה</a>}
-                    <button type="button" onClick={() => { close(); onOpenPlace(s.plan.id); }}>הוספת כתובת</button>
+                    <button type="button" onClick={() => { close(); onOpenPlace(s.plan.id); }}>{g.hasLink || g.hasAddress ? 'תיקון הכתובת' : 'הוספת כתובת'}</button>
                   </span>
                 </div>
               ))}

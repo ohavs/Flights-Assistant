@@ -6,6 +6,9 @@ import { lastEmoji } from '../lib/emoji';
 import { dayActivities } from '../lib/dayActivities';
 import { localDay } from '../lib/dates';
 import { legKey, isPlaceLeg } from '../lib/dayPlan';
+import {
+  PLACE_ORIGIN, savedLocation, locationJob, locationFp, atOf, travelStamp, travelFresh, travelShowable, legDocId, guessedLocation,
+} from '../lib/placeLocation';
 import DayPlanner from './DayPlanner';
 import { changedFields } from '../lib/changes';
 import { Pill, CategoryDisc, CheckCircle } from '../ui/kit';
@@ -25,18 +28,16 @@ import {
 } from 'firebase/firestore';
 import {
   hasGmapsKey,
-  resolveOriginString,
   hasPreciseOrigin,
   buildOriginCandidates,
   originFingerprint,
   isOnlineNow,
   isSaneTravel,
-  clearPlaceCache,
   resolveRegionCoords,
-  resolveDestinationAsync,
-  resolvePlanCoords,
+  findPlaceLocation,
   fetchTravelTimes,
-  knownPlaceCoords,
+  extractCoordsFromMapsUrl,
+  readShortUrlCache,
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
 import { categoryTheme, THEMES } from '../lib/categoryTheme';
@@ -58,6 +59,7 @@ const ALARMS_ON = isNative || (typeof window !== 'undefined' && !!window.__e2eAl
 import { whenState } from '../lib/whenState';
 import {
   Search,
+  AlertTriangle,
   Plus,
   Trash2,
   MapPin,
@@ -96,7 +98,6 @@ import {
   PanelLeft,
   LayoutGrid,
   Rows3,
-  RefreshCw,
   SlidersHorizontal,
   CalendarCheck,
   Footprints,
@@ -161,10 +162,9 @@ const EVENTS_CATEGORY = 'אירועים';
 const PROXIMITY_THRESHOLD_M = 800;
 
 // The details sheet can show travel times from another place on the list
-// (`travelFrom: 'place_<id>'` on the place). The times are saved under the
-// same key in `distances`. The card and the distance sort keep the place's
-// own origin (`distanceOriginId`, the hotel by default).
-const PLACE_ORIGIN = 'place_';
+// (`travelFrom: 'place_<id>'` on the place, PLACE_ORIGIN). The times are
+// saved under the same key in `distances`. The card and the distance sort
+// keep the place's own origin (`distanceOriginId`, the hotel by default).
 
 // Short, readable form of a URL — used whenever a link has no name of its
 // own, so the UI never has to fall back to showing the raw address twice.
@@ -556,11 +556,12 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     if (next.has(cat)) next.delete(cat); else next.add(cat);
     return next;
   });
-  const [bulkCalc, setBulkCalc] = useState(null); // { done, total } while running
-  // Places whose address/links were just edited — their travel times are
-  // recomputed as soon as the updated document comes back.
-  const [recomputeIds, setRecomputeIds] = useState([]);
-  const [coordsCache, setCoordsCache] = useState({}); // planId → {lat,lng} | null
+  // Places being located and their times measured, in the background
+  // (8.88.0): { done, total } while it runs.
+  const [locWork, setLocWork] = useState(null);
+  // A location found on this phone and not on the place: a viewer's (who
+  // can't save it), or a write that failed. planId → as `coords` is saved.
+  const [locCache, setLocCache] = useState({});
 
   // Locations modal: when a card has multiple navigation targets
   const [locationsModal, setLocationsModal] = useState(null);
@@ -571,6 +572,13 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   // Coordinates of the destination city, resolved once and cached. Keeps a
   // title-only place lookup inside the trip's region.
   const [regionCoords, setRegionCoords] = useState(null);
+  const [regionReady, setRegionReady] = useState(false);
+  // The trip document is here: until then the hotel is unknown, and every
+  // time measured from it would look stale.
+  const [tripReady, setTripReady] = useState(false);
+  // Times between stops that aren't two places (an address typed on an
+  // activity or a booking), shared by the trip: trips/{id}/legs/{legDocId}.
+  const [legDocs, setLegDocs] = useState({});
   // Bumped when connectivity returns, so distances that failed while offline
   // are retried automatically instead of staying stuck.
   const [netEpoch, setNetEpoch] = useState(0);
@@ -640,6 +648,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     const unsub = listen(doc(db, 'trips', tripId), snap => {
       if (!snap.exists()) return;
       const d = snap.data();
+      setTripReady(true);
       setHotelDetails(d.hotelDetails || null);
       setTripDestination(d.destination || '');
       setDistanceOrigins(Array.isArray(d.distanceOrigins) ? d.distanceOrigins : []);
@@ -688,17 +697,54 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     let cancelled = false;
     resolveRegionCoords(tripDestination)
       .then(c => { if (!cancelled) setRegionCoords(prev => (prev === (c || null) ? prev : (c || null))); })
-      .catch(() => { /* falls back to text-only scoping */ });
+      .catch(() => { /* falls back to text-only scoping */ })
+      .finally(() => { if (!cancelled) setRegionReady(true); });
     return () => { cancelled = true; };
   }, [tripDestination]);
 
-  // Hydrate runtime caches from persisted Firestore data (distances + coords)
-  // so we don't re-hit the Routes API on every reload. Runtime values already
-  // present (fresher) are kept.
   useEffect(() => {
-    if (!plans.length) return;
+    if (!tripId) return undefined;
+    return listen(collection(db, 'trips', tripId, 'legs'), snap => {
+      const m = {};
+      snap.docs.forEach(d => { m[d.id] = d.data(); });
+      setLegDocs(m);
+    }, () => { /* measured on this phone instead */ });
+  }, [tripId]);
+
+  const planById = useMemo(() => new Map(plans.map(p => [p.id, p])), [plans]);
+  const locOf = (plan) => (plan ? savedLocation(plan, locCache[plan.id]) : null);
+  const hotelFp = (originId) =>
+    originFingerprint(hotelDetails, distanceOrigins.find(o => o.id === originId) || null, tripDestination);
+  const stampOf = (plan, originId) =>
+    travelStamp(plan, originId, { locOf, planOf: id => planById.get(id), hotelFp });
+  const legacyOriginFp = (originId) => (originId.startsWith(PLACE_ORIGIN) ? null : hotelFp(originId));
+  // Where a name is searched: the destination, else around the hotel.
+  const region = {
+    coords: regionCoords || extractCoordsFromMapsUrl(hotelDetails?.link || '') || readShortUrlCache(hotelDetails?.link) || null,
+    text: tripDestination,
+  };
+
+  // What is shown is what is saved on the places (distances), as long as
+  // it is for where the place and its start are now (8.88.0): a place
+  // edited anywhere, or a hotel changed, takes its old times off the screen
+  // until they are measured again. Values measured on this phone and not
+  // saved (a viewer's) stay while they are current.
+  useEffect(() => {
+    if (!plans.length || !tripReady) return;
     setDistanceCache(prev => {
+      let changed = false;
       const next = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (k.startsWith('leg:')) continue;
+        const v = next[k];
+        if (!v || v.loading || !(v.walk || v.transit)) continue;
+        const i = k.indexOf('_');
+        const plan = planById.get(k.slice(0, i));
+        const originId = k.slice(i + 1);
+        if (plan && travelShowable(v, stampOf(plan, originId), legacyOriginFp(originId))) continue;
+        delete next[k];
+        changed = true;
+      }
       for (const plan of plans) {
         if (!plan.distances) continue;
         for (const [originId, val] of Object.entries(plan.distances)) {
@@ -706,19 +752,15 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
           // Skip implausible values saved before the geocoding fix — leaving
           // them out means they get recomputed instead of shown.
           if (!isSaneTravel(val)) continue;
-          if (!next[key]) next[key] = val;
+          if (next[key] && (next[key].loading || travelShowable(next[key], stampOf(plan, originId), legacyOriginFp(originId)))) continue;
+          if (!travelShowable(val, stampOf(plan, originId), legacyOriginFp(originId))) continue;
+          next[key] = val;
+          changed = true;
         }
       }
-      return next;
+      return changed ? next : prev;
     });
-    setCoordsCache(prev => {
-      const next = { ...prev };
-      for (const plan of plans) {
-        if (plan.coords && !(plan.id in next)) next[plan.id] = plan.coords;
-      }
-      return next;
-    });
-  }, [plans]);
+  }, [plans, locCache, tripReady, hotelDetails, distanceOrigins, tripDestination]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen to Firestore daily planner days
   useEffect(() => {
@@ -793,149 +835,210 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     return k === 'hotel' || distanceOrigins.some(o => o.id === k) ? k : base;
   };
 
-  // Times measured from another place go stale when that place moves.
-  const placeOriginFingerprint = (from) => [
-    PLACE_ORIGIN, from.address || '',
-    ...(Array.isArray(from.links) ? from.links.map(l => l?.url || '') : []),
-  ].join('|');
+  /* One location per place, saved on it (src/lib/placeLocation.js).
+     `locOf` is the location for the place as it is now, else null.
+     `ensureLocation` finds it (once per place and what it was found
+     from, for the whole trip) and saves it, so every phone, the card, the
+     sheet, the schedule and the area groups use the same point. */
+  // Editors and "הוספה" keep what their phone finds; a viewer's is kept
+  // on the phone only.
+  const canSave = canAdd;
 
+  // The hotel's (or a starting point's) ordered positions, once a session
+  // for what it is now: a short hotel link that won't open isn't tried
+  // again for every place measured.
+  const originMemo = useRef(new Map());   // hotelFp → Promise<candidates>
+  const originCandidates = (originId) => {
+    const custom = distanceOrigins.find(o => o.id === originId) || null;
+    const online = isOnlineNow();
+    if (!online) return buildOriginCandidates(hotelDetails, custom, tripDestination, { online });
+    const fp = hotelFp(originId);
+    if (!originMemo.current.has(fp)) {
+      originMemo.current.set(fp, buildOriginCandidates(hotelDetails, custom, tripDestination, { online })
+        .catch(() => { originMemo.current.delete(fp); return []; }));
+    }
+    return originMemo.current.get(fp);
+  };
+
+  // Session memory (refs, not state: nothing to draw): what is being found
+  // now, and what was already tried, so a place that can't be found isn't
+  // asked about again and again. Cleared when the connection comes back.
+  const locInFlight = useRef(new Map());   // `${id}|${fp}` → Promise<loc|null>
+  const triedLoc = useRef(new Set());      // `${id}|${fp}|${job}`
+  const triedTravel = useRef(new Set());   // `${cacheKey}|${toAt}|${originFp}`
+  const travelInFlight = useRef(new Set()); // cacheKey
+
+  const ensureLocation = (plan) => {
+    const fp = locationFp(plan);
+    const have = locOf(plan);
+    const key = `${plan.id}|${fp}`;
+    const job = locationJob(plan, { runtime: locCache[plan.id], linkTried: triedLoc.current.has(`${key}|link`) });
+    if (!job) return Promise.resolve(have);
+    if (locInFlight.current.has(key)) return locInFlight.current.get(key);
+    const run = (async () => {
+      const online = isOnlineNow();
+      const { loc, offline } = await findPlaceLocation(plan, region, { linkOnly: job === 'link' })
+        .catch(() => ({ loc: null, offline: true }));
+      if (online) triedLoc.current.add(`${key}|${job}`);
+      // The link still didn't open: the guess by the name stays.
+      if (job === 'link' && !loc) return have;
+      // No answer now (offline, a call failed): nothing to save.
+      if (!loc && offline) return have;
+      const value = loc ? { ...loc, fp } : { fp, src: 'none', t: Date.now() };
+      setLocCache(prev => ({ ...prev, [plan.id]: value }));
+      if (canSave && tripId) {
+        updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: value })
+          .catch(() => { /* kept on this phone (locCache) */ });
+      }
+      return loc ? value : null;
+    })().finally(() => locInFlight.current.delete(key));
+    locInFlight.current.set(key, run);
+    return run;
+  };
+
+  const showTravel = (cacheKey, value) =>
+    setDistanceCache(prev => (prev[cacheKey] === value ? prev : { ...prev, [cacheKey]: value }));
+
+  // A place's travel times from one origin: the saved ones while they are
+  // for where both ends are now, else measured again and saved.
   const fetchPlanDistances = async (plan, originId = plan.distanceOriginId || 'hotel') => {
-    if (!hasGmapsKey()) return;
+    if (!hasGmapsKey() || !tripReady) return;
     const cacheKey = `${plan.id}_${originId}`;
+    if (travelInFlight.current.has(cacheKey)) return;
     const existing = distanceCache[cacheKey];
 
     const fromPlan = originPlanOf(originId);
     if (originId.startsWith(PLACE_ORIGIN) && !fromPlan) return;
     const customOrigin = fromPlan ? null : (distanceOrigins.find(o => o.id === originId) || null);
-    // Fingerprint of every input the origin derives from. If the user edits
-    // the hotel address/link, this changes and the cached numbers are stale.
-    const fp = fromPlan
-      ? placeOriginFingerprint(fromPlan)
-      : originFingerprint(hotelDetails, customOrigin, tripDestination);
 
     // Decide against the value saved on the plan document as well as the
-    // runtime cache. The hydration effect and this one both run off the same
-    // `plans` update, so on the first load after opening a trip the runtime
-    // cache is still empty in this closure — relying on it alone would
-    // re-measure everything over the network despite having saved results.
-    // `plan.distances` comes straight from the snapshot and is never stale.
+    // runtime cache: `plan.distances` comes straight from the snapshot.
     const persisted = plan.distances?.[originId];
     const saved = (persisted && isSaneTravel(persisted)) ? persisted : null;
-    const known = existing || saved;
-    const hasResult = !!(known?.walk || known?.transit);
+    const manual = [existing, saved].find(v => v?.manualOverride);
+    if (manual) { showTravel(cacheKey, manual); return; }
+    const current = (stamp) => [existing, saved].find(v => travelFresh(v, stamp));
+    const now = current(stampOf(plan, originId));
+    if (now) { showTravel(cacheKey, now); return; }
 
-    if (existing && (existing.loading || existing.manualOverride)) return;
-    // Nothing about the origin changed → reuse the saved result, no network.
-    if (hasResult && known.originFp === fp) {
-      // Make sure the saved value is actually on screen.
-      if (!existing && saved) {
-        setDistanceCache(prev => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: saved }));
-      }
-      return;
-    }
-    // Offline: never discard a good result to re-measure it — show what we have.
+    // Offline: a time measured before 8.88.0 is shown (where it went isn't
+    // known to be wrong); one known to be for another location is not.
     const online = isOnlineNow();
-    if (!online && hasResult) {
-      if (!existing && saved) {
-        setDistanceCache(prev => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: saved }));
-      }
+    if (!online) {
+      const old = [existing, saved].find(v => travelShowable(v, null, legacyOriginFp(originId)));
+      showTravel(cacheKey, old || { offline: true });
       return;
     }
 
+    travelInFlight.current.add(cacheKey);
     setDistanceCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+    try {
+      const [toLoc, fromLoc] = await Promise.all([
+        ensureLocation(plan),
+        fromPlan ? ensureLocation(fromPlan) : Promise.resolve(null),
+      ]);
+      if (!toLoc) { showTravel(cacheKey, isOnlineNow() ? { noLocation: true } : { offline: true }); return; }
+      if (fromPlan && !fromLoc) { showTravel(cacheKey, { noLocation: true, noOrigin: true }); return; }
+      const toAt = atOf(toLoc);
+      const fp = fromPlan ? `${PLACE_ORIGIN}|${atOf(fromLoc)}` : hotelFp(originId);
+      // Found again at the same point: the saved time still holds.
+      const again = current({ toAt, originFp: fp });
+      if (again) { showTravel(cacheKey, again); return; }
 
-    // Resolve origin and destination CONCURRENTLY. Both may need to expand a
-    // short Maps link over the network, and running them in sequence made
-    // adding a new place noticeably slow. The destination only needs a hint
-    // for its (fallback) title lookup, and resolveOriginString gives that
-    // synchronously from already-cached data.
-    const originHint = resolveOriginString(hotelDetails, customOrigin, tripDestination);
-    const region = { coords: regionCoords, text: tripDestination };
-    const [candidates, dest] = await Promise.all([
       // Ordered origin options: custom → hotel coords → hotel address →
       // expanded hotel link → hotel name → city centre. Another place:
-      // where it was located, else resolved the way a destination is.
-      fromPlan
-        ? (async () => {
-          const c = coordsCache[fromPlan.id] || fromPlan.coords;
-          const at = c ? `${c.lat},${c.lng}` : await resolveDestinationAsync(fromPlan, originHint, region);
-          return at ? [{ value: at, kind: 'place' }] : [];
-        })()
-        : buildOriginCandidates(hotelDetails, customOrigin, tripDestination, { online }),
-      resolveDestinationAsync(plan, originHint, region),
-    ]);
+      // its own location.
+      const candidates = fromPlan
+        ? [{ value: atOf(fromLoc), kind: 'place' }]
+        : await originCandidates(customOrigin ? originId : 'hotel');
+      if (candidates.length === 0) { showTravel(cacheKey, { noLocation: true, noOrigin: !!fromPlan }); return; }
 
-    if (candidates.length === 0) {
-      setDistanceCache(prev => ({
-        ...prev,
-        [cacheKey]: (fromPlan && !online) ? { offline: true } : { noLocation: true, noOrigin: !!fromPlan },
-      }));
-      return;
-    }
-    if (!dest) {
-      setDistanceCache(prev => ({
-        ...prev,
-        [cacheKey]: online ? { noLocation: true } : { offline: true },
-      }));
-      return;
-    }
-
-    // Try each origin until one yields a route, so a mistyped address or an
-    // unresolvable link falls through to the next option instead of failing.
-    let value = null;
-    let networkFailed = false;
-    let bogusLocation = false;
-    for (const cand of candidates) {
-      const result = await fetchTravelTimes(cand.value, dest);
-      if (result?.networkError) { networkFailed = true; break; }
-      if (result && (result.walk || result.transit)) {
-        // An implausible route means `dest` geocoded to the wrong place —
-        // trying other origins would only produce more nonsense. Drop the
-        // cached title match so it can be resolved cleanly next time.
-        if (!isSaneTravel(result)) {
-          clearPlaceCache(plan.id);
-          bogusLocation = true;
+      // Try each origin until one yields a route, so a mistyped address or an
+      // unresolvable link falls through to the next option instead of failing.
+      let value = null;
+      let networkFailed = false;
+      let bogusLocation = false;
+      for (const cand of candidates) {
+        const result = await fetchTravelTimes(cand.value, toAt);
+        if (result?.networkError) { networkFailed = true; break; }
+        if (result && (result.walk || result.transit)) {
+          // An implausible route means the place was found at the wrong
+          // spot: trying other origins would only produce more nonsense.
+          if (!isSaneTravel(result)) { bogusLocation = true; break; }
+          value = {
+            walk: result.walk || null, transit: result.transit || null,
+            fetchedAt: Date.now(),
+            origin: cand.value, originKind: cand.kind, originFp: fp, toAt,
+          };
           break;
         }
-        value = {
-          walk: result.walk || null, transit: result.transit || null,
-          fetchedAt: Date.now(),
-          origin: cand.value, originKind: cand.kind, originFp: fp,
-        };
-        break;
       }
-    }
 
-    if (bogusLocation) {
-      setDistanceCache(prev => ({ ...prev, [cacheKey]: { noLocation: true } }));
-      // Remove the bad value already persisted, so it isn't rehydrated.
-      if (tripId) {
+      if (bogusLocation) {
+        showTravel(cacheKey, { noLocation: true });
+        // Remove the bad value already persisted, so it isn't rehydrated.
+        if (tripId && canSave && persisted) {
+          updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
+            [`distances.${originId}`]: deleteField(),
+          }).catch(() => { /* non-fatal */ });
+        }
+        return;
+      }
+      if (!value) {
+        showTravel(cacheKey, networkFailed ? { offline: true } : { noLocation: true });
+        return;
+      }
+      showTravel(cacheKey, value);
+      // Saved for everyone: no call for this place until it, or its start,
+      // moves. Firestore queues it offline and syncs it on reconnect.
+      if (tripId && canSave) {
         updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
-          [`distances.${originId}`]: deleteField(),
-        }).catch(() => { /* non-fatal */ });
+          [`distances.${originId}`]: value,
+        }).catch(() => { /* non-fatal: runtime cache still holds the result */ });
       }
-      return;
+    } finally {
+      travelInFlight.current.delete(cacheKey);
     }
+  };
 
-    if (!value) {
-      // Keep whatever we had rather than replacing it with an error state.
-      setDistanceCache(prev => ({
-        ...prev,
-        [cacheKey]: (networkFailed || !online)
-          ? (hasResult ? known : { offline: true })
-          : { noLocation: true },
-      }));
-      return;
+  /* The background work (8.88.0), in place of "חשב ושמור מרחקים": every
+     place gets its location, and its card's time from its own origin
+     (the hotel by default), as soon as either is missing or stale — a
+     new place, one edited from any screen or phone, a hotel changed.
+     One at a time, locations first. Only by a phone that can save, so
+     what it finds is done once for the whole trip. */
+  const nextLocationJob = () => {
+    if (!isOnlineNow()) return null;
+    const jobs = [];
+    for (const p of plans) {
+      const key = `${p.id}|${locationFp(p)}`;
+      const job = locationJob(p, { runtime: locCache[p.id], linkTried: triedLoc.current.has(`${key}|link`) });
+      if (job && !triedLoc.current.has(`${key}|${job}`) && !locInFlight.current.has(key)) {
+        jobs.push({ kind: 'loc', plan: p, sig: `${key}|${job}` });
+      }
     }
-
-    setDistanceCache(prev => ({ ...prev, [cacheKey]: { ...value, loading: false } }));
-    // Persist so it survives reloads — no API call needed next time. Firestore
-    // queues this locally when offline and syncs it on reconnect.
-    if (tripId) {
-      updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), {
-        [`distances.${originId}`]: value,
-      }).catch(() => { /* non-fatal: runtime cache still holds the result */ });
+    for (const p of plans) {
+      const originId = p.distanceOriginId || 'hotel';
+      const cacheKey = `${p.id}_${originId}`;
+      if (originId.startsWith(PLACE_ORIGIN) && !originPlanOf(originId)) continue;
+      if (p.distances?.[originId]?.manualOverride || travelInFlight.current.has(cacheKey)) continue;
+      const stamp = stampOf(p, originId);
+      if (!stamp) continue;   // its location comes first
+      if (travelFresh(p.distances?.[originId], stamp) || travelFresh(distanceCache[cacheKey], stamp)) continue;
+      const sig = `${cacheKey}|${stamp.toAt}|${stamp.originFp}`;
+      if (!triedTravel.current.has(sig)) jobs.push({ kind: 'travel', plan: p, sig });
     }
+    if (!jobs.length) return null;
+    const [job] = jobs;
+    return {
+      left: jobs.length,
+      run: () => {
+        // ensureLocation marks it tried (it reads the mark for 'link').
+        if (job.kind === 'loc') return ensureLocation(job.plan);
+        triedTravel.current.add(job.sig);
+        return fetchPlanDistances(job.plan);
+      },
+    };
   };
 
   const handleSaveDistanceOrigin = async () => {
@@ -953,34 +1056,6 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     setShowAddOriginForm(false);
     updateDoc(doc(db, 'trips', tripId), { distanceOrigins: arrayUnion(newOrigin) })
       .catch(err => console.error('Add origin failed:', err));
-  };
-
-  // One-shot: walk every place, fetch + persist its travel times and resolve
-  // its coordinates (for proximity grouping). Skips places already computed so
-  // re-pressing is cheap. Runs sequentially to stay gentle on the API quota.
-  const handleCalculateAll = async () => {
-    if (!hasGmapsKey() || bulkCalc) return;
-    // Offline there is nothing to measure — bail out instead of walking every
-    // place only to fail on each one.
-    if (!isOnlineNow()) return;
-    const origin = resolveOriginString(hotelDetails, null, tripDestination);
-    const list = [...plans];
-    setBulkCalc({ done: 0, total: list.length });
-    for (let i = 0; i < list.length; i++) {
-      const plan = list[i];
-      await fetchPlanDistances(plan);
-      if (!(plan.id in coordsCache)) {
-        const c = await resolvePlanCoords(plan, origin, { coords: regionCoords, text: tripDestination })
-          .catch(() => null);
-        setCoordsCache(prev => ({ ...prev, [plan.id]: c }));
-        if (c && tripId) {
-          // Not awaited: if the connection drops mid-run, the rest still goes on.
-          updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: c }).catch(() => { /* keep runtime */ });
-        }
-      }
-      setBulkCalc({ done: i + 1, total: list.length });
-    }
-    setBulkCalc(null);
   };
 
   const handleRemoveDistanceOrigin = async (originId) => {
@@ -1273,10 +1348,13 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn,
         originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
       }));
-      // Resolved location depends on address / links / chosen origin — if any
-      // changed, drop the persisted distances + coords so they recompute.
-      const locationChanged = ['address', 'links', 'distanceOriginId'].some(k => k in updates);
-      const manualChanged = !opened || opened.walkMins !== editWalkMins || opened.transitMins !== editTransitMins;
+      // A place whose address or links changed is found again by itself
+      // (its location's fingerprint no longer matches), and its times with
+      // it (8.88.0). Only what can't tell it moved goes: times typed in by
+      // hand for the old spot, and times saved before 8.88.0.
+      const placeMoved = ['address', 'links'].some(k => k in updates);
+      const manualChanged = !opened || opened.walkMins !== editWalkMins || opened.transitMins !== editTransitMins
+        || 'distanceOriginId' in updates;
 
       // Build manual distance entry if the user entered values
       const cacheOriginKey = formOriginId; // 'hotel' or custom ID
@@ -1296,42 +1374,27 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         fetchedAt: Date.now(),
       } : null;
 
+      const before = plans.find(p => p.id === editingId)?.distances || {};
+      const gone = Object.entries(before)
+        .filter(([k, v]) => !(manualEntry && k === cacheOriginKey) && (
+          (placeMoved && (v?.manualOverride || !v?.toAt))
+          || (k === cacheOriginKey && v?.manualOverride && manualChanged && !manualEntry)))
+        .map(([k]) => k);
+      const distWrite = Object.fromEntries(gone.map(k => [`distances.${k}`, deleteField()]));
+      if (manualEntry && (manualChanged || placeMoved)) distWrite[`distances.${cacheOriginKey}`] = manualEntry;
+
       const docRef = doc(db, 'trips', tripId, 'planning', editingId);
-      const write = {
-        ...updates,
-        ...(locationChanged
-          ? { distances: manualEntry ? { [cacheOriginKey]: manualEntry } : {}, coords: null }
-          : hasManualTimes && manualChanged
-            ? { [`distances.${cacheOriginKey}`]: manualEntry }
-            : {}),
-      };
+      const write = { ...updates, ...distWrite };
       if (Object.keys(write).length) {
         updateDoc(docRef, write).catch(err => console.error('Planning update error:', err));
       }
-
-      if (locationChanged) {
+      if (gone.length || manualEntry) {
         setDistanceCache(prev => {
           const next = { ...prev };
-          Object.keys(next).forEach(k => { if (k.startsWith(`${editingId}_`)) delete next[k]; });
+          gone.forEach(k => { delete next[`${editingId}_${k}`]; });
           if (manualEntry) next[`${editingId}_${cacheOriginKey}`] = { ...manualEntry, loading: false };
           return next;
         });
-        setCoordsCache(prev => {
-          const next = { ...prev };
-          delete next[editingId];
-          return next;
-        });
-        // Editing the address or a link is exactly when the old numbers
-        // stopped being true — queue a recompute instead of waiting for
-        // someone to open the place. Manual overrides are left alone.
-        if (!manualEntry) {
-          setRecomputeIds(prev => (prev.includes(editingId) ? prev : [...prev, editingId]));
-        }
-      } else if (manualEntry) {
-        setDistanceCache(prev => ({
-          ...prev,
-          [`${editingId}_${cacheOriginKey}`]: { ...manualEntry, loading: false },
-        }));
       }
     } else {
       const id = 'plan-' + Date.now();
@@ -1516,9 +1579,27 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       </span>
       <span className="travel-from-times">{times}</span>
     </>);
+    // Found by its name only (8.88.0): what was found, so a wrong one is seen.
+    const g = guessedLocation(plan, locCache[plan.id]);
+    const guessNote = g?.at && (
+      <div className="dp-guess" role="note">
+        <AlertTriangle size={16} aria-hidden="true" className="dp-guess-icon" />
+        <span className="dp-guess-text">
+          {g.hasLink ? 'הקישור לא נפתח עדיין, ולכן בינתיים המיקום נמצא לפי השם'
+            : g.hasAddress ? 'הכתובת לא נמצאה, ולכן המיקום נמצא לפי השם'
+            : 'אין כתובת, ולכן המיקום נמצא לפי השם'}
+          {g.name || g.address ? <>: <bdi>{[g.name, g.address].filter(Boolean).join(', ')}</bdi></> : ''}.
+          {' '}אם זה לא המקום, הזמן לא נכון.
+        </span>
+        <span className="dp-guess-actions">
+          <a href={`https://www.google.com/maps/search/?api=1&query=${g.at}`} target="_blank" rel="noreferrer">איפה זה במפה</a>
+        </span>
+      </div>
+    );
     // The choice is saved on the place, so only who may change it can.
-    if (!mayChange(plan)) return <div className="travel-from">{inner}</div>;
-    return (
+    if (!mayChange(plan)) return <>{guessNote}<div className="travel-from">{inner}</div></>;
+    return (<>
+      {guessNote}
       <button
         type="button"
         className="travel-from"
@@ -1528,7 +1609,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       >
         {inner}
       </button>
-    );
+    </>);
   };
 
   const parseDurationMins = (str) => {
@@ -1639,7 +1720,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   // Proximity-grouping view: flatten filteredPlans into a single render list
   // interleaved with area-header sentinels ({ __header: true }). Places without
   // resolved coordinates land in a trailing "ללא מיקום" group.
-  const locatedCount = filteredPlans.filter(p => coordsCache[p.id]).length;
+  const locatedCount = filteredPlans.filter(p => locOf(p)).length;
   let renderItems = filteredPlans;
   // Sections by category: the header stays on top while its places scroll,
   // so the cards leave the category out.
@@ -1657,9 +1738,9 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     });
   } else if (groupBy === 'area') {
     const located = filteredPlans
-      .filter(p => coordsCache[p.id])
-      .map(p => ({ ...p, coords: coordsCache[p.id] }));
-    const unlocated = filteredPlans.filter(p => !coordsCache[p.id]);
+      .filter(p => locOf(p))
+      .map(p => ({ ...p, coords: locOf(p) }));
+    const unlocated = filteredPlans.filter(p => !locOf(p));
     const clusters = clusterByProximity(located, PROXIMITY_THRESHOLD_M)
       .sort((a, b) => b.length - a.length);
     renderItems = [];
@@ -1750,6 +1831,10 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   useEffect(() => {
     const onBackOnline = () => {
       setOnline(true);
+      // What failed while offline (or with a flaky link) is worth one more try.
+      triedLoc.current.clear();
+      triedTravel.current.clear();
+      originMemo.current.clear();
       setDistanceCache(prev => {
         const next = {};
         let changed = false;
@@ -1770,82 +1855,86 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     };
   }, []);
 
-  // Recompute the travel times of a place that was just edited. Runs off the
-  // `plans` snapshot so it fires in a fresh render — by then the cleared
-  // caches are visible and the fetch actually re-measures instead of
-  // short-circuiting on the previous result.
-  useEffect(() => {
-    if (recomputeIds.length === 0) return;
-    if (!hasGmapsKey()) { setRecomputeIds([]); return; }
-    const done = [];
-    recomputeIds.forEach(id => {
-      const plan = plans.find(p => p.id === id);
-      if (!plan) return;
-      fetchPlanDistances(plan);
-      done.push(id);
-    });
-    if (done.length) setRecomputeIds(prev => prev.filter(id => !done.includes(id)));
-  }, [plans, recomputeIds]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // The open details sheet: measure from its origin when it opens, when
-  // another origin is picked there, and again once back online.
+  // another origin is picked there, when either end moves, and again once
+  // back online.
   const detailOriginKey = detailPlan ? sheetOriginKey(detailPlan) : null;
+  const detailStamp = detailPlan && detailOriginKey ? stampOf(detailPlan, detailOriginKey) : null;
+  const detailWhere = detailPlan ? `${locationFp(detailPlan)}|${detailStamp?.toAt}|${detailStamp?.originFp}` : '';
   useEffect(() => {
     if (!detailPlan || !detailOriginKey) return;
     const t = setTimeout(() => fetchPlanDistances(detailPlan, detailOriginKey), 0);
     return () => clearTimeout(t);
-  }, [detailPlanId, detailOriginKey, hotelDetails, tripDestination, netEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [detailPlanId, detailOriginKey, detailWhere, hotelDetails, tripDestination, netEpoch, tripReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // How long from one stop of a day to the next (DayPlanner). A stop is
   // the hotel, a place from the list, or an address typed on an activity
   // or a booking. To a place, from the hotel or another place, it is the
-  // place's own measurement (saved on it, as in the details sheet);
-  // anything else is measured here and kept for this session.
+  // place's own measurement (saved on it, as in the details sheet).
+  // Anything else is saved for the trip under the two positions it was
+  // measured between (trips/{id}/legs, 8.88.0), so a moved end is a new
+  // leg, and an unchanged one is never measured twice.
   const distancesOn = hasGmapsKey() && !!(hotelDetails || tripDestination || distanceOrigins.length);
   const originIds = distanceOrigins.map(o => o.id);
   const isDirectLeg = (from, to) => isPlaceLeg(from, to, originIds);
   const legKeyOf = (from, to) => legKey(from, to, originIds);
   const legsInFlight = useRef(new Set());
+  // A typed address that is a link: where it points, once a session.
+  const addrLocs = useRef(new Map());
   const fetchStopLeg = async (from, to) => {
+    if (!tripReady) return;
     const key = legKeyOf(from, to);
-    const known = distanceCache[key];
-    if (legsInFlight.current.has(key) || (known && !known.offline)) return;
+    if (legsInFlight.current.has(key)) return;
     legsInFlight.current.add(key);
-    setDistanceCache(prev => ({ ...prev, [key]: { loading: true } }));
     const online = isOnlineNow();
-    const hint = resolveOriginString(hotelDetails, null, tripDestination);
-    const region = { coords: regionCoords, text: tripDestination };
     // What the start really was ('hotel', 'custom', or 'city' when the
     // hotel had no location), so the label says so (8.86.0).
     let originKind = null;
     const where = async (stop, isFrom = false) => {
       if (stop.key === 'hotel' || distanceOrigins.some(o => o.id === stop.key)) {
-        const custom = distanceOrigins.find(o => o.id === stop.key) || null;
-        const c = await buildOriginCandidates(hotelDetails, custom, tripDestination, { online });
+        const c = await originCandidates(stop.key);
         if (isFrom) originKind = c[0]?.kind || null;
         return c[0]?.value || null;
       }
-      if (stop.plan) {
-        const c = coordsCache[stop.plan.id] || stop.plan.coords;
-        return c ? `${c.lat},${c.lng}` : resolveDestinationAsync(stop.plan, hint, region);
+      if (stop.plan) return atOf(await ensureLocation(stop.plan));
+      const address = (stop.address || '').trim();
+      if (!/^https?:\/\//i.test(address)) return address || null;
+      if (!addrLocs.current.has(address)) {
+        addrLocs.current.set(address, findPlaceLocation({ title: stop.title || '', address }, region)
+          .then(r => {
+            if (!r.loc && r.offline) addrLocs.current.delete(address);
+            return atOf(r.loc);
+          })
+          .catch(() => { addrLocs.current.delete(address); return null; }));
       }
-      return resolveDestinationAsync({ id: stop.key, title: stop.title || '', address: stop.address || '' }, hint, region);
+      return addrLocs.current.get(address);
     };
     let value;
     try {
       const [a, b] = await Promise.all([where(from, true), where(to)]);
+      const known = distanceCache[key];
+      const id = a && b ? legDocId(a, b) : null;
+      const shared = id && legDocs[id];
       if (!a || !b) value = online ? { noLocation: true } : { offline: true };
+      else if (known && known.from === a && known.to === b && (known.walk || known.transit)) value = known;
+      else if (shared && shared.from === a && shared.to === b && (shared.walk || shared.transit)) value = shared;
+      else if (!online) value = { offline: true };
       else {
+        if (!known || known.from !== a || known.to !== b) setDistanceCache(prev => ({ ...prev, [key]: { loading: true } }));
         const r = await fetchTravelTimes(a, b);
         value = r?.networkError ? { offline: true }
-          : (r && (r.walk || r.transit) && isSaneTravel(r)) ? { walk: r.walk || null, transit: r.transit || null, originKind }
-          : { noLocation: true };
+          : (r && (r.walk || r.transit) && isSaneTravel(r))
+            ? { walk: r.walk || null, transit: r.transit || null, originKind, from: a, to: b, fetchedAt: Date.now() }
+            : { noLocation: true };
+        if (value.from && canSave && tripId) {
+          setDoc(doc(db, 'trips', tripId, 'legs', id), value).catch(() => { /* kept for this session */ });
+        }
       }
     } catch {
       value = online ? { noLocation: true } : { offline: true };
     }
     legsInFlight.current.delete(key);
-    setDistanceCache(prev => ({ ...prev, [key]: value }));
+    showTravel(key, value);
   };
   const measureLeg = (from, to) => (isDirectLeg(from, to)
     ? fetchPlanDistances(to.plan, from.key)
@@ -1860,8 +1949,40 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
      one; the ref is refreshed after every render, not during it. */
   const latestFns = useRef({});
   useEffect(() => {
-    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule };
+    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule, nextLocationJob };
   });
+
+  // Runs the background work while there is any (nextLocationJob), one
+  // job at a time, each read from the latest state. A change while it runs
+  // (a place saved, a hotel edited) is picked up by the next job; one after
+  // it stopped starts it again (this effect runs on every such change).
+  const worker = useRef({ running: false, gone: false });
+  const workerOn = hasGmapsKey() && canSave && tripReady && online && regionReady;
+  useEffect(() => {
+    const w = worker.current;
+    if (!workerOn || w.running) return;
+    w.running = true;
+    (async () => {
+      let done = 0;
+      // A guard: no loop runs away, whatever a job does.
+      for (let guard = 0; guard < 2000 && !w.gone; guard++) {
+        const job = latestFns.current.nextLocationJob?.();
+        if (!job) break;
+        if (job.left > 1 || done > 0) setLocWork({ done, total: done + job.left });
+        try { await job.run(); } catch { /* the next one */ }
+        done++;
+        // Let the saved result come back as state before the next pick.
+        await new Promise(r => setTimeout(r, 30));
+      }
+      w.running = false;
+      if (!w.gone) setLocWork(null);
+    })();
+  }, [workerOn, plans, locCache, hotelDetails, distanceOrigins, tripDestination, regionCoords, netEpoch]);
+  useEffect(() => {
+    const w = worker.current;
+    w.gone = false;
+    return () => { w.gone = true; };
+  }, []);
   const stable = useMemo(() => {
     // eslint-disable-next-line react-hooks/refs -- read when called, never while rendering
     const call = (name) => (...args) => latestFns.current[name](...args);
@@ -2471,14 +2592,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                     className={`round-btn ${optionsActive ? 'on' : 'raised'}`}
                     style={{ width: 42, height: 42, minWidth: 42, gap: 4, marginInlineStart: 'auto' }}
                   >
-                    {bulkCalc ? (
-                      <>
-                        <Loader2 size={14} className="spinning" />
-                        <span style={{ fontSize: 11 }}>{bulkCalc.done}/{bulkCalc.total}</span>
-                      </>
-                    ) : (
-                      <SlidersHorizontal size={17} />
-                    )}
+                    <SlidersHorizontal size={17} />
                   </button>
                   <button
                     type="button"
@@ -2542,19 +2656,25 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                           </div>
                         </SheetSection>
 
-                        {/* Distances need the Maps key. */}
-                        {hasGmapsKey() && (
-                          <SheetSection label="מרחקים">
-                            <div className="list-group">
-                              <button type="button" className="list-row" onClick={handleCalculateAll} disabled={!!bulkCalc || !online}>
-                                {bulkCalc ? <Loader2 size={16} className="spinning list-row-icon" /> : <RefreshCw size={16} className="list-row-icon" />}
-                                <span className="list-row-label">
-                                  {bulkCalc ? `מחשב… ${bulkCalc.done}/${bulkCalc.total}` : !online ? 'חשב ושמור מרחקים (דרוש חיבור)' : 'חשב ושמור מרחקים'}
-                                </span>
-                              </button>
-                            </div>
-                          </SheetSection>
-                        )}
+                        {/* Distances need the Maps key. They keep themselves
+                            current (8.88.0): this only says how it stands. */}
+                        {hasGmapsKey() && (() => {
+                          const lost = plans.filter(p => !locOf(p) && p.coords?.fp === locationFp(p) && p.coords?.src === 'none').length;
+                          const text = locWork ? `מעדכן מיקומים וזמני הגעה… ${locWork.done}/${locWork.total}`
+                            : !online ? 'מיקומים וזמנים חדשים יחושבו כשיחזור החיבור'
+                            : lost ? (lost === 1 ? 'מקום אחד בלי מיקום: הוספת כתובת או קישור תמקם אותו' : `${lost} מקומות בלי מיקום: הוספת כתובת או קישור תמקם אותם`)
+                            : 'המיקומים וזמני ההגעה מתעדכנים לבד';
+                          return (
+                            <SheetSection label="מרחקים">
+                              <div className="list-group">
+                                <div className="list-row" role="status" style={{ cursor: 'default' }}>
+                                  {locWork ? <Loader2 size={16} className="spinning list-row-icon" /> : <MapPin size={16} className="list-row-icon" />}
+                                  <span className="list-row-label">{text}</span>
+                                </div>
+                              </div>
+                            </SheetSection>
+                          );
+                        })()}
 
                         {canEdit && (
                           <SheetSection label="קטגוריות">
@@ -2642,9 +2762,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
             }}>
               <MapPin size={14} style={{ flexShrink: 0 }} />
               <span>
-                {locatedCount} מתוך {filteredPlans.length} מקומות מוקמו. פתח את
-                <SlidersHorizontal size={12} style={{ verticalAlign: 'middle', margin: '0 4px' }} />
-                ולחץ "חשב ושמור מרחקים" כדי למקם ולקבץ את כולם.
+                {locatedCount} מתוך {filteredPlans.length} מקומות מוקמו.
+                {' '}{locWork ? 'השאר ממוקמים עכשיו.' : !online ? 'השאר ימוקמו כשיחזור החיבור.' : canSave ? 'למקום בלי מיקום, הוסיפו כתובת או קישור.' : 'השאר ימוקמו כשמי שעורך את הטיול יפתח אותו.'}
               </span>
             </div>
           )}
@@ -2907,6 +3026,10 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                   if (plan.priority === 'optional' && !plan.visited) tags.push({ key: 'opt', tone: 'muted', text: 'אם יישאר זמן', icon: <Clock size={11} aria-hidden="true" /> });
                   if (price && price !== 'חינם') tags.push({ key: 'price', tone: 'neutral', text: price, icon: <Wallet size={11} aria-hidden="true" /> });
                   if (linkCount > 0) tags.push({ key: 'links', tone: 'neutral', text: String(linkCount), icon: <Link2 size={11} aria-hidden="true" />, title: `${linkCount} קישורים` });
+                  // Its time is to where its name was found (8.88.0): said
+                  // here too, not only in the schedule.
+                  const guess = main && guessedLocation(plan, locCache[plan.id]);
+                  if (guess?.at) tags.push({ key: 'guess', tone: 'butter', text: 'מיקום משוער', icon: <AlertTriangle size={11} aria-hidden="true" />, title: guess.name ? `נמצא לפי השם: ${[guess.name, guess.address].filter(Boolean).join(', ')}` : 'נמצא לפי השם' });
 
                   // A date takes the stub over: when, big, and the travel
                   // time small under it. Solid in the category's colour, so
@@ -3439,7 +3562,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         const target = plans.find(p => p.id === originPickerFor);
         if (!target) return null;
         const current = sheetOriginKey(target);
-        const coordsOf = (p) => coordsCache[p.id] || p.coords || knownPlaceCoords(p);
+        const coordsOf = locOf;
         const at = coordsOf(target);
         const q = originQuery.trim().toLowerCase();
         const places = plans

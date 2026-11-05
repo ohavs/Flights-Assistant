@@ -246,6 +246,32 @@ test('a contributor ticks anyone\'s item, and nothing else on it', async () => {
   await assert.rejects(deleteDoc(item(adder, tripId, 'reminders', 'r')), denied);
 });
 
+test('a place keeps where it is (coords with fp/src) whoever of the trip can save', async () => {
+  const tripId = await createTripWithAdder();
+  await setDoc(item(owner, tripId, 'planning', 'p'), { title: 'P', createdBy: owner.uid });
+  const at = { lat: 47.5, lng: 19.04, fp: 'abc', src: 'title', name: 'X', addr: 'Y' };
+  await updateDoc(item(adder, tripId, 'planning', 'p'), { coords: at });
+  await updateDoc(item(adder, tripId, 'planning', 'p'), {
+    'distances.hotel': { walk: { seconds: 60 }, toAt: '47.500000,19.040000', originFp: 'h' },
+  });
+  await assert.rejects(updateDoc(item(adder, tripId, 'planning', 'p'), { coords: at, address: 'Z' }), denied);
+});
+
+test('a leg between two stops: any member who can save writes it, in its shape', async () => {
+  const tripId = await createTripWithAdder();
+  const leg = { walk: { seconds: 600 }, transit: null, originKind: 'hotel', from: '1.0,2.0', to: 'Some St 5', fetchedAt: 1 };
+  await setDoc(item(adder, tripId, 'legs', 'l1'), leg);
+  await setDoc(item(adder, tripId, 'legs', 'l1'), { ...leg, fetchedAt: 2 });
+  assert.equal((await getDoc(item(editor, tripId, 'legs', 'l1'))).data().to, 'Some St 5');
+  await assert.rejects(setDoc(item(adder, tripId, 'legs', 'l2'), { ...leg, title: 'x' }), denied);
+  await assert.rejects(setDoc(item(adder, tripId, 'legs', 'l3'), { ...leg, from: 5 }), denied);
+  await setDoc(item(editor, tripId, 'legs', 'l4'), leg);
+  const viewed = await createTrip();
+  await setDoc(item(owner, viewed, 'legs', 'l1'), leg);
+  assert.equal((await getDoc(item(viewer, viewed, 'legs', 'l1'))).data().from, '1.0,2.0');
+  await assert.rejects(setDoc(item(viewer, viewed, 'legs', 'l2'), leg), denied);
+});
+
 test('a day: a contributor adds activities, and changes only their own', async () => {
   const tripId = await createTripWithAdder();
   const theirs = { id: 'a1', title: 'Museum', order: 1, createdBy: owner.uid };

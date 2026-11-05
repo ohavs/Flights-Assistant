@@ -140,6 +140,14 @@ service cloud.firestore {
           return (subcollection == 'planning' && changed().hasOnly(['visited', 'distances', 'coords']))
             || ((subcollection == 'checklist' || subcollection == 'reminders') && changed().hasOnly(['completed']));
         }
+        // A measured time between two stops of the schedule that aren't two
+        // places (trips/{id}/legs, 8.88.0): derived data any phone that can
+        // save fills in, in this shape only.
+        function aLeg() {
+          return subcollection == 'legs'
+            && request.resource.data.keys().hasOnly(['walk', 'transit', 'originKind', 'from', 'to', 'fetchedAt'])
+            && request.resource.data.from is string && request.resource.data.to is string;
+        }
         // A day's plan is its activities array (src/lib/dayActivities.js):
         // whatever went in or came out must be the contributor's own.
         function ownAct(list, i) { return list.size() <= i || list[i].get('createdBy', null) == request.auth.uid; }
@@ -175,6 +183,7 @@ service cloud.firestore {
         allow create: if request.auth != null && (
           isEditor()
           || (isContributor() && addsHere() && request.resource.data.get('createdBy', null) == request.auth.uid)
+          || (isContributor() && aLeg())
         ) && (subcollection != 'payments' || seesPayment(request.resource.data));
         allow update: if request.auth != null && (
           isEditor()
@@ -182,6 +191,7 @@ service cloud.firestore {
                 (creatorOf(resource.data) == request.auth.uid && creatorOf(request.resource.data) == request.auth.uid)
                 || ticks()))
           || (isContributor() && subcollection == 'days' && ownActivities())
+          || (isContributor() && aLeg())
         ) && (subcollection != 'payments' || (seesPayment(resource.data) && seesPayment(request.resource.data)));
         allow delete: if request.auth != null && (
           isEditor()

@@ -1391,7 +1391,7 @@ function AppInner() {
     const offs = offlineKey.split(',').flatMap(key => {
       const [id, role] = key.split(':');
       return [
-        ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings']
+        ...['planning', 'days', 'checklist', 'reminders', 'expenses', 'info', 'bookings', 'settings', 'legs']
           .map(sub => listen(collection(db, 'trips', id, sub), () => {}, () => {})),
         ...paymentQueries(db, id, signedInUid, role === 'owner').map(q => listen(q, () => {}, () => {})),
         listen(collection(db, 'trips', id, 'personal', signedInUid, 'days'), () => {}, () => {}),
@@ -1755,7 +1755,7 @@ function AppInner() {
     const tripRef = doc(db, 'trips', tripId);
 
     // Delete all docs in the known subcollections, batched.
-    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'payments', 'settings'];
+    const subcollections = ['planning', 'days', 'checklist', 'reminders', 'info', 'bookings', 'expenses', 'payments', 'settings', 'legs'];
     for (const name of subcollections) {
       const snap = await getDocsFromServer(collection(db, 'trips', tripId, name));
       if (snap.size === 0) continue;

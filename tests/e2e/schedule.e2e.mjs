@@ -492,7 +492,10 @@ await step('a leg is from the stop before it; a place found by name only is flag
   const near = (a, b) => meters(a, b) < 30;
   await until(async () => routeLog.some(r => near(r.o, TREVI) && near(r.d, PIETRO)), 'measured from the place before it');
   await until(async () => routeLog.some(r => near(r.o, PIETRO) && meters(r.d, { lat: 41.8986, lng: 12.4769 }) < 30), 'and on from there');
-  if (routeLog.some(r => near(r.d, PIETRO) && !near(r.o, TREVI))) throw new Error('measured to it from somewhere else');
+  // Besides the leg, only the place's own time from the hotel (its card's,
+  // measured in the background since 8.88.0).
+  const HOTEL = { lat: 41.9009, lng: 12.5012 };
+  if (routeLog.some(r => near(r.d, PIETRO) && !near(r.o, TREVI) && !near(r.o, HOTEL))) throw new Error('measured to it from somewhere else');
   await shot('legs-from');
   await card('החלפת משמרות').locator('.dp-card-main').click();
   const guess = sheet().locator('.dp-guess');
