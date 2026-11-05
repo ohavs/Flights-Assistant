@@ -113,7 +113,8 @@ function rowOf(it, plans) {
     const a = it.act;
     const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
     const placeId = a.placeId || place?.id;
-    return { time, title: a.title, ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}) };
+    const title = a.optional ? `${a.title} (אופציונלי)` : a.title;
+    return { time, title, ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}) };
   }
   if (it.kind === 'booking') {
     return { time, title: it.booking.title || '', ...(it.booking.placeId ? { placeId: it.booking.placeId } : {}) };

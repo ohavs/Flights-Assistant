@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight } from 'lucide-react';
+import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed } from 'lucide-react';
 import { db } from '../firebase';
 import Sheet from '../ui/Sheet';
 import { CategoryDisc } from '../ui/kit';
@@ -34,6 +34,7 @@ export default function ActivitySheet({
       address: linked.length ? '' : (editing?.address || ''),
       timeLabel: (editing?.timeLabel || '').trim(),
       notes: editing?.description || '',
+      optional: !!editing?.optional,
     };
   }, [editing, planById]);
   const [placeIds, setPlaceIds] = useState(start.placeIds);
@@ -42,12 +43,13 @@ export default function ActivitySheet({
   const [address, setAddress] = useState(start.address);
   const [timeLabel, setTimeLabel] = useState(start.timeLabel);
   const [notes, setNotes] = useState(start.notes);
+  const [optional, setOptional] = useState(start.optional);
   const [picking, setPicking] = useState(false);
 
   const chosen = placeIds.map(id => planById.get(id)).filter(Boolean);
   const slot = slotOf(timeLabel);
-  const dirty = JSON.stringify([placeIds, title, category, address, timeLabel, notes])
-    !== JSON.stringify([start.placeIds, start.title, start.category, start.address, start.timeLabel, start.notes]);
+  const dirty = JSON.stringify([placeIds, title, category, address, timeLabel, notes, optional])
+    !== JSON.stringify([start.placeIds, start.title, start.category, start.address, start.timeLabel, start.notes, start.optional]);
 
   // Letting go of the place brings back the typed-in fields, filled with
   // what the place had, so nothing has to be typed again.
@@ -79,7 +81,9 @@ export default function ActivitySheet({
         description,
         // Whose it is stays with it (firestore.rules).
         createdBy: editing.createdBy || null,
+        optional: true,
       };
+      if (!optional) delete next.optional;
       if (!next.title) return;
       write = updateActivity(db, tripId, day.target ?? day.id, day.rawActivities, next, onlyOwn);
     } else {
@@ -88,12 +92,12 @@ export default function ActivitySheet({
         ? chosen.map((p, i) => ({
           id: `act-${stamp}-${i}-${Math.random().toString(36).slice(2, 7)}`,
           title: p.title, placeId: p.id, address: p.address || '', category: p.category,
-          timeLabel: label, description, createdBy: currentUid || null,
+          timeLabel: label, description, createdBy: currentUid || null, ...(optional ? { optional: true } : {}),
         }))
         : title.trim() ? [{
           id: `act-${stamp}`,
           title: title.trim(), placeId: null, address: address.trim(), category,
-          timeLabel: label, description, createdBy: currentUid || null,
+          timeLabel: label, description, createdBy: currentUid || null, ...(optional ? { optional: true } : {}),
         }] : [];
       if (!added.length) return;
       write = addActivities(db, tripId, day.target ?? day.id, day.rawActivities, added);
@@ -235,7 +239,7 @@ export default function ActivitySheet({
           </div>
 
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>הערות{chosen.length > 1 ? ' (לכל המקומות)' : ''}</label>
+            <label>{chosen.length ? `הערה ליום הזה${chosen.length > 1 ? ' (לכל המקומות)' : ''}` : 'הערות'}</label>
             <textarea
               className="form-control"
               rows="3"
@@ -244,6 +248,17 @@ export default function ActivitySheet({
               onChange={(e) => setNotes(e.target.value)}
               style={{ resize: 'none', fontFamily: 'inherit' }}
             />
+          </div>
+
+          <div className="list-group">
+            <button type="button" role="switch" aria-checked={optional} className="list-row" onClick={() => setOptional(v => !v)}>
+              <CircleDashed size={18} className="list-row-icon" />
+              <span className="list-row-label">
+                אופציונלית
+                <span className="list-row-hint">אם יהיה זמן</span>
+              </span>
+              <span className={`switch${optional ? ' on' : ''}`} aria-hidden="true"><i /></span>
+            </button>
           </div>
 
           <div className="sheet-footer">

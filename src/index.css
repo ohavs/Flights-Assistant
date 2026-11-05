@@ -3889,10 +3889,6 @@ button.dp-leg:active { background: var(--ink-4); }
   background: var(--card-bg); box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
-.dp-card::before {
-  content: ''; position: absolute; inset-block: 12px; inset-inline-start: 0;
-  width: 4px; border-radius: 4px; background: var(--c, var(--ink-15));
-}
 .dp-card-main {
   width: 100%; display: flex; align-items: flex-start; gap: 12px;
   padding: 12px 14px; padding-inline-end: 54px;
@@ -3933,6 +3929,13 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-card.visited { background: var(--surface-2); box-shadow: none; }
 .dp-card.visited .dp-card-title { color: var(--text-muted); }
 .dp-card.fixed { background: var(--surface-2); box-shadow: none; border: 1.5px dashed var(--ink-12); }
+/* An optional activity (8.84.0): dashed, if there's time */
+.dp-card.optional { border: 1.5px dashed var(--ink-20); box-shadow: none; }
+/* The activity's own note and "optional", in its details (8.84.0) */
+.dp-detail-own { display: flex; flex-direction: column; gap: 6px; }
+.dp-detail-own-label { font-size: 12.5px; font-weight: 800; color: var(--text-muted); }
+.dp-detail-own textarea { resize: none; font-family: inherit; }
+.dp-detail-own-save { align-self: flex-start; padding: 7px 14px; font-size: 13px; }
 .dp-card.fixed .dp-card-title { font-size: 14.5px; }
 
 /* A booking: a ticket stub under the name */
@@ -4070,7 +4073,6 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-mode button[aria-checked="true"]:last-child { background: var(--brand); color: var(--brand-fg); }
 .dp-mode-note { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .dp-row.shared .dp-card { opacity: 0.5; box-shadow: none; background: var(--surface-2); }
-.dp-row.shared .dp-card::before { opacity: 0.6; }
 .dp-row.shared .dp-time { opacity: 0.5; }
 .act-form-private {
   margin: 0; padding: 8px 12px; border-radius: 12px;
