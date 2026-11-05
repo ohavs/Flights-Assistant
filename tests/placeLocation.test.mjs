@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  placeUrls, typedAddress, locationFp, atOf, savedLocation, locationJob, guessedLocation,
+  placeUrls, typedAddress, locationFp, atOf, wayOf, savedLocation, locationJob, guessedLocation,
   travelStamp, travelFresh, travelShowable, legDocId, NONE_RETRY_MS,
 } from '../src/lib/placeLocation.js';
 
 const short = 'https://maps.app.goo.gl/abc';
 const place = (o = {}) => ({ id: 'p1', title: 'Changing of the guard', address: '', links: [], ...o });
-const located = (plan, o = {}) => ({ ...plan, coords: { lat: 47.5, lng: 19.04, fp: locationFp(plan), src: 'link', ...o } });
+const located = (plan, o = {}) => ({ ...plan, coords: { lat: 47.5, lng: 19.04, fp: locationFp(plan), src: 'link', pid: '', ...o } });
 
 test('the links that may say where a place is: a link as its address, then its links', () => {
   assert.deepEqual(placeUrls(place({ address: short, links: [{ url: 'https://x.com' }, { url: short }, {}] })),
@@ -54,6 +54,18 @@ test('what a place needs: found, its link tried again, or nothing', () => {
   assert.equal(locationJob(none, { now: 1000 + 60000 }), null);
   assert.equal(locationJob(none, { now: 1000 + NONE_RETRY_MS + 1 }), 'resolve');
   assert.equal(locationJob({ ...none, address: 'Somewhere 1' }, { now: 2000 }), 'resolve');
+  // Located before 8.90.0: its Google id is looked for, once.
+  assert.equal(locationJob(located(p, { pid: undefined })), 'pid');
+  assert.equal(locationJob(located(p, { pid: 'ChIJx' })), null);
+  assert.equal(locationJob(located(p, { src: 'title', pid: undefined }), { linkTried: true }), 'pid');
+});
+
+test('a route goes to the place itself when its id is known, else to the point', () => {
+  assert.equal(wayOf({ lat: 47.5, lng: 19.04, pid: 'ChIJx' }), 'place_id:ChIJx');
+  assert.equal(wayOf({ lat: 47.5, lng: 19.04, pid: '' }), '47.500000,19.040000');
+  assert.equal(wayOf({ lat: 47.5, lng: 19.04 }), '47.500000,19.040000');
+  assert.equal(wayOf({ pid: 'ChIJx' }), null);
+  assert.equal(wayOf(null), null);
 });
 
 test('a guess is flagged by how the place was found, not by a missing address', () => {
@@ -78,6 +90,9 @@ test('a travel time is current only for where both ends are now', () => {
   const fromPlace = travelStamp(to, 'place_p2', opts);
   assert.deepEqual(fromPlace, { toAt: '47.500000,19.040000', originFp: 'place_|47.490000,19.030000' });
   assert.equal(travelStamp(place(), 'hotel', opts), null);
+  // Its id found: a new stamp, so the time measured to the point is measured again.
+  const byId = { locOf: p => ({ ...savedLocation(p), pid: `id-${p.id}` }), planOf: opts.planOf, hotelFp: opts.hotelFp };
+  assert.deepEqual(travelStamp(to, 'place_p2', byId), { toAt: 'place_id:id-p1', originFp: 'place_|place_id:id-p2' });
   assert.equal(travelStamp(to, 'place_gone', opts), null);
 
   const v = { walk: { seconds: 600 }, toAt: fromHotel.toAt, originFp: fromHotel.originFp };

@@ -7,7 +7,7 @@ import { dayActivities } from '../lib/dayActivities';
 import { localDay } from '../lib/dates';
 import { legKey, isPlaceLeg } from '../lib/dayPlan';
 import {
-  PLACE_ORIGIN, savedLocation, locationJob, locationFp, atOf, travelStamp, travelFresh, travelShowable, legDocId, guessedLocation,
+  PLACE_ORIGIN, savedLocation, locationJob, locationFp, wayOf, travelStamp, travelFresh, travelShowable, legDocId, guessedLocation,
 } from '../lib/placeLocation';
 import DayPlanner from './DayPlanner';
 import { changedFields } from '../lib/changes';
@@ -36,6 +36,7 @@ import {
   resolveRegionCoords,
   findPlaceLocation,
   fetchTravelTimes,
+  findPlaceId,
   extractCoordsFromMapsUrl,
   readShortUrlCache,
 } from '../services/distanceApi';
@@ -160,6 +161,8 @@ const EVENTS_CATEGORY = 'אירועים';
 // Two places within this many metres of each other are treated as "near" and
 // grouped into the same area in the proximity-grouping view.
 const PROXIMITY_THRESHOLD_M = 800;
+// Background location/time jobs run at once (nextLocationJob).
+const WORKER_JOBS = 4;
 
 // The details sheet can show travel times from another place on the list
 // (`travelFrom: 'place_<id>'` on the place, PLACE_ORIGIN). The times are
@@ -877,6 +880,20 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     if (locInFlight.current.has(key)) return locInFlight.current.get(key);
     const run = (async () => {
       const online = isOnlineNow();
+      if (job === 'pid') {
+        // Its Google id, so routes go to the place, not the road nearest
+        // its pin (8.90.0). No answer now: the point, as it was.
+        const pid = await findPlaceId(plan, have).catch(() => null);
+        if (online) triedLoc.current.add(`${key}|${job}`);
+        if (pid === null) return have;
+        const value = { ...have, pid };
+        setLocCache(prev => ({ ...prev, [plan.id]: value }));
+        if (canSave && tripId) {
+          updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { coords: value })
+            .catch(() => { /* kept on this phone (locCache) */ });
+        }
+        return value;
+      }
       const { loc, offline } = await findPlaceLocation(plan, region, { linkOnly: job === 'link' })
         .catch(() => ({ loc: null, offline: true }));
       if (online) triedLoc.current.add(`${key}|${job}`);
@@ -939,8 +956,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       ]);
       if (!toLoc) { showTravel(cacheKey, isOnlineNow() ? { noLocation: true } : { offline: true }); return; }
       if (fromPlan && !fromLoc) { showTravel(cacheKey, { noLocation: true, noOrigin: true }); return; }
-      const toAt = atOf(toLoc);
-      const fp = fromPlan ? `${PLACE_ORIGIN}|${atOf(fromLoc)}` : hotelFp(originId);
+      const toAt = wayOf(toLoc);
+      const fp = fromPlan ? `${PLACE_ORIGIN}|${wayOf(fromLoc)}` : hotelFp(originId);
       // Found again at the same point: the saved time still holds.
       const again = current({ toAt, originFp: fp });
       if (again) { showTravel(cacheKey, again); return; }
@@ -949,7 +966,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       // expanded hotel link → hotel name → city centre. Another place:
       // its own location.
       const candidates = fromPlan
-        ? [{ value: atOf(fromLoc), kind: 'place' }]
+        ? [{ value: wayOf(fromLoc), kind: 'place' }]
         : await originCandidates(customOrigin ? originId : 'hotel');
       if (candidates.length === 0) { showTravel(cacheKey, { noLocation: true, noOrigin: !!fromPlan }); return; }
 
@@ -1005,23 +1022,32 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
      place gets its location, and its card's time from its own origin
      (the hotel by default), as soon as either is missing or stale — a
      new place, one edited from any screen or phone, a hotel changed.
-     One at a time, locations first. Only by a phone that can save, so
+     A few at a time (WORKER_JOBS), a place's location before its time.
+     Only by a phone that can save, so
      what it finds is done once for the whole trip. */
   const nextLocationJob = () => {
     if (!isOnlineNow()) return null;
     const jobs = [];
+    // Places being worked on: while a place's location is being found,
+    // no time to it (or from it), or it would be measured twice.
+    const busy = new Set();
+    const measuring = new Set();
     for (const p of plans) {
       const key = `${p.id}|${locationFp(p)}`;
+      if (locInFlight.current.has(key)) { busy.add(p.id); continue; }
       const job = locationJob(p, { runtime: locCache[p.id], linkTried: triedLoc.current.has(`${key}|link`) });
-      if (job && !triedLoc.current.has(`${key}|${job}`) && !locInFlight.current.has(key)) {
+      if (job && !triedLoc.current.has(`${key}|${job}`)) {
         jobs.push({ kind: 'loc', plan: p, sig: `${key}|${job}` });
+        busy.add(p.id);
       }
     }
     for (const p of plans) {
       const originId = p.distanceOriginId || 'hotel';
       const cacheKey = `${p.id}_${originId}`;
       if (originId.startsWith(PLACE_ORIGIN) && !originPlanOf(originId)) continue;
-      if (p.distances?.[originId]?.manualOverride || travelInFlight.current.has(cacheKey)) continue;
+      if (busy.has(p.id) || busy.has(originPlanOf(originId)?.id)) continue;
+      if (travelInFlight.current.has(cacheKey)) { measuring.add(p.id); continue; }
+      if (p.distances?.[originId]?.manualOverride) continue;
       const stamp = stampOf(p, originId);
       if (!stamp) continue;   // its location comes first
       if (travelFresh(p.distances?.[originId], stamp) || travelFresh(distanceCache[cacheKey], stamp)) continue;
@@ -1033,7 +1059,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     return {
       // The places with work left (a place may have two jobs: its
       // location, then its time, which is only known once it's located).
-      pending: new Set(jobs.map(j => j.plan.id)),
+      // And the ones being worked on now (a few run at once).
+      pending: new Set([...jobs.map(j => j.plan.id), ...busy, ...measuring]),
       run: () => {
         // ensureLocation marks it tried (it reads the mark for 'link').
         if (job.kind === 'loc') return ensureLocation(job.plan);
@@ -1898,14 +1925,14 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         if (isFrom) originKind = c[0]?.kind || null;
         return c[0]?.value || null;
       }
-      if (stop.plan) return atOf(await ensureLocation(stop.plan));
+      if (stop.plan) return wayOf(await ensureLocation(stop.plan));
       const address = (stop.address || '').trim();
       if (!/^https?:\/\//i.test(address)) return address || null;
       if (!addrLocs.current.has(address)) {
         addrLocs.current.set(address, findPlaceLocation({ title: stop.title || '', address }, region)
           .then(r => {
             if (!r.loc && r.offline) addrLocs.current.delete(address);
-            return atOf(r.loc);
+            return wayOf(r.loc);
           })
           .catch(() => { addrLocs.current.delete(address); return null; }));
       }
@@ -1970,17 +1997,30 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       // the total while a job runs.
       const seen = new Set();
       let done = 0;
+      // A few jobs at once (8.90.0): one at a time was ~10 places a
+      // minute. A job marks itself running as it starts (locInFlight,
+      // triedTravel), so the next pick is another one.
+      const running = new Set();
       // A guard: no loop runs away, whatever a job does.
-      for (let guard = 0; guard < 2000 && !w.gone; guard++) {
-        const job = latestFns.current.nextLocationJob?.();
-        if (!job) break;
+      for (let guard = 0; guard < 5000 && !w.gone; guard++) {
+        const job = running.size < WORKER_JOBS ? latestFns.current.nextLocationJob?.() : null;
+        if (!job) {
+          if (!running.size) break;
+          await Promise.race(running);
+          // Let the saved result come back as state before the next pick.
+          await new Promise(r => setTimeout(r, 30));
+          continue;
+        }
         job.pending.forEach(id => seen.add(id));
         done = Math.min(Math.max(done, seen.size - job.pending.size), seen.size - 1);
         if (seen.size > 1) setLocWork({ done, total: seen.size });
-        try { await job.run(); } catch { /* the next one */ }
-        // Let the saved result come back as state before the next pick.
-        await new Promise(r => setTimeout(r, 30));
+        let p;
+        try { p = Promise.resolve(job.run()); } catch { p = Promise.resolve(); }
+        p = p.catch(() => { /* the next one */ });
+        running.add(p);
+        p.finally(() => running.delete(p));
       }
+      await Promise.all(running);
       w.running = false;
       if (!w.gone) setLocWork(null);
     })();

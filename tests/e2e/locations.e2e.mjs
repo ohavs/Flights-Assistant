@@ -32,7 +32,10 @@ const meters = (a, b) => {
   return 2 * 6371000 * Math.asin(Math.sqrt(h));
 };
 const near = (a, b) => !!a && !!b && meters(a, b) < 30;
+// Google's id of the place shared from an iPhone (routes go to it, 8.90.0).
+const SHARED_ID = 'ChIJtazza';
 const point = (w) => {
+  if (w?.placeId) return w.placeId === SHARED_ID ? { ...SHARED, placeId: w.placeId } : { address: '' };
   const ll = w?.location?.latLng;
   return ll ? { lat: ll.latitude, lng: ll.longitude } : { address: w?.address || '' };
 };
@@ -50,6 +53,7 @@ await ctx.route('https://places.googleapis.com/**', async (route) => {
   calls.places.push(body.textQuery);
   const p = body.textQuery === 'רומא, איטליה' ? CITY : body.textQuery === 'Caffè Tazza, Via Roma 1, 00184 Roma' ? SHARED : NAMESAKE;
   await route.fulfill({ json: { places: [{
+    ...(p === SHARED ? { id: SHARED_ID } : {}),
     location: { latitude: p.lat, longitude: p.lng },
     displayName: { text: 'Namesake' }, formattedAddress: 'Via Sbagliata 1',
   }] } });
@@ -248,7 +252,10 @@ await step('a link shared from an iPhone (a name and address): located by it, no
   await until(async () => (await getPlace('q4')).coords?.src === 'link', 'q4 located by its link');
   if (!near((await getPlace('q4')).coords, SHARED)) throw new Error(`q4 at ${JSON.stringify((await getPlace('q4')).coords)}`);
   if (!calls.places.includes('Caffè Tazza, Via Roma 1, 00184 Roma')) throw new Error(`searched: ${calls.places.join(' | ')}`);
-  await until(async () => (await getPlace('q4')).distances?.hotel?.toAt === atText(SHARED), 'q4 measured');
+  // Its Google id kept, and the route goes to it, not to the road nearest its pin.
+  if ((await getPlace('q4')).coords.pid !== SHARED_ID) throw new Error(`q4 pid: ${(await getPlace('q4')).coords.pid}`);
+  await until(async () => (await getPlace('q4')).distances?.hotel?.toAt === `place_id:${SHARED_ID}`, 'q4 measured');
+  if (!calls.routes.some(r => r.d.placeId === SHARED_ID)) throw new Error('q4 not routed by its id');
   await page.locator('.pstub-title', { hasText: 'שיתוף מאייפון' }).waitFor();
   if (await page.locator('.pstub-wrap', { hasText: 'שיתוף מאייפון' }).getByText('מיקום משוער').count()) throw new Error('flagged as a guess');
 });
