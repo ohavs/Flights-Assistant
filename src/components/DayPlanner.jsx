@@ -31,7 +31,7 @@ import {
 import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
 import { DatePickerDialog } from './CustomDatePicker';
-import { guessedLocation, savedLocation, atOf } from '../lib/placeLocation';
+import { guessedLocation, savedLocation, wayOf } from '../lib/placeLocation';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -206,7 +206,7 @@ function DayPlanner({
   // Measure what isn't known yet: on opening a day, after a change, when
   // an end moves (a place found again, the hotel edited: 8.88.0), and
   // again when the connection is back.
-  const atStop = (s) => (s.plan ? atOf(savedLocation(s.plan)) || s.plan.id : s.key === 'hotel'
+  const atStop = (s) => (s.plan ? wayOf(savedLocation(s.plan)) || s.plan.id : s.key === 'hotel'
     ? [hotelDetails?.address, hotelDetails?.link, hotelDetails?.name].join('|') : s.key);
   const legSig = [...legs.values()].map(l => `${l.from.key}@${atStop(l.from)}>${l.to.key}@${atStop(l.to)}`).join('|');
   useEffect(() => {

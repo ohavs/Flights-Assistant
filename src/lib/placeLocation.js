@@ -1,7 +1,7 @@
 /* Where a place is, kept on the place (8.88.0).
 
    One location per place, saved on its document as
-     coords: { lat, lng, fp, src, name?, addr? }
+     coords: { lat, lng, fp, src, name?, addr?, pid? }
    `fp` is the fingerprint of what the location was found from (the
    address, the links and the name), so a place edited anywhere (the form,
    a link added from its details, a share from Google Maps, another phone)
@@ -10,6 +10,10 @@
      'address' the typed address, searched
      'title'   the name, searched (a guess; `name`/`addr` say what it found)
      'none'    nothing found (`t`: when; tried again after NONE_RETRY_MS)
+   `pid` is Google's id of the place ('' when none was found near it).
+   Routes go to it, not to the point (8.90.0): a point is taken to the
+   nearest road, which for a castle on a hill is the road below it (23
+   minutes' walk to the palace next door, instead of 5).
    It stays inside `coords` so the "הוספה" rule (visited, distances, coords)
    holds as it is.
 
@@ -62,6 +66,10 @@ export const atOf = (c) => (finite(c) ? `${c.lat.toFixed(6)},${c.lng.toFixed(6)}
 // The saved location when it is of the place as it is now, else null.
 // `runtime`: one found on this phone and not saved (a viewer, a failed
 // write), used the same way.
+// Where a route to a location goes: the place itself when its id is
+// known, else the point. Compared as text, like atOf.
+export const wayOf = (c) => (!finite(c) ? null : c.pid ? `place_id:${c.pid}` : atOf(c));
+
 export function savedLocation(plan, runtime = null) {
   const fp = locationFp(plan);
   for (const c of [plan?.coords, runtime]) {
@@ -72,7 +80,8 @@ export function savedLocation(plan, runtime = null) {
 
 // What a place needs now: 'resolve' (no location for what it is now),
 // 'link' (found by its name though it has a link: try the link again,
-// once a session) or null. `linkTried`: the link was tried this session.
+// once a session), 'pid' (located, its Google id never looked for) or
+// null. `linkTried`: the link was tried this session.
 export function locationJob(plan, { runtime = null, linkTried = false, now = Date.now() } = {}) {
   const fp = locationFp(plan);
   const saved = [plan?.coords, runtime].find(c => c && c.fp === fp);
@@ -80,6 +89,7 @@ export function locationJob(plan, { runtime = null, linkTried = false, now = Dat
   if (saved.src === 'none') return now - (saved.t || 0) > NONE_RETRY_MS ? 'resolve' : null;
   if (!finite(saved)) return 'resolve';
   if (saved.src === 'title' && placeUrls(plan).length && !linkTried) return 'link';
+  if (saved.pid === undefined) return 'pid';
   return null;
 }
 
@@ -105,11 +115,11 @@ export function guessedLocation(plan, runtime = null) {
 // `locOf(plan)` → its location; `hotelFp(originId)` → the fingerprint of
 // the hotel or extra starting point it names.
 export function travelStamp(plan, originId, { locOf, planOf, hotelFp }) {
-  const to = atOf(locOf(plan));
+  const to = wayOf(locOf(plan));
   if (!to) return null;
   if (originId.startsWith(PLACE_ORIGIN)) {
     const from = planOf(originId.slice(PLACE_ORIGIN.length));
-    const at = from && atOf(locOf(from));
+    const at = from && wayOf(locOf(from));
     return at ? { toAt: to, originFp: `${PLACE_ORIGIN}|${at}` } : null;
   }
   return { toAt: to, originFp: hotelFp(originId) };
