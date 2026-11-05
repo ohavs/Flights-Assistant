@@ -113,14 +113,14 @@ await step('the schedule: they add an activity, and only theirs has actions', as
   await page.getByRole('tab', { name: 'לוח זמנים' }).click();
   await page.getByText('סיור בעיר העתיקה').waitFor();
   if (await page.getByRole('button', { name: 'פעולות: סיור בעיר העתיקה' }).count()) throw new Error('actions on someone else\'s activity');
-  if (await page.locator('button.fab', { hasText: 'יום חדש' }).count()) throw new Error('"new day" offered');
+  if (await page.locator('.dp-chip.next').count()) throw new Error('"new day" offered');
   // Someone else's activity opens to read, with no edit.
   await page.getByText('סיור בעיר העתיקה').click();
   await sheet().getByText('אין עוד פרטים לפעילות הזו.', { exact: true }).waitFor();
   if (await sheet().getByRole('button', { name: 'עריכה' }).count()) throw new Error('edit offered on someone else\'s activity');
   await closeModal();
   await page.waitForTimeout(400);
-  await page.locator('button', { hasText: 'הוסף פעילות' }).first().click();
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
   await sheet().getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill('קפה ועוגה');
   await sheet().locator('button[type="submit"]').last().click();
   await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });

@@ -75,7 +75,7 @@ function PickerField({ Icon, filled, onOpen, children }) {
    sit inside a .glass-card, and a backdrop-filtered ancestor becomes the
    containing block for position:fixed children — left in place the
    overlay is positioned against the card and clipped by it. */
-function PickerDialog({ title, onClose, readout, okLabel, onOk, children }) {
+function PickerDialog({ title, onClose, readout, okLabel, onOk, okDisabled = false, children }) {
   return createPortal(
     <div className="picker-overlay" onClick={onClose}>
       <div className="picker-card" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
@@ -88,7 +88,7 @@ function PickerDialog({ title, onClose, readout, okLabel, onOk, children }) {
             and changes the instant anything is picked. */}
         <div className="picker-readout">{readout}</div>
         <div className="picker-actions">
-          <button type="button" onClick={onOk} className="btn-primary">{okLabel}</button>
+          <button type="button" onClick={onOk} className="btn-primary" disabled={okDisabled}>{okLabel}</button>
           <button type="button" onClick={onClose} className="btn-secondary">ביטול</button>
         </div>
       </div>
@@ -102,7 +102,8 @@ function PickerDialog({ title, onClose, readout, okLabel, onOk, children }) {
    ══════════════════════════════════════════════════════════ */
 // `rangeEnd`: a range's last day; the days from the selected one to it
 // are marked as one stretch. `range`: the days before its first are grey.
-function CalendarBody({ selectedDateStr, onSelect, rangeEnd, range = false }) {
+// `taken`: a Set of dates that can't be picked.
+function CalendarBody({ selectedDateStr, onSelect, rangeEnd, range = false, taken = null }) {
   const initialDate = selectedDateStr ? parseDateISO(selectedDateStr) : new Date();
   const [currentYear, setCurrentYear] = useState(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth()); // 0-11
@@ -170,13 +171,15 @@ function CalendarBody({ selectedDateStr, onSelect, rangeEnd, range = false }) {
           const isToday = todayStr === thisDateStr;
           const inRange = !!rangeEnd && thisDateStr > selectedDateStr && thisDateStr < rangeEnd;
           const beforeRange = range && !!selectedDateStr && thisDateStr < selectedDateStr;
+          const isTaken = !!taken && taken.has(thisDateStr);
 
           return (
             <button
               key={`day-${item.dayNum}`}
               type="button"
-              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}${beforeRange ? ' before-range' : ''}`}
+              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}${beforeRange ? ' before-range' : ''}${isTaken ? ' is-taken' : ''}`}
               aria-pressed={isSelected}
+              disabled={isTaken}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => onSelect(thisDateStr)}
             >
@@ -377,6 +380,26 @@ export function CustomDatePicker({ value, onChange, label, required, variant }) 
         </PickerDialog>
       )}
     </div>
+  );
+}
+
+// Just the dialog, opened from somewhere else (8.83.0: a trip day's date).
+// `taken`: a Set of dates that can't be picked.
+export function DatePickerDialog({ title, value, taken, onPick, onClose }) {
+  useBackHandler(true, onClose);
+  const [temp, setTemp] = useState(value || formatDateISO(new Date()));
+  const blocked = !!taken && taken.has(temp);
+  return (
+    <PickerDialog
+      title={title}
+      onClose={onClose}
+      readout={formatHebrewDate(temp)}
+      okLabel="בחירה"
+      okDisabled={blocked}
+      onOk={() => { onPick(temp); onClose(); }}
+    >
+      <CalendarBody selectedDateStr={temp} onSelect={setTemp} taken={taken} />
+    </PickerDialog>
   );
 }
 

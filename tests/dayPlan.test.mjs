@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
-  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel,
+  canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel, nextDate, orderFor,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -204,4 +204,30 @@ test('several parts of the day: one label, standing at the first', () => {
   ] });
   assert.deepEqual(items.map(it => it.act.id), ['all', 'early', 'eve']);
   assert.deepEqual(groupItems(items).map(g => g.label), ['בוקר', 'ערב']);
+});
+
+// "+" at the end of the strip (8.83.0): the day after the last one shown.
+test('the next date: after the last day, and after the flight back', () => {
+  const day = (date, order) => ({ id: date, date, order });
+  const days = [day('2026-11-25', 2), day('2026-11-26', 3)];
+  assert.equal(nextDate(days, null, null), '2026-11-27');
+  assert.equal(nextDate(days, '2026-11-24', '2026-11-29'), '2026-11-30');
+  assert.equal(nextDate(days, '2026-11-24', '2026-11-25'), '2026-11-27');
+  assert.equal(nextDate([day('2026-11-30', 1)], null, null), '2026-12-01');
+  assert.equal(nextDate([], '2026-12-30', '2026-12-31T22:00'), '2027-01-01');
+  // A backwards range of flights doesn't count; no date at all: null.
+  assert.equal(nextDate(days, '2026-12-05', '2026-12-03'), '2026-11-27');
+  assert.equal(nextDate([{ id: 'x', order: 1 }], null, null), null);
+});
+
+test('a day given another date moves to its place by date', () => {
+  const days = [
+    { id: 'a', date: '2026-11-25', order: 1 },
+    { id: 'b', date: '2026-11-26', order: 2 },
+    { id: 'c', date: '2026-11-28', order: 3 },
+  ];
+  assert.equal(orderFor(days, 'a', '2026-11-27'), 2.5);
+  assert.equal(orderFor(days, 'c', '2026-11-27'), 3);
+  assert.equal(orderFor(days, 'a', '2026-11-29'), 4);
+  assert.equal(orderFor(days, 'c', '2026-11-20'), 0);
 });

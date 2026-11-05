@@ -254,6 +254,25 @@ export function missingDates(days, out, ret) {
   return [...want].filter(d => !have.has(d)).sort();
 }
 
+// The date after the last one in the strip of days: after the last day
+// with a date, and after the flight back (whose dates show as missing
+// days). null when there is no date at all.
+export function nextDate(days, out, ret) {
+  const o = isoOf(out);
+  const r = isoOf(ret);
+  const dates = (days || []).map(d => isoOf(d.date)).filter(Boolean);
+  if (o && r && o <= r) dates.push(r);
+  if (!dates.length) return null;
+  const last = dates.sort()[dates.length - 1];
+  return new Date(Date.parse(`${last}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10);
+}
+
+// The order of a day whose date changes to `date`: its place by date among
+// the other days, as for a day brought back (placeDays).
+export function orderFor(days, id, date) {
+  return placeDays((days || []).filter(d => d.id !== id), [date])[0].order;
+}
+
 // Where days brought back on `dates` go: each before the first day after
 // its date (or after the last day with a date), its title the number of
 // its place. The others keep theirs.
