@@ -1031,7 +1031,9 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     if (!jobs.length) return null;
     const [job] = jobs;
     return {
-      left: jobs.length,
+      // The places with work left (a place may have two jobs: its
+      // location, then its time, which is only known once it's located).
+      pending: new Set(jobs.map(j => j.plan.id)),
       run: () => {
         // ensureLocation marks it tried (it reads the mark for 'link').
         if (job.kind === 'loc') return ensureLocation(job.plan);
@@ -1963,14 +1965,19 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     if (!workerOn || w.running) return;
     w.running = true;
     (async () => {
+      // Counted in places, not jobs: every place met in this run, and how
+      // many of them have nothing left. Never goes back, and stays below
+      // the total while a job runs.
+      const seen = new Set();
       let done = 0;
       // A guard: no loop runs away, whatever a job does.
       for (let guard = 0; guard < 2000 && !w.gone; guard++) {
         const job = latestFns.current.nextLocationJob?.();
         if (!job) break;
-        if (job.left > 1 || done > 0) setLocWork({ done, total: done + job.left });
+        job.pending.forEach(id => seen.add(id));
+        done = Math.min(Math.max(done, seen.size - job.pending.size), seen.size - 1);
+        if (seen.size > 1) setLocWork({ done, total: seen.size });
         try { await job.run(); } catch { /* the next one */ }
-        done++;
         // Let the saved result come back as state before the next pick.
         await new Promise(r => setTimeout(r, 30));
       }
