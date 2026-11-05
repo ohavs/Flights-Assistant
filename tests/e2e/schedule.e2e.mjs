@@ -27,14 +27,18 @@ const point = (w) => {
   const ll = w?.location?.latLng;
   return ll ? { lat: ll.latitude, lng: ll.longitude } : COLOSSEUM;
 };
+const routeLog = [];   // every route asked for: { o, d } points
 await ctx.route('https://routes.googleapis.com/**', async (route) => {
   const body = JSON.parse(route.request().postData() || '{}');
+  routeLog.push({ o: point(body.origin), d: point(body.destination) });
   const m = Math.round(meters(point(body.origin), point(body.destination)));
   const secs = body.travelMode === 'WALK' ? Math.round(m / 1.3) : 300 + Math.round(m / 6);
   await route.fulfill({ json: { routes: [{ duration: `${secs}s`, distanceMeters: m }] } });
 });
+// What a search by name finds (changed by a step below).
+let placesAnswer = { location: { latitude: COLOSSEUM.lat, longitude: COLOSSEUM.lng } };
 await ctx.route('https://places.googleapis.com/**', (route) =>
-  route.fulfill({ json: { places: [{ location: { latitude: COLOSSEUM.lat, longitude: COLOSSEUM.lng } }] } }));
+  route.fulfill({ json: { places: [placesAnswer] } }));
 const at = (lat, lng) => [{ label: 'מפה', url: `https://www.google.com/maps/place/@${lat},${lng},17z` }];
 
 const page = await ctx.newPage();
@@ -196,8 +200,8 @@ await step('the way from the stop before, and another start in a tap', async () 
   const toDinner = page.locator('.dp-leg-row').filter({ has: page.locator('.dp-leg-walk') })
     .and(page.locator('.dp-leg-row:has(+ .dp-row .dp-card:has-text("Da Enzo"))'));
   await toDinner.waitFor();
-  // From the fountain: no "from" on the chip, it is the stop above.
-  if (await toDinner.locator('.dp-leg-from').count()) throw new Error('says where from');
+  // From the fountain, the stop above, and it says so (8.86.0).
+  await toDinner.locator('.dp-leg-from', { hasText: 'מ־פונטנה די טרווי' }).waitFor();
   await page.locator('.dp-stats', { hasText: 'הליכה' }).waitFor();
   await shot('legs');
   await toDinner.locator('button.dp-leg').click();
@@ -424,6 +428,164 @@ await step('a day after the last one, from the end of the strip; then another da
   // 13 and 14 are now a gap between the days.
   await until(async () => await page.locator('.dp-chip.missing').count() === 2, 'the gap shows');
   await until(async () => await next.getAttribute('aria-label') === 'הוספת יום: ב׳ 16.11', 'next after the new date');
+});
+
+// 8.85.0: a toast shows the time it has left, and a swipe sends it away.
+await step('a toast: a bar of the time left; swiped to the side, it goes', async () => {
+  await page.locator('.dp-chip.next').click();
+  const toast = page.locator('.toast', { hasText: 'נוסף' });
+  await toast.waitFor();
+  const bar = toast.locator('.toast-left i');
+  const w0 = (await bar.boundingBox()).width;
+  await page.waitForTimeout(1200);
+  const w1 = (await bar.boundingBox()).width;
+  if (!(w1 < w0 - 5)) throw new Error(`the bar doesn't empty: ${w0} -> ${w1}`);
+  await shot('toast-left');
+  const box = await toast.boundingBox();
+  const y = box.y + box.height / 2;
+  const x = box.x + box.width * 0.4;   // on the text, not the button
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(x + i * 25, y);
+  await page.mouse.up();
+  await toast.waitFor({ state: 'detached', timeout: 2000 });
+  // A short drag comes back, and stays.
+  await page.locator('.dp-chip.next').click();
+  const again = page.locator('.toast', { hasText: 'נוסף' });
+  await again.waitFor();
+  const b2 = await again.boundingBox();
+  await page.mouse.move(b2.x + b2.width * 0.4, b2.y + b2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b2.x + b2.width * 0.4 + 30, b2.y + b2.height / 2, { steps: 6 });
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  if (!(await again.count())) throw new Error('a short drag sent it away');
+});
+
+// 8.86.0: each leg says where it is from and is measured from there; a
+// place with no address or link is found by its name, and what was found
+// is shown, so a wrong guess is seen (the guard change found at another
+// palace than the one meant).
+await step('a leg is from the stop before it; a place found by name only is flagged', async () => {
+  const PIETRO = { lat: 41.9022, lng: 12.4539 };
+  const TREVI = { lat: 41.9009, lng: 12.4833 };
+  placesAnswer = {
+    location: { latitude: PIETRO.lat, longitude: PIETRO.lng },
+    displayName: { text: 'Piazza San Pietro' }, formattedAddress: '00120 Città del Vaticano',
+  };
+  await place('p6', 'החלפת משמרות', 'אטרקציות ודברים לעשות');   // no address, no link
+  await place('p7', 'פנתיאון', 'מקומות לבקר', { links: at(41.8986, 12.4769) });
+  await put('trips/sc/days/d6', { title: 'יום המשמרות', order: 50, date: '2026-11-20', activities: [
+    act('a61', 'פונטנה די טרווי', 'p3', 'בוקר', 1, 'מקומות לבקר'),
+    act('a62', 'החלפת משמרות', 'p6', 'בוקר', 2, 'אטרקציות ודברים לעשות'),
+    act('a63', 'פנתיאון', 'p7', 'בוקר', 3, 'מקומות לבקר'),
+  ] });
+  routeLog.length = 0;
+  await chip('יום המשמרות').click();
+  const leg = (to) => page.locator(`.dp-leg[aria-label="זמן הגעה אל ${to}, בחירת נקודת יציאה"]`);
+  await leg('החלפת משמרות').getByText('מ־פונטנה די טרווי').waitFor();
+  await leg('פנתיאון').getByText('מ־החלפת משמרות').waitFor();
+  await leg('החלפת משמרות').locator('.dp-leg-guess').waitFor();
+  await leg('פנתיאון').locator('.dp-leg-guess').waitFor();
+  if (await leg('פונטנה די טרווי').locator('.dp-leg-guess').count()) throw new Error('a leg with no guess flagged');
+  const near = (a, b) => meters(a, b) < 30;
+  await until(async () => routeLog.some(r => near(r.o, TREVI) && near(r.d, PIETRO)), 'measured from the place before it');
+  await until(async () => routeLog.some(r => near(r.o, PIETRO) && meters(r.d, { lat: 41.8986, lng: 12.4769 }) < 30), 'and on from there');
+  // Besides the leg, only the place's own time from the hotel (its card's,
+  // measured in the background since 8.88.0).
+  const HOTEL = { lat: 41.9009, lng: 12.5012 };
+  if (routeLog.some(r => near(r.d, PIETRO) && !near(r.o, TREVI) && !near(r.o, HOTEL))) throw new Error('measured to it from somewhere else');
+  await shot('legs-from');
+  await card('החלפת משמרות').locator('.dp-card-main').click();
+  const guess = sheet().locator('.dp-guess');
+  await guess.getByText('Piazza San Pietro, 00120 Città del Vaticano').waitFor();
+  const href = await guess.getByRole('link', { name: 'איפה זה במפה' }).getAttribute('href');
+  if (!href.includes('41.9022')) throw new Error(`map link: ${href}`);
+  await shot('place-guess');
+  await sheet().getByRole('button', { name: 'סגור' }).first().click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+});
+
+// 8.87.0: free blocks between the activities: text, a checklist, a link;
+// dragged by the handle anywhere in the day, or onto a day in the strip.
+const dayDoc = async (date) => (await list('days')).find(d => d.fields.date?.stringValue === date);
+const blocksOn = async (date) => ((await dayDoc(date))?.fields.activities?.arrayValue.values || [])
+  .map(v => v.mapValue.fields).filter(f => f.block);
+const shownKeys = () => page.locator('.dp-timeline [data-item]').evaluateAll(els => els.map(e => e.dataset.item));
+
+await step('free blocks: a text, a checklist and a link, at the end of the day', async () => {
+  await page.locator('.dp-block-add').getByRole('button', { name: /טקסט/ }).click();
+  await page.getByLabel('טקסט', { exact: true }).fill('לקנות כרטיסים מראש');
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  await until(async () => (await blocksOn('2026-11-20')).some(b => b.text?.stringValue === 'לקנות כרטיסים מראש'), 'text saved');
+  const keys = await shownKeys();
+  if (!keys[keys.length - 1].startsWith('blk:')) throw new Error(`not at the end: ${keys.join()}`);
+
+  await page.locator('.dp-block-add').getByRole('button', { name: /רשימה/ }).click();
+  await page.getByLabel('כותרת הרשימה').fill('לקחת');
+  await page.getByLabel('פריט 1').fill('מים');
+  await page.getByLabel('פריט 1').press('Enter');
+  await page.getByLabel('פריט 2').fill('כובע');
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  const list2 = page.locator('.dp-block.kind-check');
+  await list2.getByText('0/2').waitFor();
+  await list2.getByRole('checkbox', { name: 'מים' }).click();
+  await list2.getByText('1/2').waitFor();
+  await until(async () => {
+    const b = (await blocksOn('2026-11-20')).find(x => x.block.stringValue === 'check');
+    const items = (b?.items?.arrayValue.values || []).map(v => v.mapValue.fields);
+    return items.length === 2 && items.find(i => i.text.stringValue === 'מים')?.done?.booleanValue === true;
+  }, 'ticked on the server');
+
+  await page.locator('.dp-block-add').getByRole('button', { name: /קישור/ }).click();
+  await page.getByLabel('כתובת הקישור').fill('example.com/tickets');
+  await page.getByLabel('שם הקישור').fill('כרטיסים');
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  const link = page.locator('.dp-block-link', { hasText: 'כרטיסים' });
+  if (await link.getAttribute('href') !== 'https://example.com/tickets') throw new Error(await link.getAttribute('href'));
+  // Not activities: the count says 3.
+  await page.locator('.dp-stats').getByText('3 פעילויות').waitFor();
+  await shot('blocks');
+});
+
+await step('free blocks: dragged by the handle between two activities, and onto another day', async () => {
+  const text = page.locator('.dp-block-row', { hasText: 'לקנות כרטיסים מראש' });
+  await text.scrollIntoViewIfNeeded();
+  const grip = text.getByRole('button', { name: 'גרירת הבלוק' });
+  const g = await grip.boundingBox();
+  const mid = async (key) => { const b = await page.locator(`[data-item="${key}"]`).boundingBox(); return b.y + b.height / 2; };
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  const y = ((await mid('act:a62')) + (await mid('act:a63'))) / 2;
+  await page.mouse.move(g.x + g.width / 2, y, { steps: 12 });
+  await page.locator('.dp-row.drop-before').waitFor();
+  await shot('block-drag');
+  await page.mouse.up();
+  await until(async () => {
+    const k = await shownKeys();
+    const i = k.findIndex(x => x.startsWith('blk:') && x !== undefined && k[k.indexOf(x) - 1] === 'act:a62');
+    return i > 0 && k[i + 1] === 'act:a63';
+  }, 'between the two');
+  const b = (await blocksOn('2026-11-20')).find(x => x.text?.stringValue === 'לקנות כרטיסים מראש');
+  if (b.after?.stringValue !== 'act:a62') throw new Error(`after: ${JSON.stringify(b.after)}`);
+
+  // Onto another day in the strip: up to the top, the page scrolls there.
+  const check = page.locator('.dp-block-row', { hasText: 'לקחת' });
+  await check.scrollIntoViewIfNeeded();
+  const g2 = await check.getByRole('button', { name: 'גרירת הבלוק' }).boundingBox();
+  await page.mouse.move(g2.x + g2.width / 2, g2.y + g2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g2.x + g2.width / 2, 40, { steps: 10 });
+  await page.waitForFunction(() => document.querySelector('.app-content').scrollTop === 0, null, { timeout: 8000 });
+  const c = await chip('יום 6').boundingBox();
+  await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2, { steps: 6 });
+  await page.locator('.dp-chip.drop-target').waitFor();
+  await shot('block-to-day');
+  await page.mouse.up();
+  await page.locator('.toast', { hasText: 'עבר ליום 6' }).waitFor();
+  await until(async () => (await blocksOn('2026-11-17')).some(x => x.text?.stringValue === 'לקחת'), 'on the other day');
+  if ((await blocksOn('2026-11-20')).some(x => x.text?.stringValue === 'לקחת')) throw new Error('still on its old day');
 });
 
 await step('a booking: search the places; a linked place replaces its name and address', async () => {

@@ -1,20 +1,29 @@
 // Google Maps Routes API (v2) + Places API (New) — both support browser CORS.
 // Requires "Routes API" and "Places API (New)" enabled on the API key.
 //
-// Destination resolution order:
-// 1. Text address in plan.address field
-// 2. Coordinates embedded in a full Maps URL (@lat,lng / !3dlat!4dlng)
-// 3. Follow the short URL (maps.app.goo.gl) via CORS proxy → extract coords
-// 4. Places Text Search by title + location context (last resort)
+// A place's location is found once and saved on it (findPlaceLocation,
+// src/lib/placeLocation.js): coordinates in a Maps link, a short link
+// (maps.app.goo.gl) expanded via a CORS proxy, the typed address, and only
+// then a Places Text Search by its name inside the trip's destination.
 
 // Browser tests run an emulator build with a fake key (`__e2eGmapsKey`, set
 // before the app loads) and answer the Maps calls themselves.
+import { placeUrls, typedAddress, MAPS_SHORT } from '../lib/placeLocation';
+
 const GMAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY
   || (import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true' && globalThis.__e2eGmapsKey) || '';
 const ROUTES_URL  = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const PLACES_URL  = 'https://places.googleapis.com/v1/places:searchText';
 const SHORT_CACHE = 'gmaps_short_v1_';  // short-URL expansion results
-const PLACE_CACHE = 'gmaps_place_v2_';  // Places-search results
+
+// Until 8.88.0 a guess by a place's name was kept on each phone (and was
+// read before the place's link). The place keeps its location now.
+try {
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && (k.startsWith('gmaps_place_v2_') || k.startsWith('gmaps_found_v1_'))) localStorage.removeItem(k);
+  }
+} catch { /* no storage */ }
 
 export const hasGmapsKey = () => GMAPS_KEY.length > 0;
 
@@ -24,14 +33,16 @@ export const isOnlineNow = () =>
 // ── Coordinate extraction from URLs ──────────────────────────────────────────
 export function extractCoordsFromMapsUrl(url) {
   if (!url || typeof url !== 'string') return null;
-  const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-  if (m1) return `${m1[1]},${m1[2]}`;
-  const m2 = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  // The place's own pin (!3d…!4d…) first: `@lat,lng` is where the map was
+  // centred when the link was copied, which can be a street or two away.
+  const m4 = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (m4) return `${m4[1]},${m4[2]}`;
+  const m2 = url.match(/[?&](?:q|query|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i);
   if (m2) return `${m2[1]},${m2[2]}`;
   const m3 = url.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m3) return `${m3[1]},${m3[2]}`;
-  const m4 = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-  if (m4) return `${m4[1]},${m4[2]}`;
+  const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m1) return `${m1[1]},${m1[2]}`;
   return null;
 }
 
@@ -184,12 +195,6 @@ export function isSaneTravel(value) {
   return isSaneLeg(value.walk) && isSaneLeg(value.transit);
 }
 
-// Forget a title-based Places match that produced a bogus location, so the
-// place can be resolved again from scratch.
-export function clearPlaceCache(planId) {
-  try { localStorage.removeItem(PLACE_CACHE + planId); } catch { /* ignore */ }
-}
-
 // Parse a "lat,lng" string into numeric coordinates.
 export function parseLatLng(str) {
   if (!str || typeof str !== 'string') return null;
@@ -198,64 +203,113 @@ export function parseLatLng(str) {
   return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
 }
 
-// ── Places API: geocode by title when all else fails ─────────────────────────
-// A title is only meaningful inside the trip's destination — the user is
-// planning one trip, so "the museum" means the one in that city. The search is
-// therefore anchored to the destination three ways: a hard locationRestriction
-// rectangle, the destination appended to the query text, and a final distance
-// check on the result. Without this a generic title could match a same-named
-// place abroad and produce the 600-hour walks seen before.
-async function findPlaceCoords(planId, title, { originHint, regionCoords, regionText } = {}) {
-  if (!title?.trim() || !GMAPS_KEY) return null;
-  const cacheKey = PLACE_CACHE + planId;
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) return cached;
-  if (!isOnlineNow()) return null;
-
+// ── One location per place (8.88.0) ──────────────────────────────────────────
+// Places (New) Text Search around the trip's destination. A name is only
+// searched inside it (`restrict`: a namesake abroad is the wrong place);
+// a typed address is biased to it, since the user meant that address.
+// → { at: "lat,lng", name, addr } | null; throws { network } when the
+// call could not be made, so a failure is not saved as "not found".
+async function searchPlace(text, { anchor, restrict }) {
+  const body = { textQuery: text };
+  const a = parseLatLng(anchor);
+  if (a && restrict) {
+    const dLat = 1.0; // ~110 km
+    const dLng = 1.0 / Math.max(0.2, Math.cos(a.lat * Math.PI / 180));
+    body.locationRestriction = {
+      rectangle: {
+        low:  { latitude: Math.max(-90, a.lat - dLat), longitude: Math.max(-180, a.lng - dLng) },
+        high: { latitude: Math.min(90, a.lat + dLat),  longitude: Math.min(180, a.lng + dLng) },
+      },
+    };
+  } else if (a) {
+    body.locationBias = { circle: { center: { latitude: a.lat, longitude: a.lng }, radius: 50000 } };
+  }
+  let res;
   try {
-    const body = {};
-    // Anchor on the trip destination when known, else on the origin.
-    const anchor = regionCoords || (parseLatLng(originHint) ? originHint : null);
-    const anchorPt = parseLatLng(anchor);
-
-    if (anchorPt) {
-      const dLat = 1.0; // ~110 km
-      const dLng = 1.0 / Math.max(0.2, Math.cos(anchorPt.lat * Math.PI / 180));
-      body.locationRestriction = {
-        rectangle: {
-          low:  { latitude: Math.max(-90, anchorPt.lat - dLat), longitude: Math.max(-180, anchorPt.lng - dLng) },
-          high: { latitude: Math.min(90, anchorPt.lat + dLat),  longitude: Math.min(180, anchorPt.lng + dLng) },
-        },
-      };
-    }
-    // Always name the destination in the query as well, so even without a
-    // usable rectangle the search is pinned to the right city/country.
-    const qualifier = (regionText || '').trim()
-      || (originHint && !parseLatLng(originHint)
-            ? originHint.split(',').map(s => s.trim()).filter(Boolean).slice(-2).join(', ')
-            : '');
-    body.textQuery = qualifier ? `${title.trim()}, ${qualifier}` : title.trim();
-
-    const res = await fetch(PLACES_URL, {
+    res = await fetch(PLACES_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location' },
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'places.location,places.displayName,places.formattedAddress' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const loc = data?.places?.[0]?.location;
-    if (!loc) return null;
-    const coords = `${loc.latitude},${loc.longitude}`;
-    // Final guard: a match far outside the trip region is the wrong place,
-    // however confident the API was. Don't cache it, don't use it.
-    if (anchor) {
-      const away = metersBetween(anchor, coords);
-      if (away != null && away > MAX_REGION_METERS) return null;
+  } catch {
+    const err = new Error('network');
+    err.network = true;
+    throw err;
+  }
+  if (!res.ok) {
+    // Over quota or a server error: not an answer about the place.
+    if (res.status === 429 || res.status >= 500) { const err = new Error('busy'); err.network = true; throw err; }
+    return null;
+  }
+  const data = await res.json().catch(() => null);
+  const p = data?.places?.[0];
+  const loc = p?.location;
+  if (!loc || !Number.isFinite(loc.latitude) || !Number.isFinite(loc.longitude)) return null;
+  const at = `${loc.latitude},${loc.longitude}`;
+  if (a && restrict) {
+    const away = metersBetween(anchor, at);
+    if (away != null && away > MAX_REGION_METERS) return null;
+  }
+  return { at, name: p.displayName?.text || '', addr: p.formattedAddress || '' };
+}
+
+// Where a place is, in the order it is most surely right: coordinates in
+// one of its links, a short link expanded, its typed address, and only then
+// its name (a guess, flagged). The name never comes before a link: a short
+// link that could not be expanded (the proxies are flaky) used to leave a
+// guess by the name for good (8.88.0).
+// `region`: { coords: "lat,lng" of the destination, text: "בודפשט, הונגריה" }.
+// `linkOnly`: try the links alone (a guess by name, being tried again).
+// → { loc: { lat, lng, src, name?, addr? } | null, offline }: `offline`
+// when the answer could not be had now (no network, a call failed), so
+// nothing is to be saved.
+export async function findPlaceLocation(plan, region = {}, { linkOnly = false } = {}) {
+  const urls = placeUrls(plan);
+  const pt = (at, src, extra = {}) => {
+    const c = parseLatLng(at);
+    return c ? { loc: { lat: c.lat, lng: c.lng, src, ...extra }, offline: false } : null;
+  };
+  for (const url of urls) {
+    const hit = pt(extractCoordsFromMapsUrl(url), 'link');
+    if (hit) return hit;
+  }
+  const shorts = urls.filter(u => MAPS_SHORT.test(u));
+  for (const url of shorts) {
+    const hit = pt(readShortUrlCache(url), 'link');
+    if (hit) return hit;
+  }
+  if (!GMAPS_KEY || !isOnlineNow()) return { loc: null, offline: true };
+  let failed = false;
+  if (shorts.length) {
+    const at = await firstSuccess(shorts.map(url => () => expandShortUrl(url)));
+    const hit = pt(at, 'link');
+    if (hit) return hit;
+    failed = true;   // a link we could not open now: not an answer
+  }
+  if (linkOnly) return { loc: null, offline: failed };
+
+  const anchor = region.coords || null;
+  const address = typedAddress(plan);
+  try {
+    if (address) {
+      const r = await searchPlace(address, { anchor, restrict: false });
+      const hit = r && pt(r.at, 'address');
+      if (hit) return hit;
     }
-    localStorage.setItem(cacheKey, coords);
-    return coords;
-  } catch { return null; }
+    const title = (plan?.title || '').trim();
+    if (title) {
+      const qualifier = (region.text || '').trim();
+      const r = await searchPlace(qualifier ? `${title}, ${qualifier}` : title, { anchor, restrict: true });
+      const hit = r && pt(r.at, 'title', { name: r.name, addr: r.addr });
+      if (hit) return hit;
+    }
+  } catch (err) {
+    if (err?.network) return { loc: null, offline: true };
+    throw err;
+  }
+  // Nothing found. With a link that failed to open, that may change.
+  return { loc: null, offline: failed };
 }
 
 // ── Location resolvers ────────────────────────────────────────────────────────
@@ -343,77 +397,6 @@ export async function buildOriginCandidates(hotelDetails, customOrigin, fallback
   return out;
 }
 
-// Where a place is, from what this phone already knows: coordinates in its
-// links, an expanded short link or an earlier lookup. No network. Used to
-// order places by distance; null when only a lookup could tell.
-export function knownPlaceCoords(plan) {
-  const urls = [plan.address, ...(Array.isArray(plan.links) ? plan.links.map(l => l?.url) : [])]
-    .filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
-  for (const url of urls) {
-    const c = parseLatLng(extractCoordsFromMapsUrl(url) || readShortUrlCache(url));
-    if (c) return c;
-  }
-  try { return parseLatLng(localStorage.getItem(PLACE_CACHE + plan.id)); } catch { return null; }
-}
-
-// Sync fast-path: text address or embedded coords in URL
-function resolveDestinationSync(plan) {
-  const { address, links } = plan;
-  if (address && !/^https?:\/\//i.test(address) && address.trim()) return address.trim();
-  if (address && /^https?:\/\//i.test(address)) {
-    const c = extractCoordsFromMapsUrl(address); if (c) return c;
-  }
-  if (Array.isArray(links)) {
-    for (const link of links) {
-      const c = extractCoordsFromMapsUrl(link?.url || ''); if (c) return c;
-    }
-  }
-  return null;
-}
-
-// Async resolver with fast cache checks + prioritised fallback.
-// `region` = { coords, text } describing the trip destination, used to keep a
-// title-only lookup inside the destination.
-export async function resolveDestinationAsync(plan, origin, region = {}) {
-  // 1. Instant: text address or embedded coords
-  const sync = resolveDestinationSync(plan);
-  if (sync) return sync;
-
-  // 2. Instant: check both caches before any network call
-  const urls = [];
-  if (plan.address && /^https?:\/\//i.test(plan.address)) urls.push(plan.address);
-  if (Array.isArray(plan.links)) plan.links.forEach(l => l?.url && urls.push(l.url));
-
-  for (const url of urls) {
-    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) {
-      const hit = localStorage.getItem(SHORT_CACHE + url);
-      if (hit) return hit;
-    }
-  }
-  const placeHit = localStorage.getItem(PLACE_CACHE + plan.id);
-  if (placeHit) return placeHit;
-
-  // 3. Nothing cached — resolve by PRIORITY, not by whoever answers first.
-  //
-  //    These two sources are not equally trustworthy: the saved link points
-  //    at the exact place the user chose, while a Places lookup by title is
-  //    only a guess. Racing them (Promise.any) let the guess win, because the
-  //    link goes through a slow CORS proxy while Places is one fast call to
-  //    Google — so a generic title could silently resolve to a same-named
-  //    place on another continent, producing absurd travel times.
-  //    The link is decisive; the title is only consulted if it yields nothing.
-  //    All links are expanded concurrently so several don't serialise.
-  if (urls.length > 0) {
-    const fromLink = await firstSuccess(urls.map(url => () => expandShortUrl(url)));
-    if (fromLink) return fromLink;
-  }
-  return await findPlaceCoords(plan.id, plan.title, {
-    originHint: origin,
-    regionCoords: region.coords || null,
-    regionText: region.text || '',
-  });
-}
-
 // Coordinates of the trip destination ("בודפשט, הונגריה" → "47.49,19.04"),
 // geocoded once and cached in localStorage. Used to scope title lookups.
 export async function resolveRegionCoords(destinationText) {
@@ -444,22 +427,6 @@ async function geocodeAddress(address) {
     localStorage.setItem(cacheKey, coords);
     return coords;
   } catch { return null; }
-}
-
-// Resolve a plan to numeric {lat,lng} for proximity clustering.
-// Uses every cheap source first (embedded coords, cached expansions/places),
-// and only geocodes a plain address as a last resort.
-export async function resolvePlanCoords(plan, origin, region = {}) {
-  const direct = parseLatLng(resolveDestinationSync(plan));
-  if (direct) return direct;
-  const resolved = await resolveDestinationAsync(plan, origin, region);
-  const c = parseLatLng(resolved);
-  if (c) return c;
-  if (resolved) {
-    const geo = parseLatLng(await geocodeAddress(resolved));
-    if (geo) return geo;
-  }
-  return null;
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────

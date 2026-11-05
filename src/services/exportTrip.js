@@ -20,7 +20,8 @@ export async function loadTripExportData(tripId, trip) {
 
   const daysSnap = await readAll(collection(db, 'trips', tripId, 'days'), mark);
   const days = daysSnap.docs
-    .map(d => ({ id: d.id, ...d.data(), activities: dayActivities(d.data().activities) }))
+    // Free blocks (8.87.0) are not in the export yet.
+    .map(d => ({ id: d.id, ...d.data(), activities: dayActivities(d.data().activities).filter(a => !a.block) }))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const checklistSnap = await readAll(collection(db, 'trips', tripId, 'checklist'), mark);

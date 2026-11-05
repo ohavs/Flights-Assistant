@@ -3881,6 +3881,21 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-leg-note { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .dp-leg-from { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
 .dp-leg-chev { flex-shrink: 0; opacity: 0.7; }
+.dp-leg-guess { flex-shrink: 0; color: var(--c-orange); }
+/* A place found by its name only (8.86.0): what was found, and the fix */
+.dp-guess {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: start;
+  padding: 10px 12px; border-radius: 14px;
+  background: color-mix(in srgb, var(--c-orange) 10%, var(--card-bg-solid));
+  font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--text);
+}
+.dp-guess-icon { color: var(--c-orange); margin-top: 2px; }
+.dp-guess-text bdi { font-weight: 800; }
+.dp-guess-actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.dp-guess-actions a, .dp-guess-actions button {
+  padding: 0; border: none; background: none; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800; color: var(--accent); text-decoration: underline;
+}
 
 /* A stop */
 .dp-card {
@@ -3985,9 +4000,30 @@ button.dp-leg:active { background: var(--ink-4); }
   padding: 12px 12px 12px 14px; border-radius: 18px;
   background: var(--text); color: var(--card-bg-solid);
   box-shadow: var(--shadow-lg);
-  transform: translateX(-50%);
+  overflow: hidden; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  /* --dx: dragged sideways (8.85.0); a swipe past a third sends it off */
+  transform: translateX(calc(-50% + var(--dx, 0px)));
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) ease;
   animation: toast-in var(--dur-slow) var(--ease-out);
 }
+.toast.gone { transition: transform 220ms ease-in, opacity 220ms ease-in; pointer-events: none; }
+/* The time left: a bar along the bottom that empties (8.85.0) */
+.toast-left {
+  position: absolute; inset-inline: 0; bottom: 0; height: 3px;
+  background: color-mix(in srgb, var(--card-bg-solid) 14%, transparent);
+}
+.toast-left i {
+  display: block; height: 100%; background: var(--brand);
+  transform-origin: right; /* RTL: empties toward the end */
+  animation: toast-left var(--toast-ms, 5500ms) linear forwards;
+}
+/* It tells the time, so it runs with reduced motion too */
+@media (prefers-reduced-motion: reduce) {
+  .toast-left i { animation-duration: var(--toast-ms, 5500ms) !important; }
+}
+[dir="ltr"] .toast-left i { transform-origin: left; }
+.toast.held .toast-left i, .toast.gone .toast-left i { animation-play-state: paused; }
+@keyframes toast-left { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes toast-in {
   from { opacity: 0; transform: translate(-50%, 14px) scale(0.97); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
@@ -4361,3 +4397,85 @@ button.dp-leg:active { background: var(--ink-4); }
   color: var(--accent); font-family: var(--font-hebrew); font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .code-forgot:disabled { opacity: 0.55; cursor: default; }
+
+/* ── Free blocks in the schedule (8.87.0, DayBlock.jsx) ── */
+.dp-block {
+  display: flex; align-items: flex-start; gap: 4px; min-width: 0;
+  padding: 10px 12px; padding-inline-start: 4px;
+  border-radius: 16px; border: var(--card-border);
+  background: var(--card-bg); box-shadow: var(--shadow-sm);
+}
+.dp-block.kind-text { background: color-mix(in srgb, var(--butter) 55%, var(--card-bg-solid)); }
+.dp-block-grip {
+  flex-shrink: 0; width: 28px; height: 32px; display: grid; place-items: center;
+  border: none; border-radius: 8px; background: none; color: var(--text-muted);
+  cursor: grab; touch-action: none;
+}
+.dp-block-grip:active { cursor: grabbing; background: var(--ink-6); }
+.dp-block-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.dp-block-body:first-child { padding-inline-start: 8px; }
+.dp-block-line { flex-direction: row; align-items: flex-start; gap: 8px; }
+.dp-block-text {
+  flex: 1; min-width: 0; margin: 0; padding-top: 5px;
+  white-space: pre-wrap; word-break: break-word;
+  font-size: 14.5px; line-height: 1.5; font-weight: 600; color: var(--text);
+}
+.dp-block-empty { flex: 1; margin: 0; padding-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.dp-block-edit { width: 30px; height: 30px; min-width: 30px; flex-shrink: 0; margin-inline-start: auto; }
+.dp-block-head { display: flex; align-items: center; gap: 6px; }
+.dp-block-kind { flex-shrink: 0; color: var(--accent); }
+.dp-block-title { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 800; color: var(--text); }
+.dp-block-count { font-size: 12px; font-weight: 800; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.dp-check { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.dp-check-item {
+  width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 5px 2px;
+  border: none; background: none; text-align: start; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 14px; font-weight: 600; color: var(--text);
+}
+.dp-check-item:disabled { cursor: default; }
+.dp-check-box {
+  flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px;
+  display: grid; place-items: center; border-radius: 6px; border: 2px solid var(--ink-20);
+}
+.dp-check-item.done .dp-check-box, .dp-check-box.on { background: var(--brand); border-color: var(--brand); color: var(--brand-fg); }
+.dp-check-item.done .dp-check-text { color: var(--text-muted); }
+.dp-check.edit { gap: 6px; }
+.dp-check.edit li { display: flex; align-items: center; gap: 8px; }
+.dp-check.edit .form-control { flex: 1; min-width: 0; }
+.dp-block-link {
+  flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding-top: 5px;
+  color: var(--accent); font-size: 14.5px; font-weight: 800; text-decoration: none;
+}
+.dp-block-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-block-editor { gap: 8px; }
+.dp-block-editor textarea { resize: none; font-family: inherit; }
+.dp-block-actions { display: flex; align-items: center; gap: 10px; }
+.dp-block-actions .btn-primary { padding: 8px 18px; font-size: 13.5px; }
+.dp-block-del, .dp-block-more {
+  display: inline-flex; align-items: center; gap: 4px; padding: 6px 4px;
+  border: none; background: none; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800;
+}
+.dp-block-del { margin-inline-start: auto; color: var(--c-red); }
+.dp-block-more { align-self: flex-start; color: var(--accent); }
+.dp-row.shared .dp-block { opacity: 0.5; box-shadow: none; }
+/* Dragging: the block over the rest, a line where it lands, a day in the strip lit */
+.dp-row.dragging { position: relative; z-index: 20; }
+.dp-row.dragging .dp-block { box-shadow: var(--shadow-lg); scale: 1.02; }
+/* Over the strip: see-through, to see the days under it */
+.dp-row.dragging.over-strip .dp-block { opacity: 0.35; scale: 0.9; }
+.dp-row.drop-before, .dp-row.drop-after { position: relative; }
+.dp-row.drop-before::after, .dp-row.drop-after::after {
+  content: ''; position: absolute; inset-inline: 56px 0; height: 3px;
+  border-radius: 3px; background: var(--brand); pointer-events: none;
+}
+.dp-row.drop-before::after { top: -3px; }
+.dp-row.drop-after::after { bottom: -3px; }
+.dp-chip.drop-target { box-shadow: inset 0 0 0 3px var(--brand), var(--shadow-sm); transform: scale(1.06); }
+.dp-block-add { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding-top: 2px; }
+.dp-block-add button {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 12px;
+  border: 1.5px dashed var(--ink-15); border-radius: 999px; background: transparent; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800; color: var(--text-muted);
+}
+.dp-block-add button:active { background: var(--ink-4); }
