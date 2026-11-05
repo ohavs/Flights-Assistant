@@ -217,10 +217,10 @@ await dragClose('place details', async () => {
 });
 
 await page.locator('[role="tab"]', { hasText: 'לוח זמנים' }).click();
-await page.locator('button.fab', { hasText: 'יום חדש' }).click();
-await page.getByText('הוסף פעילות').first().waitFor();
+await page.getByRole('button', { name: 'הוספת יום' }).click();
+await page.locator('button.fab', { hasText: 'פעילות חדשה' }).waitFor();
 const openActivityForm = async () => {
-  await page.getByText('הוסף פעילות').first().click();
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
   await page.getByText('הוספת פעילות ליום').waitFor();
 };
 await check('activity form', openActivityForm, closeAll);

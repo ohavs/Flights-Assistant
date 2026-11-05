@@ -284,19 +284,19 @@ await step('daily plan: empty', async () => {
 });
 
 await step('daily plan: add a day', async () => {
-  await page.locator('button.fab', { hasText: 'יום חדש' }).click();
+  await page.getByRole('button', { name: 'הוספת יום' }).click();
   await page.waitForTimeout(400);
   if (await page.locator('.modal-content').count()) {
     await shot('day-form');
     await modal().getByRole('button', { name: /שמור|הוסף/ }).last().click();
   }
-  await page.getByText('הוסף פעילות').first().waitFor();
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).waitFor();
   await shot('days-one');
 });
 
 await step('daily plan: add activities', async () => {
   for (const what of ['ארוחת בוקר במלון', 'סיור ברובע היהודי']) {
-    await page.getByText('הוסף פעילות').first().click();
+    await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
     await modal().waitFor();
     if (what === 'ארוחת בוקר במלון') await shot('activity-form');
     await modal().getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill(what);

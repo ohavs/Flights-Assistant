@@ -134,7 +134,7 @@ await page.getByRole('tab', { name: /לוח זמנים/ }).click();
 
 await step('a strip of the trip\'s days', async () => {
   await page.locator('.dp-strip').waitFor();
-  if (await page.locator('.dp-chip').count() !== 3) throw new Error('not three days');
+  if (await page.locator('.dp-chip[role="tab"]').count() !== 3) throw new Error('not three days');
   await chip('יום 1').click();
   if (await chip('יום 1').getAttribute('aria-selected') !== 'true') throw new Error('not chosen');
 });
@@ -216,7 +216,7 @@ await step('the way from the stop before, and another start in a tap', async () 
 
 await step('adding an activity: search the list; a place replaces typing its name', async () => {
   await chip('יום 3').click();
-  await page.getByText('הוסף פעילות').click();
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
   await sheet().getByText('הוספת פעילות ליום').waitFor();
   await sheet().getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').waitFor();
   await shot('activity-form');
@@ -265,7 +265,7 @@ await step('my own plan: only mine, over the shared one dimmed, saved where only
   // The shared plan is still there, dimmed, with nothing to change on it.
   await page.locator('.dp-row.shared', { hasText: 'Da Enzo' }).waitFor();
   if (await page.locator('button[aria-label="פעולות: Da Enzo"]').count()) throw new Error('actions on the shared plan');
-  await page.getByRole('button', { name: 'הוסף לתכנון שלי' }).click();
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
   await sheet().getByText('רק את/ה רואה אותו').waitFor();
   await sheet().getByPlaceholder('למשל: נסיעה ברכבת, ארוחת צהריים, ביקור במוזיאון').fill('ריצת בוקר');
   await sheet().locator('.act-part', { hasText: 'בוקר' }).click();
@@ -314,7 +314,7 @@ await step('clearing a day keeps the day and its booking; undo brings the rest b
   await until(async () => same(await titlesOn('2026-11-10'), ['Da Enzo']), 'only the booked one left');
   await card('Da Enzo').waitFor();
   await card('טיסה לרומא').waitFor();
-  if (await page.locator('.dp-chip').count() !== 3) throw new Error('a day went');
+  if (await page.locator('.dp-chip[role="tab"]').count() !== 3) throw new Error('a day went');
   await shot('cleared');
   await page.locator('.toast').getByRole('button', { name: 'ביטול' }).click();
   await until(async () => same(await titlesOn('2026-11-10'), before), 'all back');
@@ -359,6 +359,37 @@ await step('an activity over several parts of the day: morning to evening', asyn
   }, 'saved as one label');
   await card('הקולוסיאום').getByText('בוקר–ערב').waitFor();
   await shot('parts');
+});
+
+// 8.83.0: the FAB adds an activity; a day is added from the grey chip at the
+// end of the strip, the day after the last, and its date can be changed.
+await step('a day after the last one, from the end of the strip; then another date', async () => {
+  if (await page.locator('button.fab', { hasText: 'יום חדש' }).count()) throw new Error('"new day" FAB still there');
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).waitFor();
+  const next = page.locator('.dp-chip.next');
+  if (await next.getAttribute('aria-label') !== 'הוספת יום: ו׳ 13.11') throw new Error(await next.getAttribute('aria-label'));
+  await shot('next-day');
+  await next.click();
+  await page.locator('.toast', { hasText: 'נוסף' }).waitFor();
+  const made = await until(async () => (await list('days')).find(d => d.fields.date?.stringValue === '2026-11-13'), 'the day added');
+  if (made.fields.title.stringValue !== 'יום 4') throw new Error(`title: ${made.fields.title.stringValue}`);
+  await until(async () => await chip('יום 4').getAttribute('aria-selected') === 'true', 'shown');
+  await until(async () => await next.getAttribute('aria-label') === 'הוספת יום: ש׳ 14.11', 'the next one after it');
+
+  await page.getByRole('button', { name: 'פעולות ליום' }).click();
+  await sheet().getByText('שינוי תאריך').click();
+  const dlg = page.locator('.picker-card');
+  await dlg.waitFor();
+  const cal = (n) => dlg.locator('.cal-day', { hasText: new RegExp(`^${n}$`) });
+  if (!(await cal(12).isDisabled())) throw new Error('a date another day has can be picked');
+  await cal(15).click();
+  await shot('day-date');
+  await dlg.getByRole('button', { name: 'בחירה' }).click();
+  await page.locator('.toast', { hasText: 'עבר ל־' }).waitFor();
+  await until(async () => (await list('days')).find(d => d.name.endsWith(made.name.split('/').pop()))?.fields.date?.stringValue === '2026-11-15', 'date saved');
+  // 13 and 14 are now a gap between the days.
+  await until(async () => await page.locator('.dp-chip.missing').count() === 2, 'the gap shows');
+  await until(async () => await next.getAttribute('aria-label') === 'הוספת יום: ב׳ 16.11', 'next after the new date');
 });
 
 await step('a booking: search the places; a linked place replaces its name and address', async () => {

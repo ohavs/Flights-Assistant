@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, setDoc, updateDoc, deleteDoc, collection, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, deleteField, collection, arrayUnion } from 'firebase/firestore';
 import {
   Calendar, CheckCircle2, MoreHorizontal, Pencil, Trash2, ArrowLeftRight, ArrowUp, ArrowDown,
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
@@ -26,8 +26,9 @@ import {
 } from '../lib/dayActivities';
 import {
   dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey,
-  missingDates, placeDays,
+  missingDates, placeDays, nextDate, orderFor,
 } from '../lib/dayPlan';
+import { DatePickerDialog } from './CustomDatePicker';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -225,6 +226,7 @@ function DayPlanner({
   const [dayMenu, setDayMenu] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const [renaming, setRenaming] = useState(null); // the title being typed
+  const [redating, setRedating] = useState(false);
   const [toast, setToast] = useState(null);
   const say = (t) => setToast({ id: ++toastSeq, ...t });
   const itemOf = (key) => items.find(it => it.key === key) || null;
@@ -279,6 +281,40 @@ function DayPlanner({
     restoreDays(db, tripId, [made]).catch(err => console.error('Restore day failed:', err));
     pick(made.id);
     say({ icon: <CalendarPlus size={18} />, title: `${made.title} (${shortDate(date)}) חזר`, text: 'מה שקבוע לתאריך הזה מופיע בו שוב.' });
+  };
+
+  // The day after the last one in the strip (8.83.0), added with its date
+  // (which can be changed after). With no date anywhere, the chip adds a
+  // day without one (handleAddDay).
+  const afterLast = nextDate(days, tripFlightDates.out, tripFlightDates.ret);
+  const addNextDay = () => {
+    if (!tripId || !afterLast) return;
+    const [made] = newDays([afterLast]);
+    restoreDays(db, tripId, [made]).catch(err => console.error('Add day failed:', err));
+    pick(made.id);
+    say({ icon: <CalendarPlus size={18} />, title: `${made.title} (${shortDate(afterLast)}) נוסף`, text: 'אפשר לשנות לו את התאריך בתפריט של היום.' });
+  };
+
+  // Another date for the chosen day: it moves to its place by date. A date
+  // another day has can't be picked (DatePickerDialog `taken`).
+  const changeDate = (date) => {
+    if (!day || !date || date === day.date) return;
+    const was = { date: day.date || null, order: day.order ?? 0 };
+    const dayId = day.id;
+    const ref = doc(db, 'trips', tripId, 'days', dayId);
+    updateDoc(ref, { date, order: orderFor(days, dayId, date) })
+      .catch(err => console.error('Change day date failed:', err));
+    say({
+      icon: <Calendar size={18} />,
+      title: `${day.title} עבר ל־${shortDate(date)}`,
+      action: {
+        label: 'ביטול',
+        run: () => {
+          updateDoc(ref, { date: was.date || deleteField(), order: was.order })
+            .catch(err => console.error('Undo day date failed:', err));
+        },
+      },
+    });
   };
 
   const saveTitle = () => {
@@ -619,6 +655,7 @@ function DayPlanner({
   const syncable = canEdit && tripFlightDates.out && tripFlightDates.ret &&
     !(tripFlightDates.plannerSync?.out === tripFlightDates.out && tripFlightDates.plannerSync?.ret === tripFlightDates.ret);
   const dayDate = day?.date ? localDay(day.date) : null;
+  const nextDay = afterLast ? localDay(afterLast) : null;
   const dayW = day?.date ? weatherByDate[day.date] : null;
   const actCount = planDay ? (planDay.activities || []).length : 0;
   const bookingCount = items.filter(it => it.booking && !it.shared).length;
@@ -643,7 +680,7 @@ function DayPlanner({
         </div>
       )}
 
-      {canEdit && !personalMode && <Fab label="יום חדש" onClick={handleAddDay} />}
+      {day && (canAdd || personalMode) && <Fab label="פעילות חדשה" onClick={() => setForm({ editing: null })} />}
 
       {!day ? (
         <EmptyState
@@ -660,6 +697,11 @@ function DayPlanner({
             <button onClick={handleInitDaysFromFlight} className="btn-primary">
               <Calendar size={16} />
               <span>ייצר ימים לפי תאריכי הטיסה</span>
+            </button>
+          ) : canEdit ? (
+            <button onClick={handleAddDay} className="btn-primary">
+              <CalendarPlus size={16} />
+              <span>הוספת יום</span>
             </button>
           ) : null}
         />
@@ -729,6 +771,20 @@ function DayPlanner({
               </button>
             );
           })}
+          {canEdit && !personalMode && (
+            <button
+              type="button"
+              aria-label={nextDay ? `הוספת יום: ${shortDate(afterLast)}` : 'הוספת יום'}
+              title="הוספת יום אחרי האחרון"
+              className="dp-chip next"
+              onClick={afterLast ? addNextDay : handleAddDay}
+            >
+              <span className="dp-chip-top">{nextDay ? DOW[nextDay.getDay()] : 'יום'}</span>
+              <span className="dp-chip-num">{nextDay ? nextDay.getDate() : days.length + 1}</span>
+              <span className="dp-chip-bottom">{nextDay ? shortMonth(nextDay) : ' '}</span>
+              <span className="dp-chip-add" aria-hidden="true"><Plus size={12} strokeWidth={3} /></span>
+            </button>
+          )}
         </div>
 
         {/* The chosen day */}
@@ -790,12 +846,6 @@ function DayPlanner({
             <p className="dp-empty">{personalMode ? 'עוד לא תכננת כלום ליום הזה.' : 'אין עדיין פעילויות ליום זה.'}</p>
           )}
 
-          {(canAdd || personalMode) && (
-            <button type="button" className={`dp-add${personalMode ? ' mine' : ''}`} onClick={() => setForm({ editing: null })}>
-              <Plus size={16} />
-              <span>{personalMode ? 'הוסף לתכנון שלי' : 'הוסף פעילות'}</span>
-            </button>
-          )}
         </section>
       </>)}
 
@@ -899,6 +949,13 @@ function DayPlanner({
                 <Pencil size={18} className="list-row-icon" />
                 <span className="list-row-label">שינוי שם</span>
               </button>
+              <button type="button" className="list-row" onClick={() => { close(); setRedating(true); }}>
+                <Calendar size={18} className="list-row-icon" />
+                <span className="list-row-label">
+                  שינוי תאריך
+                  <span className="list-row-hint">{day.date ? shortDate(day.date) : 'ליום אין תאריך'}</span>
+                </span>
+              </button>
               {days.length > 1 && (
                 <button type="button" className="list-row" onClick={() => { close(); setSwapOpen(true); }}>
                   <ArrowLeftRight size={18} className="list-row-icon" />
@@ -943,6 +1000,16 @@ function DayPlanner({
             </form>
           )}
         </Sheet>
+      )}
+
+      {redating && day && (
+        <DatePickerDialog
+          title={`התאריך של ${day.title}`}
+          value={day.date || afterLast || undefined}
+          taken={new Set(days.filter(d => d.id !== day.id && d.date).map(d => String(d.date).slice(0, 10)))}
+          onPick={changeDate}
+          onClose={() => setRedating(false)}
+        />
       )}
 
       {swapOpen && day && (

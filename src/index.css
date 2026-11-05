@@ -1594,6 +1594,8 @@ textarea.form-control {
 .cal-day.in-range { background: var(--p-8); color: var(--accent); font-weight: 800; border-radius: 8px; }
 /* Before the first day: outside it, grey (a tap there moves the first day). */
 .cal-day.before-range { color: var(--text-muted); opacity: 0.45; font-weight: 500; }
+/* A date that can't be picked (8.83.0: another day of the trip has it) */
+.cal-day.is-taken { color: var(--text-muted); opacity: 0.35; font-weight: 500; text-decoration: line-through; cursor: default; background: none; }
 .picker-readout-hint { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
 .picker-readout-time.range { font-size: 22px; direction: rtl; }
 /* A time range: two pairs of wheels, start on the right. Each side says
@@ -3793,6 +3795,13 @@ button.travel-from:active { background: var(--p-8); }
   display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px;
   border-radius: 50%; background: var(--brand); color: var(--brand-fg);
 }
+/* The day after the last one (8.83.0): grey, a tap adds it */
+.dp-chip.next {
+  background: var(--ink-6); box-shadow: none; border: 2px solid transparent;
+  color: var(--text-muted);
+}
+.dp-chip.next .dp-chip-num { opacity: 0.6; }
+.dp-chip.next .dp-chip-add { background: var(--text-muted); color: var(--card-bg-solid); }
 
 /* The chosen day */
 .dp-day { display: flex; flex-direction: column; gap: 12px; }
@@ -3943,13 +3952,6 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-stub-code { margin-inline-start: auto; letter-spacing: 0.06em; font-weight: 900; font-variant-numeric: tabular-nums; }
 
 .dp-empty { margin: 0; padding: 22px 0 12px; text-align: center; font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
-.dp-add {
-  width: 100%; min-height: 50px;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  border: 2px dashed var(--ink-12); border-radius: 18px; background: transparent;
-  color: var(--text); font-family: var(--font-hebrew); font-size: 14.5px; font-weight: 800; cursor: pointer;
-}
-.dp-add:active { background: var(--ink-4); }
 
 /* Its sheets */
 .dp-sheet-note { margin: 12px 2px 0; font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--text-muted); }
@@ -4070,7 +4072,6 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-row.shared .dp-card { opacity: 0.5; box-shadow: none; background: var(--surface-2); }
 .dp-row.shared .dp-card::before { opacity: 0.6; }
 .dp-row.shared .dp-time { opacity: 0.5; }
-.dp-add.mine { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
 .act-form-private {
   margin: 0; padding: 8px 12px; border-radius: 12px;
   background: var(--p-8); color: var(--accent); font-size: 12.5px; font-weight: 700;
