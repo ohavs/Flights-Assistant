@@ -4,7 +4,7 @@ import {
   Calendar, CheckCircle2, MoreHorizontal, Pencil, Trash2, ArrowLeftRight, ArrowUp, ArrowDown,
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
   Navigation, Phone, ExternalLink, Copy, Users, UserRound, Sunrise, Sun, Sunset, Moon, Clock,
-  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus,
+  ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus, CircleDashed,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
@@ -464,6 +464,20 @@ function DayPlanner({
     });
   };
 
+  // Optional (8.84.0): if there's time. Off takes the field away.
+  const setOptional = (act, on) => {
+    const next = patched(act, { optional: on ? true : undefined });
+    updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, next, onlyOwn)
+      .catch(err => console.error('Optional failed:', err));
+  };
+  // The activity's own note: on this day only, not on the place.
+  const setNote = (act, text) => {
+    if (text === (lastWrite(act).description || '')) return;
+    const next = patched(act, { description: text });
+    updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, next, onlyOwn)
+      .catch(err => console.error('Note failed:', err));
+  };
+
   const setTravelFrom = (act, key) => {
     updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, { ...act, travelFrom: key || null }, onlyOwn)
       .catch(err => console.error('Travel origin failed:', err));
@@ -600,7 +614,7 @@ function DayPlanner({
           <span className="dp-rail" aria-hidden="true">
             <span className="dp-time">{time}</span>
           </span>
-          <div className={`dp-card${visited ? ' visited' : ''}${it.booking ? ' booked' : ''}`} style={{ '--c': color }}>
+          <div className={`dp-card${visited ? ' visited' : ''}${it.booking ? ' booked' : ''}${act.optional ? ' optional' : ''}`} style={{ '--c': color }}>
             <button type="button" className="dp-card-main" onClick={() => setDetailKey(it.key)}>
               <CategoryDisc color={color} size={40} radius={13} muted={visited}>
                 {visited ? <Check size={18} strokeWidth={3} /> : getCategoryIcon(category, 18)}
@@ -612,8 +626,9 @@ function DayPlanner({
                 </span>
                 {sub && <span className="dp-card-sub">{sub}</span>}
                 {act.description && <span className="dp-card-note">{act.description}</span>}
-                {(visited || toBook || elsewhere || it.slot.custom || it.slot.parts.length > 1) && (
+                {(visited || toBook || elsewhere || act.optional || it.slot.custom || it.slot.parts.length > 1) && (
                   <span className="dp-card-tags">
+                    {act.optional && <Pill size="sm" tone="muted" icon={<CircleDashed size={11} />}>אופציונלי</Pill>}
                     {(it.slot.custom || it.slot.parts.length > 1) && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
                     {visited && <Pill size="sm" tone="muted">ביקרנו</Pill>}
                     {toBook && <Pill size="sm" tone="red" icon={<CalendarCheck size={11} />}>להזמין</Pill>}
@@ -1137,6 +1152,7 @@ function DayPlanner({
                 <h3 className="dp-detail-title">{title}</h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   {it.slot.label && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
+                  {act?.optional && <Pill size="sm" tone="muted" icon={<CircleDashed size={11} />}>אופציונלי</Pill>}
                   {category && <Pill size="sm" style={{ background: `${getCategoryColor(category)}1F` }}>{category}</Pill>}
                   {t && <Pill size="sm" style={{ background: `${t.color}1F` }}>{t.label}</Pill>}
                   {plan?.priority === 'must' && <Pill size="sm" tone="butter" icon={<Star size={11} className="star-must" />}>חובה</Pill>}
@@ -1151,7 +1167,21 @@ function DayPlanner({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {b && <BookingFacts b={b} />}
 
-              {act?.description && <p className="dp-detail-text">{act.description}</p>}
+              {act && canChange(it) ? (
+                <DayNote key={act.id} value={act.description || ''} place={!!plan} onSave={(text) => setNote(act, text)} />
+              ) : act?.description && <p className="dp-detail-text">{act.description}</p>}
+              {act && canChange(it) && (
+                <div className="list-group">
+                  <button type="button" role="switch" aria-checked={!!act.optional} className="list-row" onClick={() => setOptional(act, !act.optional)}>
+                    <CircleDashed size={18} className="list-row-icon" />
+                    <span className="list-row-label">
+                      אופציונלית
+                      <span className="list-row-hint">אם יהיה זמן. מסומנת בכרטיס</span>
+                    </span>
+                    <span className={`switch${act.optional ? ' on' : ''}`} aria-hidden="true"><i /></span>
+                  </button>
+                </div>
+              )}
               {!act && b?.notes && <p className="dp-detail-text">{b.notes}</p>}
               {plan?.description && plan.description !== act?.description && (
                 <p className="dp-detail-text muted">{plan.description}</p>
@@ -1176,7 +1206,7 @@ function DayPlanner({
                 </a>
               )}
 
-              {act && !act.description && !address && !plan && !b && (
+              {act && !canChange(it) && !act.description && !address && !plan && !b && (
                 <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>
                   אין עוד פרטים לפעילות הזו.{canChange(it) ? ' אפשר להוסיף שעה, כתובת והערות בעריכה.' : ''}
                 </p>
@@ -1202,6 +1232,50 @@ function DayPlanner({
       })()}
 
       {toast && <Toast {...toast} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+// A change to an activity from its details. Two in a row (the note saved
+// as the switch is tapped) come before the day shows the first, so each
+// builds on what this phone last wrote, not on the copy from before it.
+const wrote = new Map(); // activity id -> { next, at }
+const lastWrite = (act) => {
+  const w = wrote.get(act.id);
+  return w && w.at > (act.updatedAt || 0) ? w.next : act;
+};
+// `undefined` in `patch` takes the field away.
+function patched(act, patch) {
+  const next = { ...lastWrite(act), ...patch };
+  Object.keys(patch).forEach(k => { if (patch[k] === undefined) delete next[k]; });
+  wrote.set(act.id, { next, at: Date.now() });
+  return next;
+}
+
+// The activity's note, typed right in its details: saved on this day's
+// activity (`description`), never on the place. Saved when the field is
+// left, with the button, or when the sheet closes (drag, back).
+function DayNote({ value, place, onSave }) {
+  const [text, setText] = useState(value);
+  const save = () => onSave(text.trim());
+  const last = useRef({ text, onSave });
+  useEffect(() => { last.current = { text, onSave }; });
+  useEffect(() => () => last.current.onSave(last.current.text.trim()), []);
+  return (
+    <div className="dp-detail-own">
+      <label className="dp-detail-own-label" htmlFor="dp-day-note">{place ? 'הערה ליום הזה (רק כאן, לא במקום ברשימה)' : 'הערה'}</label>
+      <textarea
+        id="dp-day-note"
+        className="form-control"
+        rows="2"
+        placeholder="למשל: להגיע לפני 10, לקחת כרטיסים, עם מי נפגשים…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+      />
+      {text.trim() !== value && (
+        <button type="button" className="btn-secondary dp-detail-own-save" onMouseDown={(e) => e.preventDefault()} onClick={save}>שמירת ההערה</button>
+      )}
     </div>
   );
 }

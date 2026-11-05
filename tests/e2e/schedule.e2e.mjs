@@ -361,6 +361,40 @@ await step('an activity over several parts of the day: morning to evening', asyn
   await shot('parts');
 });
 
+// 8.84.0: tapping an activity gives a note for this day only (not on the
+// place) and "optional"; the card has no colour bar.
+await step('an activity: a note for this day only, and optional', async () => {
+  const colos = () => (async () => {
+    const day = (await list('days')).find(d => d.fields.date?.stringValue === '2026-11-11');
+    // The copy shown: the newest, the later one on a tie (dayOrder.js).
+    return (day?.fields.activities?.arrayValue.values || []).map(v => v.mapValue.fields)
+      .filter(f => f.title.stringValue === 'הקולוסיאום')
+      .reduce((best, f) => (!best || Number(f.updatedAt?.integerValue || 0) >= Number(best.updatedAt?.integerValue || 0) ? f : best), null);
+  })();
+  const bar = await card('הקולוסיאום').evaluate(el => getComputedStyle(el, '::before').content);
+  if (bar !== 'none' && bar !== 'normal') throw new Error(`a bar on the card: ${bar}`);
+  await card('הקולוסיאום').locator('.dp-card-main').click();
+  const note = sheet().getByLabel('הערה ליום הזה (רק כאן, לא במקום ברשימה)');
+  await note.fill('להגיע לפני 10');
+  await sheet().getByRole('switch', { name: /אופציונלית/ }).click();
+  await until(async () => (await colos())?.optional?.booleanValue === true, 'optional saved');
+  await until(async () => (await colos())?.description?.stringValue === 'להגיע לפני 10', 'note saved');
+  await shot('activity-own');
+  await sheet().getByRole('button', { name: 'סגור' }).first().click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  await card('הקולוסיאום').getByText('להגיע לפני 10').waitFor();
+  await card('הקולוסיאום').getByText('אופציונלי', { exact: true }).waitFor();
+  if (!(await card('הקולוסיאום').evaluate(el => el.classList.contains('optional')))) throw new Error('not dashed');
+  const p1 = (await list('planning')).find(d => d.name.endsWith('/p1'));
+  if (p1.fields.description?.stringValue === 'להגיע לפני 10') throw new Error('the note went on the place');
+  // Off again: the field goes.
+  await card('הקולוסיאום').locator('.dp-card-main').click();
+  await sheet().getByRole('switch', { name: /אופציונלית/ }).click();
+  await until(async () => !(await colos())?.optional, 'optional off');
+  await sheet().getByRole('button', { name: 'סגור' }).first().click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+});
+
 // 8.83.0: the FAB adds an activity; a day is added from the grey chip at the
 // end of the strip, the day after the last, and its date can be changed.
 await step('a day after the last one, from the end of the strip; then another date', async () => {
