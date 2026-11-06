@@ -14,7 +14,9 @@ import { Pill } from '../ui/kit';
    tap picks one and closes. `hintOf`, `metaOf` and `badgeOf` add a line
    under the name, something at the row's end (travel times) and a pill.
    `colorOf`/`iconOf` give a category its colour and icon where the caller
-   knows them.                                                          */
+   knows them. `metaFrom`: where the times may be counted from (8.91.0),
+   [{ key, title }], the first the default; a tap on one changes them all,
+   and `metaOf(place, from)` is asked again.                            */
 export default function PlacePicker({
   places,
   value,
@@ -25,11 +27,14 @@ export default function PlacePicker({
   iconOf,
   hintOf,
   metaOf,
+  metaFrom = null,
   badgeOf,
   onPick,
   onClose,
 }) {
   const [q, setQ] = useState('');
+  const [fromKey, setFromKey] = useState(metaFrom?.[0]?.key ?? null);
+  const from = metaFrom?.find(o => o.key === fromKey) || metaFrom?.[0] || null;
   const [picked, setPicked] = useState(() => new Set(multiple ? (value || []) : (value ? [value] : [])));
 
   const groups = useMemo(() => {
@@ -84,6 +89,22 @@ export default function PlacePicker({
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
+          {metaFrom && (
+            <div className="place-pick-from" role="group" aria-label="זמני הגעה מ־">
+              <span className="place-pick-from-label">זמנים מ־</span>
+              {metaFrom.map(o => (
+                <button
+                  key={o.key}
+                  type="button"
+                  className="chip"
+                  aria-pressed={o.key === from?.key}
+                  onClick={() => setFromKey(o.key)}
+                >
+                  {o.title}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     >
@@ -124,7 +145,7 @@ export default function PlacePicker({
                           {hint && <span className="list-row-hint">{hint}</span>}
                         </span>
                         {badge && <Pill size="sm" tone={badge.tone}>{badge.text}</Pill>}
-                        {metaOf && <span className="place-pick-meta">{metaOf(p)}</span>}
+                        {metaOf && <span className="place-pick-meta">{metaOf(p, from)}</span>}
                         {multiple
                           ? <span className={`place-pick-tick${on ? ' on' : ''}`} aria-hidden="true">{on && <Check size={14} strokeWidth={3} />}</span>
                           : on && <Check size={16} aria-hidden="true" />}

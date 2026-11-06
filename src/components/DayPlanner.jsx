@@ -31,7 +31,7 @@ import {
 import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
 import { DatePickerDialog } from './CustomDatePicker';
-import { guessedLocation, savedLocation, wayOf } from '../lib/placeLocation';
+import { guessedLocation, savedLocation, wayOf, walkEstimate, estimateLabel } from '../lib/placeLocation';
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -603,16 +603,42 @@ function DayPlanner({
       .catch(err => console.error('Travel origin failed:', err));
   };
 
-  // Travel times from the hotel, shown when choosing places to add.
-  const metaOf = (p) => {
+  // Travel times shown when choosing places to add: from the hotel (each
+  // place's own starting point), or from one of the day's places (8.91.0).
+  // From a place it is the time measured and saved, else a walk estimated
+  // on the phone from the two locations: at once, offline, no calls.
+  const pickFrom = useMemo(() => {
+    const out = [{ key: '', title: hotelStop.title }];
+    const seen = new Set();
+    items.forEach(it => {
+      const s = stopOf(it);
+      if (!s?.plan || seen.has(s.plan.id) || !savedLocation(s.plan)) return;
+      seen.add(s.plan.id);
+      out.push(s);
+    });
+    return out.length > 1 ? out : null;
+  }, [items, planById, hotelStop]); // eslint-disable-line react-hooks/exhaustive-deps
+  const timesOf = (c) => (
+    <span className="dp-leg-times">
+      {c.walk && <span className="dp-leg-walk"><Footprints size={12} aria-hidden="true" />{c.walk.duration}</span>}
+      {c.transit && <span className="dp-leg-transit"><Bus size={12} aria-hidden="true" />{c.transit.duration}</span>}
+    </span>
+  );
+  const metaOf = (p, from = null) => {
+    if (from?.plan) {
+      if (from.plan.id === p.id) return <span className="dp-leg-note">כאן</span>;
+      const c = distanceCache[`${p.id}_${from.key}`];
+      if (c?.walk || c?.transit) return timesOf(c);
+      const e = walkEstimate(savedLocation(from.plan), savedLocation(p));
+      if (!e) return null;
+      return (
+        <span className="dp-leg-times" title="הערכה לפי המרחק בקו אוויר">
+          <span className="dp-leg-walk est"><Footprints size={12} aria-hidden="true" />{estimateLabel(e.seconds)}</span>
+        </span>
+      );
+    }
     const c = distanceCache[`${p.id}_${p.distanceOriginId || 'hotel'}`];
-    if (!c?.walk && !c?.transit) return null;
-    return (
-      <span className="dp-leg-times">
-        {c.walk && <span className="dp-leg-walk"><Footprints size={12} aria-hidden="true" />{c.walk.duration}</span>}
-        {c.transit && <span className="dp-leg-transit"><Bus size={12} aria-hidden="true" />{c.transit.duration}</span>}
-      </span>
-    );
+    return c?.walk || c?.transit ? timesOf(c) : null;
   };
   // Which days each place is already on, for the place picker.
   const usedOn = useMemo(() => {
@@ -1056,6 +1082,7 @@ function DayPlanner({
           getCategoryColor={getCategoryColor}
           getCategoryIcon={getCategoryIcon}
           metaOf={metaOf}
+          metaFrom={pickFrom}
           onAddCategory={onAddCategory}
           onClose={() => setForm(null)}
         />

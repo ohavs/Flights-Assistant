@@ -124,3 +124,20 @@ test('a point reads the same however it was written; a leg has one id per two en
   assert.notEqual(legDocId('1,2', 'Some St'), legDocId('Some St', '1,2'));
   assert.match(legDocId('a', 'b'), /^l[0-9a-z]+$/);
 });
+
+test('a walk between two places is estimated from the line between them', async () => {
+  const { walkEstimate, estimateLabel, WALK_DETOUR } = await import('../src/lib/placeLocation.js');
+  // Budapest: Buda Castle to Matthias Church, about 700 m apart.
+  const castle = { lat: 47.4962, lng: 19.0396 };
+  const church = { lat: 47.5020, lng: 19.0343 };
+  const e = walkEstimate(castle, church);
+  assert.ok(e.meters > 700 * WALK_DETOUR && e.meters < 800 * WALK_DETOUR);
+  assert.equal(Math.round(e.seconds / 60), Math.round(e.meters / (5000 / 60)));
+  assert.deepEqual(walkEstimate(church, castle), e);
+  assert.equal(walkEstimate(castle, null), null);
+  assert.equal(walkEstimate(castle, { lat: NaN, lng: 1 }), null);
+  assert.equal(walkEstimate(castle, castle).seconds, 0);
+  assert.equal(estimateLabel(0), "~1 דק'");
+  assert.equal(estimateLabel(12 * 60 + 20), "~12 דק'");
+  assert.equal(estimateLabel(65 * 60), "~1 שע' 5 דק'");
+});

@@ -149,3 +149,24 @@ export function travelShowable(value, stamp, originFp = null) {
 // The document id of a leg between two positions ("lat,lng" or an
 // address), shared by everyone in the trip: trips/{id}/legs/{legDocId}.
 export const legDocId = (from, to) => `l${hashText(`${from}>${to}`)}${hashText(`${to}<${from}`)}`;
+
+// A walk between two located places estimated from the straight line
+// between them (8.91.0): no route, so it is worked out on the phone, at
+// once and offline. Streets add about a third to the line; on foot about
+// 5 km/h. → { seconds, meters } | null.
+export const WALK_DETOUR = 1.3;
+export const WALK_MPS = 5000 / 3600;
+export function walkEstimate(a, b) {
+  if (!finite(a) || !finite(b)) return null;
+  const rad = (d) => (d * Math.PI) / 180;
+  const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2
+    + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  const meters = 2 * 6371000 * Math.asin(Math.sqrt(h)) * WALK_DETOUR;
+  return { seconds: Math.round(meters / WALK_MPS), meters: Math.round(meters) };
+}
+
+// "~12 דק'", "~1 שע' 5 דק'": an estimate, never under a minute.
+export function estimateLabel(seconds) {
+  const m = Math.max(1, Math.round(seconds / 60));
+  return m < 60 ? `~${m} דק'` : `~${Math.floor(m / 60)} שע' ${m % 60} דק'`;
+}

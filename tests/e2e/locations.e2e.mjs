@@ -293,6 +293,36 @@ await step('a steady state asks nothing of the network', async () => {
   }
 });
 
+await step('adding to a day: times from one of its places, at once, with no calls (8.91.0)', async () => {
+  const sheet = () => page.locator('.modal-overlay').last();
+  await page.getByRole('tab', { name: /לוח זמנים/ }).click();
+  await page.locator('.dp-chip').first().click();
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
+  await sheet().getByRole('button', { name: 'חיפוש מקום ברשימה' }).click();
+  const from = sheet().locator('.place-pick-from');
+  await from.locator('.chip[aria-pressed="true"]', { hasText: 'המלון' }).waitFor();
+  const row = (t) => sheet().getByRole('checkbox', { name: new RegExp(t) });
+  // From the hotel: the times measured, as before.
+  await row('שיתוף מאייפון').locator('.dp-leg-transit').waitFor();
+  calls.routes.length = 0;
+  calls.places.length = 0;
+  await from.locator('.chip', { hasText: 'מקום עם קישור' }).click();
+  await row('מקום עם קישור').getByText('כאן').waitFor();
+  // q4 from q2: an estimate by the line between them, walking only.
+  const q2 = (await getPlace('q2')).coords;
+  const q4 = (await getPlace('q4')).coords;
+  const mins = Math.max(1, Math.round(meters(q2, q4) * 1.3 / (5000 / 3600) / 60));
+  const est = row('שיתוף מאייפון').locator('.dp-leg-walk.est');
+  await est.waitFor();
+  if (!(await est.innerText()).includes(`~${mins} דק'`)) throw new Error(`estimate: ${await est.innerText()}, expected ~${mins}`);
+  if (await row('שיתוף מאייפון').locator('.dp-leg-transit').count()) throw new Error('a transit time estimated');
+  await shot('picker-from-place');
+  await from.locator('.chip', { hasText: 'המלון' }).click();
+  await row('שיתוף מאייפון').locator('.dp-leg-transit').waitFor();
+  await page.waitForTimeout(500);
+  if (calls.routes.length || calls.places.length) throw new Error(`asked: ${calls.routes.length} routes, ${calls.places.length} searches`);
+});
+
 if (errors.length) { failed++; console.log(`  FAIL  page errors: ${errors.slice(0, 3).join(' | ')}`); }
 await browser.close();
 console.log(failed ? `${failed} failed` : `  screenshots: ${out} (${n})`);
