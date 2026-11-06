@@ -22,7 +22,7 @@ const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
    in a part on its own).                                               */
 export default function ActivitySheet({
   tripId, day, editing, plans, categories, usedOn, currentUid, personal = false, onlyOwn = false,
-  getCategoryColor, getCategoryIcon, metaOf, onAddCategory, onClose,
+  getCategoryColor, getCategoryIcon, metaOf, metaFrom, onAddCategory, onClose,
 }) {
   const planById = useMemo(() => new Map(plans.map(p => [p.id, p])), [plans]);
   const start = useMemo(() => {
@@ -279,6 +279,7 @@ export default function ActivitySheet({
             colorOf={getCategoryColor}
             iconOf={getCategoryIcon}
             metaOf={metaOf}
+            metaFrom={metaFrom}
             hintOf={(p) => {
               const on = usedOn.get(p.id);
               if (on?.length) return `כבר בלוז: ${on.join(', ')}`;
