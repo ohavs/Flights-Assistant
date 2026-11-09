@@ -12,7 +12,8 @@
 import { departureAt, arrivalAt, parseClock } from './flightAlerts.js';
 import { tripRange, dayFor } from './morningAlerts.js';
 import { dayActivities } from './dayOrder.js';
-import { dayItems, personalItems, fixedTitle } from './dayPlan.js';
+import { dayItems, personalItems, fixedTitle, isBlock } from './dayPlan.js';
+import { emptyBlock, linkName, checkCount } from './blocks.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
@@ -109,6 +110,19 @@ const ownName = (title) => (/^יום \d+$/.test(String(title || '').trim()) ? ''
 // it), to link an expense to and to tick off as visited.
 function rowOf(it, plans) {
   const time = it.slot.label || '';
+  // A free block (8.92.0), in its place in the day, in one line: a note's
+  // first line, a list's name and count, a link's name. `note`: not a thing
+  // to do, so nothing to tick.
+  if (it.kind === 'block') {
+    const b = it.act;
+    if (emptyBlock(b)) return { time: '', title: '' };
+    if (b.block === 'check') {
+      const { done, all } = checkCount(b);
+      return { time: '', title: `☑️ ${String(b.text || '').trim() || 'רשימה'}${all ? ` · ${done}/${all}` : ''}`, note: true };
+    }
+    if (b.block === 'link') return { time: '', title: `🔗 ${linkName(b)}`, note: true };
+    return { time: '', title: `📝 ${String(b.text || '').trim().split('\n')[0].trim()}`, note: true };
+  }
   if (it.kind === 'activity') {
     const a = it.act;
     const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
@@ -131,15 +145,19 @@ function daysOf(trip, days, range, now, plans, bookings, personal) {
   const out = {};
   for (const iso of range.filter(d => d >= today).slice(0, WIDGET_DAYS)) {
     const day = dayFor(days, iso, range);
-    const shared = dayActivities(day?.activities).filter(a => a.title);
+    const shared = dayActivities(day?.activities).filter(a => a.title || isBlock(a));
     const own = (personal || []).find(p => p.id === iso || (day && p.id === `id_${day.id}`));
-    const mine = dayActivities(own?.activities).filter(a => a.title);
+    const mine = dayActivities(own?.activities).filter(a => a.title || isBlock(a));
     const at = {
       date: iso, bookings: bookings || [], hotel: trip.hotelDetails || null,
       flights: { out: trip.outboundFlightDetails, ret: trip.returnFlightDetails },
     };
-    const rows = (mine.length ? personalItems({ ...at, mine, shared }) : dayItems({ ...at, acts: shared }))
+    const all = (mine.length ? personalItems({ ...at, mine, shared }) : dayItems({ ...at, acts: shared }))
       .map(it => rowOf(it, plans)).filter(r => r.title);
+    // The day's things to do: the trip and countdown widgets, and the
+    // expense sheet's places. The plan widget's list (`planItems`) has the
+    // free blocks between them too (8.92.0), when the day has any.
+    const rows = all.filter(r => !r.note);
     const n = range.indexOf(iso);
     const name = ownName(day?.title);
     out[iso] = {
@@ -148,6 +166,7 @@ function daysOf(trip, days, range, now, plans, bookings, personal) {
       when: whenText(iso),
       items: rows.slice(0, PLAN_ITEMS),
       more: Math.max(0, rows.length - PLAN_ITEMS),
+      ...(all.length > rows.length ? { planItems: all.slice(0, PLAN_ITEMS + 10) } : {}),
     };
   }
   return out;
