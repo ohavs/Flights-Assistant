@@ -6,6 +6,8 @@ import { readAll } from '../lib/readFresh';
 import { db } from '../firebase';
 import { saveFile } from '../lib/saveFile';
 import { dayActivities } from '../lib/dayActivities';
+import { exportDay, bookingLine, blockText } from '../lib/exportDay';
+import { typeOf, statusOf, PAYMENT_LABEL } from '../components/bookingKinds';
 import { CURRENCY_META, convert, refreshRatesIfStale, getInitialRates } from './currency';
 import { toTime24 } from './flightTime';
 
@@ -18,10 +20,20 @@ export async function loadTripExportData(tripId, trip) {
   const planningSnap = await readAll(collection(db, 'trips', tripId, 'planning'), mark);
   const planning = planningSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+  // Bookings: a chapter of their own, and each on its day (8.92.0).
+  const bookingsSnap = await readAll(collection(db, 'trips', tripId, 'bookings'), mark);
+  const bookings = bookingsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => `${a.date || '9999'}T${a.time || '99'}`.localeCompare(`${b.date || '9999'}T${b.time || '99'}`));
+
+  // Each day as the schedule shows it: with the bookings, flights and
+  // hotel on its date, and the free blocks (8.92.0; exportDay.js).
   const daysSnap = await readAll(collection(db, 'trips', tripId, 'days'), mark);
+  const at = { bookings, hotel: trip?.hotelDetails || null, flights: { out: trip?.outboundFlightDetails, ret: trip?.returnFlightDetails } };
   const days = daysSnap.docs
-    // Free blocks (8.87.0) are not in the export yet.
-    .map(d => ({ id: d.id, ...d.data(), activities: dayActivities(d.data().activities).filter(a => !a.block) }))
+    .map(d => {
+      const day = { id: d.id, ...d.data(), activities: dayActivities(d.data().activities) };
+      return { ...day, entries: exportDay(day, at) };
+    })
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const checklistSnap = await readAll(collection(db, 'trips', tripId, 'checklist'), mark);
@@ -60,7 +72,7 @@ export async function loadTripExportData(tripId, trip) {
     if (snap.exists()) categorySettings = snap.data() || {};
   } catch { /* the defaults will do */ }
 
-  return { trip, planning, days, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1), categorySettings, fromPhone: !!mark.fromPhone };
+  return { trip, planning, days, bookings, checklist, info, expenses, rates, memberProfiles, memberCount: Math.max(memberUids.length, 1), categorySettings, fromPhone: !!mark.fromPhone };
 }
 
 // Build a full expense report (totals, breakdowns, statistics) for export.
@@ -190,13 +202,28 @@ function groupByCategory(items) {
 // Scope is one of: 'flight' | 'planning' | 'checklist' | 'info' | 'expenses' | 'all'
 // It controls which sections each export includes.
 const SCOPE = {
-  flight:   { flight: true,  planning: false, days: false, checklist: false, info: false, expenses: false },
-  planning: { flight: false, planning: true,  days: true,  checklist: false, info: false, expenses: false },
-  checklist:{ flight: false, planning: false, days: false, checklist: true,  info: false, expenses: false },
-  info:     { flight: false, planning: false, days: false, checklist: false, info: true,  expenses: false },
-  expenses: { flight: false, planning: false, days: false, checklist: false, info: false, expenses: true  },
-  all:      { flight: true,  planning: true,  days: true,  checklist: true,  info: true,  expenses: true  },
+  flight:   { flight: true,  planning: false, days: false, bookings: false, checklist: false, info: false, expenses: false },
+  planning: { flight: false, planning: true,  days: true,  bookings: true,  checklist: false, info: false, expenses: false },
+  checklist:{ flight: false, planning: false, days: false, bookings: false, checklist: true,  info: false, expenses: false },
+  info:     { flight: false, planning: false, days: false, bookings: false, checklist: false, info: true,  expenses: false },
+  expenses: { flight: false, planning: false, days: false, bookings: false, checklist: false, info: false, expenses: true  },
+  all:      { flight: true,  planning: true,  days: true,  bookings: true,  checklist: true,  info: true,  expenses: true  },
 };
+
+// A day's entry: what a booking says under its name.
+const bookingNote = (b) => bookingLine(b, typeOf(b?.type).label);
+
+// A booking's details in one line, for Word and Excel (8.92.0).
+const bookingDetails = (b) => [
+  typeOf(b.type).label,
+  b.status && b.status !== 'confirmed' ? statusOf(b.status).label : '',
+  b.people ? `${b.people} אנשים` : '',
+  b.bookedUnder ? `על שם ${b.bookedUnder}` : '',
+  b.price ? `מחיר: ${b.price}${b.payment && PAYMENT_LABEL[b.payment] ? ` (${PAYMENT_LABEL[b.payment]})` : ''}` : '',
+  b.phone ? `טלפון: ${b.phone}` : '',
+].filter(Boolean).join(' · ');
+const bookingWhen = (b) => [b.date ? b.date.split('-').reverse().join('/') : '', b.time || ''].filter(Boolean).join(' ') || 'בלי תאריך';
+
 
 const SCOPE_LABEL = { flight: 'טיסה', planning: 'תכנון', checklist: 'ציוד', info: 'מידע', expenses: 'הוצאות', all: 'מלא' };
 
@@ -287,7 +314,7 @@ function shapeBidi(bidi, text) {
 }
 
 export async function exportTripPdf(data, scope = 'all') {
-  const { trip, planning = [], days = [], checklist = [], info = [], expenses = [], rates, memberProfiles = {}, memberCount = 1, categorySettings = {} } = data;
+  const { trip, planning = [], days = [], bookings = [], checklist = [], info = [], expenses = [], rates, memberProfiles = {}, memberCount = 1, categorySettings = {} } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { jsPDF } = await import('jspdf');
   const [fonts, bidi] = await Promise.all([loadPdfFonts(), getBidi()]);
@@ -575,6 +602,8 @@ export async function exportTripPdf(data, scope = 'all') {
   }
 
   // ── Days: a timeline each, every day on its own page ──
+  // As the schedule shows the day (exportDay.js): bookings, flights and the
+  // hotel on its date, optional ones marked, the free blocks in place.
   if (SS.days && days.length > 0) {
     days.forEach((day, i) => {
       if (i === 0) chapter('לוח הימים'); else newPage();
@@ -584,37 +613,111 @@ export async function exportTripPdf(data, scope = 'all') {
         text(`יום ${WEEKDAYS[date.getDay()]} · ${pdfDate(day.date)}`, L, y + 16, { align: 'left', size: 11, weight: 'medium', color: T.muted });
       }
       y += 38;
-      const acts = day.activities || [];
-      if (acts.length === 0) {
+      const entries = day.entries || [];
+      if (!entries.some(e => e.kind !== 'block')) {
         text('אין פעילויות מתוכננות', R, y + 12, { size: 11, color: T.muted });
         y += 30;
-        return;
       }
       const TX = L + 62;            // the timeline
       const CW = R - (TX + 18);     // the item's width
-      acts.forEach((act, ai) => {
-        const titleL = wrap(act.title || '', CW, 'bold', 13);
-        const descL = wrap(act.description, CW, 'normal', 10);
-        const addrL = wrap(act.address, CW, 'normal', 10);
-        const h = titleL.length * 18 + (act.category ? 22 : 0) + descL.length * 14 + addrL.length * 14 + 18;
+      entries.forEach((e, ai) => {
+        const last = ai === entries.length - 1;
+        const rail = (top, h) => {
+          if (last) return;
+          doc.setDrawColor(...T.line); doc.setLineWidth(1.5);
+          doc.line(TX, top, TX, top + h + 4);
+        };
+
+        if (e.kind === 'block') {
+          // A note, a list or a link between the items, on a soft card.
+          const IW = CW - 24;
+          let lines = [];
+          if (e.block === 'text') lines = wrap(e.text, IW, 'normal', 10.5).map(l => ({ l }));
+          else if (e.block === 'check') {
+            if (e.text) lines.push(...wrap(e.text, IW, 'bold', 10.5).map(l => ({ l, bold: true })));
+            e.items.forEach(it => wrap(it.text, IW - 16, 'normal', 10.5).forEach((l, k) => lines.push({ l, check: k === 0 ? it.done : null, indent: true, done: it.done })));
+          } else lines = [{ l: e.label, url: e.url }];
+          const h = lines.length * 15 + 16;
+          ensure(h + 8);
+          const top = y;
+          rail(top, h + 8);
+          box(TX + 14, top, R - (TX + 14), h, e.block === 'text' ? T.butter : T.card, 10);
+          let base = top + 18;
+          for (const ln of lines) {
+            const x = R - 12 - (ln.indent ? 16 : 0);
+            if (ln.check != null) checkCircle(R - 12 - 5, base - 3.5, ln.check, 4.5);
+            if (ln.url) link(ln.l, x, base, ln.url, { size: 10.5 });
+            else text(ln.l, x, base, { size: 10.5, weight: ln.bold ? 'bold' : 'normal', color: ln.done ? T.muted : T.text });
+            base += 15;
+          }
+          y += h + 8;
+          return;
+        }
+
+        const titleL = wrap(e.title, CW, 'bold', 13);
+        const note = e.kind === 'booking' ? bookingNote(e.booking) : e.booking ? bookingNote(e.booking) : '';
+        const noteL = wrap(note, CW, 'medium', 10);
+        const descL = wrap(e.description, CW, 'normal', 10);
+        const addrL = wrap(e.address || e.booking?.address, CW, 'normal', 10);
+        const pills = e.category || e.optional;
+        const h = titleL.length * 18 + (pills ? 22 : 0) + noteL.length * 14 + descL.length * 14 + addrL.length * 14 + 18;
         ensure(h);
         const top = y;
-        if (act.timeLabel) text(act.timeLabel, L, top + 13, { align: 'left', weight: 'bold', size: 12 });
-        doc.setDrawColor(...T.line); doc.setLineWidth(1.5);
-        if (ai < acts.length - 1) doc.line(TX, top + 9, TX, top + h + 4);
-        dot(TX, top + 9, 4.5, act.category ? planColor(act.category) : T.accent);
+        if (e.time) text(e.time, L, top + 13, { align: 'left', weight: 'bold', size: 12 });
+        rail(top + 9, h - 9);
+        const color = e.kind === 'booking' ? rgbOf(typeOf(e.booking?.type).color)
+          : e.kind === 'fixed' ? T.muted
+            : e.category ? planColor(e.category) : T.accent;
+        dot(TX, top + 9, 4.5, color);
         let base = top + 13;
-        for (const line of titleL) { text(line, R, base, { weight: 'bold', size: 13 }); base += 18; }
-        if (act.category) {
-          const c = planColor(act.category);
-          pill(act.category, R, base - 9, { fill: tintOf(c), color: c, size: 9 });
+        for (const line of titleL) { text(line, R, base, { weight: 'bold', size: 13, color: e.kind === 'fixed' ? T.muted : T.text }); base += 18; }
+        if (pills) {
+          let x = R;
+          if (e.category) {
+            const c = planColor(e.category);
+            x -= pill(e.category, x, base - 9, { fill: tintOf(c), color: c, size: 9 }) + 6;
+          }
+          if (e.optional) pill('אופציונלי', x, base - 9, { fill: T.card, color: T.muted, size: 9 });
           base += 22;
         }
+        for (const line of noteL) { text(line, R, base, { size: 10, weight: 'medium', color: T.accent }); base += 14; }
         for (const line of descL) { text(line, R, base, { size: 10, color: T.muted }); base += 14; }
-        for (const line of addrL) { link(line, R, base, mapsUrl(act.address), { size: 10 }); base += 14; }
+        const addr = e.address || e.booking?.address || '';
+        for (const line of addrL) { link(line, R, base, mapsUrl(addr), { size: 10 }); base += 14; }
         y += h;
       });
     });
+  }
+
+  // ── Bookings: every one, the soonest first (8.92.0) ──
+  if (SS.bookings && bookings.length > 0) {
+    chapter('הזמנות');
+    const COLS = [
+      { label: 'מתי', w: 104, weight: 'medium' },
+      { label: 'שם', w: 136, weight: 'bold' },
+      { label: 'אישור', w: 80 },
+      { label: 'פרטים', w: W - 320, color: T.muted },
+    ];
+    table(COLS, bookings.filter(b => b.title).map(b => {
+      const when = [b.date ? pdfDate(b.date) : '', b.time || ''].filter(Boolean).join('  ') || 'בלי תאריך';
+      const st = statusOf(b.status);
+      const details = [
+        typeOf(b.type).label,
+        b.status && b.status !== 'confirmed' ? st.label : '',
+        b.people ? `${b.people} אנשים` : '',
+        b.bookedUnder ? `על שם ${b.bookedUnder}` : '',
+        b.price ? `מחיר: ${b.price}${b.payment && PAYMENT_LABEL[b.payment] ? ` (${PAYMENT_LABEL[b.payment]})` : ''}` : '',
+        b.address || '',
+        b.phone ? `טלפון: ${b.phone}` : '',
+        b.notes || '',
+      ].filter(Boolean).join(' · ');
+      return [
+        when,
+        b.url ? { text: b.title, url: b.url, weight: 'bold' } : { text: b.title, color: b.status === 'cancelled' ? T.muted : undefined },
+        b.confirmation || '',
+        details,
+      ];
+    }));
   }
 
   // ── Checklist: two columns of done-circles ──
@@ -796,7 +899,7 @@ export async function exportTripPdf(data, scope = 'all') {
 // ──────────────────────────────────────────────────────────────────────
 
 export async function exportTripDocx(data, scope = 'all') {
-  const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
+  const { trip, planning, days, bookings = [], checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, AlignmentType,
           Table, TableRow, TableCell, WidthType } = await import('docx');
@@ -945,16 +1048,25 @@ export async function exportTripDocx(data, scope = 'all') {
       const day = days[i];
       const dayChildren = [];
       dayChildren.push(para(day.title || `יום ${i + 1}`, { bold: true, size: 44, color: '4f46e5', heading: HeadingLevel.TITLE, spacing: { after: 240 } }));
-      const acts = day.activities || [];
-      if (acts.length === 0) {
+      // As the schedule shows it (exportDay.js, 8.92.0).
+      const entries = day.entries || [];
+      if (entries.length === 0) {
         dayChildren.push(para('אין פעילויות מתוכננות', { color: '64748b' }));
       } else {
-        for (const act of acts) {
-          const labelPart = act.timeLabel ? `[${act.timeLabel}]   ` : '';
-          dayChildren.push(para(`• ${labelPart}${act.title}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2 }));
-          if (act.category) dayChildren.push(para(act.category, { color: '64748b' }));
-          if (act.description) dayChildren.push(para(act.description, { color: '475569' }));
-          if (act.address) dayChildren.push(linkPara(`📍 ${act.address}`, `https://www.google.com/maps?q=${encodeURIComponent(act.address)}`));
+        for (const e of entries) {
+          if (e.kind === 'block') {
+            if (e.block === 'link') dayChildren.push(linkPara(`🔗 ${e.label}`, e.url));
+            else dayChildren.push(para(`📝 ${blockText(e)}`, { color: '475569' }));
+            dayChildren.push(spacer());
+            continue;
+          }
+          const labelPart = e.time ? `[${e.time}]   ` : '';
+          const tail = e.optional ? ' (אופציונלי)' : '';
+          dayChildren.push(para(`• ${labelPart}${e.title}${tail}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2, color: e.kind === 'fixed' ? '64748b' : undefined }));
+          if (e.category) dayChildren.push(para(e.category, { color: '64748b' }));
+          if (e.booking) dayChildren.push(para(bookingNote(e.booking), { color: '16874a' }));
+          if (e.description) dayChildren.push(para(e.description, { color: '475569' }));
+          if (e.address) dayChildren.push(linkPara(`📍 ${e.address}`, `https://www.google.com/maps?q=${encodeURIComponent(e.address)}`));
           dayChildren.push(spacer());
         }
       }
@@ -966,6 +1078,29 @@ export async function exportTripDocx(data, scope = 'all') {
         children: dayChildren,
       });
     }
+  }
+
+  // Bookings (8.92.0): every one, the soonest first.
+  if (SS.bookings && bookings.length > 0) {
+    const bk = [];
+    bk.push(para('הזמנות', { bold: true, size: 44, color: '4f46e5', heading: HeadingLevel.TITLE, spacing: { after: 240 } }));
+    for (const b of bookings.filter(x => x.title)) {
+      bk.push(para(`• ${b.title}`, { bold: true, size: 28, heading: HeadingLevel.HEADING_2, color: b.status === 'cancelled' ? '64748b' : undefined }));
+      bk.push(para([bookingWhen(b), b.confirmation ? `אישור ${b.confirmation}` : ''].filter(Boolean).join(' · '), { color: '16874a' }));
+      const more = bookingDetails(b);
+      if (more) bk.push(para(more, { color: '475569' }));
+      if (b.address) bk.push(linkPara(`📍 ${b.address}`, /^https?:\/\//i.test(b.address) ? b.address : `https://www.google.com/maps?q=${encodeURIComponent(b.address)}`));
+      if (b.url) bk.push(linkPara(`🔗 ${b.url}`, b.url));
+      if (b.notes) bk.push(para(b.notes, { color: '475569' }));
+      bk.push(spacer());
+    }
+    sections.push({
+      properties: {
+        bidi: true,
+        page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+      },
+      children: bk,
+    });
   }
 
   if (SS.checklist && checklist?.length > 0) {
@@ -1156,7 +1291,7 @@ export async function exportTripDocx(data, scope = 'all') {
 // ──────────────────────────────────────────────────────────────────────
 
 export async function exportTripXlsx(data, scope = 'all') {
-  const { trip, planning, days, checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
+  const { trip, planning, days, bookings = [], checklist, info, expenses = [], rates, memberProfiles, memberCount = 1 } = data;
   const SS = SCOPE[scope] || SCOPE.all;
   const ExcelJS = (await import('exceljs')).default || (await import('exceljs'));
 
@@ -1348,11 +1483,24 @@ export async function exportTripXlsx(data, scope = 'all') {
   if (SS.days) {
     for (let i = 0; i < days.length; i++) {
       const day = days[i];
-      const rows = (day.activities || []).map(a => [
-        a.timeLabel || '', a.title || '', a.category || '', a.description || '', a.address || '',
-      ]);
+      // As the schedule shows it (exportDay.js, 8.92.0); a block is a row
+      // of its own, its text under "הערות".
+      const rows = (day.entries || []).map(e => (e.kind === 'block'
+        ? ['', e.block === 'check' ? (e.text || 'רשימה') : e.block === 'link' ? 'קישור' : 'הערה', '', blockText(e), '']
+        : [
+          e.time || '', `${e.title}${e.optional ? ' (אופציונלי)' : ''}`, e.category || '',
+          [e.booking ? bookingNote(e.booking) : '', e.description || ''].filter(Boolean).join(' · '), e.address || '',
+        ]));
       addTableSheet(day.title || `יום ${i + 1}`, ['תיוג זמן', 'כותרת', 'קטגוריה', 'הערות', 'כתובת'], rows, [14, 32, 22, 50, 36]);
     }
+  }
+
+  // ── Bookings sheet (8.92.0) ──
+  if (SS.bookings && bookings.length > 0) {
+    const rows = bookings.filter(b => b.title).map(b => [
+      bookingWhen(b), b.title, b.confirmation || '', bookingDetails(b), b.address || '', b.url || '', b.notes || '',
+    ]);
+    addTableSheet('הזמנות', ['מתי', 'שם', 'אישור', 'פרטים', 'כתובת', 'קישור', 'הערות'], rows, [16, 30, 14, 44, 36, 30, 36]);
   }
 
   // ── Checklist sheet ──

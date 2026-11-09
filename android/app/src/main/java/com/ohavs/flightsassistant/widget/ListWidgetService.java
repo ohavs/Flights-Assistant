@@ -81,9 +81,9 @@ public class ListWidgetService extends RemoteViewsService {
             WidgetKit.visible(v, R.id.item_sub, !r.sub.isEmpty());
             v.setTextViewText(R.id.item_pill, r.pill);
             WidgetKit.visible(v, R.id.item_pill, !r.pill.isEmpty());
-            WidgetKit.visible(v, R.id.item_ring, !r.done);
+            WidgetKit.visible(v, R.id.item_ring, !r.done && !r.note);
             WidgetKit.visible(v, R.id.item_check, r.done);
-            v.setContentDescription(R.id.item_box, (r.done ? "בוצע: " : "סמן: ") + r.title);
+            v.setContentDescription(R.id.item_box, r.note ? r.title : (r.done ? "בוצע: " : "סמן: ") + r.title);
             WidgetKit.theme(ctx, v, m, new WidgetKit.Paint().chip(R.id.item_pill).fill(R.id.item_check));
 
             String tab = REMINDERS.equals(kind) ? "checklist" : "planning";

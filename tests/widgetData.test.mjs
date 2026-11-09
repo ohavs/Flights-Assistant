@@ -174,6 +174,32 @@ test('a day as the schedule shows it: bookings on their date, the hotel, and my 
   ]);
 });
 
+test('free blocks are in the plan widget, in their places, one line each (8.92.0)', () => {
+  const days = [{ id: 'd2', order: 1, date: '2026-11-04', activities: [
+    { id: 'a1', title: 'לובר', timeLabel: 'בוקר' },
+    { id: 'a2', title: 'מסעדה', timeLabel: 'ערב' },
+    { id: 'k1', block: 'text', text: 'לקנות כרטיסים מראש\nבאתר הרשמי', after: 'act:a1' },
+    { id: 'k2', block: 'check', text: 'לקחת', items: [{ id: 'i1', text: 'מים', done: true }, { id: 'i2', text: 'כובע' }], after: 'act:a2' },
+    { id: 'k3', block: 'link', url: 'https://www.example.com/t', label: '', after: null },
+    { id: 'k4', block: 'text', text: ' ', after: null },
+  ] }];
+  const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, now }).trips;
+  const d = t.days['2026-11-04'];
+  assert.deepEqual(d.planItems, [
+    { time: '', title: '🔗 example.com', note: true },
+    { time: 'בוקר', title: 'לובר' },
+    { time: '', title: '📝 לקנות כרטיסים מראש', note: true },
+    { time: 'ערב', title: 'מסעדה' },
+    { time: '', title: '☑️ לקחת · 1/2', note: true },
+  ]);
+  // Not among the things to do (the trip and countdown widgets, the
+  // expense sheet's places).
+  assert.deepEqual(d.items, [{ time: 'בוקר', title: 'לובר' }, { time: 'ערב', title: 'מסעדה' }]);
+  assert.equal(d.more, 0);
+  // A day with no blocks has no second list.
+  assert.equal('planItems' in t.days['2026-11-03'], false);
+});
+
 test('the app\'s theme: light or dark whatever the phone is, else the phone\'s', () => {
   assert.equal(widgetSnapshot({ trips: [paris], now }).theme, 'system');
   assert.equal(widgetSnapshot({ trips: [paris], theme: 'dark', now }).theme, 'dark');

@@ -24,7 +24,9 @@ const rome = {
 const days = [
   { id: 'd1', order: 0, date: '2026-11-03', title: 'הגעה', activities: [{ title: 'צ׳ק אין במלון', timeLabel: 'ערב' }] },
   { id: 'd2', order: 1, date: '2026-11-04', title: 'מוזיאונים', activities: [
-    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב', placeId: 'pl-seine' }, { title: 'הלובר', timeLabel: 'בוקר', placeId: 'pl-louvre' },
+    { title: 'מסעדה ליד הסיין', timeLabel: 'ערב', placeId: 'pl-seine' }, { id: 'a-louvre', title: 'הלובר', timeLabel: 'בוקר', placeId: 'pl-louvre' },
+    // A free block after the Louvre (8.92.0): in the plan widget's list only.
+    { id: 'b-note', block: 'text', text: 'כרטיסים בכניסה הצדדית\nפתוח עד 18:00', after: 'act:a-louvre' },
     { title: 'גני טווילרי', timeLabel: 'צהריים' }, { title: 'גלידה ברטיון' }, { title: 'מגדל אייפל בלילה', timeLabel: 'לילה' },
   ] },
 ];

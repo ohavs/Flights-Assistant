@@ -588,6 +588,44 @@ await step('free blocks: dragged by the handle between two activities, and onto 
   if ((await blocksOn('2026-11-20')).some(x => x.text?.stringValue === 'לקחת')) throw new Error('still on its old day');
 });
 
+// 8.92.0: a long block is compact (three lines; a list's first three
+// items) and a tap opens the rest. A short one has no toggle.
+await step('free blocks: a long one is compact, a tap opens it', async () => {
+  const long = Array.from({ length: 8 }, (_, i) => `שורה ${i + 1} של הערה ארוכה`).join('\n');
+  await page.locator('.dp-block-add').getByRole('button', { name: /טקסט/ }).click();
+  await page.getByLabel('טקסט', { exact: true }).fill(long);
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  const row = page.locator('.dp-block-row', { hasText: 'שורה 1 של הערה ארוכה' });
+  const p = row.locator('.dp-block-text');
+  await p.waitFor();
+  await p.scrollIntoViewIfNeeded();
+  if (!(await p.getAttribute('class')).includes('clamp')) throw new Error('not compact');
+  const h1 = (await p.boundingBox()).height;
+  await row.getByRole('button', { name: 'הצג הכל' }).click();
+  await row.getByRole('button', { name: 'הצג פחות' }).waitFor();
+  const h2 = (await p.boundingBox()).height;
+  if (h2 < h1 * 2) throw new Error(`did not open: ${h1} → ${h2}`);
+  await shot('block-long-open');
+  await p.click();   // a tap on the text closes it again
+  await row.getByRole('button', { name: 'הצג הכל' }).waitFor();
+  if (await page.locator('.dp-block-row', { hasText: 'לקנות כרטיסים מראש' }).getByRole('button', { name: 'הצג הכל' }).count()) throw new Error('a short text has a toggle');
+
+  await page.locator('.dp-block-add').getByRole('button', { name: /רשימה/ }).click();
+  await page.getByLabel('כותרת הרשימה').fill('לארוז');
+  const things = ['דרכון', 'מטען', 'קרם הגנה', 'משקפיים', 'מפה'];
+  for (let i = 0; i < things.length; i++) {
+    await page.getByLabel(`פריט ${i + 1}`, { exact: true }).fill(things[i]);
+    if (i < things.length - 1) await page.getByLabel(`פריט ${i + 1}`, { exact: true }).press('Enter');
+  }
+  await page.locator('.dp-block-editor').getByRole('button', { name: 'סיום' }).click();
+  const pack = page.locator('.dp-block-row', { hasText: 'לארוז' });
+  await pack.getByText('0/5').waitFor();
+  if (await pack.getByRole('checkbox').count() !== 3) throw new Error(`${await pack.getByRole('checkbox').count()} items shown`);
+  await pack.getByRole('button', { name: 'עוד 2 פריטים' }).click();
+  if (await pack.getByRole('checkbox').count() !== 5) throw new Error('did not open');
+  await shot('block-list-open');
+});
+
 await step('a booking: search the places; a linked place replaces its name and address', async () => {
   await page.locator('nav button.nav-item[aria-label="הזמנות"]').click();
   await page.locator('button.fab', { hasText: 'הזמנה חדשה' }).click();

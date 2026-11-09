@@ -26,10 +26,16 @@
         <!-- The launcher entry is the activity itself, with the map icon
              (8.40.0). Icons are no longer switched: a component whose state
              was never changed at runtime, so no phone is left without one. -->
+        <!-- adjustResize (8.92.0): the keyboard shrinks the WebView, so a
+             field low in a form scrolls above it. The app is edge-to-edge
+             (target SDK 36), where the keyboard's insets reach the window
+             (Capacitor's SystemBars pads by them) only in this mode;
+             without it the keyboard covered the field. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".AppActivity"
             android:label="@string/title_activity_main"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
             android:exported="true">

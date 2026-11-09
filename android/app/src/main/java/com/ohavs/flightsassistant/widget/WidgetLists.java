@@ -26,6 +26,7 @@ final class WidgetLists {
         String title, sub = "", pill = "";
         String day = "", month = "";   // a booking's date leaf; "" when it has no date
         boolean done;
+        boolean note;         // a free block of the plan (8.92.0): no ring, nothing to tick
         String path, field;   // what a tick changes; null: nothing to tick, a tap opens the app
     }
 
@@ -71,13 +72,16 @@ final class WidgetLists {
     static List<Row> plan(Context ctx, WidgetKit.Moment m) {
         List<Row> out = new ArrayList<>();
         JSONObject day = m.day(planDay(m));
-        JSONArray items = day == null ? null : day.optJSONArray("items");
+        // With the day's free blocks between its items, when it has any (8.92.0).
+        JSONArray items = day == null ? null
+            : day.has("planItems") ? day.optJSONArray("planItems") : day.optJSONArray("items");
         for (int i = 0; items != null && i < items.length(); i++) {
             JSONObject it = items.optJSONObject(i);
             if (it == null || it.optString("title").isEmpty()) continue;
             Row r = new Row();
             r.title = it.optString("title");
             r.pill = it.optString("time");
+            r.note = it.optBoolean("note");
             String place = it.optString("placeId");
             if (!place.isEmpty()) {
                 r.path = "trips/" + m.tripId + "/planning/" + place;

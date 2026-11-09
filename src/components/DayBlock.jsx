@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Check, X, Plus, ExternalLink, Link2, Type, ListChecks, Pencil, Trash2 } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Check, X, Plus, ExternalLink, Link2, Type, ListChecks, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import { emptyBlock, cleanBlock, linkName, checkCount } from '../lib/blocks';
 
 /* ══════════════════════════════════════════════════════════
@@ -7,7 +7,21 @@ import { emptyBlock, cleanBlock, linkName, checkCount } from '../lib/blocks';
    The row, the drag handle and the writes are DayPlanner's; this is what
    is inside. Editing happens in place; "סיום" saves (an empty one goes),
    and so does leaving it open (another day, another tab).
+   A long one is compact (8.92.0, the owner's ask): three lines of text,
+   three items of a list, and a tap opens the rest.
    ══════════════════════════════════════════════════════════ */
+
+const CHECK_ITEMS = 3;    // a list's items shown while compact (a text's lines: .dp-block-text.clamp)
+
+// "הצג הכל" / "הצג פחות" under a compact block.
+function MoreToggle({ open, onToggle, more }) {
+  return (
+    <button type="button" className={`dp-block-toggle${open ? ' open' : ''}`} aria-expanded={open} onClick={onToggle}>
+      <span>{open ? 'הצג פחות' : more || 'הצג הכל'}</span>
+      <ChevronDown size={14} aria-hidden="true" />
+    </button>
+  );
+}
 
 const KINDS = [
   { kind: 'text', label: 'טקסט', Icon: Type },
@@ -36,39 +50,7 @@ export default function DayBlock({ act, editable, editing, onEditing, onSave, on
     ? <button type="button" className="round-btn dp-block-edit" aria-label="עריכת הבלוק" onClick={() => onEditing(true)}><Pencil size={14} /></button>
     : null;
 
-  if (act.block === 'check') {
-    const { done, all } = checkCount(act);
-    const items = (act.items || []).filter(i => String(i?.text || '').trim());
-    return (
-      <div className="dp-block-body">
-        <div className="dp-block-head">
-          <ListChecks size={15} aria-hidden="true" className="dp-block-kind" />
-          <span className="dp-block-title">{act.text || 'רשימה'}</span>
-          {all > 0 && <span className="dp-block-count">{done}/{all}</span>}
-          {edit}
-        </div>
-        {items.length ? (
-          <ul className="dp-check">
-            {items.map(i => (
-              <li key={i.id}>
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={!!i.done}
-                  disabled={!editable}
-                  className={`dp-check-item${i.done ? ' done' : ''}`}
-                  onClick={() => onToggle(i.id)}
-                >
-                  <span className="dp-check-box" aria-hidden="true">{i.done && <Check size={12} strokeWidth={3} />}</span>
-                  <span className="dp-check-text">{i.text}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="dp-block-empty">אין פריטים עדיין</p>}
-      </div>
-    );
-  }
+  if (act.block === 'check') return <CheckView act={act} editable={editable} edit={edit} onToggle={onToggle} />;
 
   if (act.block === 'link') {
     return (
@@ -81,12 +63,82 @@ export default function DayBlock({ act, editable, editing, onEditing, onSave, on
     );
   }
 
+  return <TextView act={act} edit={edit} />;
+}
+
+// A text: three lines, and a tap on it (or on "הצג הכל") shows all of it.
+// Whether it is longer is measured, so a short one has no toggle.
+function TextView({ act, edit }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const body = String(act.text || '').trim();
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return undefined;
+    const check = () => setLong(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(check);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [body, open]);
   return (
-    <div className="dp-block-body dp-block-line">
-      {String(act.text || '').trim()
-        ? <p className="dp-block-text">{act.text}</p>
-        : <span className="dp-block-empty">טקסט ריק</span>}
-      {edit}
+    <div className="dp-block-body">
+      <div className="dp-block-line">
+        {body
+          ? (
+            <p
+              ref={ref}
+              className={`dp-block-text${open ? '' : ' clamp'}${long ? ' long' : ''}`}
+              onClick={long ? () => setOpen(o => !o) : undefined}
+            >
+              {act.text}
+            </p>
+          )
+          : <span className="dp-block-empty">טקסט ריק</span>}
+        {edit}
+      </div>
+      {long && <MoreToggle open={open} onToggle={() => setOpen(o => !o)} />}
+    </div>
+  );
+}
+
+// A list: its title and count, its first three items, "עוד N" for the rest.
+function CheckView({ act, editable, edit, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const { done, all } = checkCount(act);
+  const items = (act.items || []).filter(i => String(i?.text || '').trim());
+  // One more than fits is shown rather than hidden behind "עוד 1".
+  const long = items.length > CHECK_ITEMS + 1;
+  const shown = long && !open ? items.slice(0, CHECK_ITEMS) : items;
+  return (
+    <div className="dp-block-body">
+      <div className="dp-block-head">
+        <ListChecks size={15} aria-hidden="true" className="dp-block-kind" />
+        <span className="dp-block-title">{act.text || 'רשימה'}</span>
+        {all > 0 && <span className="dp-block-count">{done}/{all}</span>}
+        {edit}
+      </div>
+      {items.length ? (
+        <ul className="dp-check">
+          {shown.map(i => (
+            <li key={i.id}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={!!i.done}
+                disabled={!editable}
+                className={`dp-check-item${i.done ? ' done' : ''}`}
+                onClick={() => onToggle(i.id)}
+              >
+                <span className="dp-check-box" aria-hidden="true">{i.done && <Check size={12} strokeWidth={3} />}</span>
+                <span className="dp-check-text">{i.text}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="dp-block-empty">אין פריטים עדיין</p>}
+      {long && <MoreToggle open={open} onToggle={() => setOpen(o => !o)} more={`עוד ${items.length - CHECK_ITEMS} פריטים`} />}
     </div>
   );
 }
@@ -95,6 +147,14 @@ const draftOf = (act) => (act.block === 'check'
   ? { text: act.text || '', items: (act.items || []).map(i => ({ ...i })) }
   : act.block === 'link' ? { url: act.url || '', label: act.label || '' }
     : { text: act.text || '' });
+
+// A long text is edited whole: the box grows with it (up to half the
+// screen, then it scrolls).
+function grow(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.5))}px`;
+}
 
 function BlockEditor({ act, onSave, onDelete, onDone }) {
   const [d, setD] = useState(() => draftOf(act));
@@ -132,9 +192,11 @@ function BlockEditor({ act, onSave, onDelete, onDone }) {
     <div className="dp-block-body dp-block-editor">
       {kind === 'text' && (
         <textarea
+          ref={grow}
           className="form-control"
           rows="3"
           autoFocus
+          onInput={(e) => grow(e.currentTarget)}
           aria-label="טקסט"
           placeholder="כתבו כאן…"
           value={d.text}

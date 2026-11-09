@@ -140,7 +140,7 @@ open_widget flight 170 190; expect 8-trip-narrow "5 ימים" "טיסת הלוך
 # The other widgets.
 open_widget flight 170 190 CountdownWidget; expect 9-countdown "5 ימים" "טיסת הלוך" "TLV → CDG"
 open_widget plan 170 190 CountdownWidget;   expect 10-countdown-trip "יום 2 מתוך 4" "10:00 · הלובר"
-open_widget plan 360 290 PlanWidget;        expect 11-plan "היום · מוזיאונים" "פריז עם הילדים · יום 2 מתוך 4" "הלובר" "גני טווילרי"
+open_widget plan 360 290 PlanWidget;        expect 11-plan "היום · מוזיאונים" "פריז עם הילדים · יום 2 מתוך 4" "הלובר" "כרטיסים בכניסה הצדדית" "גני טווילרי"
 # The plan scrolls, and a place is ticked as visited (queued: nobody is signed in).
 scroll_list; expect 11b-plan-scrolled "מגדל אייפל בלילה"
 open_widget plan 360 290 PlanWidget

@@ -52,9 +52,18 @@ const backup = {
       { id: 'd1', title: 'יום 1 · בלם', date: '2026-11-13', order: 1, activities: [
         { id: 'a1', timeLabel: '09:00', title: 'מגדל בלם', category: 'מקומות לבקר', address: 'Av. Brasília, Lisboa', description: 'כרטיסים מראש' },
         { id: 'a2', timeLabel: '11:30', title: 'Pastéis de Belém', category: 'מסעדות ומקומות אכילה', address: 'R. de Belém 84-92', description: '' },
-        { id: 'a3', timeLabel: '14:00', title: 'מנזר ז׳רונימוס', category: 'מקומות לבקר', address: '', description: 'סיור מודרך באנגלית, שעה וחצי' },
+        { id: 'a3', timeLabel: '14:00', title: 'מנזר ז׳רונימוס', category: 'מקומות לבקר', address: '', description: 'סיור מודרך באנגלית, שעה וחצי', optional: true },
+        // Free blocks (8.92.0): in the PDF in their places.
+        { id: 'b1', block: 'text', text: 'לקחת מטריה, צפוי גשם אחרי הצהריים', after: 'act:a1' },
+        { id: 'b2', block: 'check', text: 'לפני היציאה', items: [{ id: 'i1', text: 'כרטיסי Viva Viagem', done: true }, { id: 'i2', text: 'בקבוק מים', done: false }], after: 'act:a2' },
+        { id: 'b3', block: 'link', url: 'https://www.mosteirojeronimos.gov.pt', label: 'אתר המנזר', after: 'act:a3' },
       ] },
       { id: 'd2', title: 'יום 2 · אלפמה', date: '2026-11-14', order: 2, activities: [] },
+    ],
+    // Bookings (8.92.0): a chapter of their own, and on their day.
+    bookings: [
+      { id: 'k1', title: 'Ramiro', type: 'restaurant', date: '2026-11-13', time: '20:30', people: 2, confirmation: 'RMR-4471', bookedUnder: 'כהן', address: 'Av. Almirante Reis 1, Lisboa', status: 'confirmed' },
+      { id: 'k2', title: 'סיור אופניים', type: 'tour', date: '2026-11-14', time: '10:00', confirmation: 'BK-77', status: 'pending', price: '35€', payment: 'onsite' },
     ],
     checklist: [
       { id: 'c1', text: 'דרכונים', category: 'מסמכים', completed: true },
@@ -116,7 +125,7 @@ await step('Rubik only, in three weights; a page per part', async () => {
   if (fonts.size < 3) throw new Error(`fonts: ${[...fonts].join(', ')}`);
   const pages = (s.match(/\/Type \/Page[^s]/g) || []).length;
   console.log(`        ${pages} pages`);
-  if (pages < 8) throw new Error(`${pages} pages`);   // cover, flight, planning, 2 days, checklist, info, expenses
+  if (pages < 9) throw new Error(`${pages} pages`);   // cover, flight, planning, 2 days, bookings, checklist, info, expenses
 });
 
 await step('render the pages (poppler)', async () => {
@@ -127,8 +136,20 @@ await step('render the pages (poppler)', async () => {
 await step('phone numbers, codes and addresses read left to right', async () => {
   let txt;
   try { txt = execFileSync('pdftotext', ['.e2e/pdf/trip.pdf', '-']).toString(); } catch { console.log('        pdftotext missing, skipped'); return; }
-  for (const s of ['+351 21 355 3640', 'LY375', 'Travessa das Merceeiras 27, Lisboa', '42.5 EUR']) {
+  for (const s of ['+351 21 355 3640', 'LY375', 'Travessa das Merceeiras 27, Lisboa', '42.5 EUR', 'RMR-4471', 'BK-77', 'Viva Viagem']) {
     if (!txt.includes(s)) throw new Error(`"${s}" not found as written`);
+  }
+});
+
+// 8.92.0: the day as the schedule shows it: the blocks, the booking on its
+// day, "optional"; and a chapter of the bookings.
+await step('the day has its blocks and booking; the bookings have a chapter', async () => {
+  let txt;
+  try { txt = execFileSync('pdftotext', ['-raw', '.e2e/pdf/trip.pdf', '-']).toString(); } catch { console.log('        pdftotext missing, skipped'); return; }
+  const flat = txt.replace(/\s+/g, ' ');
+  // Hebrew comes out of pdftotext in visual order: look for the words.
+  for (const w of ['מטריה', 'היציאה', 'המנזר', 'אופציונלי', 'הזמנות', 'Ramiro']) {
+    if (!flat.includes(w) && !flat.includes([...w].reverse().join(''))) throw new Error(`"${w}" not in the PDF`);
   }
 });
 
