@@ -146,3 +146,15 @@ if [ -z "${shared:-}" ]; then
   adb exec-out screencap -p > android-share.png || true
   exit 1
 fi
+
+# The keyboard shrinks the app rather than covering it (8.92.0): the
+# window is adjustResize, the one mode in which an edge-to-edge window gets
+# the keyboard's insets (and Capacitor's SystemBars pads the WebView by them).
+attrs=$(adb shell dumpsys window windows | tr -d '\r' \
+  | awk -v pkg="$PKG/" 'index($0, "Window{") && index($0, pkg) && /AppActivity/ { f = 1 } f && /mAttrs=/ { print; exit }' || true)
+echo "app window: ${attrs:-not found}"
+if ! echo "$attrs" | grep -q "adjust=resize"; then
+  echo "the app's window is not adjustResize: the keyboard would cover low fields"
+  adb shell dumpsys window windows | tr -d '\r' | grep -E "Window\{|sim=" | head -20 || true
+  exit 1
+fi
