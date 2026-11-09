@@ -85,12 +85,15 @@ for (const theme of ['light', 'dark']) {
   });
 
   await step(`${theme}: the time chip is a pill; once set it is short and clears with ✕`, async () => {
-    const chip = sheet.getByRole('button', { name: 'שעה להתראה' });
+    const chip = sheet.getByRole('button', { name: 'שעה להתראה', exact: true });
     const fit = await chip.evaluate(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, spill: el.scrollWidth - el.clientWidth }));
     if (fit.w < fit.h * 2.5 || fit.spill > 1) throw new Error(`the time chip is squeezed: ${JSON.stringify(fit)}`);
     await page.screenshot({ path: `${out}/${theme}-1-composer.png` });
     await chip.tap();
+    const when = page.getByRole('dialog', { name: 'מתי להזכיר?' });
+    await when.getByRole('button', { name: 'תאריך ושעה אחרים' }).tap();
     await page.getByRole('button', { name: 'אישור', exact: true }).tap();      // today, 12:00
+    await when.waitFor({ state: 'detached' });
     const set = sheet.locator('.chip.reminder-when[aria-pressed="true"]');
     await set.waitFor();
     if (!(await set.innerText()).includes('היום · 12:00')) throw new Error(`the chip says ${await set.innerText()}`);
@@ -100,6 +103,28 @@ for (const theme of ['light', 'dark']) {
     await set.getByRole('button', { name: 'בלי שעה' }).tap();
     await chip.waitFor();
     await page.getByPlaceholder('כתוב תזכורת ושלח...').fill('');
+  });
+
+  // 8.92.0: a reminder opens its own sheet: what, whose (names, not just
+  // faces), when (quick times), delete. Nothing in it spills sideways.
+  await step(`${theme}: a reminder's own sheet: text, whose, quick times`, async () => {
+    await sheet.locator('.list-card', { hasText: 'להחליף כסף' }).locator('.list-card-title').tap();
+    const edit = page.getByRole('dialog', { name: 'עריכת תזכורת' });
+    await edit.waitFor();
+    if (await edit.getByLabel('מה להזכיר?').inputValue() !== 'להחליף כסף') throw new Error('not its text');
+    const who = edit.locator('[role="radiogroup"][aria-label="של מי"] [role="radio"]');
+    if (await who.count() !== 2) throw new Error(`${await who.count()} people`);
+    if (await edit.getByRole('radio', { name: /נועה/ }).getAttribute('aria-checked') !== 'true') throw new Error('not hers');
+    if (await edit.locator('.when-presets button').count() !== 4) throw new Error('not four quick times');
+    await edit.locator('.when-presets button').first().tap();
+    await edit.locator('.when-now.on').waitFor();
+    const spill = await edit.evaluate(el => el.scrollWidth - el.clientWidth);
+    if (spill > 1) throw new Error(`the sheet scrolls sideways by ${spill}px`);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${out}/${theme}-3-edit.png` });
+    await edit.locator('.sheet-footer').getByRole('button', { name: 'ביטול' }).tap();
+    await page.getByRole('button', { name: 'צא בלי לשמור' }).tap();
+    await edit.waitFor({ state: 'detached' });
   });
 
   await step(`${theme}: one height for every filter`, async () => {

@@ -328,22 +328,48 @@ await step('reminders: a reminder can carry a time, and its card shows it', asyn
   await page.locator('button[aria-label="תזכורות"]').click();
   const rem = page.getByRole('dialog', { name: 'תזכורות' });
   await rem.waitFor();
-  await rem.getByRole('button', { name: 'שעה להתראה' }).tap();
+  // The chip opens the quick times; any date and time is one more tap.
+  await rem.getByRole('button', { name: 'שעה להתראה', exact: true }).tap();
+  const when = sheet('מתי להזכיר?');
+  await when.getByRole('button', { name: 'תאריך ושעה אחרים' }).tap();
   await page.getByRole('button', { name: 'אישור', exact: true }).tap();      // today, 12:00
+  await when.waitFor({ state: 'detached' });
   await rem.locator('.chip[aria-pressed="true"]').waitFor();
   await page.getByPlaceholder('כתוב תזכורת ושלח...').fill('לקנות ציפס');
   await rem.getByRole('button', { name: 'הוסף תזכורת' }).tap();
-  const meta = rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('.list-card-meta');
+  const card = rem.locator('.list-card', { hasText: 'לקנות ציפס' });
+  const meta = card.locator('.list-card-meta');
   await meta.waitFor();
   if (!(await meta.innerText()).includes('12:00')) throw new Error(`no time on the card: ${await meta.innerText()}`);
   // A new reminder starts without a time again.
-  await rem.getByRole('button', { name: 'שעה להתראה' }).waitFor();
-  // A tap on the reminder edits it (with delete there too); it is not ticked.
-  await rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('.list-card-title').tap();
-  await rem.getByText('עריכת תזכורת').waitFor();
-  await rem.getByRole('button', { name: 'מחיקת התזכורת' }).waitFor();
-  if ((await rem.locator('.list-card', { hasText: 'לקנות ציפס' }).locator('button.check-circle').getAttribute('aria-pressed')) !== 'false') throw new Error('the tap ticked the reminder');
-  await rem.getByRole('button', { name: 'בטל עריכה' }).tap();
+  await rem.getByRole('button', { name: 'שעה להתראה', exact: true }).waitFor();
+
+  // A tap on the reminder opens its own sheet (8.92.0), delete in it too;
+  // it is not ticked. A quick time there, and save.
+  await card.locator('.list-card-title').tap();
+  const edit = sheet('עריכת תזכורת');
+  await edit.waitFor();
+  await edit.getByRole('button', { name: 'מחיקה' }).waitFor();
+  if ((await card.locator('button.check-circle').getAttribute('aria-pressed')) !== 'false') throw new Error('the tap ticked the reminder');
+  await edit.getByRole('button', { name: /מחר בבוקר/ }).tap();
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: '.e2e/lists-reminder-edit.png' });
+  await edit.locator('.sheet-footer button[type="submit"]').tap();
+  await edit.waitFor({ state: 'detached' });
+  await card.locator('.reminder-at', { hasText: 'מחר · 09:00' }).waitFor();
+
+  // The time on the row changes it at once: here, to none; then the bell
+  // adds one back.
+  await card.getByRole('button', { name: /שעת ההתראה/ }).tap();
+  await when.waitFor();
+  await page.waitForTimeout(450);
+  await page.screenshot({ path: '.e2e/lists-reminder-when.png' });
+  await when.getByRole('button', { name: 'בלי התראה' }).tap();
+  await when.waitFor({ state: 'detached' });
+  await card.getByRole('button', { name: 'הוספת שעה להתראה' }).tap();
+  await when.getByRole('button', { name: /מחר בערב/ }).tap();
+  await when.waitFor({ state: 'detached' });
+  await card.locator('.reminder-at', { hasText: 'מחר · 20:00' }).waitFor();
   await rem.locator('button[aria-label="סגור"]').first().click();
   await rem.waitFor({ state: 'detached' });
 });
@@ -353,13 +379,13 @@ await step('reminders: the time chip is a pill, the composer is one box, one hei
   const rem = page.getByRole('dialog', { name: 'תזכורות' });
   await rem.waitFor();
   await page.waitForTimeout(350);
-  const chip = rem.getByRole('button', { name: 'שעה להתראה' });
+  const chip = rem.getByRole('button', { name: 'שעה להתראה', exact: true });
   const fit = await chip.evaluate(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, spill: el.scrollWidth - el.clientWidth }));
   if (fit.w < fit.h * 2.5 || fit.spill > 1) throw new Error(`the time chip is squeezed: ${JSON.stringify(fit)}`);
   // The chip, the text and send are inside one composer box.
   const box = rem.locator('.reminder-composer');
   await box.getByPlaceholder('כתוב תזכורת ושלח...').waitFor();
-  await box.getByRole('button', { name: 'שעה להתראה' }).waitFor();
+  await box.getByRole('button', { name: 'שעה להתראה', exact: true }).waitFor();
   // A second reminder, ticked: each filter now shows a different number.
   await page.getByPlaceholder('כתוב תזכורת ושלח...').fill('להטעין מצלמה');
   await rem.getByRole('button', { name: 'הוסף תזכורת' }).tap();

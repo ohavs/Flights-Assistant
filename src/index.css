@@ -1778,19 +1778,6 @@ textarea.form-control {
    the chosen one) and when to ring. It wraps rather than scrolls, so a
    ring is never cut off by an edge. */
 .reminder-footer { flex-direction: column; gap: 8px; margin-top: 0; }
-.reminder-editing {
-  align-self: flex-start;
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 3px 6px 3px 12px; border-radius: 20px;
-  background: var(--p-10); color: var(--accent);
-  font-size: 12px; font-weight: 800;
-}
-.reminder-editing > button {
-  width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--p-15); color: var(--accent); cursor: pointer;
-}
-.reminder-editing > button.danger { background: var(--c-red-8); color: var(--c-red); }
 .reminder-composer {
   display: flex; flex-direction: column; gap: 4px;
   padding: 6px 6px 8px; padding-inline-start: 14px;
@@ -1828,6 +1815,82 @@ textarea.form-control {
   font-variant-numeric: tabular-nums;
 }
 .chip.reminder-when .btn-x { width: 30px; height: 30px; min-width: 30px; color: inherit; }
+
+/* A reminder's row (8.92.0): its time is a chip that changes it at once;
+   one with no time has a bell that adds one. */
+.reminder-at {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; margin-block: 2px 0; padding: 0 10px;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: var(--p-10); color: var(--accent);
+  font-family: var(--font-hebrew); font-size: 12.5px; font-weight: 800;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.reminder-at.static { cursor: default; background: var(--ink-5); color: var(--text-muted); }
+.reminder-at.past { background: var(--ink-5); color: var(--text-muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.reminder-at:active { transform: scale(0.96); }
+.reminder-bell {
+  flex-shrink: 0; width: 34px; height: 34px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px dashed var(--ink-15); border-radius: 50%;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.reminder-bell:active { transform: scale(0.92); background: var(--ink-5); }
+
+/* One reminder's sheet, and the time choices (ReminderWhen.jsx). */
+.reminder-edit { display: flex; flex-direction: column; gap: 16px; }
+.reminder-edit textarea { resize: none; min-height: 48px; max-height: 40vh; overflow-y: auto; font-family: inherit; line-height: 1.45; }
+.who-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.who-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 38px; padding-block: 0; padding-inline: 6px 14px;
+  border-radius: 999px; border: 1.5px solid var(--ink-10);
+  background: transparent; color: var(--text); cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13.5px; font-weight: 700;
+}
+.who-chip[aria-checked="true"] { border-color: var(--accent); background: var(--p-10); color: var(--accent); }
+.when-subject {
+  margin: -4px 0 0; font-size: 14px; font-weight: 700; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.when-choices { display: flex; flex-direction: column; gap: 10px; }
+.when-now {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 16px;
+  background: var(--surface-2); color: var(--text-muted);
+}
+.when-now.on { background: var(--p-10); color: var(--accent); }
+.when-now.past { background: var(--surface-2); color: var(--text-muted); }
+.when-now > svg { flex-shrink: 0; }
+.when-now-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.when-now-text strong { font-size: 14.5px; font-weight: 800; color: var(--text); }
+.when-now-text span { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.when-clear {
+  flex-shrink: 0; min-height: 32px; padding: 0 12px;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: var(--card-bg-solid); color: var(--c-red);
+  font-family: var(--font-hebrew); font-size: 12.5px; font-weight: 800;
+}
+.when-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.when-presets > button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-height: 56px; padding: 8px 14px;
+  border: 1.5px solid var(--ink-10); border-radius: 16px;
+  background: transparent; cursor: pointer; text-align: start;
+  font-family: var(--font-hebrew); color: var(--text);
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 0.15s ease;
+}
+.when-presets > button:active { transform: scale(0.97); }
+.when-presets > button[aria-pressed="true"] { border-color: var(--accent); background: var(--p-10); }
+.when-preset-label { font-size: 14px; font-weight: 800; }
+.when-preset-time { font-size: 13px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.when-presets > button[aria-pressed="true"] .when-preset-time { color: var(--accent); }
+.when-custom {
+  width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1.5px dashed var(--ink-15); border-radius: 16px;
+  background: transparent; color: var(--accent); cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 14px; font-weight: 800;
+}
 
 /* The add-item form's "already on the list" box (ChecklistTab). */
 .dup-box {
@@ -4423,12 +4486,22 @@ button.dp-leg:active { background: var(--ink-4); }
 .dp-block-grip:active { cursor: grabbing; background: var(--ink-6); }
 .dp-block-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .dp-block-body:first-child { padding-inline-start: 8px; }
-.dp-block-line { flex-direction: row; align-items: flex-start; gap: 8px; }
+.dp-block-line { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; min-width: 0; }
 .dp-block-text {
   flex: 1; min-width: 0; margin: 0; padding-top: 5px;
   white-space: pre-wrap; word-break: break-word;
   font-size: 14.5px; line-height: 1.5; font-weight: 600; color: var(--text);
 }
+/* A long block is compact (8.92.0): three lines, a tap opens the rest. */
+.dp-block-text.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dp-block-text.long { cursor: pointer; }
+.dp-block-toggle {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
+  margin-top: -2px; padding: 4px 2px; border: none; background: none; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 12.5px; font-weight: 800; color: var(--accent);
+}
+.dp-block-toggle svg { transition: transform var(--dur-fast) var(--ease-out); }
+.dp-block-toggle.open svg { transform: rotate(180deg); }
 .dp-block-empty { flex: 1; margin: 0; padding-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
 .dp-block-edit { width: 30px; height: 30px; min-width: 30px; flex-shrink: 0; margin-inline-start: auto; }
 .dp-block-head { display: flex; align-items: center; gap: 6px; }
@@ -4457,7 +4530,7 @@ button.dp-leg:active { background: var(--ink-4); }
 }
 .dp-block-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dp-block-editor { gap: 8px; }
-.dp-block-editor textarea { resize: none; font-family: inherit; }
+.dp-block-editor textarea { resize: none; font-family: inherit; overflow-y: auto; }
 .dp-block-actions { display: flex; align-items: center; gap: 10px; }
 .dp-block-actions .btn-primary { padding: 8px 18px; font-size: 13.5px; }
 .dp-block-del, .dp-block-more {

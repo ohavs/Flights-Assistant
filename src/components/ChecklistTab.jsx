@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { changedFields } from '../lib/changes';
 import { Check, Plus, Trash2, Pencil, X, GripVertical, ClipboardList, Bell, ChevronLeft, ArrowUp } from 'lucide-react';
-import { CustomDropdown, CustomDateTimePicker, formatHebrewDateTime } from './CustomDatePicker';
+import { CustomDropdown, formatHebrewDateTime } from './CustomDatePicker';
 import Skeleton from './Skeleton';
 import ListCard from '../ui/ListCard';
 import SheetDelete from '../ui/SheetDelete';
@@ -26,6 +26,8 @@ import Fab from './Fab';
 import EmptyState from './EmptyState';
 import ChecklistToolbar from './ChecklistFilter';
 import Sheet, { Segmented } from '../ui/Sheet';
+import { WhenChoices, WhenSheet } from './ReminderWhen';
+import { shortWhen, whenPast } from '../lib/reminderWhen';
 import { useTrip } from '../TripContext';
 import { useConfirm } from '../ConfirmContext';
 import {
@@ -179,18 +181,6 @@ function CycleRing({ index, count, animate, size = 44 }) {
   );
 }
 
-/* The reminder's time on its chip, short enough to sit beside the
-   avatars: "היום · 09:00", "מחר · 18:30", "24.10 · 08:00". */
-function shortWhen(at) {
-  const [d, t = ''] = String(at).split('T');
-  const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-  const now = new Date();
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const [, mm, dd] = d.split('-');
-  const day = d === iso(now) ? 'היום' : d === iso(tomorrow) ? 'מחר' : `${Number(dd)}.${Number(mm)}`;
-  return t ? `${day} · ${t.slice(0, 5)}` : day;
-}
-
 function RemindersCard({ tripId }) {
   // "הוספה" adds and ticks; edits and deletes only what they wrote.
   const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles, tripMembers } = useTrip();
@@ -200,14 +190,14 @@ function RemindersCard({ tripId }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('open');      // 'open' | 'done' | 'all'
 
-  /* One composer at the bottom of the sheet, in one of two modes: writing a
-     new reminder, or editing an existing one (editingId holds which). */
+  /* The composer at the bottom of the sheet writes a new reminder. A tap on
+     one opens its own sheet (8.92.0), and the bell on its row its time. */
   const [draft, setDraft] = useState('');
-  const [editingId, setEditingId] = useState(null);
   const [draftUid, setDraftUid] = useState('');
   // When to be notified (Android app), 'YYYY-MM-DDTHH:mm' in the phone's time.
   const [draftAt, setDraftAt] = useState('');
-  const [editFrom, setEditFrom] = useState(null);   // the reminder as the edit opened it
+  const [editing, setEditing] = useState(null);     // the reminder in the edit sheet
+  const [whenFor, setWhenFor] = useState(null);     // a reminder's id, or 'draft': the time sheet
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -260,7 +250,6 @@ function RemindersCard({ tripId }) {
 
   const resetComposer = useCallback(() => {
     setDraft('');
-    setEditingId(null);
     setDraftUid(currentUid || '');
     setDraftAt('');
   }, [currentUid]);
@@ -273,65 +262,69 @@ function RemindersCard({ tripId }) {
   };
 
   const closeSheet = () => { setOpen(false); resetComposer(); };
-  // A reminder typed but not added, or an edit not saved.
-  const editingOne = editingId ? reminders.find(r => r.id === editingId) : null;
-  const composerDirty = editingId
-    ? draft !== (editingOne?.text || '') || draftAt !== (editingOne?.remindAt || '')
-    : !!draft.trim() || !!draftAt;
+  // A reminder typed but not added.
+  const composerDirty = !!draft.trim() || !!draftAt;
 
   const toggleDone = (r) => {
     if (!canAdd) return;
     updateDoc(doc(db, 'trips', tripId, 'reminders', r.id), { completed: !r.completed });
   };
 
-  const startEdit = (r) => {
-    if (!mayChange(r)) return;
-    setEditingId(r.id);
-    setDraft(r.text || '');
-    setDraftUid(r.addedByUid || currentUid || '');
-    setDraftAt(r.remindAt || '');
-    setEditFrom({ text: (r.text || '').trim(), remindAt: r.remindAt || null, uid: r.addedByUid || '' });   // no owner yet: the edit gives it one
-    setTimeout(() => inputRef.current?.focus(), 40);
+  /* A reminder always carries an owner — the avatar on the row depends on
+     it — so fall back to the signed-in user when the picker is hidden on a
+     solo trip, or when the chosen uid has since left. */
+  const ownerFieldsOf = (uid) => {
+    const owner = allMembers.find(m => m.uid === uid) || (currentUid ? {
+      uid: currentUid,
+      displayName: currentUserProfile?.displayName || currentUserProfile?.email || '',
+      photoURL: currentUserProfile?.photoURL || '',
+    } : null);
+    return owner ? {
+      addedByUid: owner.uid,
+      addedByName: owner.displayName || '',
+      addedByPhoto: owner.photoURL || '',
+    } : {};
+  };
+
+  // Whose phone rings, said under the time.
+  const whoRings = (uid) => {
+    if (!uid || uid === currentUid) return 'ההתראה תגיע לטלפון שלך (באפליקציה)';
+    const m = allMembers.find(x => x.uid === uid);
+    return m ? `ההתראה תגיע לטלפון של ${m.displayName} (באפליקציה)` : 'ההתראה תגיע באפליקציה';
   };
 
   const submit = (e) => {
     e?.preventDefault?.();
     const text = draft.trim();
     if (!text || !canAdd) return;
-
-    /* A reminder always carries an owner — the avatar on the row depends on
-       it — so fall back to the signed-in user when the picker is hidden on a
-       solo trip, or when the chosen uid has since left. */
-    const owner = allMembers.find(m => m.uid === draftUid) || (currentUid ? {
-      uid: currentUid,
-      displayName: currentUserProfile?.displayName || currentUserProfile?.email || '',
-      photoURL: currentUserProfile?.photoURL || '',
-    } : null);
-    const ownerFields = owner ? {
-      addedByUid: owner.uid,
-      addedByName: owner.displayName || '',
-      addedByPhoto: owner.photoURL || '',
-    } : {};
-
-    if (editingId) {
-      // Only what the edit changed: a partner may have ticked it or moved
-      // its time meanwhile (src/lib/changes.js).
-      const updates = changedFields(editFrom || {}, { text, remindAt: draftAt || null });
-      if (owner && owner.uid !== editFrom?.uid) Object.assign(updates, ownerFields);
-      if (Object.keys(updates).length) {
-        updateDoc(doc(db, 'trips', tripId, 'reminders', editingId), updates).catch(err => console.error('Reminder save error:', err));
-      }
-    } else {
-      setDoc(doc(collection(db, 'trips', tripId, 'reminders')), {
-        text, createdAt: Date.now(), completed: false, ...ownerFields, createdBy: currentUid || null,
-        ...(draftAt ? { remindAt: draftAt } : {}),
-      });
-      if (filter === 'done') setFilter('open');
-    }
+    setDoc(doc(collection(db, 'trips', tripId, 'reminders')), {
+      text, createdAt: Date.now(), completed: false, ...ownerFieldsOf(draftUid), createdBy: currentUid || null,
+      ...(draftAt ? { remindAt: draftAt } : {}),
+    });
+    if (filter === 'done') setFilter('open');
     resetComposer();
     // Keep the keyboard up: several reminders usually arrive together.
-    if (!editingId) inputRef.current?.focus();
+    inputRef.current?.focus();
   };
+
+  // The edit sheet's save: only what it changed, since a partner may have
+  // ticked it or moved its time meanwhile (src/lib/changes.js).
+  const saveEdit = (r, { text, uid, at }) => {
+    const updates = changedFields({ text: (r.text || '').trim(), remindAt: r.remindAt || null }, { text, remindAt: at || null });
+    // No owner yet: the edit gives it one.
+    if (uid !== (r.addedByUid || '')) Object.assign(updates, ownerFieldsOf(uid));
+    if (Object.keys(updates).length) {
+      updateDoc(doc(db, 'trips', tripId, 'reminders', r.id), updates).catch(err => console.error('Reminder save error:', err));
+    }
+  };
+
+  // The bell on a row: its time, at once.
+  const setTime = (r, at) => {
+    if ((r.remindAt || '') === (at || '')) return;
+    updateDoc(doc(db, 'trips', tripId, 'reminders', r.id), { remindAt: at || null })
+      .catch(err => console.error('Reminder time error:', err));
+  };
+  const whenOne = whenFor && whenFor !== 'draft' ? reminders.find(r => r.id === whenFor) : null;
 
   const remove = async (r) => {
     const ok = await confirm({
@@ -340,7 +333,6 @@ function RemindersCard({ tripId }) {
       confirmText: 'מחק', cancelText: 'בטל', danger: true,
     });
     if (!ok) return false;
-    if (editingId === r.id) resetComposer();
     deleteDoc(doc(db, 'trips', tripId, 'reminders', r.id));
     return true;
   };
@@ -472,11 +464,28 @@ function RemindersCard({ tripId }) {
               />
             ) : visible.map(r => {
               const done = !!r.completed;
-              const editing = editingId === r.id;
+              const mine = mayChange(r);
+              const past = r.remindAt && whenPast(r.remindAt);
+              // The time is a chip: a tap changes it, without opening the
+              // reminder (8.92.0).
+              const when = r.remindAt && (mine ? (
+                <button
+                  type="button"
+                  className={`reminder-at${past ? ' past' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setWhenFor(r.id); }}
+                  aria-label={`שעת ההתראה: ${formatHebrewDateTime(r.remindAt)}. שינוי`}
+                >
+                  <Bell size={13} aria-hidden="true" />{shortWhen(r.remindAt)}
+                </button>
+              ) : (
+                <span className={`reminder-at static${past ? ' past' : ''}`}>
+                  <Bell size={13} aria-hidden="true" />{shortWhen(r.remindAt)}
+                </span>
+              ));
               return (
                 <ListCard
                   key={r.id}
-                  style={{ padding: '12px 14px', ...(editing ? { background: 'var(--p-8)', boxShadow: '0 0 0 1px var(--p-18)' } : null) }}
+                  style={{ padding: '12px 14px' }}
                   lead={(
                     <CheckCircle
                       checked={done}
@@ -485,14 +494,26 @@ function RemindersCard({ tripId }) {
                     />
                   )}
                   title={r.text}
-                  meta={r.remindAt ? formatHebrewDateTime(r.remindAt) : undefined}
-                  metaIcon={r.remindAt ? <Bell size={13} aria-hidden="true" /> : undefined}
-                  muted={done && !editing}
-                  onOpen={mayChange(r) ? () => startEdit(r) : undefined}
-                  trailing={(r.addedByPhoto || r.addedByName) && (
-                    <span title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.4 : 0.9 }}>
-                      <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
-                    </span>
+                  meta={when || undefined}
+                  muted={done}
+                  onOpen={mine ? () => setEditing(r) : undefined}
+                  trailing={(
+                    <>
+                      {mine && !r.remindAt && !done && (
+                        <button
+                          type="button" className="reminder-bell"
+                          aria-label="הוספת שעה להתראה" title="שעה להתראה"
+                          onClick={(e) => { e.stopPropagation(); setWhenFor(r.id); }}
+                        >
+                          <Bell size={16} aria-hidden="true" />
+                        </button>
+                      )}
+                      {(r.addedByPhoto || r.addedByName) && (
+                        <span title={r.addedByName || ''} style={{ flexShrink: 0, opacity: done ? 0.4 : 0.9 }}>
+                          <Avatar photoURL={r.addedByPhoto} name={r.addedByName} size={26} />
+                        </span>
+                      )}
+                    </>
                   )}
                   actions={mayChange(r) ? [
                     { key: 'del', label: 'מחיקה', Icon: Trash2, run: () => remove(r), danger: true, swipe: true },
@@ -503,28 +524,12 @@ function RemindersCard({ tripId }) {
           </div>
 
           {/* ── Composer ──────────────────────────────────────────────────
-              Add and edit live in the same field. Editing never opens a
-              second sheet, so the list stays visible behind the keyboard.
-              One box, as in a chat: the text and send on top, under them
-              whose it is and when to ring. Nothing in it scrolls sideways,
-              so no avatar's ring is ever cut off. */}
+              Writes a new reminder; one is edited in its own sheet (a tap
+              on it). One box, as in a chat: the text and send on top, under
+              them whose it is and when to ring. Nothing in it scrolls
+              sideways, so no avatar's ring is ever cut off. */}
           {canAdd && (
             <form onSubmit={submit} className="sheet-footer reminder-footer">
-              {editingId && (
-                <div className="reminder-editing">
-                  <Pencil size={12} aria-hidden="true" />
-                  <span>עריכת תזכורת</span>
-                  <button type="button" className="btn-x" onClick={resetComposer} aria-label="בטל עריכה">
-                    <X size={12} />
-                  </button>
-                  {editingOne && (
-                    <button type="button" className="danger" onClick={() => remove(editingOne)} aria-label="מחיקת התזכורת" title="מחיקה">
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              )}
-
               <div className="reminder-composer">
                 <div className="reminder-composer-row">
                   <input
@@ -533,18 +538,18 @@ function RemindersCard({ tripId }) {
                     value={draft}
                     onChange={e => setDraft(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Escape') resetComposer(); }}
-                    enterKeyHint={editingId ? 'done' : 'send'}
-                    placeholder={editingId ? 'עדכן את התזכורת...' : 'כתוב תזכורת ושלח...'}
+                    enterKeyHint="send"
+                    placeholder="כתוב תזכורת ושלח..."
                     aria-label="טקסט התזכורת"
                   />
                   <button
                     type="submit"
                     disabled={!draft.trim()}
-                    aria-label={editingId ? 'שמור תזכורת' : 'הוסף תזכורת'}
+                    aria-label="הוסף תזכורת"
                     className={`round-btn${draft.trim() ? ' on' : ''}`}
                     style={{ width: 40, height: 40, minWidth: 40 }}
                   >
-                    {editingId ? <Check size={19} strokeWidth={3} /> : <ArrowUp size={19} strokeWidth={3} />}
+                    <ArrowUp size={19} strokeWidth={3} />
                   </button>
                 </div>
 
@@ -566,32 +571,121 @@ function RemindersCard({ tripId }) {
                   )}
 
                   {/* An optional time: the owner's phone (Android app) is
-                      notified then. */}
-                  <CustomDateTimePicker
-                    value={draftAt}
-                    onChange={setDraftAt}
-                    renderTrigger={(openPicker) => draftAt ? (
-                      <span className="chip reminder-when" aria-pressed="true">
-                        <button type="button" onClick={openPicker} aria-label={`שעת ההתראה: ${formatHebrewDateTime(draftAt)}. שינוי`}>
-                          <Bell size={14} aria-hidden="true" /> {shortWhen(draftAt)}
-                        </button>
-                        <button type="button" className="btn-x" aria-label="בלי שעה" onClick={() => setDraftAt('')}>
-                          <X size={14} />
-                        </button>
-                      </span>
-                    ) : (
-                      <button type="button" className="chip add reminder-when" onClick={openPicker}>
-                        <Bell size={14} aria-hidden="true" /> שעה להתראה
+                      notified then. The chip opens the quick times. */}
+                  {draftAt ? (
+                    <span className="chip reminder-when" aria-pressed="true">
+                      <button type="button" onClick={() => setWhenFor('draft')} aria-label={`שעת ההתראה: ${formatHebrewDateTime(draftAt)}. שינוי`}>
+                        <Bell size={14} aria-hidden="true" /> {shortWhen(draftAt)}
                       </button>
-                    )}
-                  />
+                      <button type="button" className="btn-x" aria-label="בלי שעה" onClick={() => setDraftAt('')}>
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" className="chip add reminder-when" onClick={() => setWhenFor('draft')}>
+                      <Bell size={14} aria-hidden="true" /> שעה להתראה
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
           )}
         </Sheet>
       )}
+
+      {/* Over the reminders: one reminder's own sheet, and the time sheet
+          (a reminder's bell, or the composer's chip). */}
+      {editing && (
+        <ReminderEditSheet
+          key={editing.id}
+          r={editing}
+          members={allMembers}
+          currentUid={currentUid}
+          whoRings={whoRings}
+          onSave={(v) => saveEdit(editing, v)}
+          onDelete={() => remove(editing)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {whenFor && (whenFor === 'draft' || whenOne) && (
+        <WhenSheet
+          subject={whenFor === 'draft' ? draft.trim() : whenOne.text}
+          value={whenFor === 'draft' ? draftAt : whenOne.remindAt || ''}
+          who={whoRings(whenFor === 'draft' ? draftUid : whenOne.addedByUid)}
+          onPick={(v) => { if (whenFor === 'draft') setDraftAt(v); else setTime(whenOne, v); }}
+          onClose={() => setWhenFor(null)}
+        />
+      )}
     </>
+  );
+}
+
+/* One reminder's sheet (8.92.0, the owner's ask: the edit in the
+   composer's place was unclear). Everything about it in one place: what,
+   whose, when to ring (the quick times), and delete.                    */
+function ReminderEditSheet({ r, members, currentUid, whoRings, onSave, onDelete, onClose }) {
+  const start = useMemo(() => ({ text: r.text || '', uid: r.addedByUid || currentUid || '', at: r.remindAt || '' }), [r, currentUid]);
+  const [text, setText] = useState(start.text);
+  const [uid, setUid] = useState(start.uid);
+  const [at, setAt] = useState(start.at);
+  const dirty = text !== start.text || uid !== start.uid || at !== start.at;
+  const fit = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  };
+  return (
+    <Sheet title="עריכת תזכורת" onClose={onClose} dirty={dirty} style={{ maxHeight: '92%' }}>
+      {({ close, cancel }) => (
+        <form
+          className="reminder-edit"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!text.trim()) return;
+            onSave({ text: text.trim(), uid, at });
+            close();
+          }}
+        >
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label htmlFor="reminder-edit-text">מה להזכיר?</label>
+            <textarea
+              id="reminder-edit-text"
+              ref={fit}
+              className="form-control"
+              rows="1"
+              value={text}
+              onChange={(e) => { setText(e.target.value); fit(e.target); }}
+            />
+          </div>
+          {members.length > 1 && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>של מי</label>
+              <div className="who-chips" role="radiogroup" aria-label="של מי">
+                {members.filter(m => !m.former || m.uid === uid).map(m => (
+                  <button
+                    key={m.uid} type="button" role="radio" className="who-chip"
+                    aria-checked={uid === m.uid}
+                    onClick={() => setUid(m.uid)}
+                  >
+                    <Avatar photoURL={m.photoURL} name={m.displayName} size={22} />
+                    <span>{m.uid === currentUid ? 'אני' : m.displayName}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>התראה</label>
+            <WhenChoices value={at} onPick={setAt} who={whoRings(uid)} />
+          </div>
+          <div className="sheet-footer">
+            <button type="submit" className="btn-primary" disabled={!text.trim()}>שמור</button>
+            <button type="button" className="btn-secondary" onClick={cancel}>ביטול</button>
+            <SheetDelete close={close} onDelete={onDelete} />
+          </div>
+        </form>
+      )}
+    </Sheet>
   );
 }
 
