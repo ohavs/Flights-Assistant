@@ -55,3 +55,23 @@ test('a booking and a block in one line', () => {
   assert.equal(blockText({ block: 'link', url: 'https://x.com', label: 'x.com' }), 'x.com (https://x.com)');
   assert.equal(blockText({ block: 'text', text: 'שלום' }), 'שלום');
 });
+
+test('a place\'s own hours on its activity (8.93.0)', () => {
+  const places = new Map([
+    ['m', { id: 'm', event: { startDate: '2026-11-19', endDate: '2026-11-22', startTime: '10:00', endTime: '20:00' } }],
+    ['v', { id: 'v', visited: true, event: { startDate: '2026-11-20', startTime: '10:00', endTime: '20:00' } }],
+  ]);
+  const d = { date: '2026-11-20', activities: [
+    { id: 'x1', title: 'שוק', placeId: 'm', timeLabel: '19:30' },
+    { id: 'x2', title: 'שוק שוב', placeId: 'm', timeLabel: 'צהריים' },
+    { id: 'x3', title: 'ביקרנו', placeId: 'v', timeLabel: '19:30' },
+    { id: 'x4', title: 'בלי מקום', timeLabel: '19:30' },
+  ] };
+  const e = exportDay(d, { places });
+  const byTitle = Object.fromEntries(e.map(x => [x.title, x.hours]));
+  assert.deepEqual(byTitle['שוק'], { text: 'נסגר ב־20:00 · עד 22.11', warn: true });
+  assert.deepEqual(byTitle['שוק שוב'], { text: '10:00–20:00 · עד 22.11', warn: false });
+  assert.equal(byTitle['ביקרנו'], null);
+  assert.equal(byTitle['בלי מקום'], null);
+  assert.equal(exportDay(d).find(x => x.title === 'שוק').hours, null);
+});

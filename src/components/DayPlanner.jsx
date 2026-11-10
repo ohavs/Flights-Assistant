@@ -5,6 +5,7 @@ import {
   CalendarCheck, CalendarClock, Footprints, Bus, Plane, Hotel, Star, Check, Plus, Search, MapPin,
   Navigation, Phone, ExternalLink, Copy, Users, UserRound, Sunrise, Sun, Sunset, Moon, Clock,
   ChevronDown, Loader2, CornerDownLeft, User, Lock, Eraser, CalendarPlus, CircleDashed, AlertTriangle, GripVertical,
+  CalendarX2,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { listen } from '../lib/listen';
@@ -32,6 +33,20 @@ import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
 import { DatePickerDialog } from './CustomDatePicker';
 import { guessedLocation, savedLocation, wayOf, walkEstimate, estimateLabel } from '../lib/placeLocation';
+import { eventNote, eventSpan, datesText, onDate, whyNot, stayingIds } from '../lib/eventFit';
+
+// A place's own dates and hours on its activity (8.93.0): the hours,
+// a warning near the opening or the closing, red when it is out of them.
+const NOTE_LOOK = {
+  info: { tone: 'lavender', Icon: CalendarClock },
+  warn: { tone: 'butter', Icon: AlertTriangle },
+  bad: { tone: 'red', Icon: CalendarX2 },
+};
+function EventPill({ note }) {
+  if (!note) return null;
+  const { tone, Icon } = NOTE_LOOK[note.tone];
+  return <Pill size="sm" tone={tone} title={note.full} icon={<Icon size={11} />}>{note.text}</Pill>;
+}
 
 /* ══════════════════════════════════════════════════════════
    לוח זמנים — the trip one day at a time.
@@ -406,9 +421,19 @@ function DayPlanner({
     if (!a || !b || a.id === b.id) return null;
     const stayA = anchoredIds(a.activities, a.date, bs);
     const stayB = anchoredIds(b.activities, b.date, bs);
-    swapDays(db, tripId, a, b, swapDayFields(a, b, ds.indexOf(a) + 1, ds.indexOf(b) + 1), stayA, stayB)
+    // A place's activity that the other date is out of its dates for stays
+    // on its own date, like a booked one (8.93.0).
+    const evA = stayingIds(a.activities, planById, b.date);
+    const evB = stayingIds(b.activities, planById, a.date);
+    const keepA = new Set([...stayA, ...evA]);
+    const keepB = new Set([...stayB, ...evB]);
+    swapDays(db, tripId, a, b, swapDayFields(a, b, ds.indexOf(a) + 1, ds.indexOf(b) + 1), keepA, keepB)
       .catch(err => console.error('Swap days failed:', err));
-    return { a, b, fixed: bookingsOn(bs, a.date).length + bookingsOn(bs, b.date).length + stayA.size + stayB.size };
+    return {
+      a, b,
+      fixed: bookingsOn(bs, a.date).length + bookingsOn(bs, b.date).length + stayA.size + stayB.size,
+      dated: [...evA, ...evB].filter(id => !stayA.has(id) && !stayB.has(id)).length,
+    };
   };
 
   // Swap the shown day with another. The same place in the trip stays on
@@ -421,7 +446,9 @@ function DayPlanner({
     say({
       icon: <ArrowLeftRight size={18} />,
       title: `הפעילויות של ${name(done.a)} ו־${name(done.b)} הוחלפו`,
-      text: done.fixed ? 'ההזמנות נשארו בתאריך שלהן.' : 'התאריכים נשארו במקומם, רק התוכן התחלף.',
+      text: done.fixed && done.dated ? 'ההזמנות והאירועים נשארו בתאריך שלהם.'
+        : done.dated ? (done.dated > 1 ? 'האירועים נשארו בתאריך שלהם.' : 'האירוע נשאר בתאריך שלו.')
+          : done.fixed ? 'ההזמנות נשארו בתאריך שלהן.' : 'התאריכים נשארו במקומם, רק התוכן התחלף.',
       action: {
         label: 'ביטול',
         run: () => {
@@ -807,6 +834,7 @@ function DayPlanner({
     const sub = [address && !isUrl(address) ? address : '', !address || isUrl(address) ? category : ''].filter(Boolean).join(' · ');
     const elsewhere = !it.booking && plan ? bookingByPlace.get(plan.id) : null;
     const toBook = plan && !visited && !it.booking && !elsewhere && plan.needsReservation;
+    const evNote = plan && !visited ? eventNote(plan.event, day.date, act.timeLabel) : null;
     return (
       <React.Fragment key={it.key}>
         {legChip(it, drop === ' drop-before' ? drop : '')}
@@ -826,8 +854,9 @@ function DayPlanner({
                 </span>
                 {sub && <span className="dp-card-sub">{sub}</span>}
                 {act.description && <span className="dp-card-note">{act.description}</span>}
-                {(visited || toBook || elsewhere || act.optional || it.slot.custom || it.slot.parts.length > 1) && (
+                {(visited || toBook || elsewhere || evNote || act.optional || it.slot.custom || it.slot.parts.length > 1) && (
                   <span className="dp-card-tags">
+                    <EventPill note={evNote} />
                     {act.optional && <Pill size="sm" tone="muted" icon={<CircleDashed size={11} />}>אופציונלי</Pill>}
                     {(it.slot.custom || it.slot.parts.length > 1) && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
                     {visited && <Pill size="sm" tone="muted">ביקרנו</Pill>}
@@ -1100,6 +1129,10 @@ function DayPlanner({
         const up = at > 0 && canSwap(own[at - 1], it) ? own[at - 1] : null;
         const down = at >= 0 && canSwap(it, own[at + 1]) ? own[at + 1] : null;
         const fixed = anchored.has(act.id);
+        // A place with dates: no other day in them, nowhere to move (8.93.0).
+        const ev = act.placeId ? planById.get(act.placeId)?.event : null;
+        const span = eventSpan(ev);
+        const nowhere = span && !fixed && !days.some(d => d.id !== day.id && onDate(ev, d.date)) ? `רק ב־${datesText(span)}` : '';
         return (
           <Sheet title={act.title} onClose={() => setActMenu(null)}>
             <div className="list-group">
@@ -1111,8 +1144,8 @@ function DayPlanner({
                     run: () => swapActivities(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, act.id, down.act.id).catch(err => console.error('Activity move error:', err)) },
                 ] : []),
                 ...(days.length > 1 ? [{
-                  key: 'move', label: 'העברה ליום אחר', Icon: Calendar, disabled: fixed,
-                  hint: fixed ? 'יש לו הזמנה בתאריך הזה' : '',
+                  key: 'move', label: 'העברה ליום אחר', Icon: Calendar, disabled: fixed || !!nowhere,
+                  hint: fixed ? 'יש לו הזמנה בתאריך הזה' : nowhere ? `אין יום אחר בתאריכים שלו (${nowhere})` : '',
                   run: () => setMoveFor(act),
                 }] : []),
                 { key: 'edit', label: 'עריכה', Icon: Pencil, run: () => setForm({ editing: act }) },
@@ -1145,15 +1178,22 @@ function DayPlanner({
         <Sheet title={`העברת ${moveFor.title} ליום אחר`} onClose={() => setMoveFor(null)}>
           {({ close }) => (
             <div className="list-group" role="radiogroup">
-              {days.filter(d => d.id !== day.id).map(d => (
-                <button key={d.id} type="button" className="list-row" onClick={() => { moveTo(moveFor, d); close(); }}>
-                  <Calendar size={16} className="list-row-icon" />
-                  <span className="list-row-label">
-                    {d.title}
-                    <span className="list-row-hint">{[shortDate(d.date), countActs((d.activities || []).length)].filter(Boolean).join(' · ')}</span>
-                  </span>
-                </button>
-              ))}
+              {days.filter(d => d.id !== day.id).map(d => {
+                // Out of the place's dates: grey, and why (8.93.0).
+                const ev = moveFor.placeId ? planById.get(moveFor.placeId)?.event : null;
+                const off = onDate(ev, d.date) ? '' : whyNot(ev, d.date, '');
+                return (
+                  <button key={d.id} type="button" className="list-row" disabled={!!off} onClick={() => { moveTo(moveFor, d); close(); }}>
+                    <Calendar size={16} className="list-row-icon" />
+                    <span className="list-row-label">
+                      {d.title}
+                      <span className={`list-row-hint${off ? ' place-pick-off' : ''}`}>
+                        {[shortDate(d.date), off ? `לא אפשרי: ${off}` : countActs((d.activities || []).length)].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </Sheet>
@@ -1337,6 +1377,7 @@ function DayPlanner({
         const leg = legs.get(it.key);
         const v = legValue(leg);
         const elsewhere = act && !b && plan ? bookingByPlace.get(plan.id) : null;
+        const evNote = act && plan ? eventNote(plan.event, day?.date, act.timeLabel) : null;
         const actions = [];
         if (navUrl) actions.push({ key: 'nav', label: 'ניווט', Icon: Navigation, tone: 'mint', run: () => window.open(navUrl, '_blank', 'noreferrer') });
         if (b?.phone) actions.push({ key: 'tel', label: 'התקשר', Icon: Phone, tone: 'sky', run: () => { window.location.href = telHref(b.phone); } });
@@ -1356,6 +1397,7 @@ function DayPlanner({
                 <h3 className="dp-detail-title">{title}</h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   {it.slot.label && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
+                  {evNote && evNote.tone !== 'info' && <EventPill note={evNote} />}
                   {act?.optional && <Pill size="sm" tone="muted" icon={<CircleDashed size={11} />}>אופציונלי</Pill>}
                   {category && <Pill size="sm" style={{ background: `${getCategoryColor(category)}1F` }}>{category}</Pill>}
                   {t && <Pill size="sm" style={{ background: `${t.color}1F` }}>{t.label}</Pill>}
@@ -1421,6 +1463,13 @@ function DayPlanner({
                   </span>
                 </div>
               ))}
+
+              {evNote && (
+                <div className="dp-detail-row">
+                  <span className="dp-detail-row-icon"><CalendarClock size={17} /></span>
+                  <span>{evNote.full}</span>
+                </div>
+              )}
 
               {address && (
                 <a href={mapsHref(address)} target="_blank" rel="noreferrer" className="dp-detail-row">

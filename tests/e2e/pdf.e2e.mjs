@@ -43,7 +43,9 @@ const backup = {
   subcollections: {
     planning: [
       place('p1', 'מקומות לבקר', 'מגדל בלם', 'Av. Brasília, 1400-038 Lisboa', 'להגיע מוקדם, לפני התורים', true),
-      place('p2', 'מקומות לבקר', 'מנזר ז׳רונימוס', 'Praça do Império 1400-206 Lisboa', 'כניסה חינם ביום ראשון הראשון בחודש'),
+      // Its own hours (8.93.0): the 14:00 visit is half an hour before closing.
+      { ...place('p2', 'מקומות לבקר', 'מנזר ז׳רונימוס', 'Praça do Império 1400-206 Lisboa', 'כניסה חינם ביום ראשון הראשון בחודש'),
+        event: { startDate: '2026-11-12', endDate: '2026-11-17', startTime: '10:00', endTime: '14:30' } },
       place('p3', 'מסעדות ומקומות אכילה', 'Time Out Market', 'Av. 24 de Julho 49, Lisboa', 'שוק אוכל, הרבה דוכנים'),
       place('p4', 'מסעדות ומקומות אכילה', 'Pastéis de Belém', 'R. de Belém 84-92', 'הפסטל דה נאטה המקורי'),
       place('p5', 'אטרקציות ודברים לעשות', 'חשמלית 28', '', 'לעלות בתחנה הראשונה כדי לשבת'),
@@ -52,7 +54,7 @@ const backup = {
       { id: 'd1', title: 'יום 1 · בלם', date: '2026-11-13', order: 1, activities: [
         { id: 'a1', timeLabel: '09:00', title: 'מגדל בלם', category: 'מקומות לבקר', address: 'Av. Brasília, Lisboa', description: 'כרטיסים מראש' },
         { id: 'a2', timeLabel: '11:30', title: 'Pastéis de Belém', category: 'מסעדות ומקומות אכילה', address: 'R. de Belém 84-92', description: '' },
-        { id: 'a3', timeLabel: '14:00', title: 'מנזר ז׳רונימוס', category: 'מקומות לבקר', address: '', description: 'סיור מודרך באנגלית, שעה וחצי', optional: true },
+        { id: 'a3', timeLabel: '14:00', title: 'מנזר ז׳רונימוס', placeId: 'p2', category: 'מקומות לבקר', address: '', description: 'סיור מודרך באנגלית, שעה וחצי', optional: true },
         // Free blocks (8.92.0): in the PDF in their places.
         { id: 'b1', block: 'text', text: 'לקחת מטריה, צפוי גשם אחרי הצהריים', after: 'act:a1' },
         { id: 'b2', block: 'check', text: 'לפני היציאה', items: [{ id: 'i1', text: 'כרטיסי Viva Viagem', done: true }, { id: 'i2', text: 'בקבוק מים', done: false }], after: 'act:a2' },
@@ -142,13 +144,14 @@ await step('phone numbers, codes and addresses read left to right', async () => 
 });
 
 // 8.92.0: the day as the schedule shows it: the blocks, the booking on its
-// day, "optional"; and a chapter of the bookings.
+// day, "optional"; and a chapter of the bookings. 8.93.0: a place's hours,
+// "שים לב: נסגר ב־14:30" near its closing.
 await step('the day has its blocks and booking; the bookings have a chapter', async () => {
   let txt;
   try { txt = execFileSync('pdftotext', ['-raw', '.e2e/pdf/trip.pdf', '-']).toString(); } catch { console.log('        pdftotext missing, skipped'); return; }
   const flat = txt.replace(/\s+/g, ' ');
   // Hebrew comes out of pdftotext in visual order: look for the words.
-  for (const w of ['מטריה', 'היציאה', 'המנזר', 'אופציונלי', 'הזמנות', 'Ramiro']) {
+  for (const w of ['מטריה', 'היציאה', 'המנזר', 'אופציונלי', 'הזמנות', 'Ramiro', 'נסגר']) {
     if (!flat.includes(w) && !flat.includes([...w].reverse().join(''))) throw new Error(`"${w}" not in the PDF`);
   }
 });

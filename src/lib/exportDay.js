@@ -5,7 +5,10 @@
 // Pure, for the tests (tests/exportDay.test.mjs).
 //
 // An entry:
-//   { kind: 'activity', time, title, category, description, address, optional, booking }
+//   { kind: 'activity', time, title, category, description, address, optional, booking, hours }
+//   `hours`: the place's own hours on that day, as its card shows them
+//   (8.93.0, eventFit.js), or null: { text, warn } (warn: near the
+//   closing or the opening, or out of them).
 //   { kind: 'booking',  time, title, booking }
 //   { kind: 'fixed',    time, title }                      a flight, the hotel
 //   { kind: 'block',    block: 'text', text }
@@ -13,8 +16,10 @@
 //   { kind: 'block',    block: 'link', url, label }
 import { dayItems, fixedTitle } from './dayPlan.js';
 import { emptyBlock, linkName } from './blocks.js';
+import { eventNote } from './eventFit.js';
 
-export function exportDay(day, { bookings = [], flights = {}, hotel = null } = {}) {
+// `places`: Map of id → place, for their hours (optional).
+export function exportDay(day, { bookings = [], flights = {}, hotel = null, places = null } = {}) {
   const items = dayItems({ acts: day?.activities || [], date: day?.date || null, bookings, flights, hotel });
   const out = [];
   for (const it of items) {
@@ -37,10 +42,13 @@ export function exportDay(day, { bookings = [], flights = {}, hotel = null } = {
     if (it.kind === 'activity') {
       const a = it.act;
       if (!a?.title) continue;
+      const plan = a.placeId ? places?.get(a.placeId) : null;
+      const note = plan && !plan.visited ? eventNote(plan.event, day?.date || null, a.timeLabel) : null;
       out.push({
         kind: 'activity', time, title: a.title, category: a.category || '',
         description: a.description || '', address: a.address || it.booking?.address || '',
         optional: !!a.optional, booking: it.booking || null,
+        hours: note ? { text: note.text, warn: note.tone !== 'info' } : null,
       });
       continue;
     }

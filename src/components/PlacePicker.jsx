@@ -16,7 +16,9 @@ import { Pill } from '../ui/kit';
    `colorOf`/`iconOf` give a category its colour and icon where the caller
    knows them. `metaFrom`: where the times may be counted from (8.91.0),
    [{ key, title }], the first the default; a tap on one changes them all,
-   and `metaOf(place, from)` is asked again.                            */
+   and `metaOf(place, from)` is asked again. `offOf(place)`: why it can't
+   be picked here (not on the day's date, 8.93.0), shown greyed with the
+   reason instead of the hint; '' when it can.                          */
 export default function PlacePicker({
   places,
   value,
@@ -29,6 +31,7 @@ export default function PlacePicker({
   metaOf,
   metaFrom = null,
   badgeOf,
+  offOf,
   onPick,
   onClose,
 }) {
@@ -123,7 +126,8 @@ export default function PlacePicker({
                 <div className="list-group" role={multiple ? 'group' : 'radiogroup'} aria-label={cat}>
                   {items.map(p => {
                     const on = picked.has(p.id);
-                    const hint = hintOf?.(p);
+                    const off = on ? '' : offOf?.(p) || '';
+                    const hint = off || hintOf?.(p);
                     const badge = badgeOf?.(p);
                     return (
                       <button
@@ -131,7 +135,8 @@ export default function PlacePicker({
                         type="button"
                         role={multiple ? 'checkbox' : 'radio'}
                         aria-checked={on}
-                        className={`list-row place-pick-row${on ? ' on' : ''}`}
+                        className={`list-row place-pick-row${on ? ' on' : ''}${off ? ' off' : ''}`}
+                        disabled={!!off}
                         onClick={() => toggle(p.id, close)}
                       >
                         <span className="list-row-icon" style={{ color: color || undefined }}>
@@ -142,7 +147,7 @@ export default function PlacePicker({
                             {p.priority === 'must' && <Star size={12} className="star-must" aria-label="חובה" />}
                             <span>{p.title}</span>
                           </span>
-                          {hint && <span className="list-row-hint">{hint}</span>}
+                          {hint && <span className={`list-row-hint${off ? ' place-pick-off' : ''}`}>{hint}</span>}
                         </span>
                         {badge && <Pill size="sm" tone={badge.tone}>{badge.text}</Pill>}
                         {metaOf && <span className="place-pick-meta">{metaOf(p, from)}</span>}
