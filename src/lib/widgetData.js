@@ -14,6 +14,7 @@ import { tripRange, dayFor } from './morningAlerts.js';
 import { dayActivities } from './dayOrder.js';
 import { dayItems, personalItems, fixedTitle, isBlock } from './dayPlan.js';
 import { emptyBlock, linkName, checkCount } from './blocks.js';
+import { eventNote } from './eventFit.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
@@ -108,7 +109,9 @@ const ownName = (title) => (/^יום \d+$/.test(String(title || '').trim()) ? ''
 // One line of the plan widget, from an item of the schedule (dayPlan.js).
 // placeId: the planning tab's place (by id, or by name as the tab matches
 // it), to link an expense to and to tick off as visited.
-function rowOf(it, plans) {
+// A place's hours (8.93.0): only a warning, in a few words after the name
+// ("⚠ נסגר ב־20:00"), as on the card in the app.
+function rowOf(it, plans, date = null) {
   const time = it.slot.label || '';
   // A free block (8.92.0), in its place in the day, in one line: a note's
   // first line, a list's name and count, a link's name. `note`: not a thing
@@ -127,7 +130,9 @@ function rowOf(it, plans) {
     const a = it.act;
     const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
     const placeId = a.placeId || place?.id;
-    const title = a.optional ? `${a.title} (אופציונלי)` : a.title;
+    const note = a.placeId && place && !place.visited ? eventNote(place.event, date, a.timeLabel) : null;
+    const warn = note && note.tone !== 'info' ? ` · ⚠ ${note.text.split(' · ')[0]}` : '';
+    const title = `${a.optional ? `${a.title} (אופציונלי)` : a.title}${warn}`;
     return { time, title, ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}) };
   }
   if (it.kind === 'booking') {
@@ -153,7 +158,7 @@ function daysOf(trip, days, range, now, plans, bookings, personal) {
       flights: { out: trip.outboundFlightDetails, ret: trip.returnFlightDetails },
     };
     const all = (mine.length ? personalItems({ ...at, mine, shared }) : dayItems({ ...at, acts: shared }))
-      .map(it => rowOf(it, plans)).filter(r => r.title);
+      .map(it => rowOf(it, plans, iso)).filter(r => r.title);
     // The day's things to do: the trip and countdown widgets, and the
     // expense sheet's places. The plan widget's list (`planItems`) has the
     // free blocks between them too (8.92.0), when the day has any.

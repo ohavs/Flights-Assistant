@@ -29,10 +29,11 @@ export async function loadTripExportData(tripId, trip) {
   // hotel on its date, and the free blocks (8.92.0; exportDay.js).
   const daysSnap = await readAll(collection(db, 'trips', tripId, 'days'), mark);
   const at = { bookings, hotel: trip?.hotelDetails || null, flights: { out: trip?.outboundFlightDetails, ret: trip?.returnFlightDetails } };
+  const places = new Map(planning.map(p => [p.id, p]));   // their hours on each day (8.93.0)
   const days = daysSnap.docs
     .map(d => {
       const day = { id: d.id, ...d.data(), activities: dayActivities(d.data().activities) };
-      return { ...day, entries: exportDay(day, at) };
+      return { ...day, entries: exportDay(day, { ...at, places }) };
     })
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
@@ -241,6 +242,10 @@ const PDF_THEME = {
   mint: [230, 244, 236], lavender: [238, 237, 254], butter: [255, 247, 214], sky: [231, 240, 255], rose: [253, 236, 236],
 };
 const PDF_WEIGHTS = { normal: 400, medium: 500, bold: 700 };
+
+// A place's hours on its activity (exportDay.js, 8.93.0): "שעות: …", or
+// "שים לב: נסגר ב־20:00" near the closing or the opening, or out of them.
+const hoursLine = (h) => (!h ? '' : h.warn ? `שים לב: ${h.text}` : `שעות: ${h.text}`);
 
 // Category colours, as the planning and expenses tabs draw them.
 const PLAN_COLORS = {
@@ -657,10 +662,11 @@ export async function exportTripPdf(data, scope = 'all') {
         const titleL = wrap(e.title, CW, 'bold', 13);
         const note = e.kind === 'booking' ? bookingNote(e.booking) : e.booking ? bookingNote(e.booking) : '';
         const noteL = wrap(note, CW, 'medium', 10);
+        const hoursL = wrap(hoursLine(e.hours), CW, 'medium', 10);
         const descL = wrap(e.description, CW, 'normal', 10);
         const addrL = wrap(e.address || e.booking?.address, CW, 'normal', 10);
         const pills = e.category || e.optional;
-        const h = titleL.length * 18 + (pills ? 22 : 0) + noteL.length * 14 + descL.length * 14 + addrL.length * 14 + 18;
+        const h = titleL.length * 18 + (pills ? 22 : 0) + noteL.length * 14 + hoursL.length * 14 + descL.length * 14 + addrL.length * 14 + 18;
         ensure(h);
         const top = y;
         if (e.time) text(e.time, L, top + 13, { align: 'left', weight: 'bold', size: 12 });
@@ -681,6 +687,7 @@ export async function exportTripPdf(data, scope = 'all') {
           base += 22;
         }
         for (const line of noteL) { text(line, R, base, { size: 10, weight: 'medium', color: T.accent }); base += 14; }
+        for (const line of hoursL) { text(line, R, base, { size: 10, weight: 'medium', color: e.hours.warn ? T.orange : T.muted }); base += 14; }
         for (const line of descL) { text(line, R, base, { size: 10, color: T.muted }); base += 14; }
         const addr = e.address || e.booking?.address || '';
         for (const line of addrL) { link(line, R, base, mapsUrl(addr), { size: 10 }); base += 14; }
@@ -1065,6 +1072,7 @@ export async function exportTripDocx(data, scope = 'all') {
           dayChildren.push(para(`• ${labelPart}${e.title}${tail}`, { bold: true, size: 30, heading: HeadingLevel.HEADING_2, color: e.kind === 'fixed' ? '64748b' : undefined }));
           if (e.category) dayChildren.push(para(e.category, { color: '64748b' }));
           if (e.booking) dayChildren.push(para(bookingNote(e.booking), { color: '16874a' }));
+          if (e.hours) dayChildren.push(para(hoursLine(e.hours), { color: e.hours.warn ? 'c2620c' : '64748b' }));
           if (e.description) dayChildren.push(para(e.description, { color: '475569' }));
           if (e.address) dayChildren.push(linkPara(`📍 ${e.address}`, `https://www.google.com/maps?q=${encodeURIComponent(e.address)}`));
           dayChildren.push(spacer());
@@ -1489,7 +1497,7 @@ export async function exportTripXlsx(data, scope = 'all') {
         ? ['', e.block === 'check' ? (e.text || 'רשימה') : e.block === 'link' ? 'קישור' : 'הערה', '', blockText(e), '']
         : [
           e.time || '', `${e.title}${e.optional ? ' (אופציונלי)' : ''}`, e.category || '',
-          [e.booking ? bookingNote(e.booking) : '', e.description || ''].filter(Boolean).join(' · '), e.address || '',
+          [e.booking ? bookingNote(e.booking) : '', hoursLine(e.hours), e.description || ''].filter(Boolean).join(' · '), e.address || '',
         ]));
       addTableSheet(day.title || `יום ${i + 1}`, ['תיוג זמן', 'כותרת', 'קטגוריה', 'הערות', 'כתובת'], rows, [14, 32, 22, 50, 36]);
     }

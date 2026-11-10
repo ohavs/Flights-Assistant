@@ -1650,6 +1650,11 @@ textarea.form-control {
   transition: color 0.12s ease, transform 0.12s ease;
 }
 .wheel-row.on { color: var(--accent); font-weight: 900; transform: scale(1.22); }
+/* Outside a place's hours (8.93.0): faint, and red when it is the one picked. */
+.wheel-row.off { opacity: .32; }
+.wheel-row.on.off { opacity: 1; color: var(--c-red); }
+.picker-readout-time.off { color: var(--c-red); }
+.picker-readout-hint.off { color: var(--c-red); font-size: 13px; }
 .wheel-colon {
   height: 220px; display: grid; place-items: center;
   font-size: 26px; font-weight: 900; color: var(--accent);
@@ -4161,6 +4166,15 @@ button.dp-leg:active { background: var(--ink-4); }
 }
 .act-part.on { background: var(--brand); color: var(--brand-fg); }
 .act-part.on.by-time { background: color-mix(in srgb, var(--brand) 24%, var(--surface-2)); color: var(--text); }
+/* A part of the day outside the place's hours (8.93.0). */
+.act-part:disabled { opacity: .35; cursor: not-allowed; }
+.act-place-when { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.act-form-error {
+  display: flex; align-items: flex-start; gap: 6px; margin: 0;
+  font-size: 12.5px; font-weight: 700; line-height: 1.4; color: var(--c-red);
+}
+.act-form-error > svg { flex-shrink: 0; margin-top: 2px; }
+.list-row:disabled .place-pick-off { color: var(--c-red); font-weight: 700; }
 .act-time { display: flex; align-items: flex-end; gap: 8px; }
 
 /* The schedule's two plans (8.74.0): the trip's, and my own over it, the

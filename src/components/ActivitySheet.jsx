@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
-import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed, CalendarClock, AlertTriangle } from 'lucide-react';
 import { db } from '../firebase';
 import Sheet from '../ui/Sheet';
 import { CategoryDisc } from '../ui/kit';
 import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { addActivities, updateActivity } from '../lib/dayActivities';
-import { PARTS, slotOf, partsLabel } from '../lib/dayPlan';
+import { PARTS, slotOf, partsLabel, clockMinutes } from '../lib/dayPlan';
+import { eventSpan, eventNote, hoursText, onDate, partFits, timeFits, whyNot } from '../lib/eventFit';
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
 const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
@@ -19,7 +20,12 @@ const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
 
    The time is one value, saved as `timeLabel` like before: parts of the
    day (one, or several: 'בוקר–ערב', 8.82.0), or a clock time (which falls
-   in a part on its own).                                               */
+   in a part on its own).
+
+   A place with its own dates and hours (`event`, 8.93.0): on a day out of
+   its dates it is grey in the list, the parts of the day and the clock
+   times out of its hours are grey, and a choice that still ends up out
+   (a time picked before the place) says why and can't be saved.        */
 export default function ActivitySheet({
   tripId, day, editing, plans, categories, usedOn, currentUid, personal = false, onlyOwn = false,
   getCategoryColor, getCategoryIcon, metaOf, metaFrom, onAddCategory, onClose,
@@ -46,8 +52,22 @@ export default function ActivitySheet({
   const [optional, setOptional] = useState(start.optional);
   const [picking, setPicking] = useState(false);
 
-  const chosen = placeIds.map(id => planById.get(id)).filter(Boolean);
+  const chosen = useMemo(() => placeIds.map(id => planById.get(id)).filter(Boolean), [placeIds, planById]);
   const slot = slotOf(timeLabel);
+  const date = day?.date || null;
+  // A place that isn't on this day's dates: grey in the list, with why.
+  const offOf = (p) => { const why = whyNot(p.event, date, ''); return why ? `לא ביום הזה: ${why}` : ''; };
+  // The first chosen place whose hours leave this out, or none.
+  const partBlock = (part) => chosen.find(p => !partFits(p.event, part));
+  const checkTime = useCallback((hhmm) => {
+    const p = chosen.find(x => !timeFits(x.event, clockMinutes(hhmm)));
+    return p ? `${p.title} פתוח רק ${hoursText(eventSpan(p.event))}` : '';
+  }, [chosen]);
+  // What is chosen and can't be: the time was picked before the place, or
+  // an activity saved before its day's date changed.
+  const problems = chosen.map(p => ({ p, why: whyNot(p.event, date, timeLabel) })).filter(x => x.why);
+  const touched = !editing || JSON.stringify([placeIds, timeLabel]) !== JSON.stringify([start.placeIds, start.timeLabel]);
+  const blocked = problems.length > 0 && touched;
   const dirty = JSON.stringify([placeIds, title, category, address, timeLabel, notes, optional])
     !== JSON.stringify([start.placeIds, start.title, start.category, start.address, start.timeLabel, start.notes, start.optional]);
 
@@ -66,6 +86,7 @@ export default function ActivitySheet({
 
   const save = (close) => (e) => {
     e.preventDefault();
+    if (blocked) return;
     const label = timeLabel.trim();
     const description = notes.trim();
     let write;
@@ -140,6 +161,15 @@ export default function ActivitySheet({
                 <div className="act-place-text">
                   <span className="act-place-title">{p.title}</span>
                   <span className="act-place-sub">{[p.category, p.address].filter(Boolean).join(' · ')}</span>
+                  {(() => {
+                    const n = eventNote(p.event, date, timeLabel);
+                    return n && (
+                      <span className="act-place-when">
+                        <CalendarClock size={12} aria-hidden="true" />
+                        <span>{n.full}</span>
+                      </span>
+                    );
+                  })()}
                 </div>
                 {editing && (
                   <button type="button" className="round-btn" aria-label="החלפת מקום" title="החלפת מקום" onClick={() => setPicking(true)}>
@@ -206,12 +236,15 @@ export default function ActivitySheet({
               {PARTS.map(part => {
                 const Icon = PART_ICONS[part];
                 const on = partOn(part);
+                const shut = on ? null : partBlock(part);
                 return (
                   <button
                     key={part}
                     type="button"
                     className={`act-part${on ? ' on' : ''}${on && slot.minutes != null ? ' by-time' : ''}`}
                     aria-pressed={on}
+                    disabled={!!shut}
+                    title={shut ? `${shut.title} פתוח רק ${hoursText(eventSpan(shut.event))}` : undefined}
                     onClick={() => togglePart(part)}
                   >
                     <Icon size={16} aria-hidden="true" />
@@ -228,7 +261,12 @@ export default function ActivitySheet({
             </div>
             <div className="act-time">
               <div style={{ flex: 1, minWidth: 0 }}>
-                <CustomTimePicker label="שעה מדויקת (לא חובה)" value={slot.minutes != null ? slot.label : ''} onChange={setTimeLabel} />
+                <CustomTimePicker
+                  label="שעה מדויקת (לא חובה)"
+                  value={slot.minutes != null ? slot.label : ''}
+                  onChange={setTimeLabel}
+                  check={chosen.some(p => eventSpan(p.event)?.close != null) ? checkTime : null}
+                />
               </div>
               {slot.minutes != null && (
                 <button type="button" className="btn-x" aria-label="בלי שעה מדויקת" title="בלי שעה מדויקת" onClick={() => setTimeLabel(slot.part || '')}>
@@ -236,6 +274,15 @@ export default function ActivitySheet({
                 </button>
               )}
             </div>
+            {!problems.length && chosen.some(p => eventSpan(p.event)?.close != null) && (
+              <span className="act-form-note">מה שמחוץ לשעות של המקום אפור.</span>
+            )}
+            {problems.map(({ p, why }) => (
+              <p key={p.id} className="act-form-error" role="alert">
+                <AlertTriangle size={14} aria-hidden="true" />
+                <span>{`${p.title}: ${why}.`}{blocked ? ` ${onDate(p.event, date) ? 'צריך לבחור שעה אחרת.' : 'אפשר להוסיף אותו ליום אחר.'}` : ''}</span>
+              </p>
+            ))}
           </div>
 
           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -262,7 +309,7 @@ export default function ActivitySheet({
           </div>
 
           <div className="sheet-footer">
-            <button type="submit" className="btn-primary" disabled={!chosen.length && !title.trim()}>
+            <button type="submit" className="btn-primary" disabled={(!chosen.length && !title.trim()) || blocked}>
               {!editing && chosen.length > 1 ? `הוסף ${chosen.length} פעילויות` : 'שמור'}
             </button>
             <button type="button" onClick={cancel} className="btn-secondary">ביטול</button>
@@ -286,6 +333,7 @@ export default function ActivitySheet({
               return p.address && !/^https?:\/\//i.test(p.address) ? p.address : '';
             }}
             badgeOf={(p) => (p.visited ? { text: 'ביקרנו', tone: 'muted' } : null)}
+            offOf={offOf}
             onPick={(v) => setPlaceIds(editing ? [v] : v)}
             onClose={() => setPicking(false)}
           />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useBackHandler from '../hooks/useBackHandler';
 import { Calendar as CalendarIcon, CalendarClock, Clock, ChevronRight, ChevronLeft, ChevronDown, Check, Search } from 'lucide-react';
@@ -210,7 +210,9 @@ const ROW = 44; // a wheel row's height, px — .wheel-row in index.css
    00 reaches 59, and down from 59 reaches 00. The middle row's look is
    switched on the element itself rather than through state, so a scroll
    does not re-render a few hundred rows on every frame. */
-function Wheel({ values, value, onChange, label }) {
+// `dim`: values shown greyed (can't be chosen there, 8.93.0); still on the
+// wheel, so it turns as always, and the picker says why.
+function Wheel({ values, value, onChange, label, dim = null }) {
   const ref = useRef(null);
   const n = values.length;
   const copies = Math.max(5, Math.ceil(200 / n)) | 1;   // odd, so there is a middle one
@@ -279,7 +281,7 @@ function Wheel({ values, value, onChange, label }) {
   for (let c = 0; c < copies; c++) {
     values.forEach((v, i) => {
       const row = c * n + i;
-      rows.push(<button key={row} type="button" tabIndex={-1} className="wheel-row" data-row={row}>{v}</button>);
+      rows.push(<button key={row} type="button" tabIndex={-1} className={`wheel-row${dim?.has(v) ? ' off' : ''}`} data-row={row}>{v}</button>);
     });
   }
 
@@ -309,12 +311,12 @@ function Wheel({ values, value, onChange, label }) {
 }
 
 // Hours left, minutes right — the order HH:MM is read in, in Hebrew too.
-function TimeWheels({ hour, minute, onHour, onMinute }) {
+function TimeWheels({ hour, minute, onHour, onMinute, dimHours = null, dimMinutes = null }) {
   return (
     <div className="wheels">
-      <Wheel label="שעה" values={HOURS} value={hour} onChange={onHour} />
+      <Wheel label="שעה" values={HOURS} value={hour} onChange={onHour} dim={dimHours} />
       <span className="wheel-colon" aria-hidden="true">:</span>
-      <Wheel label="דקה" values={MINUTES} value={minute} onChange={onMinute} />
+      <Wheel label="דקה" values={MINUTES} value={minute} onChange={onMinute} dim={dimMinutes} />
     </div>
   );
 }
@@ -427,7 +429,9 @@ export function formatHebrewTime(timeStr) {
   return `${hh}:${mm}`;
 }
 
-export function CustomTimePicker({ value, onChange, label, required }) {
+// `check('HH:MM')`: why that time can't be chosen ('' when it can, 8.93.0).
+// The hours and minutes it rules out are grey, and the readout says why.
+export function CustomTimePicker({ value, onChange, label, required, check = null }) {
   const [isOpen, setIsOpen] = useState(false);
   // Back closes the picker, not the sheet underneath it.
   useBackHandler(isOpen, () => setIsOpen(false));
@@ -442,8 +446,16 @@ export function CustomTimePicker({ value, onChange, label, required }) {
   }, [value]);
 
   const displayValue = value ? formatHebrewTime(value) : '';
+  const why = check ? check(`${tempH}:${tempM}`) : '';
+  const dimHours = useMemo(() => (check
+    ? new Set(HOURS.filter(h => MINUTES.every(m => check(`${h}:${m}`))))
+    : null), [check]);
+  const dimMinutes = useMemo(() => (check
+    ? new Set(MINUTES.filter(m => check(`${tempH}:${m}`)))
+    : null), [check, tempH]);
 
   const handleSave = () => {
+    if (why) return;
     onChange(`${tempH}:${tempM}`);
     setIsOpen(false);
   };
@@ -460,11 +472,15 @@ export function CustomTimePicker({ value, onChange, label, required }) {
         <PickerDialog
           title={label || 'בחירת שעה'}
           onClose={() => setIsOpen(false)}
-          readout={<span className="picker-readout-time">{tempH}:{tempM}</span>}
+          readout={<>
+            <span className={`picker-readout-time${why ? ' off' : ''}`}>{tempH}:{tempM}</span>
+            {why && <span className="picker-readout-hint off" role="status">{why}</span>}
+          </>}
           okLabel="בחירה"
           onOk={handleSave}
+          okDisabled={!!why}
         >
-          <TimeWheels hour={tempH} minute={tempM} onHour={setTempH} onMinute={setTempM} />
+          <TimeWheels hour={tempH} minute={tempM} onHour={setTempH} onMinute={setTempM} dimHours={dimHours} dimMinutes={dimMinutes} />
         </PickerDialog>
       )}
     </div>

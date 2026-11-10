@@ -278,3 +278,19 @@ test('the bookings widget: the trip\'s bookings ahead, the soonest first, undate
   assert.equal(p.bookings[0].pending, true);
   assert.equal(p.bookings[2].date, '');
 });
+
+test('a place\'s hours: only a warning, after the name (8.93.0)', () => {
+  const days = [{ id: 'd2', order: 1, date: '2026-11-04', activities: [
+    { id: 'a1', title: 'שוק', placeId: 'm', timeLabel: '19:30' },
+    { id: 'a2', title: 'מוזיאון', placeId: 'u', timeLabel: '12:00' },
+  ] }];
+  const plans = [
+    { id: 'm', title: 'שוק', event: { startDate: '2026-11-03', endDate: '2026-11-05', startTime: '10:00', endTime: '20:00' } },
+    { id: 'u', title: 'מוזיאון', event: { startDate: '2026-11-04', startTime: '10:00', endTime: '18:00' } },
+  ];
+  const [t] = widgetSnapshot({ trips: [paris], daysByTrip: { p: days }, plansByTrip: { p: plans }, now }).trips;
+  assert.deepEqual(t.days['2026-11-04'].items, [
+    { time: '12:00', title: 'מוזיאון', placeId: 'u' },
+    { time: '19:30', title: 'שוק · ⚠ נסגר ב־20:00', placeId: 'm' },
+  ]);
+});
