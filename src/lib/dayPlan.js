@@ -8,8 +8,8 @@
 //
 // An activity's time is its `timeLabel`, as every reader already shows it
 // (the widget, the morning summary, the exports): a part of the day
-// ('בוקר'), several ('בוקר–ערב', 8.82.0), a clock time ('10:30'), or free
-// text saved before.
+// ('בוקר'), several ('בוקר–ערב', 8.82.0), a clock time ('10:30'), a range
+// of clock times ('10:00–12:00', 8.94.0), or free text saved before.
 import { parseClock } from './flightAlerts.js';
 
 export const PARTS = ['בוקר', 'צהריים', 'ערב', 'לילה'];
@@ -23,6 +23,22 @@ export function clockMinutes(s) {
   const c = parseClock(t);
   return c ? c[0] * 60 + c[1] : null;
 }
+
+// A range of clock times ('10:00–12:00', '22:00-01:00'): [from, to] in
+// minutes, or null. The same time twice is no range.
+function rangeOf(t) {
+  const ends = t.split(/\s*[–—-]\s*/);
+  if (ends.length !== 2) return null;
+  const [a, b] = ends.map(clockMinutes);
+  return a != null && b != null && a !== b ? [a, b] : null;
+}
+
+// A range as saved: '10:00–12:00'. With no end (or the same), the time.
+export const rangeLabel = (from, to) => (to == null || to === from
+  ? fmtClock(from) : `${fmtClock(from)}–${fmtClock(to)}`);
+
+// The minutes from the start of a range to its end (past midnight too).
+export const rangeLength = (from, to) => (((to - from) % 1440) + 1440) % 1440;
 
 // The part of the day a clock time falls in.
 export function partOf(mins) {
@@ -58,20 +74,27 @@ function spanOf(t) {
   return null;
 }
 
-// A saved time label, read: { label, part, parts, minutes, custom }.
-// `part` is where it stands in the day: for several parts, the first.
+// A saved time label, read: { label, part, parts, minutes, end, custom }.
+// `part` is where it stands in the day: for several parts, the first; for
+// a range, its start's. `minutes` is the clock time, or a range's start,
+// and `end` a range's end (else null).
 export function slotOf(label) {
   const t = String(label || '').trim();
-  if (!t) return { label: '', part: null, parts: [], minutes: null, custom: false };
+  if (!t) return { label: '', part: null, parts: [], minutes: null, end: null, custom: false };
   const minutes = clockMinutes(t);
   if (minutes != null) {
     const part = partOf(minutes);
-    return { label: fmtClock(minutes), part, parts: [part], minutes, custom: false };
+    return { label: fmtClock(minutes), part, parts: [part], minutes, end: null, custom: false };
   }
-  if (PARTS.includes(t)) return { label: t, part: t, parts: [t], minutes: null, custom: false };
+  const range = rangeOf(t);
+  if (range) {
+    const part = partOf(range[0]);
+    return { label: rangeLabel(...range), part, parts: [part], minutes: range[0], end: range[1], custom: false };
+  }
+  if (PARTS.includes(t)) return { label: t, part: t, parts: [t], minutes: null, end: null, custom: false };
   const span = spanOf(t);
-  if (span) return { label: partsLabel(span), part: span[0], parts: span, minutes: null, custom: false };
-  return { label: t, part: null, parts: [], minutes: null, custom: true };
+  if (span) return { label: partsLabel(span), part: span[0], parts: span, minutes: null, end: null, custom: false };
+  return { label: t, part: null, parts: [], minutes: null, end: null, custom: true };
 }
 
 // After midnight is still the night before (01:00 comes after 23:00).
@@ -117,7 +140,7 @@ export function dayItems({ acts = [], ...at } = {}) {
 // the shared plan; null = the top of the day), in the array's order among
 // the blocks after the same one. One whose item is gone goes to the end.
 export const isBlock = (a) => !!a?.block;
-const NO_SLOT = { label: '', part: null, parts: [], minutes: null, custom: false };
+const NO_SLOT = { label: '', part: null, parts: [], minutes: null, end: null, custom: false };
 export const baseKey = (k) => String(k || '').replace(/^sh:/, '');
 function blockItems(acts, shared = false) {
   return acts.filter(isBlock).map((act, i) => ({
@@ -172,7 +195,10 @@ function timedItems({ acts = [], date = null, bookings = [], flights = {}, hotel
     if (!act) return;
     const booking = act.placeId ? byPlace.get(act.placeId) || null : null;
     if (booking) merged.add(booking.id);
-    const slot = booking?.time ? slotOf(booking.time) : slotOf(act.timeLabel);
+    // The booking's time, unless the activity's range starts at it.
+    const own = slotOf(act.timeLabel);
+    const at = booking?.time ? slotOf(booking.time) : null;
+    const slot = at && !(own.end != null && own.minutes === at.minutes) ? at : own;
     items.push({ key: `act:${act.id}`, kind: 'activity', act, booking, slot, seq: seq++ });
   });
   onDay.forEach(b => {
@@ -210,6 +236,25 @@ export function sortItems(items) {
   return [...items].sort((a, b) => group(a) - group(b)
     || (a.slot.minutes == null ? -1 : dayMinutes(a.slot.minutes)) - (b.slot.minutes == null ? -1 : dayMinutes(b.slot.minutes))
     || a.seq - b.seq);
+}
+
+// What starts before something with a range ends (8.94.0, the owner's
+// ask): the keys of the later ones, each with the earlier one it meets.
+// Only clock times count; after midnight is still the night before.
+export function overlaps(items) {
+  const out = new Map();
+  const timed = (items || []).filter(it => it.kind !== 'block' && it.slot?.minutes != null)
+    .map(it => ({ it, from: dayMinutes(it.slot.minutes) }))
+    .sort((a, b) => a.from - b.from);
+  let open = null;   // the range that ends last so far: { it, to }
+  timed.forEach(({ it, from }) => {
+    if (open && from < open.to) out.set(it.key, open.it);
+    if (it.slot.end != null) {
+      const to = from + rangeLength(it.slot.minutes, it.slot.end);
+      if (!open || to > open.to) open = { it, to };
+    }
+  });
+  return out;
 }
 
 // The personal plan ("שלי") over the shared one: the member's own

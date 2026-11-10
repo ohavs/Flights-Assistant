@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { eventSpan, onDate, timeFits, partFits, whyNot, eventNote, stayingIds } from '../src/lib/eventFit.js';
+import { eventSpan, onDate, timeFits, partFits, whyNot, eventNote, stayingIds, endsLate } from '../src/lib/eventFit.js';
 
 const market = { startDate: '2026-12-10', endDate: '2026-12-24', startTime: '10:00', endTime: '20:00' };
 const show = { startDate: '2026-12-12', startTime: '20:00' };
@@ -89,6 +89,26 @@ test('the note of one day: starts and ends', () => {
   assert.equal(eventNote(show, '2026-12-12', '12:00').tone, 'info');
   assert.equal(eventNote(fair, '2026-12-11', '').text, 'עד 12.12');
   assert.equal(eventNote({ startDate: '2026-12-12' }, '2026-12-12', '').text, 'רק ביום הזה');
+});
+
+test('a range: held by its start, a warning when it ends after the closing (8.94.0)', () => {
+  // The owner's decision: allowed, with a warning.
+  assert.equal(whyNot(market, '2026-12-11', '16:00–21:00'), '');
+  assert.equal(endsLate(market, '16:00–21:00'), 'נסגר ב־20:00');
+  assert.deepEqual(eventNote(market, '2026-12-11', '16:00–21:00'), { tone: 'warn', text: 'נסגר ב־20:00 · עד 24.12', full: 'כל יום 10:00–20:00 · 10.12–24.12' });
+  // Ends at the closing, or before it: as for its start.
+  assert.equal(endsLate(market, '16:00–20:00'), '');
+  assert.equal(eventNote(market, '2026-12-11', '16:00–20:00').tone, 'info');
+  assert.equal(eventNote(market, '2026-12-11', '10:10–12:00').text, 'נפתח ב־10:00 · עד 24.12');
+  // A start out of the hours is still out.
+  assert.equal(whyNot(market, '2026-12-11', '09:00–11:00'), 'רק בשעות 10:00–20:00');
+  assert.equal(endsLate(market, '09:00–11:00'), '');
+  // Past midnight.
+  assert.equal(endsLate(party, '23:00–02:00'), '');
+  assert.equal(endsLate(party, '01:00–04:00'), 'מסתיים ב־03:00');
+  // No closing time, no plain time: nothing to say.
+  assert.equal(endsLate(show, '20:00–23:00'), '');
+  assert.equal(endsLate(market, '19:30'), '');
 });
 
 test('a day swap leaves what is not on the other date', () => {

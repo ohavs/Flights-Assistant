@@ -3,7 +3,9 @@
 // day"; out of its hours the parts of the day and the clock times are
 // grey, and a time picked before the place says why and can't be saved.
 // Its activity shows the hours, and warns near the opening or the closing.
-// Swapping days leaves it on its own date.
+// Swapping days leaves it on its own date. A range of hours (8.94.0):
+// "משעה" and "עד", the end under the start in the timeline, a warning when
+// it ends after the closing, and "חופף" on what starts inside it.
 //   bash scripts/run-e2e.sh tests/e2e/eventhours.e2e.mjs
 // Screenshots: .e2e/eventhours/
 import { chromium } from 'playwright';
@@ -120,7 +122,7 @@ await step('out of its hours: the parts of the day and the clock times are grey'
   if (!(await sheet().locator('.act-part', { hasText: 'לילה' }).isDisabled())) throw new Error('night can be picked');
   if (await sheet().locator('.act-part', { hasText: 'בוקר' }).isDisabled()) throw new Error('morning is grey');
   await shot('parts-grey');
-  await sheet().locator('.picker-field').click();
+  await sheet().locator('.picker-field').first().click();
   const wheel = page.locator('.wheel[aria-label="שעה"]');
   await wheel.waitFor();
   if (!(await wheel.locator('.wheel-row.off', { hasText: /^21$/ }).count())) throw new Error('21 is not grey');
@@ -154,6 +156,60 @@ await step('a time picked before the place: says why, and can\'t be saved', asyn
   await card('שוק חג המולד').getByText('10:00–20:00 · יום אחרון').waitFor();
   await until(async () => same(await titlesOn('2026-12-12'), ['מוזיאון', 'שוק חג המולד']), 'saved');
   await shot('saved');
+});
+
+// Picks a time in the picker of field `i` (0 "משעה", 1 "עד") by tapping
+// the hour (minutes stay as they open).
+const pickHour = async (i, hh) => {
+  await sheet().locator('.act-time .picker-field').nth(i).click();
+  await page.locator('.wheel[aria-label="שעה"] .wheel-row').filter({ hasText: new RegExp(`^${hh}$`) }).nth(4).click();
+  await page.getByRole('button', { name: 'בחירה', exact: true }).click();
+  await page.waitForTimeout(300);
+};
+
+await step('a range of hours: from, until, a warning past the closing (8.94.0)', async () => {
+  await chip('יום 3').click();
+  await page.locator('button[aria-label="פעולות: שוק חג המולד"]').click();
+  await sheet().getByText('עריכה', { exact: true }).click();
+  await page.waitForTimeout(400);
+  const end = sheet().locator('.act-time .picker-field').nth(1);
+  if (!(await end.isDisabled())) throw new Error('"עד" opens with no start');
+  await pickHour(0, '16');
+  if (await end.isDisabled()) throw new Error('"עד" is off after a start');
+  // The end opens an hour after the start; the start itself can't be the end.
+  await end.click();
+  await page.locator('.picker-readout', { hasText: '17:00' }).waitFor();
+  await page.locator('.wheel[aria-label="שעה"] .wheel-row').filter({ hasText: /^16$/ }).nth(4).click();
+  await page.locator('.picker-readout-hint', { hasText: 'כמו שעת ההתחלה' }).waitFor();
+  await page.locator('.wheel[aria-label="שעה"] .wheel-row').filter({ hasText: /^21$/ }).nth(4).click();
+  await page.getByRole('button', { name: 'בחירה', exact: true }).click();
+  await page.waitForTimeout(300);
+  await sheet().locator('.act-form-error.warn', { hasText: 'שוק חג המולד נסגר ב־20:00, לפני סוף הטווח' }).waitFor();
+  await shot('range-form');
+  await sheet().locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  const row = page.locator('.dp-row', { has: card('שוק חג המולד') });
+  await row.locator('.dp-time', { hasText: '16:00' }).locator('.dp-time-end', { hasText: '21:00' }).waitFor();
+  await card('שוק חג המולד').getByText('נסגר ב־20:00').waitFor();
+  await until(async () => {
+    const day = (await list('days')).find(d => d.fields.date?.stringValue === '2026-12-12');
+    return (day?.fields.activities?.arrayValue.values || [])
+      .some(v => v.mapValue.fields.timeLabel?.stringValue === '16:00–21:00');
+  }, 'the range saved');
+});
+
+await step('what starts inside a range says "חופף"', async () => {
+  await page.locator('button.fab', { hasText: 'פעילות חדשה' }).click();
+  await sheet().locator('input.form-control').first().fill('קפה');
+  await pickHour(0, '17');
+  await sheet().locator('.sheet-footer button[type="submit"]').click();
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
+  await card('קפה').getByText('חופף', { exact: true }).waitFor();
+  if (await card('שוק חג המולד').getByText('חופף').count()) throw new Error('the range itself says חופף');
+  await shot('range-overlap');
+  await card('קפה').locator('.dp-card-main').click();
+  await sheet().getByText('חופף לשוק חג המולד').waitFor();
+  await closeTop();
 });
 
 await step('moving to another day: out of its dates is grey', async () => {

@@ -11,13 +11,16 @@
      with hours is open every day in those hours (8.70.1); an end earlier
      than the start runs past midnight.
    - A clock time is in if it is within the hours; a part of the day if it
-     meets them at all. Free text is never checked.
-   - Warnings: a clock time less than CLOSE_SOON minutes before closing,
+     meets them at all. Free text is never checked. A range of clock times
+     (8.94.0) by its start: one that ends after the closing is allowed,
+     with a warning (the owner's decision).
+   - Warnings: a range that ends after the closing; a clock time less than
+     CLOSE_SOON minutes before closing,
      or less than OPEN_JUST after opening (or up to 3 hours before a start
      with no end);
      a part of the day that starts before the opening or ends after the
      closing.                                                            */
-import { slotOf } from './dayPlan.js';
+import { slotOf, rangeLength } from './dayPlan.js';
 
 export const CLOSE_SOON = 60;
 export const OPEN_JUST = 30;
@@ -80,11 +83,23 @@ export function whyNot(ev, date, timeLabel) {
   return out ? `רק בשעות ${hoursText(s)}` : '';
 }
 
+// A range that starts in the hours and ends after the closing: what to
+// say ("נסגר ב־18:00"), or ''.
+export function endsLate(ev, timeLabel) {
+  const s = eventSpan(ev);
+  const slot = slotOf(timeLabel);
+  if (!s || s.close == null || slot.end == null || !inHours(s, slot.minutes)) return '';
+  const since = around(slot.minutes - s.open);
+  return since + rangeLength(slot.minutes, slot.end) > s.length ? closesText(s) : '';
+}
+const closesText = (s) => `${s.multi ? 'נסגר' : 'מסתיים'} ב־${s.endTime}`;
+
 /* What an activity of the place shows, in a few words:
    { tone: 'info' | 'warn' | 'bad', text, full } or null.
    - bad: not on its dates, or outside its hours (a day swap can't do it,
      but a changed date or changed hours can).
-   - warn: close to the closing or the opening ("נסגר ב־20:00").
+   - warn: close to the closing or the opening ("נסגר ב־20:00"), or a
+     range that ends after the closing.
    - info: its hours, and for days in a row until when ("10:00–20:00 · עד
      24.12", "יום אחרון"). One day with no hours: "רק ביום הזה". */
 export function eventNote(ev, date, timeLabel) {
@@ -102,9 +117,9 @@ export function eventNote(ev, date, timeLabel) {
   const slot = slotOf(timeLabel);
   // Every day in its hours opens and closes; one day starts and ends.
   const opens = `${s.multi ? 'נפתח' : 'מתחיל'} ב־${s.startTime}`;
-  const closes = `${s.multi ? 'נסגר' : 'מסתיים'} ב־${s.endTime}`;
-  let warn = '';
-  if (s.open != null && !slot.custom) {
+  const closes = closesText(s);
+  let warn = endsLate(ev, timeLabel);
+  if (!warn && s.open != null && !slot.custom) {
     if (slot.minutes != null) {
       const since = around(slot.minutes - s.open);
       if (s.close != null && s.length - since <= CLOSE_SOON) warn = closes;
