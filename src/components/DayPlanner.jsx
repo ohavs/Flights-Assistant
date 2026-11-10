@@ -27,7 +27,7 @@ import {
 } from '../lib/dayActivities';
 import {
   dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey,
-  missingDates, placeDays, nextDate, orderFor, blockDrop, baseKey,
+  missingDates, placeDays, nextDate, orderFor, blockDrop, baseKey, overlaps, fmtClock,
 } from '../lib/dayPlan';
 import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
@@ -176,6 +176,8 @@ function DayPlanner({
       : dayItems({ ...at, acts: day.activities });
   }, [day, planDay, personalMode, bookings, flights, hotelDetails]);
   const groups = useMemo(() => groupItems(items), [items]);
+  // What starts before a range above it ends (8.94.0): "חופף".
+  const clashes = useMemo(() => overlaps(items), [items]);
   const anchored = useMemo(() => (planDay ? anchoredIds(planDay.activities, day.date, bookings) : new Set()), [planDay, day, bookings]);
 
   // Where each stop is, for the time it takes to get there.
@@ -733,8 +735,20 @@ function DayPlanner({
     return '';
   };
 
+  // The name of an item, for "חופף ל…".
+  const nameOf = (it) => (it.kind === 'activity' ? (planById.get(it.act.placeId)?.title || it.act.title)
+    : it.kind === 'booking' ? it.booking.title : fixedTitle(it));
+  const clashPill = (it) => {
+    const with_ = clashes.get(it.key);
+    return with_ && (
+      <Pill size="sm" tone="butter" title={`חופף ל${nameOf(with_)}`} icon={<AlertTriangle size={11} />}>חופף</Pill>
+    );
+  };
+
   const renderItem = (it) => {
-    const time = it.slot.minutes != null ? it.slot.label : '';
+    const time = it.slot.minutes != null ? fmtClock(it.slot.minutes) : '';
+    // A range (8.94.0): its start, and its end under it.
+    const railTime = <span className="dp-time">{time}{it.slot.end != null && <small className="dp-time-end">{fmtClock(it.slot.end)}</small>}</span>;
     const drop = dropAt(it.key);
     if (it.kind === 'block') {
       const editable = canChange(it);
@@ -807,13 +821,14 @@ function DayPlanner({
         <React.Fragment key={it.key}>
           {legChip(it, drop === ' drop-before' ? drop : '')}
           <div data-item={it.key} className={`dp-row${it.shared ? ' shared' : ''}${legs.has(it.key) && drop !== ' drop-after' ? '' : drop}`}>
-            <span className="dp-rail" aria-hidden="true"><span className="dp-time">{time}</span></span>
+            <span className="dp-rail" aria-hidden="true">{railTime}</span>
             <div className="dp-card booking" style={{ '--c': t.color }}>
               <button type="button" className="dp-card-main" onClick={() => setDetailKey(it.key)}>
                 <span className="dp-disc" style={{ background: `${t.color}1F`, color: t.color }}><t.Icon size={18} /></span>
                 <span className="dp-card-text">
                   <span className="dp-card-title">{b.title}</span>
                   <span className="dp-card-sub">{[t.label, facts].filter(Boolean).join(' · ')}</span>
+                  {clashes.has(it.key) && <span className="dp-card-tags">{clashPill(it)}</span>}
                   {bookingStub(b)}
                 </span>
               </button>
@@ -840,7 +855,7 @@ function DayPlanner({
         {legChip(it, drop === ' drop-before' ? drop : '')}
         <div data-item={it.key} className={`dp-row${it.shared ? ' shared' : ''}${legs.has(it.key) && drop !== ' drop-after' ? '' : drop}`}>
           <span className="dp-rail" aria-hidden="true">
-            <span className="dp-time">{time}</span>
+            {railTime}
           </span>
           <div className={`dp-card${visited ? ' visited' : ''}${it.booking ? ' booked' : ''}${act.optional ? ' optional' : ''}`} style={{ '--c': color }}>
             <button type="button" className="dp-card-main" onClick={() => setDetailKey(it.key)}>
@@ -854,8 +869,9 @@ function DayPlanner({
                 </span>
                 {sub && <span className="dp-card-sub">{sub}</span>}
                 {act.description && <span className="dp-card-note">{act.description}</span>}
-                {(visited || toBook || elsewhere || evNote || act.optional || it.slot.custom || it.slot.parts.length > 1) && (
+                {(visited || toBook || elsewhere || evNote || act.optional || it.slot.custom || it.slot.parts.length > 1 || clashes.has(it.key)) && (
                   <span className="dp-card-tags">
+                    {clashPill(it)}
                     <EventPill note={evNote} />
                     {act.optional && <Pill size="sm" tone="muted" icon={<CircleDashed size={11} />}>אופציונלי</Pill>}
                     {(it.slot.custom || it.slot.parts.length > 1) && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
@@ -1398,6 +1414,7 @@ function DayPlanner({
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   {it.slot.label && <Pill size="sm" tone="sky" icon={<Clock size={11} />}>{it.slot.label}</Pill>}
                   {evNote && evNote.tone !== 'info' && <EventPill note={evNote} />}
+                  {clashes.has(it.key) && <Pill size="sm" tone="butter" icon={<AlertTriangle size={11} />}>{`חופף ל${nameOf(clashes.get(it.key))}`}</Pill>}
                   {act?.optional && <Pill size="sm" tone="muted" icon={<CircleDashed size={11} />}>אופציונלי</Pill>}
                   {category && <Pill size="sm" style={{ background: `${getCategoryColor(category)}1F` }}>{category}</Pill>}
                   {t && <Pill size="sm" style={{ background: `${t.color}1F` }}>{t.label}</Pill>}

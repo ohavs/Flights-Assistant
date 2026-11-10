@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
   canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel, nextDate, orderFor, blockDrop,
+  rangeLabel, rangeLength, overlaps, sortItems,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -26,10 +27,63 @@ test('the part of the day of a time', () => {
 });
 
 test('a saved time label: a part, a clock, free text or none', () => {
-  assert.deepEqual(slotOf('ערב'), { label: 'ערב', part: 'ערב', parts: ['ערב'], minutes: null, custom: false });
-  assert.deepEqual(slotOf('9:30'), { label: '09:30', part: 'בוקר', parts: ['בוקר'], minutes: 570, custom: false });
-  assert.deepEqual(slotOf('אחרי הסיור'), { label: 'אחרי הסיור', part: null, parts: [], minutes: null, custom: true });
-  assert.deepEqual(slotOf(''), { label: '', part: null, parts: [], minutes: null, custom: false });
+  assert.deepEqual(slotOf('ערב'), { label: 'ערב', part: 'ערב', parts: ['ערב'], minutes: null, end: null, custom: false });
+  assert.deepEqual(slotOf('9:30'), { label: '09:30', part: 'בוקר', parts: ['בוקר'], minutes: 570, end: null, custom: false });
+  assert.deepEqual(slotOf('אחרי הסיור'), { label: 'אחרי הסיור', part: null, parts: [], minutes: null, end: null, custom: true });
+  assert.deepEqual(slotOf(''), { label: '', part: null, parts: [], minutes: null, end: null, custom: false });
+});
+
+test('a range of clock times (8.94.0)', () => {
+  assert.deepEqual(slotOf('10:00–12:00'), { label: '10:00–12:00', part: 'בוקר', parts: ['בוקר'], minutes: 600, end: 720, custom: false });
+  // Typed or saved with another dash, with spaces, 12-hour.
+  assert.equal(slotOf('9:30 - 11:00').label, '09:30–11:00');
+  assert.equal(slotOf('7:30 PM—9:00 PM').end, 1260);
+  // Past midnight: in the part of its start.
+  assert.deepEqual([slotOf('22:00–01:00').part, slotOf('22:00–01:00').end], ['לילה', 60]);
+  // The same time twice is no range; a broken one is text.
+  assert.equal(slotOf('10:00–10:00').custom, true);
+  assert.equal(slotOf('10:00–25:00').custom, true);
+  // Parts of the day are still parts.
+  assert.deepEqual(slotOf('בוקר–ערב').parts, ['בוקר', 'צהריים', 'ערב']);
+  assert.equal(rangeLabel(600, 720), '10:00–12:00');
+  assert.equal(rangeLabel(600), '10:00');
+  assert.equal(rangeLabel(600, 600), '10:00');
+  assert.equal(rangeLength(600, 720), 120);
+  assert.equal(rangeLength(1320, 60), 180);
+});
+
+test('a range sorts by its start', () => {
+  const items = [
+    { key: 'b', slot: slotOf('11:00'), seq: 0 },
+    { key: 'a', slot: slotOf('10:00–12:00'), seq: 1 },
+    { key: 'c', slot: slotOf('בוקר'), seq: 2 },
+  ];
+  assert.deepEqual(sortItems(items).map(it => it.key), ['c', 'a', 'b']);
+});
+
+test('what starts before a range above it ends', () => {
+  const it = (key, label, kind = 'activity') => ({ key, kind, slot: slotOf(label) });
+  const items = [
+    it('museum', '10:00–12:00'), it('coffee', '11:30'), it('lunch', '12:00'), it('part', 'צהריים'),
+    it('show', '20:00–23:30'), it('bar', '23:00'), it('club', '00:30'), it('blk', '', 'block'),
+  ];
+  const got = overlaps(items);
+  assert.deepEqual([...got.keys()], ['coffee', 'bar']);
+  assert.equal(got.get('coffee').key, 'museum');
+  // Past midnight; a long range covers the ones after it.
+  const night = overlaps([it('party', '22:00–02:00'), it('late', '01:00'), it('next', '01:30–03:00'), it('after', '02:30')]);
+  assert.deepEqual([...night.keys()], ['late', 'next', 'after']);
+  assert.equal(night.get('after').key, 'next');
+  // Times with no range never meet.
+  assert.equal(overlaps([it('a', '10:00'), it('b', '10:00')]).size, 0);
+});
+
+test('a booked place keeps a range that starts at the booking', () => {
+  const bookings = [{ id: 'b1', placeId: 'p', date: '2026-11-05', time: '19:30' }];
+  const at = (label) => dayItems({ acts: [{ id: 'a', placeId: 'p', title: 'x', timeLabel: label }], date: '2026-11-05', bookings })[0].slot.label;
+  assert.equal(at('19:30–21:30'), '19:30–21:30');
+  assert.equal(at('19:00–21:00'), '19:30');
+  assert.equal(at('ערב'), '19:30');
 });
 
 test('bookings on a date leave out the cancelled ones', () => {
@@ -192,9 +246,9 @@ test('several parts of the day: one label, standing at the first', () => {
   assert.equal(partsLabel(['ערב', 'בוקר']), 'בוקר, ערב');
   assert.equal(partsLabel(['ערב']), 'ערב');
   assert.equal(partsLabel([]), '');
-  assert.deepEqual(slotOf('בוקר–ערב'), { label: 'בוקר–ערב', part: 'בוקר', parts: ['בוקר', 'צהריים', 'ערב'], minutes: null, custom: false });
+  assert.deepEqual(slotOf('בוקר–ערב'), { label: 'בוקר–ערב', part: 'בוקר', parts: ['בוקר', 'צהריים', 'ערב'], minutes: null, end: null, custom: false });
   assert.deepEqual(slotOf('בוקר - צהריים').parts, ['בוקר', 'צהריים']);
-  assert.deepEqual(slotOf('ערב, בוקר'), { label: 'בוקר, ערב', part: 'בוקר', parts: ['בוקר', 'ערב'], minutes: null, custom: false });
+  assert.deepEqual(slotOf('ערב, בוקר'), { label: 'בוקר, ערב', part: 'בוקר', parts: ['בוקר', 'ערב'], minutes: null, end: null, custom: false });
   // Text that only looks like it stays text.
   assert.equal(slotOf('ערב-בוקר').custom, true);
   assert.equal(slotOf('בוקר - מוזיאון').custom, true);

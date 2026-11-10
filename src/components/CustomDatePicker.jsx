@@ -62,9 +62,9 @@ export function formatHebrewDateTime(dateTimeStr) {
 /* The field a picker opens from. A button that wears the field's look,
    with what it holds at its start (a calendar, a clock) so a chooser
    never reads as a box to type into. */
-function PickerField({ Icon, filled, onOpen, children }) {
+function PickerField({ Icon, filled, onOpen, disabled = false, children }) {
   return (
-    <button type="button" onClick={onOpen} className="form-control picker-field">
+    <button type="button" onClick={onOpen} className="form-control picker-field" disabled={disabled}>
       <span className="picker-field-icon" aria-hidden="true"><Icon size={16} strokeWidth={2.4} /></span>
       <span className={`picker-field-text${filled ? '' : ' is-empty'}`}>{children}</span>
     </button>
@@ -431,19 +431,21 @@ export function formatHebrewTime(timeStr) {
 
 // `check('HH:MM')`: why that time can't be chosen ('' when it can, 8.93.0).
 // The hours and minutes it rules out are grey, and the readout says why.
-export function CustomTimePicker({ value, onChange, label, required, check = null }) {
+// `suggest`: where the wheels start with no value (an end: an hour after
+// the start, 8.94.0).
+export function CustomTimePicker({ value, onChange, label, required, check = null, disabled = false, suggest = '' }) {
   const [isOpen, setIsOpen] = useState(false);
   // Back closes the picker, not the sheet underneath it.
   useBackHandler(isOpen, () => setIsOpen(false));
-  const parsed = parseTime(value);
+  const parsed = parseTime(value || suggest);
   const [tempH, setTempH] = useState(parsed.hh);
   const [tempM, setTempM] = useState(parsed.mm);
 
   useEffect(() => {
-    const p = parseTime(value);
+    const p = parseTime(value || suggest);
     setTempH(p.hh);
     setTempM(p.mm);
-  }, [value]);
+  }, [value, suggest]);
 
   const displayValue = value ? formatHebrewTime(value) : '';
   const why = check ? check(`${tempH}:${tempM}`) : '';
@@ -464,7 +466,7 @@ export function CustomTimePicker({ value, onChange, label, required, check = nul
     <div className="field-wrap">
       {label && <label className="field-label">{label}{required && ' *'}</label>}
 
-      <PickerField Icon={Clock} filled={!!displayValue} onOpen={() => setIsOpen(true)}>
+      <PickerField Icon={Clock} filled={!!displayValue} onOpen={() => setIsOpen(true)} disabled={disabled}>
         <span className="picker-field-num">{displayValue || 'בחר שעה...'}</span>
       </PickerField>
 

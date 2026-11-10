@@ -6,8 +6,8 @@ import { CategoryDisc } from '../ui/kit';
 import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { addActivities, updateActivity } from '../lib/dayActivities';
-import { PARTS, slotOf, partsLabel, clockMinutes } from '../lib/dayPlan';
-import { eventSpan, eventNote, hoursText, onDate, partFits, timeFits, whyNot } from '../lib/eventFit';
+import { PARTS, slotOf, partsLabel, clockMinutes, rangeLabel, rangeLength } from '../lib/dayPlan';
+import { endsLate, eventSpan, eventNote, hoursText, onDate, partFits, timeFits, whyNot } from '../lib/eventFit';
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
 const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
@@ -20,7 +20,8 @@ const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
 
    The time is one value, saved as `timeLabel` like before: parts of the
    day (one, or several: 'בוקר–ערב', 8.82.0), or a clock time (which falls
-   in a part on its own).
+   in a part on its own), or a range of them ('10:00–12:00', 8.94.0: "משעה"
+   and "עד"; a new start keeps the length).
 
    A place with its own dates and hours (`event`, 8.93.0): on a day out of
    its dates it is grey in the list, the parts of the day and the clock
@@ -66,6 +67,8 @@ export default function ActivitySheet({
   // What is chosen and can't be: the time was picked before the place, or
   // an activity saved before its day's date changed.
   const problems = chosen.map(p => ({ p, why: whyNot(p.event, date, timeLabel) })).filter(x => x.why);
+  // A range that ends after a place closes: allowed, with a word (8.94.0).
+  const late = problems.length ? [] : chosen.map(p => ({ p, what: endsLate(p.event, timeLabel) })).filter(x => x.what);
   const touched = !editing || JSON.stringify([placeIds, timeLabel]) !== JSON.stringify([start.placeIds, start.timeLabel]);
   const blocked = problems.length > 0 && touched;
   const dirty = JSON.stringify([placeIds, title, category, address, timeLabel, notes, optional])
@@ -126,6 +129,14 @@ export default function ActivitySheet({
     write.catch(err => console.error('Activity save error:', err));
     close();
   };
+
+  // A new start keeps the range's length; an end the same as the start is none.
+  const setStart = (hhmm) => {
+    const m = clockMinutes(hhmm);
+    setTimeLabel(rangeLabel(m, slot.end == null ? null : (m + rangeLength(slot.minutes, slot.end)) % 1440));
+  };
+  const setEnd = (hhmm) => setTimeLabel(rangeLabel(slot.minutes, clockMinutes(hhmm)));
+  const checkEnd = useCallback((hhmm) => (clockMinutes(hhmm) === slot.minutes ? 'כמו שעת ההתחלה' : ''), [slot.minutes]);
 
   const partOn = (part) => slot.parts.includes(part);
   // Each part turns on and off on its own; several make one label. With an
@@ -259,24 +270,46 @@ export default function ActivitySheet({
                 </button>
               )}
             </div>
+            {/* A clock time, or a range: "משעה" and "עד" (8.94.0) */}
             <div className="act-time">
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="act-time-field">
                 <CustomTimePicker
-                  label="שעה מדויקת (לא חובה)"
-                  value={slot.minutes != null ? slot.label : ''}
-                  onChange={setTimeLabel}
+                  label="משעה (לא חובה)"
+                  value={slot.minutes != null ? rangeLabel(slot.minutes) : ''}
+                  onChange={setStart}
                   check={chosen.some(p => eventSpan(p.event)?.close != null) ? checkTime : null}
                 />
+                {slot.minutes != null && (
+                  <button type="button" className="btn-x" aria-label="בלי שעה" title="בלי שעה" onClick={() => setTimeLabel(slot.part || '')}>
+                    <X size={16} />
+                  </button>
+                )}
               </div>
-              {slot.minutes != null && (
-                <button type="button" className="btn-x" aria-label="בלי שעה מדויקת" title="בלי שעה מדויקת" onClick={() => setTimeLabel(slot.part || '')}>
-                  <X size={16} />
-                </button>
-              )}
+              <div className="act-time-field">
+                <CustomTimePicker
+                  label="עד (לא חובה)"
+                  value={slot.end != null ? rangeLabel(slot.end) : ''}
+                  onChange={setEnd}
+                  check={checkEnd}
+                  disabled={slot.minutes == null}
+                  suggest={slot.minutes != null ? rangeLabel((slot.minutes + 60) % 1440) : ''}
+                />
+                {slot.end != null && (
+                  <button type="button" className="btn-x" aria-label="בלי שעת סיום" title="בלי שעת סיום" onClick={() => setTimeLabel(rangeLabel(slot.minutes))}>
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
             </div>
             {!problems.length && chosen.some(p => eventSpan(p.event)?.close != null) && (
               <span className="act-form-note">מה שמחוץ לשעות של המקום אפור.</span>
             )}
+            {late.map(({ p, what }) => (
+              <p key={p.id} className="act-form-error warn" role="status">
+                <AlertTriangle size={14} aria-hidden="true" />
+                <span>{`${p.title} ${what}, לפני סוף הטווח.`}</span>
+              </p>
+            ))}
             {problems.map(({ p, why }) => (
               <p key={p.id} className="act-form-error" role="alert">
                 <AlertTriangle size={14} aria-hidden="true" />

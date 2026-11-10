@@ -3913,6 +3913,11 @@ button.travel-from:active { background: var(--p-8); }
   background: var(--body-bg);
   font-size: 13px; font-weight: 900; font-variant-numeric: tabular-nums; color: var(--text);
 }
+/* A range (8.94.0): the end under the start, lighter. */
+.dp-time-end {
+  display: block; margin-top: 1px;
+  font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center;
+}
 .dp-time:empty {
   width: 10px; height: 10px; padding: 0; margin-top: 21px; border-radius: 50%;
   background: var(--card-bg-solid); box-shadow: 0 0 0 2px var(--ink-18), 0 0 0 5px var(--body-bg);
@@ -4176,6 +4181,12 @@ button.dp-leg:active { background: var(--ink-4); }
 .act-form-error > svg { flex-shrink: 0; margin-top: 2px; }
 .list-row:disabled .place-pick-off { color: var(--c-red); font-weight: 700; }
 .act-time { display: flex; align-items: flex-end; gap: 8px; }
+/* "משעה" and "עד" side by side (8.94.0), each with its own clear. */
+.act-time-field { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 6px; }
+.act-time-field > .field-wrap { flex: 1; min-width: 0; }
+.act-form-error.warn { color: var(--text); }
+.act-form-error.warn > svg { color: var(--c-orange); }
+.picker-field:disabled { opacity: .45; cursor: not-allowed; }
 
 /* The schedule's two plans (8.74.0): the trip's, and my own over it, the
    shared one dimmed under it. */
