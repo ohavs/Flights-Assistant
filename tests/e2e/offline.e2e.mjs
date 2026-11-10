@@ -106,6 +106,28 @@ await fetch(`${DB}/trips/trip_offline_2/expenses?documentId=exp-market`, {
 // The list shows it: the app now keeps its data on the phone (App.jsx, offlineTrips).
 await page.locator('.trip-card', { hasText: TRIP2 }).waitFor({ timeout: 20000 });
 await page.waitForTimeout(3000);
+
+// A weak connection (one bar, Wi-Fi with no internet behind it): requests
+// go out and never come back. The app still opens from the phone in a few
+// seconds, not after Firebase's 30-second timeouts (8.94.1, the owner's ask).
+const NOWHERE = /identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com|google\.firestore\.v1\.Firestore/;
+const hang = () => {};
+await step('a weak connection: the app opens from the phone in a few seconds', async () => {
+  await ctx.route(NOWHERE, hang);
+  try {
+    const t0 = Date.now();
+    await page.reload();
+    await page.locator('.trip-card', { hasText: TRIP2 }).waitFor({ timeout: 6000 });
+    console.log(`        opened in ${Date.now() - t0} ms`);
+    await openTrip();
+    await tab('הוצאות');
+    await card('קפה ברשת').waitFor({ timeout: 5000 });
+  } finally {
+    await ctx.unroute(NOWHERE, hang);
+  }
+});
+await page.reload();
+await page.locator('.trip-card', { hasText: TRIP2 }).or(page.getByText('טיסת הלוך').first()).first().waitFor({ timeout: 20000 });
 const expenseId = ((await (await fetch(`${DB}/trips/${tripId}/expenses?pageSize=50`, { headers: admin })).json()).documents || [])
   .find(d => d.fields?.description?.stringValue === 'קפה ברשת').name.split('/').pop();
 
