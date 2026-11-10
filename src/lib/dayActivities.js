@@ -68,6 +68,25 @@ export function updateActivity(db, tripId, dayId, raw, next, onlyOwn = false, ra
   return commit(db, tripId, dayId, out, [...put, { ...next, order: rank ?? was.rank, updatedAt: Date.now() }]);
 }
 
+// Replaces several activities at once, each in its own place (8.95.0: a new
+// time that moves what comes after). One batch; for "הוספה" (`onlyOwn`),
+// batches of 4, since the rules let it change up to 8 copies in a write.
+export function updateActivities(db, tripId, dayId, raw, nexts, onlyOwn = false) {
+  const all = rows(raw);
+  const shown = shownRows(all);
+  const now = Date.now();
+  const list = nexts.map(next => ({ next, was: shown.find(r => r.act?.id === next.id) })).filter(x => x.was);
+  const write = (part) => {
+    const { out, put } = settle(all, new Set(part.map(x => x.next.id)), onlyOwn);
+    return commit(db, tripId, dayId, out, [...put, ...part.map(({ next, was }) => ({ ...next, order: was.rank, updatedAt: now }))]);
+  };
+  if (!list.length) return Promise.resolve();
+  if (!onlyOwn) return write(list);
+  const parts = [];
+  for (let i = 0; i < list.length; i += 4) parts.push(list.slice(i, i + 4));
+  return Promise.all(parts.map(write));
+}
+
 export function removeActivity(db, tripId, dayId, raw, id, onlyOwn = false) {
   const { out, put } = settle(rows(raw), new Set([id]), onlyOwn);
   return commit(db, tripId, dayId, out, put);

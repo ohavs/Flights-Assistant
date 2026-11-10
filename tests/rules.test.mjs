@@ -9,6 +9,7 @@ import {
   getFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayRemove, arrayUnion,
   onSnapshot, writeBatch, collection, query, where, getDocs,
 } from 'firebase/firestore';
+import { updateActivities } from '../src/lib/dayActivities.js';
 
 const apps = [];
 
@@ -292,6 +293,17 @@ test('a day: a contributor adds activities, and changes only their own', async (
   await assert.rejects(deleteDoc(day), denied);
   await updateDoc(day, { activities: arrayRemove(edited) });
   assert.deepEqual((await getDoc(item(owner, tripId, 'days', 'd1'))).data().activities, [theirs]);
+});
+
+test('a day: a contributor moves the times of many of their own at once (8.95.0)', async () => {
+  const tripId = await createTripWithAdder();
+  const acts = Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, title: `S${i}`, order: i + 1, timeLabel: `1${i}:00`, createdBy: adder.uid }));
+  const theirs = { id: 'o1', title: 'Theirs', order: 9, timeLabel: '18:00', createdBy: owner.uid };
+  await setDoc(item(owner, tripId, 'days', 'd1'), { title: 'Day 1', activities: [...acts, theirs] });
+  await updateActivities(adder.db, tripId, 'd1', [...acts, theirs], acts.map(a => ({ ...a, timeLabel: `1${a.id[1]}:30` })), true);
+  const after = (await getDoc(item(owner, tripId, 'days', 'd1'))).data().activities;
+  assert.deepEqual(after.filter(a => a.createdBy === adder.uid).map(a => a.timeLabel).sort(), ['10:30', '11:30', '12:30', '13:30', '14:30', '15:30']);
+  assert.deepEqual(after.find(a => a.id === 'o1'), theirs);
 });
 
 test('a personal plan is its member\'s alone, whatever the role', async () => {
