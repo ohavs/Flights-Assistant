@@ -10,7 +10,7 @@ import {
   disableNetwork, enableNetwork, waitForPendingWrites,
 } from 'firebase/firestore';
 import {
-  dayActivities, addActivities, updateActivity, removeActivity, swapActivities,
+  dayActivities, addActivities, updateActivity, updateActivities, removeActivity, swapActivities,
   moveActivityToDay, swapDays, clearActivities, putBack, restoreDays,
 } from '../src/lib/dayActivities.js';
 import { swapDayFields, anchoredIds, placeDays } from '../src/lib/dayPlan.js';
@@ -92,6 +92,22 @@ test('edit: keeps the activity in its place and the other phone\'s change', asyn
     () => bAddsBeach(trip),
   );
   assert.deepEqual(await titles(trip), ['ארוחת בוקר', 'מוזיאון הלובר', 'צהריים', 'חוף']);
+});
+
+test('a new time that moves what comes after: one write, each in its place, the other phone\'s change kept', async () => {
+  const trip = await newDay('days-shift');
+  const seen = await raw(A.db, trip);
+  await whileOffline(
+    () => updateActivities(A.db, trip, 'd1', seen, [
+      { ...museum, timeLabel: '10:30' }, { ...lunch, timeLabel: '13:30' },
+    ]),
+    () => bAddsBeach(trip),
+  );
+  const acts = dayActivities(await raw(B.db, trip));
+  assert.deepEqual(acts.map(a => [a.title, a.timeLabel]), [
+    ['ארוחת בוקר', ''], ['מוזיאון', '10:30'], ['צהריים', '13:30'], ['חוף', ''],
+  ]);
+  assert.equal((await raw(B.db, trip)).length, 4);
 });
 
 test('move: swaps two activities and keeps the other phone\'s change', async () => {

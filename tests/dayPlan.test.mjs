@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
   canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel, nextDate, orderFor, blockDrop,
-  rangeLabel, rangeLength, overlaps, sortItems,
+  rangeLabel, rangeLength, overlaps, sortItems, timeShift, shiftLabel, shiftAfter, shiftText, timeOptionsOf, startAt,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -328,4 +328,85 @@ test('where a dropped block goes: after the item above, between its neighbours',
   assert.deepEqual(blockDrop(items, 'blk:d', 4), { after: 'act:y', order: null });
   // The shared plan's item, without its "sh:".
   assert.equal(blockDrop([{ key: 'sh:act:s', kind: 'activity' }], 'blk:m', 1).after, 'act:s');
+});
+
+test('how far a new time moves what comes after (8.95.0)', () => {
+  assert.equal(timeShift('07:10–07:25', '07:40–07:55'), 30);
+  // By the end when both have one; else by the start.
+  assert.equal(timeShift('10:30–12:15', '10:30–12:45'), 30);
+  assert.equal(timeShift('10:00', '09:45'), -15);
+  assert.equal(timeShift('10:00', '10:30–11:00'), 30);
+  assert.equal(timeShift('23:30', '00:30'), 60);
+  assert.equal(timeShift('00:30', '23:30'), -60);
+  assert.equal(timeShift('בוקר', '10:00'), 0);
+  assert.equal(timeShift('10:00', ''), 0);
+  assert.equal(shiftLabel('12:30–13:30', 30), '13:00–14:00');
+  assert.equal(shiftLabel('23:45', 30), '00:15');
+  assert.equal(shiftLabel('00:10', -20), '23:50');
+  assert.equal(shiftLabel('ערב', 30), 'ערב');
+});
+
+test('what moves with a new time: what comes after, not what runs alongside', () => {
+  const date = '2026-12-20';
+  const acts = [
+    { id: 'out', title: 'יציאה', timeLabel: '07:10–07:25' },
+    { id: 'train', title: 'רכבת', timeLabel: '07:40–10:20' },
+    { id: 'note', block: 'text', text: 'החלפה', after: 'act:train' },
+    { id: 'steph', title: 'Stephansplatz', timeLabel: '10:30–12:15' },
+    { id: 'demel', title: 'Demel', timeLabel: '12:30–13:30' },
+    { id: 'five', title: 'Five Guys', timeLabel: '12:30–13:30' },
+    { id: 'museum', title: 'מוזיאון', placeId: 'm', timeLabel: '14:00' },
+    { id: 'walk', title: 'טיול', timeLabel: 'ערב' },
+    { id: 'back', title: 'חזרה', timeLabel: '20:00', createdBy: 'other' },
+  ];
+  const bookings = [
+    { id: 'm1', placeId: 'm', date, time: '14:00' },
+    { id: 'show', title: 'הופעה', date, time: '19:00' },
+  ];
+  const items = dayItems({ acts, date, bookings });
+  const moved = (r) => r.moves.map(m => [m.act.id, m.timeLabel]);
+  // The start: everything after, the booked and the fixed stay.
+  const out = shiftAfter(items, 'act:out', '07:10–07:25', '07:40–07:55');
+  assert.equal(out.delta, 30);
+  assert.deepEqual(moved(out), [
+    ['train', '08:10–10:50'], ['steph', '11:00–12:45'], ['demel', '13:00–14:00'], ['five', '13:00–14:00'], ['back', '20:30'],
+  ]);
+  assert.deepEqual(out.stays.map(it => it.key), ['act:museum', 'bk:show']);
+  // A longer visit: by its end, so what starts with it stays.
+  const demel = shiftAfter(items, 'act:demel', '12:30–13:30', '12:30–14:00');
+  assert.deepEqual(moved(demel), [['back', '20:30']]);
+  assert.deepEqual(shiftAfter(items, 'act:demel', '12:30–13:30', '13:00–14:00').moves.map(m => m.act.id), ['back']);
+  // A time with no end: what starts after it, not at the same time.
+  const at = dayItems({ acts: [{ id: 'a', timeLabel: '10:00' }, { id: 'b', timeLabel: '10:00' }, { id: 'c', timeLabel: '11:00' }] });
+  assert.deepEqual(moved(shiftAfter(at, 'act:a', '10:00', '09:30')), [['c', '10:30']]);
+  // What may not change here stays ("הוספה": another member's).
+  const own = shiftAfter(items, 'act:out', '07:10–07:25', '07:40–07:55', (it) => it.act.createdBy !== 'other');
+  assert.equal(own.moves.length, 4);
+  assert.deepEqual(own.stays.map(it => it.key), ['act:museum', 'bk:show', 'act:back']);
+  // No change, no clock time, a booking's time, a new activity: nothing.
+  assert.equal(shiftAfter(items, 'act:out', '07:10–07:25', '07:10–07:25').moves.length, 0);
+  assert.equal(shiftAfter(items, 'act:walk', 'ערב', '18:00').moves.length, 0);
+  assert.equal(shiftAfter(items, 'act:museum', '14:00', '15:00').moves.length, 0);
+  assert.equal(shiftAfter(items, 'act:new', '', '10:00').moves.length, 0);
+  // After midnight is still the night before.
+  const night = dayItems({ acts: [{ id: 'bar', timeLabel: '23:00' }, { id: 'club', timeLabel: '00:30–02:00' }, { id: 'early', timeLabel: '08:00' }] });
+  assert.deepEqual(moved(shiftAfter(night, 'act:bar', '23:00', '23:30')), [['club', '01:00–02:30']]);
+  // The shared plan under "שלי" never moves.
+  const mine = personalItems({ mine: [{ id: 'x', timeLabel: '10:00' }, { id: 'y', timeLabel: '12:00' }], shared: [{ id: 'z', timeLabel: '11:00' }] });
+  const p = shiftAfter(mine, 'act:x', '10:00', '10:15');
+  assert.deepEqual(moved(p), [['y', '12:15']]);
+  assert.deepEqual(p.stays.map(it => it.key), ['sh:act:z']);
+});
+
+test('times to switch between, and a shift in words (8.95.0)', () => {
+  assert.deepEqual(timeOptionsOf(['09:10', '7:10', '08:10', '07:10', 'בוקר', '00:30']), ['07:10', '08:10', '09:10', '00:30']);
+  assert.deepEqual(timeOptionsOf(undefined), []);
+  assert.equal(startAt('07:10–07:25', '08:10'), '08:10–08:25');
+  assert.equal(startAt('23:30–00:30', '23:45'), '23:45–00:45');
+  assert.equal(startAt('10:00', '11:00'), '11:00');
+  assert.equal(startAt('בוקר', '11:00'), '11:00');
+  assert.equal(shiftText(30), "30 דק' מאוחר יותר");
+  assert.equal(shiftText(-60), 'שעה מוקדם יותר');
+  assert.equal(shiftText(135), "שעתיים ו־15 דק' מאוחר יותר");
+  assert.equal(shiftText(-200), "3 שעות ו־20 דק' מוקדם יותר");
 });

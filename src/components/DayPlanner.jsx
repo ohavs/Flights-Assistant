@@ -22,12 +22,13 @@ import { getWeatherIcon } from '../hooks/useWeather';
 import { localDay, isoDay } from '../lib/dates';
 import { creatorOf } from '../lib/roles';
 import {
-  dayActivities, removeActivity, swapActivities, updateActivity, moveActivityToDay, swapDays,
+  dayActivities, removeActivity, swapActivities, updateActivity, updateActivities, moveActivityToDay, swapDays,
   clearActivities, putBack, restoreDays, addActivities,
 } from '../lib/dayActivities';
 import {
   dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey,
   missingDates, placeDays, nextDate, orderFor, blockDrop, baseKey, overlaps, fmtClock,
+  timeOptionsOf, startAt, shiftAfter, shiftText, slotOf, clockMinutes,
 } from '../lib/dayPlan';
 import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
@@ -627,6 +628,28 @@ function DayPlanner({
       .catch(err => console.error('Block move failed:', err));
   };
 
+  // Another of its start times (8.95.0): it starts then, and what comes
+  // after moves by as much, in one write. All in memory: nothing measured,
+  // nothing fetched. Tapping the one before puts it all back.
+  // One at a time: the next tap waits for the day as written.
+  const switching = useRef(false);
+  useEffect(() => { switching.current = false; }, [items]);
+  const switchTime = (it, hhmm) => {
+    const act = it.act;
+    const label = startAt(act.timeLabel, hhmm);
+    if (switching.current || label === slotOf(act.timeLabel).label) return;
+    switching.current = true;
+    const { delta, moves } = shiftAfter(items, it.key, act.timeLabel, label, canChange);
+    updateActivities(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities,
+      [{ ...act, timeLabel: label }, ...moves.map(m => ({ ...m.act, timeLabel: m.timeLabel }))], onlyOwn)
+      .catch(err => console.error('Time switch failed:', err));
+    say({
+      icon: <Clock size={18} />,
+      title: `${planById.get(act.placeId)?.title || act.title}: ${fmtClock(slotOf(label).minutes)}`,
+      text: moves.length ? `${moves.length === 1 ? 'פעילות אחת זזה' : `${moves.length} פעילויות זזו`} ${shiftText(delta)}` : undefined,
+    });
+  };
+
   const setTravelFrom = (act, key) => {
     updateActivity(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities, { ...act, travelFrom: key || null }, onlyOwn)
       .catch(err => console.error('Travel origin failed:', err));
@@ -850,6 +873,8 @@ function DayPlanner({
     const elsewhere = !it.booking && plan ? bookingByPlace.get(plan.id) : null;
     const toBook = plan && !visited && !it.booking && !elsewhere && plan.needsReservation;
     const evNote = plan && !visited ? eventNote(plan.event, day.date, act.timeLabel) : null;
+    // Its start times to switch between (8.95.0); not when a booking sets it.
+    const options = it.booking?.time ? [] : timeOptionsOf(act.timeOptions);
     return (
       <React.Fragment key={it.key}>
         {legChip(it, drop === ' drop-before' ? drop : '')}
@@ -887,6 +912,26 @@ function DayPlanner({
                 {it.booking && bookingStub(it.booking)}
               </span>
             </button>
+            {options.length > 1 && (
+              <div className="dp-alts" role="radiogroup" aria-label={`שעת התחלה: ${title}`}>
+                {options.map(t => {
+                  const on = it.slot.minutes === clockMinutes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      className={`dp-alt${on ? ' on' : ''}`}
+                      disabled={!canChange(it)}
+                      onClick={() => { if (!on) switchTime(it, t); }}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {canChange(it) && (
               <button
                 type="button"
@@ -1120,6 +1165,8 @@ function DayPlanner({
           personal={personalMode}
           onlyOwn={onlyOwn}
           editing={form.editing}
+          items={items}
+          canMove={canChange}
           plans={plans}
           categories={categories}
           usedOn={usedOn}

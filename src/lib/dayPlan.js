@@ -257,6 +257,84 @@ export function overlaps(items) {
   return out;
 }
 
+// Moving what comes after (8.95.0, the owner's ask): a new time for one
+// activity can move the activities after it by as much, start and end,
+// when asked to (a switch in the form). The shift goes by the end when both
+// times have one (a longer visit pushes what follows), else by the start.
+// At most 12 hours either way, so 23:30 → 00:30 is an hour later.
+export function timeShift(was, now) {
+  const a = slotOf(was);
+  const b = slotOf(now);
+  if (a.minutes == null || b.minutes == null) return 0;
+  const byEnd = a.end != null && b.end != null;
+  const d = (byEnd ? b.end - a.end : b.minutes - a.minutes);
+  return ((((d + 720) % 1440) + 1440) % 1440) - 720;
+}
+
+// A time label moved by `delta` minutes; one with no clock time as it is.
+export function shiftLabel(label, delta) {
+  const s = slotOf(label);
+  if (s.minutes == null) return String(label || '');
+  const at = (m) => (((m + delta) % 1440) + 1440) % 1440;
+  return rangeLabel(at(s.minutes), s.end == null ? null : at(s.end));
+}
+
+// What moves when the activity `key` goes from the time `was` to `now`:
+// the activities of the plan on screen with a clock time that start after
+// it (at or after its old end when the shift goes by the end, else after
+// its old start). What runs alongside it stays, and so does what has a
+// fixed time: a booking's, a flight, the hotel; and what `can` says may
+// not change ("הוספה": another member's). After midnight is still the
+// night before.
+//   items  the day as shown (dayItems / personalItems)
+// Returns { delta, moves: [{ it, act, timeLabel }], stays: [it] }: `stays`
+// the timed ones after it that don't move.
+export function shiftAfter(items, key, was, now, can = () => true) {
+  const none = { delta: 0, moves: [], stays: [] };
+  const self = (items || []).find(it => it.key === key);
+  const a = slotOf(was);
+  const delta = timeShift(was, now);
+  if (!self || self.booking?.time || !delta) return none;
+  const byEnd = a.end != null && slotOf(now).end != null;
+  const from = dayMinutes(a.minutes);
+  const after = (m) => (byEnd ? m >= from + rangeLength(a.minutes, a.end) : m > from);
+  const later = items.filter(it => it.key !== key && it.kind !== 'block'
+    && it.slot?.minutes != null && after(dayMinutes(it.slot.minutes)));
+  const moving = (it) => it.kind === 'activity' && !it.shared && !it.booking?.time && can(it);
+  return {
+    delta,
+    moves: later.filter(moving).map(it => ({ it, act: it.act, timeLabel: shiftLabel(it.act.timeLabel, delta) })),
+    stays: later.filter(it => !moving(it)),
+  };
+}
+
+// '30 דק' מאוחר יותר', 'שעה ו־15 דק' מוקדם יותר': a shift, in words.
+export function shiftText(delta) {
+  const a = Math.abs(delta);
+  const h = Math.floor(a / 60);
+  const m = a % 60;
+  const hours = h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : `${h} שעות`;
+  const span = h ? (m ? `${hours} ו־${m} דק'` : hours) : `${m} דק'`;
+  return `${span} ${delta > 0 ? 'מאוחר' : 'מוקדם'} יותר`;
+}
+
+// Times to switch between (8.95.0, the owner's ask): `timeOptions` on an
+// activity, start times as 'HH:MM', its own among them. A tap on one in
+// the schedule starts it then and moves what comes after (shiftAfter).
+// Each once, in the day's order (after midnight last).
+export function timeOptionsOf(list) {
+  const ms = [...new Set((Array.isArray(list) ? list : []).map(clockMinutes).filter(m => m != null))];
+  return ms.sort((a, b) => dayMinutes(a) - dayMinutes(b)).map(fmtClock);
+}
+
+// A time label that starts at `hhmm`: a range keeps its length.
+export function startAt(label, hhmm) {
+  const s = slotOf(label);
+  const m = clockMinutes(hhmm);
+  if (m == null) return String(label || '');
+  return rangeLabel(m, s.minutes == null || s.end == null ? null : (m + rangeLength(s.minutes, s.end)) % 1440);
+}
+
 // The personal plan ("שלי") over the shared one: the member's own
 // activities (a booking merged into one of theirs when it is for their
 // place), and everything shared (the day's activities, the other

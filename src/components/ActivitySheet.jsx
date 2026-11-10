@@ -1,16 +1,18 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed, CalendarClock, AlertTriangle } from 'lucide-react';
+import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed, CalendarClock, AlertTriangle, ChevronsDown, ArrowRight } from 'lucide-react';
 import { db } from '../firebase';
 import Sheet from '../ui/Sheet';
 import { CategoryDisc } from '../ui/kit';
 import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
-import { addActivities, updateActivity } from '../lib/dayActivities';
-import { PARTS, slotOf, partsLabel, clockMinutes, rangeLabel, rangeLength } from '../lib/dayPlan';
+import { addActivities, updateActivity, updateActivities } from '../lib/dayActivities';
+import { PARTS, slotOf, partsLabel, clockMinutes, rangeLabel, shiftAfter, shiftText, fixedTitle, timeOptionsOf, startAt, fmtClock } from '../lib/dayPlan';
 import { endsLate, eventSpan, eventNote, hoursText, onDate, partFits, timeFits, whyNot } from '../lib/eventFit';
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
 const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
+const NO_ITEMS = [];
+const ANY = () => true;
 
 /* ── Adding or editing an activity of a day ─────────────────────────────
    Either a place from the list, or one typed in: never both. A place
@@ -26,15 +28,24 @@ const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
    A place with its own dates and hours (`event`, 8.93.0): on a day out of
    its dates it is grey in the list, the parts of the day and the clock
    times out of its hours are grey, and a choice that still ends up out
-   (a time picked before the place) says why and can't be saved.        */
+   (a time picked before the place) says why and can't be saved.
+
+   Editing, a new clock time can move what comes after it by as much
+   (8.95.0, `shiftAfter`): only when the switch under the time is on.
+   `items` is the day as shown, `canMove(item)` what may change here.
+   Other start times to switch between in the schedule (`timeOptions`)
+   are added here too.                                                  */
+
 export default function ActivitySheet({
   tripId, day, editing, plans, categories, usedOn, currentUid, personal = false, onlyOwn = false,
-  getCategoryColor, getCategoryIcon, metaOf, metaFrom, onAddCategory, onClose,
+  items = NO_ITEMS, canMove = ANY, getCategoryColor, getCategoryIcon, metaOf, metaFrom, onAddCategory, onClose,
 }) {
   const planById = useMemo(() => new Map(plans.map(p => [p.id, p])), [plans]);
   const start = useMemo(() => {
     const linked = editing?.placeId && planById.has(editing.placeId) ? [editing.placeId] : [];
+    const own = slotOf(editing?.timeLabel).minutes;
     return {
+      alts: timeOptionsOf(editing?.timeOptions).filter(t => clockMinutes(t) !== own),
       placeIds: linked,
       title: linked.length ? '' : (editing?.title || ''),
       category: linked.length ? DEFAULT_CATEGORY : (editing?.category || DEFAULT_CATEGORY),
@@ -52,6 +63,8 @@ export default function ActivitySheet({
   const [notes, setNotes] = useState(start.notes);
   const [optional, setOptional] = useState(start.optional);
   const [picking, setPicking] = useState(false);
+  const [shiftOn, setShiftOn] = useState(false);
+  const [alts, setAlts] = useState(start.alts);
 
   const chosen = useMemo(() => placeIds.map(id => planById.get(id)).filter(Boolean), [placeIds, planById]);
   const slot = slotOf(timeLabel);
@@ -71,8 +84,30 @@ export default function ActivitySheet({
   const late = problems.length ? [] : chosen.map(p => ({ p, what: endsLate(p.event, timeLabel) })).filter(x => x.what);
   const touched = !editing || JSON.stringify([placeIds, timeLabel]) !== JSON.stringify([start.placeIds, start.timeLabel]);
   const blocked = problems.length > 0 && touched;
-  const dirty = JSON.stringify([placeIds, title, category, address, timeLabel, notes, optional])
-    !== JSON.stringify([start.placeIds, start.title, start.category, start.address, start.timeLabel, start.notes, start.optional]);
+  // What comes after, moved by the new time (8.95.0).
+  const shift = useMemo(() => (editing
+    ? shiftAfter(items, `act:${editing.id}`, start.timeLabel, timeLabel, canMove)
+    : { delta: 0, moves: [], stays: [] }), [editing, items, start.timeLabel, timeLabel, canMove]);
+  const shifting = shiftOn && shift.moves.length > 0;
+  const nameOf = (it) => (it.kind === 'activity' ? (planById.get(it.act.placeId)?.title || it.act.title)
+    : it.kind === 'booking' ? it.booking.title : fixedTitle(it));
+  // A moved place that ends up out of its own dates or hours: a word.
+  const shiftOff = shift.moves.map(m => {
+    const p = planById.get(m.act.placeId);
+    const why = p ? whyNot(p.event, date, m.timeLabel) : '';
+    return why ? { key: m.it.key, text: `${p.title}: ${why}` } : null;
+  }).filter(Boolean);
+  // The times to switch between: its own start and the others (8.95.0).
+  const others = slot.minutes == null ? [] : alts.filter(t => clockMinutes(t) !== slot.minutes);
+  const options = others.length ? timeOptionsOf([fmtClock(slot.minutes), ...others]) : null;
+  const checkAlt = (hhmm) => {
+    const m = clockMinutes(hhmm);
+    if (m === slot.minutes) return 'זו השעה שנבחרה';
+    if (alts.some(t => clockMinutes(t) === m)) return 'כבר ברשימה';
+    return checkTime(hhmm);
+  };
+  const dirty = JSON.stringify([placeIds, title, category, address, timeLabel, notes, optional, others])
+    !== JSON.stringify([start.placeIds, start.title, start.category, start.address, start.timeLabel, start.notes, start.optional, start.alts]);
 
   // Letting go of the place brings back the typed-in fields, filled with
   // what the place had, so nothing has to be typed again.
@@ -106,10 +141,16 @@ export default function ActivitySheet({
         // Whose it is stays with it (firestore.rules).
         createdBy: editing.createdBy || null,
         optional: true,
+        timeOptions: options,
       };
       if (!optional) delete next.optional;
+      if (!options) delete next.timeOptions;
       if (!next.title) return;
-      write = updateActivity(db, tripId, day.target ?? day.id, day.rawActivities, next, onlyOwn);
+      const dayId = day.target ?? day.id;
+      write = shifting
+        ? updateActivities(db, tripId, dayId, day.rawActivities,
+          [next, ...shift.moves.map(m => ({ ...m.act, timeLabel: m.timeLabel }))], onlyOwn)
+        : updateActivity(db, tripId, dayId, day.rawActivities, next, onlyOwn);
     } else {
       const stamp = Date.now();
       const added = chosen.length
@@ -117,11 +158,13 @@ export default function ActivitySheet({
           id: `act-${stamp}-${i}-${Math.random().toString(36).slice(2, 7)}`,
           title: p.title, placeId: p.id, address: p.address || '', category: p.category,
           timeLabel: label, description, createdBy: currentUid || null, ...(optional ? { optional: true } : {}),
+          ...(options ? { timeOptions: options } : {}),
         }))
         : title.trim() ? [{
           id: `act-${stamp}`,
           title: title.trim(), placeId: null, address: address.trim(), category,
           timeLabel: label, description, createdBy: currentUid || null, ...(optional ? { optional: true } : {}),
+          ...(options ? { timeOptions: options } : {}),
         }] : [];
       if (!added.length) return;
       write = addActivities(db, tripId, day.target ?? day.id, day.rawActivities, added);
@@ -130,10 +173,11 @@ export default function ActivitySheet({
     close();
   };
 
-  // A new start keeps the range's length; an end the same as the start is none.
+  // A new start keeps the range's length; an end the same as the start is
+  // none. With times to switch between, the old start stays one of them.
   const setStart = (hhmm) => {
-    const m = clockMinutes(hhmm);
-    setTimeLabel(rangeLabel(m, slot.end == null ? null : (m + rangeLength(slot.minutes, slot.end)) % 1440));
+    if (alts.length && slot.minutes != null) setAlts(a => timeOptionsOf([...a, fmtClock(slot.minutes)]));
+    setTimeLabel(startAt(timeLabel, hhmm));
   };
   const setEnd = (hhmm) => setTimeLabel(rangeLabel(slot.minutes, clockMinutes(hhmm)));
   const checkEnd = useCallback((hhmm) => (clockMinutes(hhmm) === slot.minutes ? 'כמו שעת ההתחלה' : ''), [slot.minutes]);
@@ -301,6 +345,73 @@ export default function ActivitySheet({
                 )}
               </div>
             </div>
+            {/* Moving what comes after (8.95.0) */}
+            {shift.moves.length > 0 && (
+              <div className="list-group act-shift">
+                <button type="button" role="switch" aria-checked={shiftOn} className="list-row" onClick={() => setShiftOn(v => !v)}>
+                  <ChevronsDown size={18} className="list-row-icon" />
+                  <span className="list-row-label">
+                    לחשב את השעות שאחרי בהתאם?
+                    <span className="list-row-hint">
+                      {`${shift.moves.length === 1 ? 'פעילות אחת' : `${shift.moves.length} פעילויות`}, ${shiftText(shift.delta)}`}
+                    </span>
+                  </span>
+                  <span className={`switch${shiftOn ? ' on' : ''}`} aria-hidden="true"><i /></span>
+                </button>
+                {shiftOn && (
+                  <ul className="act-shift-list">
+                    {shift.moves.map(m => (
+                      <li key={m.it.key}>
+                        <span className="act-shift-name">{nameOf(m.it)}</span>
+                        <span className="act-shift-times" dir="ltr">
+                          <span className="was">{m.it.slot.label}</span>
+                          <ArrowRight size={12} aria-hidden="true" />
+                          <span>{slotOf(m.timeLabel).label}</span>
+                        </span>
+                      </li>
+                    ))}
+                    {shift.stays.length > 0 && (
+                      <li className="act-shift-stay">{`נשאר בשעה שלו: ${shift.stays.map(nameOf).join(', ')}`}</li>
+                    )}
+                    {shiftOff.map(o => (
+                      <li key={o.key} className="act-form-error warn" role="status">
+                        <AlertTriangle size={14} aria-hidden="true" />
+                        <span>{o.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {/* Other start times, to switch between in the schedule (8.95.0) */}
+            {slot.minutes != null && (
+              <div className="act-alts">
+                {others.length > 0 && (
+                  <div className="act-alts-row" aria-label="שעות לבחירה">
+                    {options.map(t => (clockMinutes(t) === slot.minutes
+                      ? <span key={t} className="act-alt on" dir="ltr">{t}</span>
+                      : (
+                        <span key={t} className="act-alt" dir="ltr">
+                          {t}
+                          <button type="button" className="act-alt-x" aria-label={`הסרת ${t}`} onClick={() => setAlts(a => a.filter(x => clockMinutes(x) !== clockMinutes(t)))}>
+                            <X size={12} />
+                          </button>
+                        </span>
+                      )))}
+                  </div>
+                )}
+                <CustomTimePicker
+                  label="שעה חלופית (לא חובה)"
+                  value=""
+                  onChange={(hhmm) => setAlts(a => timeOptionsOf([...a, hhmm]))}
+                  check={checkAlt}
+                  suggest={rangeLabel((slot.minutes + 60) % 1440)}
+                />
+                <span className="act-form-note">
+                  {others.length ? 'בלוז יופיע מתג בין השעות. בחירה בשעה מזיזה גם את כל מה שאחרי.' : 'להחלפה מהירה בלוז בין כמה שעות יציאה. כל מה שאחרי זז איתן.'}
+                </span>
+              </div>
+            )}
             {!problems.length && chosen.some(p => eventSpan(p.event)?.close != null) && (
               <span className="act-form-note">מה שמחוץ לשעות של המקום אפור.</span>
             )}

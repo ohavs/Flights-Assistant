@@ -4187,6 +4187,50 @@ button.dp-leg:active { background: var(--ink-4); }
 .act-form-error.warn { color: var(--text); }
 .act-form-error.warn > svg { color: var(--c-orange); }
 .picker-field:disabled { opacity: .45; cursor: not-allowed; }
+/* Moving what comes after a new time (8.95.0): the switch, and when it is
+   on, each one's time before and after. */
+.act-shift-list {
+  list-style: none; margin: 0; padding: 4px 14px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+  border-top: 1px solid var(--ink-6);
+}
+.act-shift-list > li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text); }
+.act-shift-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-shift-times { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.act-shift-times > svg { color: var(--text-muted); }
+.act-shift-times .was { color: var(--text-muted); text-decoration: line-through; }
+.act-shift-list > li.act-shift-stay { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+/* Start times to switch between (8.95.0): chips in the form, and a
+   segmented switch on the card in the schedule. */
+.act-alts { display: flex; flex-direction: column; gap: 8px; }
+.act-alts-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.act-alt {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 32px; padding: 0 12px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text);
+  font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.act-alt.on { background: var(--brand); color: var(--brand-fg); }
+.act-alt-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; margin-inline-end: -6px; padding: 0;
+  border: none; border-radius: 50%; background: var(--ink-8); color: var(--text-muted); cursor: pointer;
+}
+.dp-alts {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin: -4px 14px 12px; margin-inline-start: 66px;
+  padding: 3px; width: fit-content; max-width: calc(100% - 80px);
+  border-radius: 999px; background: var(--surface-2);
+}
+.dp-alt {
+  min-height: 30px; padding: 0 12px; border: none; border-radius: 999px;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums;
+  cursor: pointer; transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.dp-alt.on { background: var(--brand); color: var(--brand-fg); box-shadow: var(--shadow-sm); }
+.dp-alt:disabled { cursor: default; }
+.dp-alt:disabled:not(.on) { opacity: .6; }
 
 /* The schedule's two plans (8.74.0): the trip's, and my own over it, the
    shared one dimmed under it. */
