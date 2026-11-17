@@ -12,6 +12,7 @@ const TONES = {
   lavender: ['var(--lavender)', 'var(--text)'],
   peach:    ['var(--peach)', 'var(--text)'],
   red:      ['var(--c-red-8)', 'var(--c-red)'],
+  warn:     ['var(--peach)', 'var(--c-orange-ink)'],
   muted:    ['var(--surface-2)', 'var(--text-muted)'],
 };
 

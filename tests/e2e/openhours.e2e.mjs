@@ -256,6 +256,7 @@ await step('"מלא שעות פעילות מגוגל" fills every place with non
   await sheet().locator('.hours-fill-result', { hasText: 'מולאו שעות למקום אחד. למקום אחד אין שעות בגוגל' }).waitFor();
   await btn.getByText('אין עוד מה למלא מגוגל').waitFor();
   if (!(await btn.isDisabled())) throw new Error('nothing left, and it can still be tapped');
+  await sheet().locator('.hours-fill-result').scrollIntoViewIfNeeded();
   await shot('fill-all');
   const bar = await until(async () => { const x = await getPlace('b'); return x.openHours ? x : null; }, 'the bar\'s hours');
   if (JSON.stringify(bar.openHours[3]) !== JSON.stringify([{ from: '08:00', to: '22:00' }])) throw new Error(`bar: ${JSON.stringify(bar.openHours[3])}`);

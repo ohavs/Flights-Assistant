@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   weekOf, hasHours, weekdayOf, dayText, weekLines, weekText, openOnDay, openAt, partOpen,
-  hoursWhyNot, hoursEndsLate, hoursNote, fromGoogle, tidyHours,
+  hoursWhyNot, hoursEndsLate, hoursNote, fromGoogle, tidyHours, nowStatus, nowLine, todayText,
 } from '../src/lib/openHours.js';
 import { offDay, fitWhyNot, clockChecked, timeWhy, partWhy, fitsDay, placeNote, stayingIds } from '../src/lib/placeFit.js';
 
@@ -152,4 +152,50 @@ test('a place: its dates and its opening hours together', () => {
   const byId = new Map([['m', p], ['x', { openHours: always }]]);
   assert.deepEqual([...stayingIds(acts, byId, SAT)], ['a']);
   assert.deepEqual([...stayingIds(acts, byId, SUN)], []);
+});
+
+// The phone's clock: 2026-12-17 is a Thursday.
+const at = (iso, hhmm) => { const [y, mo, d] = iso.split('-').map(Number); const [h, mi] = hhmm.split(':').map(Number); return new Date(y, mo - 1, d, h, mi); };
+const THU = '2026-12-17';
+
+test('right now: open, closing within the hour, opening later today', () => {
+  assert.equal(nowStatus(null, at(THU, '12:00')), null);
+  assert.deepEqual(nowStatus(museum, at(THU, '12:00')), { state: 'open', text: 'פתוח עד 17:00', sub: '' });
+  assert.deepEqual(nowStatus(museum, at(THU, '16:20')), { state: 'closing', text: 'נסגר בעוד 40 דק׳', sub: 'ב־17:00' });
+  assert.equal(nowStatus(museum, at(THU, '16:00')).state, 'closing');
+  assert.equal(nowStatus(museum, at(THU, '15:59')).state, 'open');
+  assert.deepEqual(nowStatus(museum, at(THU, '07:30')), { state: 'opens', text: 'נפתח ב־09:00', sub: '' });
+  // The break.
+  assert.deepEqual(nowStatus(resto, at(THU, '16:00')), { state: 'opens', text: 'נפתח ב־19:00', sub: '' });
+  assert.deepEqual(nowStatus(always, at(THU, '03:00')), { state: 'open', text: 'פתוח 24 שעות', sub: '' });
+});
+
+test('right now: closed for the rest of the day, grey, with when it opens', () => {
+  // Thursday 21:00, the museum closed at 17:00: tomorrow at 09:00.
+  assert.deepEqual(nowStatus(museum, at(THU, '21:00')), { state: 'closed', text: 'סגור עכשיו', sub: 'נפתח מחר ב־09:00' });
+  // After midnight it is still Thursday's night: Friday 09:00 is today.
+  assert.deepEqual(nowStatus(museum, at(FRI, '01:00')), { state: 'closed', text: 'סגור עכשיו', sub: 'נפתח ב־09:00' });
+  // Closed all of Saturday: Sunday.
+  assert.deepEqual(nowStatus(museum, at(SAT, '11:00')), { state: 'closed', text: 'סגור היום', sub: 'נפתח מחר ב־09:00' });
+  // Friday after 13:00: closed on Saturday, so on Sunday.
+  assert.deepEqual(nowStatus(museum, at(FRI, '14:00')), { state: 'closed', text: 'סגור עכשיו', sub: 'נפתח ביום ראשון ב־09:00' });
+  // The bar, Friday 20:00–02:00: open on Saturday 01:30, closing at 02:00.
+  assert.deepEqual(nowStatus(bar, at(SAT, '01:30')), { state: 'closing', text: 'נסגר בעוד 30 דק׳', sub: 'ב־02:00' });
+  assert.deepEqual(nowStatus(bar, at(FRI, '18:00')), { state: 'opens', text: 'נפתח ב־20:00', sub: '' });
+  assert.equal(nowStatus(bar, at(SAT, '03:00')).state, 'closed');
+  assert.equal(nowStatus(bar, at(SAT, '03:00')).sub, 'נפתח ביום שישי ב־20:00');
+});
+
+test('the status as one line', () => {
+  assert.equal(nowLine(nowStatus(museum, at(THU, '16:20'))), 'נסגר בעוד 40 דק׳ (ב־17:00)');
+  assert.equal(nowLine(nowStatus(museum, at(THU, '21:00'))), 'סגור עכשיו · נפתח מחר ב־09:00');
+  assert.equal(nowLine(nowStatus(museum, at(THU, '12:00'))), 'פתוח עד 17:00');
+  assert.equal(nowLine(null), '');
+});
+
+test('the day\'s hours, when the trip is not on', () => {
+  assert.equal(todayText(museum, at(THU, '12:00')), 'היום 09:00–17:00');
+  assert.equal(todayText(museum, at(SAT, '12:00')), 'סגור היום');
+  assert.equal(todayText(resto, at(THU, '12:00')), 'היום 12:00–15:00, 19:00–23:00');
+  assert.equal(todayText(null, at(THU, '12:00')), '');
 });
