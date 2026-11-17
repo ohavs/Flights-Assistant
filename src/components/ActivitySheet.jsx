@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed, CalendarClock, AlertTriangle, ChevronsDown, ArrowRight } from 'lucide-react';
+import { Search, X, Plus, Sunrise, Sun, Sunset, Moon, Clock, ArrowLeftRight, CircleDashed, CalendarClock, AlertTriangle, ChevronsDown, ChevronsUp, ArrowRight } from 'lucide-react';
 import { db } from '../firebase';
 import Sheet from '../ui/Sheet';
 import { CategoryDisc } from '../ui/kit';
 import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { addActivities, updateActivity, updateActivities } from '../lib/dayActivities';
-import { PARTS, slotOf, partsLabel, clockMinutes, rangeLabel, shiftAfter, shiftText, fixedTitle, timeOptionsOf, startAt, fmtClock } from '../lib/dayPlan';
+import { PARTS, slotOf, partsLabel, clockMinutes, rangeLabel, shiftAfter, fitBefore, shiftText, fixedTitle, timeOptionsOf, startAt, fmtClock } from '../lib/dayPlan';
 import { offDay, fitWhyNot, fitEndsLate, clockChecked, timeWhy, partWhy, placeNote } from '../lib/placeFit';
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
@@ -32,6 +32,8 @@ const ANY = () => true;
 
    Editing, a new clock time can move what comes after it by as much
    (8.95.0, `shiftAfter`): only when the switch under the time is on.
+   Another switch fits the one before it to the new start (8.99.0,
+   `fitBefore`).
    `items` is the day as shown, `canMove(item)` what may change here.
    Other start times to switch between in the schedule (`timeOptions`)
    are added here too.                                                  */
@@ -64,6 +66,7 @@ export default function ActivitySheet({
   const [optional, setOptional] = useState(start.optional);
   const [picking, setPicking] = useState(false);
   const [shiftOn, setShiftOn] = useState(false);
+  const [fitOn, setFitOn] = useState(false);
   const [alts, setAlts] = useState(start.alts);
 
   const chosen = useMemo(() => placeIds.map(id => planById.get(id)).filter(Boolean), [placeIds, planById]);
@@ -90,8 +93,19 @@ export default function ActivitySheet({
     ? shiftAfter(items, `act:${editing.id}`, start.timeLabel, timeLabel, canMove)
     : { delta: 0, moves: [], stays: [] }), [editing, items, start.timeLabel, timeLabel, canMove]);
   const shifting = shiftOn && shift.moves.length > 0;
+  // The one before it, ending where this one now starts (8.99.0).
+  const fit = useMemo(() => (editing
+    ? fitBefore(items, `act:${editing.id}`, start.timeLabel, timeLabel, canMove)
+    : null), [editing, items, start.timeLabel, timeLabel, canMove]);
+  const fitting = fitOn && !!fit;
   const nameOf = (it) => (it.kind === 'activity' ? (planById.get(it.act.placeId)?.title || it.act.title)
     : it.kind === 'booking' ? it.booking.title : fixedTitle(it));
+  // The one before, stretched past its place's hours: a word.
+  const fitOff = (() => {
+    const p = fit && planById.get(fit.act.placeId);
+    const late = p ? fitEndsLate(p, date, fit.timeLabel) : '';
+    return late ? `${p.title}: ${late}` : '';
+  })();
   // A moved place that ends up out of its own dates or hours: a word.
   const shiftOff = shift.moves.map(m => {
     const p = planById.get(m.act.placeId);
@@ -148,9 +162,10 @@ export default function ActivitySheet({
       if (!options) delete next.timeOptions;
       if (!next.title) return;
       const dayId = day.target ?? day.id;
-      write = shifting
-        ? updateActivities(db, tripId, dayId, day.rawActivities,
-          [next, ...shift.moves.map(m => ({ ...m.act, timeLabel: m.timeLabel }))], onlyOwn)
+      write = shifting || fitting
+        ? updateActivities(db, tripId, dayId, day.rawActivities, [next,
+          ...(fitting ? [{ ...fit.act, timeLabel: fit.timeLabel }] : []),
+          ...(shifting ? shift.moves.map(m => ({ ...m.act, timeLabel: m.timeLabel })) : [])], onlyOwn)
         : updateActivity(db, tripId, dayId, day.rawActivities, next, onlyOwn);
     } else {
       const stamp = Date.now();
@@ -346,6 +361,37 @@ export default function ActivitySheet({
                 )}
               </div>
             </div>
+            {/* The one before, ending where this one now starts (8.99.0) */}
+            {fit && (
+              <div className="list-group act-shift act-fit">
+                <button type="button" role="switch" aria-checked={fitOn} className="list-row" onClick={() => setFitOn(v => !v)}>
+                  <ChevronsUp size={18} className="list-row-icon" />
+                  <span className="list-row-label">
+                    להתאים את הפעילות שלפני?
+                    <span className="list-row-hint">{`${nameOf(fit.it)} תסתיים ב־${fmtClock(slotOf(fit.timeLabel).end)}`}</span>
+                  </span>
+                  <span className={`switch${fitOn ? ' on' : ''}`} aria-hidden="true"><i /></span>
+                </button>
+                {fitOn && (
+                  <ul className="act-shift-list">
+                    <li>
+                      <span className="act-shift-name">{nameOf(fit.it)}</span>
+                      <span className="act-shift-times" dir="ltr">
+                        <span className="was">{slotOf(fit.act.timeLabel).label}</span>
+                        <ArrowRight size={12} aria-hidden="true" />
+                        <span>{slotOf(fit.timeLabel).label}</span>
+                      </span>
+                    </li>
+                    {fitOff && (
+                      <li className="act-form-error warn" role="status">
+                        <AlertTriangle size={14} aria-hidden="true" />
+                        <span>{fitOff}</span>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
             {/* Moving what comes after (8.95.0) */}
             {shift.moves.length > 0 && (
               <div className="list-group act-shift">
@@ -409,7 +455,7 @@ export default function ActivitySheet({
                   suggest={rangeLabel((slot.minutes + 60) % 1440)}
                 />
                 <span className="act-form-note">
-                  {others.length ? 'בלוז יופיע מתג בין השעות. בחירה בשעה מזיזה גם את כל מה שאחרי.' : 'להחלפה מהירה בלוז בין כמה שעות יציאה. כל מה שאחרי זז איתן.'}
+                  {others.length ? 'בלוז יופיע מתג בין השעות. בחירה בשעה מזיזה את כל מה שאחרי, והפעילות שלפני תסתיים בשעה החדשה.' : 'להחלפה מהירה בלוז בין כמה שעות יציאה. כל מה שאחרי זז איתן, והפעילות שלפני מתאימה את הסיום שלה.'}
                 </span>
               </div>
             )}
