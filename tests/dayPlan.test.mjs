@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clockMinutes, partOf, slotOf, bookingsOn, anchoredIds, dayItems, groupItems,
   canSwap, isGenericTitle, swapDayFields, legMinutes, personalItems, missingDates, placeDays, partsLabel, nextDate, orderFor, blockDrop,
-  rangeLabel, rangeLength, overlaps, sortItems, timeShift, shiftLabel, shiftAfter, shiftText, timeOptionsOf, startAt,
+  rangeLabel, rangeLength, overlaps, sortItems, timeShift, shiftLabel, shiftAfter, fitBefore, shiftText, timeOptionsOf, startAt,
 } from '../src/lib/dayPlan.js';
 
 test('a clock time, read', () => {
@@ -409,4 +409,39 @@ test('times to switch between, and a shift in words (8.95.0)', () => {
   assert.equal(shiftText(-60), 'שעה מוקדם יותר');
   assert.equal(shiftText(135), "שעתיים ו־15 דק' מאוחר יותר");
   assert.equal(shiftText(-200), "3 שעות ו־20 דק' מוקדם יותר");
+});
+
+test('fitBefore: the one before ends where the moved one now starts', () => {
+  // The owner's day: the market runs over the train back.
+  const acts = [
+    { id: 'xmas', title: 'שווקי כריסמס', timeLabel: '15:30' },
+    { id: 'market', title: 'שוק העירייה', timeLabel: '16:30–18:30' },
+    { id: 'train', title: 'חזרה לרכבת', timeLabel: '17:30–18:15' },
+    { id: 'ride', title: 'נסיעה לבודפשט', timeLabel: '18:40–21:40' },
+  ];
+  const items = dayItems({ acts });
+  const fit = (key, was, now, can) => { const r = fitBefore(items, key, was, now, can); return r && [r.act.id, r.timeLabel]; };
+  // At 18:30 it already ends then: nothing to change.
+  assert.equal(fit('act:train', '17:30–18:15', '18:30–19:15'), null);
+  assert.deepEqual(fit('act:train', '17:30–18:15', '18:00–18:45'), ['market', '16:30–18:00']);
+  assert.deepEqual(fit('act:train', '17:30–18:15', '19:30–20:15'), ['market', '16:30–19:30']);
+  assert.deepEqual(fit('act:train', '17:30–18:15', '17:00–17:45'), ['market', '16:30–17:00']);
+  // Earlier than it starts: it keeps its time.
+  assert.equal(fit('act:train', '17:30–18:15', '16:00–16:45'), null);
+  // A gap stays a gap: the ride 25 minutes after the train.
+  const gap = dayItems({ acts: [{ id: 'a', timeLabel: '10:00–12:00' }, { id: 'b', timeLabel: '12:30' }] });
+  assert.deepEqual([fitBefore(gap, 'act:b', '12:30', '13:30').timeLabel], ['10:00–13:00']);
+  // Only a start: nothing to fit. The first of the day: nothing before.
+  assert.equal(fit('act:market', '16:30–18:30', '17:00–19:00'), null);
+  assert.equal(fit('act:xmas', '15:30', '16:00'), null);
+  // No change, a fixed one before, another member's, the shared plan.
+  assert.equal(fit('act:train', '17:30–18:15', '17:30–18:15'), null);
+  assert.equal(fit('act:train', '17:30–18:15', '18:30–19:15', (it) => it.act.id !== 'market'), null);
+  const booked = dayItems({ acts: [{ id: 'b', timeLabel: '19:00' }], date: '2026-12-20', bookings: [{ id: 'show', title: 'הופעה', date: '2026-12-20', time: '17:00' }] });
+  assert.equal(fitBefore(booked, 'act:b', '19:00', '20:00'), null);
+  const mine = personalItems({ mine: [{ id: 'y', timeLabel: '12:00' }], shared: [{ id: 'z', timeLabel: '10:00–11:30' }] });
+  assert.equal(fitBefore(mine, 'act:y', '12:00', '13:00'), null);
+  // After midnight is still the night before.
+  const night = dayItems({ acts: [{ id: 'bar', timeLabel: '22:00–00:30' }, { id: 'taxi', timeLabel: '00:30' }] });
+  assert.deepEqual([fitBefore(night, 'act:taxi', '00:30', '01:30').timeLabel], ['22:00–01:30']);
 });

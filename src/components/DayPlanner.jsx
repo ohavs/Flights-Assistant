@@ -28,7 +28,7 @@ import {
 import {
   dayItems, personalItems, fixedTitle, groupItems, canSwap, anchoredIds, swapDayFields, legMinutes, bookingsOn, legKey,
   missingDates, placeDays, nextDate, orderFor, blockDrop, baseKey, overlaps, fmtClock,
-  timeOptionsOf, startAt, shiftAfter, shiftText, slotOf, clockMinutes,
+  timeOptionsOf, startAt, shiftAfter, fitBefore, shiftText, slotOf, clockMinutes,
 } from '../lib/dayPlan';
 import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
@@ -631,7 +631,8 @@ function DayPlanner({
   };
 
   // Another of its start times (8.95.0): it starts then, and what comes
-  // after moves by as much, in one write. All in memory: nothing measured,
+  // after moves by as much, in one write. The one before it ends where it
+  // now starts (8.99.0, fitBefore). All in memory: nothing measured,
   // nothing fetched. Tapping the one before puts it all back.
   // One at a time: the next tap waits for the day as written.
   const switching = useRef(false);
@@ -642,13 +643,19 @@ function DayPlanner({
     if (switching.current || label === slotOf(act.timeLabel).label) return;
     switching.current = true;
     const { delta, moves } = shiftAfter(items, it.key, act.timeLabel, label, canChange);
+    const fit = fitBefore(items, it.key, act.timeLabel, label, canChange);
     updateActivities(db, tripId, planDay.target ?? planDay.id, planDay.rawActivities,
-      [{ ...act, timeLabel: label }, ...moves.map(m => ({ ...m.act, timeLabel: m.timeLabel }))], onlyOwn)
+      [{ ...act, timeLabel: label }, ...(fit ? [{ ...fit.act, timeLabel: fit.timeLabel }] : []),
+        ...moves.map(m => ({ ...m.act, timeLabel: m.timeLabel }))], onlyOwn)
       .catch(err => console.error('Time switch failed:', err));
+    const said = [
+      fit && `${planById.get(fit.act.placeId)?.title || fit.act.title} עד ${fmtClock(slotOf(fit.timeLabel).end)}`,
+      moves.length && `${moves.length === 1 ? 'פעילות אחת זזה' : `${moves.length} פעילויות זזו`} ${shiftText(delta)}`,
+    ].filter(Boolean);
     say({
       icon: <Clock size={18} />,
       title: `${planById.get(act.placeId)?.title || act.title}: ${fmtClock(slotOf(label).minutes)}`,
-      text: moves.length ? `${moves.length === 1 ? 'פעילות אחת זזה' : `${moves.length} פעילויות זזו`} ${shiftText(delta)}` : undefined,
+      text: said.length ? said.join(' · ') : undefined,
     });
   };
 

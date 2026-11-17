@@ -308,6 +308,35 @@ export function shiftAfter(items, key, was, now, can = () => true) {
   };
 }
 
+// The one before it, fitted to its new start (8.99.0, the owner's ask: a
+// later time at the end of the day left what came before out of step).
+// The timed activity that starts last before it, when it has an end: it
+// ends where it ended against this one's start, so exactly at the new
+// start when it ran up to it or over it, else keeping the gap between
+// them. Not when that leaves it no length, not a fixed one (a booking's
+// time, a flight, the hotel, the shared plan under "שלי", what `can`
+// says may not change), not one with only a start. After midnight is
+// still the night before.
+// → { it, act, timeLabel } or null.
+export function fitBefore(items, key, was, now, can = () => true) {
+  const self = (items || []).find(it => it.key === key);
+  const a = slotOf(was), b = slotOf(now);
+  if (!self || self.booking?.time || a.minutes == null || b.minutes == null) return null;
+  const from = dayMinutes(a.minutes), to = dayMinutes(b.minutes);
+  if (from === to) return null;
+  const prev = items.filter(it => it.key !== key && it.kind !== 'block'
+    && it.slot?.minutes != null && dayMinutes(it.slot.minutes) < from)
+    .reduce((x, y) => (!x || dayMinutes(y.slot.minutes) >= dayMinutes(x.slot.minutes) ? y : x), null);
+  if (!prev || prev.kind !== 'activity' || prev.shared || prev.booking?.time || !can(prev)) return null;
+  const p = slotOf(prev.act.timeLabel);
+  if (p.minutes == null || p.end == null) return null;
+  const start = dayMinutes(p.minutes);
+  const end = start + rangeLength(p.minutes, p.end);
+  const next = to - Math.max(0, from - end);
+  if (next <= start || next === end) return null;
+  return { it: prev, act: prev.act, timeLabel: rangeLabel(p.minutes, next % 1440) };
+}
+
 // '30 דק' מאוחר יותר', 'שעה ו־15 דק' מוקדם יותר': a shift, in words.
 export function shiftText(delta) {
   const a = Math.abs(delta);

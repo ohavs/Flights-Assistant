@@ -45,13 +45,13 @@ async function until(fn, what) {
 }
 
 // The day's times as saved: { title: timeLabel }.
-const times = async () => {
-  const day = (await list('days')).find(d => d.fields.date?.stringValue === '2026-12-20');
+const times = async (date = '2026-12-20') => {
+  const day = (await list('days')).find(d => d.fields.date?.stringValue === date);
   return Object.fromEntries((day?.fields.activities?.arrayValue.values || [])
     .map(v => v.mapValue.fields).map(f => [f.title.stringValue, f.timeLabel?.stringValue || '']));
 };
-const timesAre = (want) => until(async () => {
-  const got = await times();
+const timesAre = (want, date) => until(async () => {
+  const got = await times(date);
   return Object.entries(want).every(([k, v]) => got[k] === v) && got;
 }, JSON.stringify(want));
 
@@ -75,6 +75,16 @@ await put('trips/ts/days/d1', {
     act('a4', 'קפה Demel', '12:30–13:30', 4),
     act('a5', 'Five Guys', '12:30–13:30', 5),
     act('a6', 'רכבת חזרה', '18:00–20:40', 6),
+  ],
+});
+// The owner's day back to Budapest (8.99.0): the market runs over the
+// train, which has other times to switch to.
+await put('trips/ts/days/d2', {
+  title: 'חזרה לבודפשט', order: 2, date: '2026-12-21', activities: [
+    act('b1', 'שווקי כריסמס', '15:30', 1),
+    act('b2', 'שוק העירייה', '16:30–18:30', 2),
+    { ...act('b3', 'חזרה לרכבת', '17:30–18:15', 3), timeOptions: ['17:30', '18:30', '19:30'] },
+    act('b4', 'נסיעה לבודפשט', '18:40–21:40', 4),
   ],
 });
 // A booking with its own time stays where it is.
@@ -167,6 +177,32 @@ await step('departure times to switch between: chips on the card', async () => {
     'יציאה מהמלון': '07:10–07:25', 'רכבת לוינה': '07:40–10:20', Stephansplatz: '10:30–12:15',
     'קפה Demel': '12:30–14:30', 'Five Guys': '12:30–13:30', 'רכבת חזרה': '18:00–20:40',
   });
+});
+
+await step('a later train: the one before ends when it leaves (chips and form)', async () => {
+  await page.locator('.dp-chip[aria-label^="חזרה לבודפשט"]').click();
+  await card('חזרה לרכבת').waitFor();
+  await card('חזרה לרכבת').getByRole('radio', { name: '19:30' }).click();
+  await page.locator('.toast', { hasText: 'שוק העירייה עד 19:30 · פעילות אחת זזה שעתיים מאוחר יותר' }).waitFor();
+  await timesAre({ 'שווקי כריסמס': '15:30', 'שוק העירייה': '16:30–19:30', 'חזרה לרכבת': '19:30–20:15', 'נסיעה לבודפשט': '20:40–23:40' }, '2026-12-21');
+  await card('חזרה לרכבת').getByRole('radio', { name: '19:30', checked: true }).waitFor();
+  await page.locator('.dp-row', { hasText: 'שוק העירייה' }).scrollIntoViewIfNeeded();
+  await shot('fit-chips');
+  // In the form, only with its switch on.
+  await edit('חזרה לרכבת');
+  await pickHour(sheet().locator('.act-time .picker-field').first(), '18');
+  const sw = sheet().getByRole('switch', { name: /להתאים את הפעילות שלפני/ });
+  await sw.waitFor();
+  await sheet().locator('.act-fit', { hasText: 'שוק העירייה תסתיים ב־18:30' }).waitFor();
+  if (await sw.getAttribute('aria-checked') !== 'false') throw new Error('the switch starts on');
+  await sw.click();
+  await sheet().locator('.act-fit .act-shift-list li', { hasText: 'שוק העירייה' }).getByText('16:30–18:30').waitFor();
+  await sheet().locator('.act-fit').scrollIntoViewIfNeeded();
+  await shot('fit-form');
+  await sheet().getByRole('button', { name: 'שמור' }).click();
+  await timesAre({ 'שוק העירייה': '16:30–18:30', 'חזרה לרכבת': '18:30–19:15', 'נסיעה לבודפשט': '20:40–23:40' }, '2026-12-21');
+  await page.locator('.dp-chip[aria-label^="יום בוינה"]').click();
+  await card('יציאה מהמלון').waitFor();
 });
 
 await step('dark mode', async () => {
