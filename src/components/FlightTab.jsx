@@ -12,7 +12,7 @@ import Fab from './Fab';
 import Skeleton from './Skeleton';
 import Notice from '../ui/Notice';
 import { withScheme } from '../lib/links';
-import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown } from './CustomDatePicker';
+import { CustomDatePicker, CustomDateTimePicker, CustomTimePicker, CustomDropdown, FlightDays } from './CustomDatePicker';
 import {
   MapPin,
   Pencil,
@@ -1116,6 +1116,8 @@ export default function FlightTab({ tripId }) {
           dirty={editDirty}
         >
           {({ cancel }) => (
+            // The flight days on its calendars: as the form has them now (8.96.0).
+            <FlightDays value={{ out: formOutDate, ret: formRetDate }}>
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
               {/* === TRIP HEADER: name + 2 decisive date pickers === */}
@@ -1356,6 +1358,7 @@ export default function FlightTab({ tripId }) {
               </div>
 
             </form>
+            </FlightDays>
           )}
         </Sheet>
       )}

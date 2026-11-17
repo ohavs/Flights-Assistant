@@ -7,7 +7,7 @@ import { CustomDropdown, CustomTimePicker } from './CustomDatePicker';
 import PlacePicker from './PlacePicker';
 import { addActivities, updateActivity, updateActivities } from '../lib/dayActivities';
 import { PARTS, slotOf, partsLabel, clockMinutes, rangeLabel, shiftAfter, shiftText, fixedTitle, timeOptionsOf, startAt, fmtClock } from '../lib/dayPlan';
-import { endsLate, eventSpan, eventNote, hoursText, onDate, partFits, timeFits, whyNot } from '../lib/eventFit';
+import { offDay, fitWhyNot, fitEndsLate, clockChecked, timeWhy, partWhy, placeNote } from '../lib/placeFit';
 
 const PART_ICONS = { 'בוקר': Sunrise, 'צהריים': Sun, 'ערב': Sunset, 'לילה': Moon };
 const DEFAULT_CATEGORY = 'אטרקציות ודברים לעשות';
@@ -70,18 +70,19 @@ export default function ActivitySheet({
   const slot = slotOf(timeLabel);
   const date = day?.date || null;
   // A place that isn't on this day's dates: grey in the list, with why.
-  const offOf = (p) => { const why = whyNot(p.event, date, ''); return why ? `לא ביום הזה: ${why}` : ''; };
+  const offOf = (p) => { const why = offDay(p, date); return why ? `לא ביום הזה: ${why}` : ''; };
   // The first chosen place whose hours leave this out, or none.
-  const partBlock = (part) => chosen.find(p => !partFits(p.event, part));
+  const partBlock = (part) => chosen.map(p => ({ p, why: partWhy(p, date, part) })).find(x => x.why);
   const checkTime = useCallback((hhmm) => {
-    const p = chosen.find(x => !timeFits(x.event, clockMinutes(hhmm)));
-    return p ? `${p.title} פתוח רק ${hoursText(eventSpan(p.event))}` : '';
-  }, [chosen]);
+    const m = clockMinutes(hhmm);
+    const hit = chosen.map(p => ({ p, why: timeWhy(p, date, m) })).find(x => x.why);
+    return hit ? `${hit.p.title} ${hit.why}` : '';
+  }, [chosen, date]);
   // What is chosen and can't be: the time was picked before the place, or
   // an activity saved before its day's date changed.
-  const problems = chosen.map(p => ({ p, why: whyNot(p.event, date, timeLabel) })).filter(x => x.why);
+  const problems = chosen.map(p => ({ p, why: fitWhyNot(p, date, timeLabel) })).filter(x => x.why);
   // A range that ends after a place closes: allowed, with a word (8.94.0).
-  const late = problems.length ? [] : chosen.map(p => ({ p, what: endsLate(p.event, timeLabel) })).filter(x => x.what);
+  const late = problems.length ? [] : chosen.map(p => ({ p, what: fitEndsLate(p, date, timeLabel) })).filter(x => x.what);
   const touched = !editing || JSON.stringify([placeIds, timeLabel]) !== JSON.stringify([start.placeIds, start.timeLabel]);
   const blocked = problems.length > 0 && touched;
   // What comes after, moved by the new time (8.95.0).
@@ -94,7 +95,7 @@ export default function ActivitySheet({
   // A moved place that ends up out of its own dates or hours: a word.
   const shiftOff = shift.moves.map(m => {
     const p = planById.get(m.act.placeId);
-    const why = p ? whyNot(p.event, date, m.timeLabel) : '';
+    const why = p ? fitWhyNot(p, date, m.timeLabel) : '';
     return why ? { key: m.it.key, text: `${p.title}: ${why}` } : null;
   }).filter(Boolean);
   // The times to switch between: its own start and the others (8.95.0).
@@ -217,7 +218,7 @@ export default function ActivitySheet({
                   <span className="act-place-title">{p.title}</span>
                   <span className="act-place-sub">{[p.category, p.address].filter(Boolean).join(' · ')}</span>
                   {(() => {
-                    const n = eventNote(p.event, date, timeLabel);
+                    const n = placeNote(p, date, timeLabel);
                     return n && (
                       <span className="act-place-when">
                         <CalendarClock size={12} aria-hidden="true" />
@@ -299,7 +300,7 @@ export default function ActivitySheet({
                     className={`act-part${on ? ' on' : ''}${on && slot.minutes != null ? ' by-time' : ''}`}
                     aria-pressed={on}
                     disabled={!!shut}
-                    title={shut ? `${shut.title} פתוח רק ${hoursText(eventSpan(shut.event))}` : undefined}
+                    title={shut ? `${shut.p.title} ${shut.why}` : undefined}
                     onClick={() => togglePart(part)}
                   >
                     <Icon size={16} aria-hidden="true" />
@@ -321,7 +322,7 @@ export default function ActivitySheet({
                   label="משעה (לא חובה)"
                   value={slot.minutes != null ? rangeLabel(slot.minutes) : ''}
                   onChange={setStart}
-                  check={chosen.some(p => eventSpan(p.event)?.close != null) ? checkTime : null}
+                  check={chosen.some(p => clockChecked(p, date)) ? checkTime : null}
                 />
                 {slot.minutes != null && (
                   <button type="button" className="btn-x" aria-label="בלי שעה" title="בלי שעה" onClick={() => setTimeLabel(slot.part || '')}>
@@ -412,7 +413,7 @@ export default function ActivitySheet({
                 </span>
               </div>
             )}
-            {!problems.length && chosen.some(p => eventSpan(p.event)?.close != null) && (
+            {!problems.length && chosen.some(p => clockChecked(p, date)) && (
               <span className="act-form-note">מה שמחוץ לשעות של המקום אפור.</span>
             )}
             {late.map(({ p, what }) => (
@@ -424,7 +425,7 @@ export default function ActivitySheet({
             {problems.map(({ p, why }) => (
               <p key={p.id} className="act-form-error" role="alert">
                 <AlertTriangle size={14} aria-hidden="true" />
-                <span>{`${p.title}: ${why}.`}{blocked ? ` ${onDate(p.event, date) ? 'צריך לבחור שעה אחרת.' : 'אפשר להוסיף אותו ליום אחר.'}` : ''}</span>
+                <span>{`${p.title}: ${why}.`}{blocked ? ` ${offDay(p, date) ? 'אפשר להוסיף אותו ליום אחר.' : 'צריך לבחור שעה אחרת.'}` : ''}</span>
               </p>
             ))}
           </div>

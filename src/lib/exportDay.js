@@ -16,7 +16,7 @@
 //   { kind: 'block',    block: 'link', url, label }
 import { dayItems, fixedTitle } from './dayPlan.js';
 import { emptyBlock, linkName } from './blocks.js';
-import { eventNote } from './eventFit.js';
+import { placeNote } from './placeFit.js';
 
 // `places`: Map of id → place, for their hours (optional).
 export function exportDay(day, { bookings = [], flights = {}, hotel = null, places = null } = {}) {
@@ -43,12 +43,12 @@ export function exportDay(day, { bookings = [], flights = {}, hotel = null, plac
       const a = it.act;
       if (!a?.title) continue;
       const plan = a.placeId ? places?.get(a.placeId) : null;
-      const note = plan && !plan.visited ? eventNote(plan.event, day?.date || null, a.timeLabel) : null;
+      const note = plan && !plan.visited ? placeNote(plan, day?.date || null, a.timeLabel) : null;
       out.push({
         kind: 'activity', time, title: a.title, category: a.category || '',
         description: a.description || '', address: a.address || it.booking?.address || '',
         optional: !!a.optional, booking: it.booking || null,
-        hours: note ? { text: note.text, warn: note.tone !== 'info' } : null,
+        hours: note?.text ? { text: note.text, warn: note.tone !== 'info' } : null,
       });
       continue;
     }

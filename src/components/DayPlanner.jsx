@@ -34,7 +34,9 @@ import DayBlock, { AddBlockRow } from './DayBlock';
 import { newBlock } from '../lib/blocks';
 import { DatePickerDialog } from './CustomDatePicker';
 import { guessedLocation, savedLocation, wayOf, walkEstimate, estimateLabel } from '../lib/placeLocation';
-import { eventNote, eventSpan, datesText, onDate, whyNot, stayingIds } from '../lib/eventFit';
+import { eventSpan, datesText } from '../lib/eventFit';
+import { placeNote, offDay, fitsDay, stayingIds } from '../lib/placeFit';
+import { hasHours } from '../lib/openHours';
 
 // A place's own dates and hours on its activity (8.93.0): the hours,
 // a warning near the opening or the closing, red when it is out of them.
@@ -872,7 +874,9 @@ function DayPlanner({
     const sub = [address && !isUrl(address) ? address : '', !address || isUrl(address) ? category : ''].filter(Boolean).join(' · ');
     const elsewhere = !it.booking && plan ? bookingByPlace.get(plan.id) : null;
     const toBook = plan && !visited && !it.booking && !elsewhere && plan.needsReservation;
-    const evNote = plan && !visited ? eventNote(plan.event, day.date, act.timeLabel) : null;
+    // Only the opening hours with nothing wrong: no tag here (`quiet`).
+    const note = plan && !visited ? placeNote(plan, day.date, act.timeLabel) : null;
+    const evNote = note && !note.quiet ? note : null;
     // Its start times to switch between (8.95.0); not when a booking sets it.
     const options = it.booking?.time ? [] : timeOptionsOf(act.timeOptions);
     return (
@@ -1193,9 +1197,11 @@ function DayPlanner({
         const down = at >= 0 && canSwap(it, own[at + 1]) ? own[at + 1] : null;
         const fixed = anchored.has(act.id);
         // A place with dates: no other day in them, nowhere to move (8.93.0).
-        const ev = act.placeId ? planById.get(act.placeId)?.event : null;
-        const span = eventSpan(ev);
-        const nowhere = span && !fixed && !days.some(d => d.id !== day.id && onDate(ev, d.date)) ? `רק ב־${datesText(span)}` : '';
+        // Or closed on every other day (8.96.0).
+        const place = act.placeId ? planById.get(act.placeId) : null;
+        const span = eventSpan(place?.event);
+        const noDay = (span || hasHours(place?.openHours)) && !fixed && !days.some(d => d.id !== day.id && fitsDay(place, d.date));
+        const nowhere = noDay ? (span ? `רק ב־${datesText(span)}` : 'סגור בכל השאר') : '';
         return (
           <Sheet title={act.title} onClose={() => setActMenu(null)}>
             <div className="list-group">
@@ -1243,8 +1249,9 @@ function DayPlanner({
             <div className="list-group" role="radiogroup">
               {days.filter(d => d.id !== day.id).map(d => {
                 // Out of the place's dates: grey, and why (8.93.0).
-                const ev = moveFor.placeId ? planById.get(moveFor.placeId)?.event : null;
-                const off = onDate(ev, d.date) ? '' : whyNot(ev, d.date, '');
+                // Or closed that day (8.96.0).
+                const place = moveFor.placeId ? planById.get(moveFor.placeId) : null;
+                const off = place ? offDay(place, d.date) : '';
                 return (
                   <button key={d.id} type="button" className="list-row" disabled={!!off} onClick={() => { moveTo(moveFor, d); close(); }}>
                     <Calendar size={16} className="list-row-icon" />
@@ -1440,7 +1447,7 @@ function DayPlanner({
         const leg = legs.get(it.key);
         const v = legValue(leg);
         const elsewhere = act && !b && plan ? bookingByPlace.get(plan.id) : null;
-        const evNote = act && plan ? eventNote(plan.event, day?.date, act.timeLabel) : null;
+        const evNote = act && plan ? placeNote(plan, day?.date, act.timeLabel) : null;
         const actions = [];
         if (navUrl) actions.push({ key: 'nav', label: 'ניווט', Icon: Navigation, tone: 'mint', run: () => window.open(navUrl, '_blank', 'noreferrer') });
         if (b?.phone) actions.push({ key: 'tel', label: 'התקשר', Icon: Phone, tone: 'sky', run: () => { window.location.href = telHref(b.phone); } });

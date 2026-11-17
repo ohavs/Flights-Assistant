@@ -1,7 +1,8 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useBackHandler from '../hooks/useBackHandler';
-import { Calendar as CalendarIcon, CalendarClock, Clock, ChevronRight, ChevronLeft, ChevronDown, Check, Search } from 'lucide-react';
+import { Calendar as CalendarIcon, CalendarClock, Clock, ChevronRight, ChevronLeft, ChevronDown, Check, Search, Plane } from 'lucide-react';
+import { useTrip } from '../TripContext';
 import { Segmented } from '../ui/Sheet';
 import { haptic } from '../lib/platform';
 
@@ -98,6 +99,29 @@ function PickerDialog({ title, onClose, readout, okLabel, onOk, okDisabled = fal
 }
 
 /* ══════════════════════════════════════════════════════════
+   FLIGHT DAYS (8.96.0, the owner's ask)
+   The days the trip's flights leave are marked on every calendar, in
+   the flights' blue, with a plane, and said under the month. From the
+   trip; a form that is changing them (the flight form) gives its own
+   with <FlightDays value={{ out, ret }}>.
+   ══════════════════════════════════════════════════════════ */
+const FlightDaysContext = createContext(null);
+export const FlightDays = FlightDaysContext.Provider;
+const dayOfIso = (s) => (/^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(0, 10) : '');
+function useFlightDays() {
+  const own = useContext(FlightDaysContext);
+  const { trip } = useTrip();
+  const out = dayOfIso(own ? own.out : trip?.outboundFlightDetails?.date);
+  const ret = dayOfIso(own ? own.ret : trip?.returnFlightDetails?.date);
+  return useMemo(() => {
+    const m = new Map();
+    if (out) m.set(out, 'טיסת הלוך');
+    if (ret) m.set(ret, m.has(ret) ? 'טיסות הלוך וחזור' : 'טיסת חזור');
+    return m;
+  }, [out, ret]);
+}
+
+/* ══════════════════════════════════════════════════════════
    CALENDAR CORE COMPONENT
    ══════════════════════════════════════════════════════════ */
 // `rangeEnd`: a range's last day; the days from the selected one to it
@@ -143,6 +167,9 @@ function CalendarBody({ selectedDateStr, onSelect, rangeEnd, range = false, take
   }
 
   const todayStr = formatDateISO(new Date());
+  const flights = useFlightDays();
+  const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+  const flightsHere = [...flights].filter(([d]) => d.startsWith(monthKey)).sort(([a], [b]) => (a < b ? -1 : 1));
 
   return (
     <div className="cal">
@@ -172,22 +199,32 @@ function CalendarBody({ selectedDateStr, onSelect, rangeEnd, range = false, take
           const inRange = !!rangeEnd && thisDateStr > selectedDateStr && thisDateStr < rangeEnd;
           const beforeRange = range && !!selectedDateStr && thisDateStr < selectedDateStr;
           const isTaken = !!taken && taken.has(thisDateStr);
+          const flight = flights.get(thisDateStr);
 
           return (
             <button
               key={`day-${item.dayNum}`}
               type="button"
-              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}${beforeRange ? ' before-range' : ''}${isTaken ? ' is-taken' : ''}`}
+              className={`cal-day${isToday ? ' is-today' : ''}${inRange ? ' in-range' : ''}${beforeRange ? ' before-range' : ''}${isTaken ? ' is-taken' : ''}${flight ? ' is-flight' : ''}`}
               aria-pressed={isSelected}
               disabled={isTaken}
               aria-current={isToday ? 'date' : undefined}
+              aria-label={flight ? `${item.dayNum}, ${flight}` : undefined}
+              title={flight || undefined}
               onClick={() => onSelect(thisDateStr)}
             >
               {item.dayNum}
+              {flight && <Plane className="cal-day-plane" size={9} strokeWidth={2.6} aria-hidden="true" />}
             </button>
           );
         })}
       </div>
+      {flightsHere.length > 0 && (
+        <div className="cal-legend">
+          <span className="cal-legend-dot" aria-hidden="true"><Plane size={10} strokeWidth={2.6} /></span>
+          <span>{flightsHere.map(([d, what]) => `${what} ${Number(d.slice(8))}.${Number(d.slice(5, 7))}`).join(' · ')}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -546,7 +583,8 @@ const plusHour = (hh, mm) => ({ hh: String((Number(hh) + 1) % 24).padStart(2, '0
 // Both ends in one window, side by side: start on the right, as it reads.
 // With no end yet it opens an hour after the start, so a one-hour slot is
 // a single tap on "בחירה".
-export function CustomTimeRangePicker({ start, end, onChange, label }) {
+// `renderTrigger(open, text)` replaces the field with your own control (8.96.0).
+export function CustomTimeRangePicker({ start, end, onChange, label, renderTrigger }) {
   const [isOpen, setIsOpen] = useState(false);
   useBackHandler(isOpen, () => setIsOpen(false));
   const [a, setA] = useState(parseTime(start));
@@ -566,11 +604,13 @@ export function CustomTimeRangePicker({ start, end, onChange, label }) {
     : '';
 
   return (
-    <div className="field-wrap">
-      {label && <label className="field-label">{label}</label>}
-      <PickerField Icon={Clock} filled={!!start} onOpen={open}>
-        <span className="picker-field-num">{text || 'בחר שעות...'}</span>
-      </PickerField>
+    <div className="field-wrap" style={renderTrigger ? { width: 'auto', containerType: 'normal' } : undefined}>
+      {label && !renderTrigger && <label className="field-label">{label}</label>}
+      {renderTrigger ? renderTrigger(open, text) : (
+        <PickerField Icon={Clock} filled={!!start} onOpen={open}>
+          <span className="picker-field-num">{text || 'בחר שעות...'}</span>
+        </PickerField>
+      )}
       {isOpen && (
         <PickerDialog
           title={label || 'בחירת שעות'}
