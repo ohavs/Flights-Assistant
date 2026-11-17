@@ -43,7 +43,7 @@ import {
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
 import OpenHoursField from './OpenHoursField';
-import { tidyHours, weekLines } from '../lib/openHours';
+import { tidyHours, weekLines, fromGoogle } from '../lib/openHours';
 import { categoryTheme, THEMES } from '../lib/categoryTheme';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
@@ -568,6 +568,11 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   // Places being located and their times measured, in the background
   // (8.88.0): { done, total } while it runs.
   const [locWork, setLocWork] = useState(null);
+  // Opening hours for the whole list from Google (8.97.0): the run's
+  // { done, total, filled, none, busy, cut } (fillAllHours).
+  const [hoursRun, setHoursRun] = useState(null);
+  // Places Google had no hours for in this session: id → their locationFp.
+  const [hoursNone, setHoursNone] = useState({});
   // A location found on this phone and not on the place: a viewer's (who
   // can't save it), or a write that failed. planId → as `coords` is saved.
   const [locCache, setLocCache] = useState({});
@@ -1990,7 +1995,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
      one; the ref is refreshed after every render, not during it. */
   const latestFns = useRef({});
   useEffect(() => {
-    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule, nextLocationJob };
+    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule, nextLocationJob, planById };
   });
 
   // Runs the background work while there is any (nextLocationJob), one
@@ -2042,6 +2047,46 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     w.gone = false;
     return () => { w.gone = true; };
   }, []);
+
+  /* Opening hours for the whole list (8.97.0, the owner's ask): every place
+     with none, from Google, a few at a time, each saved as it comes. What
+     already has hours stays as it is, and so does one given hours while
+     this runs. A place Google had nothing for is not asked again in this
+     session (until it changes). Cut short offline; a second tap goes on. */
+  const hoursTargets = plans.filter(p => mayChange(p) && !tidyHours(p.openHours)
+    && hoursNone[p.id] !== locationFp(p));
+  const fillAllHours = async () => {
+    if (hoursRun?.busy || !tripId) return;
+    const queue = [...hoursTargets];
+    if (!queue.length) return;
+    const st = { done: 0, total: queue.length, filled: 0, none: 0, busy: true, cut: false };
+    setHoursRun({ ...st });
+    const one = async (plan) => {
+      try {
+        const got = await fetchOpeningHours(plan, region);
+        const hours = got && !got.notFound ? fromGoogle(got.periods) : null;
+        if (!hours) {
+          st.none++;
+          setHoursNone(m => ({ ...m, [plan.id]: locationFp(plan) }));
+        } else if ((now => now && !tidyHours(now.openHours))(latestFns.current.planById?.get(plan.id))) {
+          // Not awaited: offline it waits for the server, saved meanwhile.
+          updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { openHours: hours })
+            .catch(err => console.error('Opening hours save error:', err));
+          st.filled++;
+        }
+      } catch (err) {
+        if (err?.network) { st.cut = true; return; }
+        st.none++;
+      }
+      st.done++;
+      if (!worker.current.gone) setHoursRun({ ...st });
+    };
+    const lane = async () => {
+      while (queue.length && !st.cut && !worker.current.gone) await one(queue.shift());
+    };
+    await Promise.all(Array.from({ length: WORKER_JOBS }, lane));
+    if (!worker.current.gone) setHoursRun({ ...st, busy: false });
+  };
   const stable = useMemo(() => {
     // eslint-disable-next-line react-hooks/refs -- read when called, never while rendering
     const call = (name) => (...args) => latestFns.current[name](...args);
@@ -2740,6 +2785,46 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                                   {locWork ? <Loader2 size={16} className="spinning list-row-icon" /> : <MapPin size={16} className="list-row-icon" />}
                                   <span className="list-row-label">{text}</span>
                                 </div>
+                              </div>
+                            </SheetSection>
+                          );
+                        })()}
+
+                        {/* Opening hours for every place at once (8.97.0). */}
+                        {hasGmapsKey() && canAdd && plans.length > 0 && (() => {
+                          const r = hoursRun;
+                          const count = hoursTargets.length;
+                          const places = (k) => (k === 1 ? 'למקום אחד' : `ל־${k} מקומות`);
+                          const result = r && !r.busy ? [
+                            r.filled ? `מולאו שעות ${places(r.filled)}` : 'לא מולאו שעות',
+                            r.none ? `${places(r.none)} אין שעות בגוגל` : '',
+                            r.cut ? 'החיבור לגוגל נקטע, אפשר להמשיך' : '',
+                          ].filter(Boolean).join('. ') : '';
+                          const label = r?.busy ? `ממלא שעות פעילות… ${r.done}/${r.total}`
+                            : 'מלא שעות פעילות מגוגל';
+                          const sub = r?.busy ? null
+                            : !online ? 'יעבוד כשיחזור החיבור'
+                            : count ? `${places(count)} בלי שעות`
+                            : plans.some(p => mayChange(p) && !tidyHours(p.openHours)) ? 'אין עוד מה למלא מגוגל'
+                            : 'לכל המקומות כבר יש שעות';
+                          return (
+                            <SheetSection label="שעות פעילות">
+                              <div className="list-group">
+                                <button type="button" className="list-row hours-fill-all" onClick={fillAllHours}
+                                  disabled={!r?.busy && (!online || !count)}
+                                  aria-disabled={r?.busy || undefined} aria-busy={r?.busy || undefined}>
+                                  {r?.busy ? <Loader2 size={16} className="spinning list-row-icon" /> : <Clock size={16} className="list-row-icon" />}
+                                  <span className="list-row-label">
+                                    {label}
+                                    {sub && <span className="list-row-hint">{sub}</span>}
+                                  </span>
+                                </button>
+                                {result && (
+                                  <div className="list-row hours-fill-result" role="status" style={{ cursor: 'default' }}>
+                                    <Check size={16} className="list-row-icon" />
+                                    <span className="list-row-label">{result}</span>
+                                  </div>
+                                )}
                               </div>
                             </SheetSection>
                           );
