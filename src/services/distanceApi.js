@@ -8,7 +8,7 @@
 
 // Browser tests run an emulator build with a fake key (`__e2eGmapsKey`, set
 // before the app loads) and answer the Maps calls themselves.
-import { placeUrls, typedAddress, hashText, MAPS_SHORT } from '../lib/placeLocation';
+import { placeUrls, typedAddress, hashText, MAPS_SHORT, locationFp } from '../lib/placeLocation';
 import { callFunction } from '../firebase';
 
 const GMAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY
@@ -610,4 +610,51 @@ export async function fetchTravelTimes(origin, destination) {
     if (err?.network) return { networkError: true };
     return null;
   }
+}
+
+/* A place's opening hours from Google (8.96.0, the "מלא מגוגל" button in
+   the place form): its id, saved on it when its location still fits
+   (`coords.fp`), or found now the way its location is; then the place's
+   `regularOpeningHours`. One call when the id is known.
+   → { periods, name } (periods null: Google has no hours for it),
+     { notFound: true }, or throws { network }.                         */
+export async function fetchOpeningHours(plan, region = {}) {
+  if (!GMAPS_KEY) return { notFound: true };
+  const saved = plan?.coords && plan.coords.fp === locationFp(plan) ? plan.coords : null;
+  let loc = saved && Number.isFinite(saved.lat) ? saved : null;
+  if (!loc) {
+    const found = await findPlaceLocation(plan, region);
+    if (found?.offline) { const err = new Error('network'); err.network = true; throw err; }
+    loc = found?.loc && Number.isFinite(found.loc.lat) ? found.loc : null;
+  }
+  if (!loc) return { notFound: true };
+  // An id found by the typed address may be the street, with no hours:
+  // then the place by its name at that spot.
+  const first = loc.pid || '';
+  let got = first ? await placeDetails(first) : null;
+  if (!got?.periods && (!first || loc.src === 'address')) {
+    const pid = await findPlaceId(plan, loc);
+    if (pid && pid !== first) got = await placeDetails(pid);
+  }
+  return got || { notFound: true };
+}
+
+async function placeDetails(pid) {
+  let res;
+  try {
+    res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(pid)}`, {
+      headers: { 'X-Goog-Api-Key': GMAPS_KEY, 'X-Goog-FieldMask': 'displayName,regularOpeningHours' },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch {
+    const err = new Error('network');
+    err.network = true;
+    throw err;
+  }
+  if (!res.ok) {
+    if (res.status === 429 || res.status >= 500) { const err = new Error('busy'); err.network = true; throw err; }
+    return null;
+  }
+  const data = await res.json().catch(() => null);
+  return { periods: data?.regularOpeningHours?.periods || null, name: data?.displayName?.text || '' };
 }

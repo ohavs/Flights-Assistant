@@ -14,7 +14,7 @@ import { tripRange, dayFor } from './morningAlerts.js';
 import { dayActivities } from './dayOrder.js';
 import { dayItems, personalItems, fixedTitle, isBlock } from './dayPlan.js';
 import { emptyBlock, linkName, checkCount } from './blocks.js';
-import { eventNote } from './eventFit.js';
+import { placeNote } from './placeFit.js';
 import { parseLocal } from './reminderAlerts.js';
 import { CURRENCY_META } from '../services/currency.js';
 import { DEFAULT_CURRENCIES, DEFAULT_EXPENSE_CATEGORIES } from './expenseDefaults.js';
@@ -130,7 +130,7 @@ function rowOf(it, plans, date = null) {
     const a = it.act;
     const place = (plans || []).find(p => (a.placeId ? p.id === a.placeId : p.title === a.title));
     const placeId = a.placeId || place?.id;
-    const note = a.placeId && place && !place.visited ? eventNote(place.event, date, a.timeLabel) : null;
+    const note = a.placeId && place && !place.visited ? placeNote(place, date, a.timeLabel) : null;
     const warn = note && note.tone !== 'info' ? ` · ⚠ ${note.text.split(' · ')[0]}` : '';
     const title = `${a.optional ? `${a.title} (אופציונלי)` : a.title}${warn}`;
     return { time, title, ...(placeId ? { placeId } : {}), ...(place?.visited ? { visited: true } : {}) };

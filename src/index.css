@@ -1594,6 +1594,15 @@ textarea.form-control {
 .cal-day.in-range { background: var(--p-8); color: var(--accent); font-weight: 800; border-radius: 8px; }
 /* Before the first day: outside it, grey (a tap there moves the first day). */
 .cal-day.before-range { color: var(--text-muted); opacity: 0.45; font-weight: 500; }
+/* A day a flight of the trip leaves (8.96.0): the flights' blue, a small
+   plane in its corner, and a line under the month that says which. */
+.cal-day { position: relative; }
+.cal-day.is-flight { background: var(--sky); color: var(--c-blue); font-weight: 800; border-color: color-mix(in srgb, var(--c-blue) 45%, transparent); }
+.cal-day.is-flight[aria-pressed="true"] { background: var(--c-blue); color: #fff; border-color: var(--stroke); }
+.cal-day-plane { position: absolute; top: 3px; inset-inline-end: 3px; color: var(--c-blue); transform: scaleX(-1); }
+.cal-day.is-flight[aria-pressed="true"] .cal-day-plane { color: #fff; }
+.cal-legend { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--c-blue); }
+.cal-legend-dot { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--sky); border: 1.5px solid color-mix(in srgb, var(--c-blue) 45%, transparent); }
 /* A date that can't be picked (8.83.0: another day of the trip has it) */
 .cal-day.is-taken { color: var(--text-muted); opacity: 0.35; font-weight: 500; text-decoration: line-through; cursor: default; background: none; }
 .picker-readout-hint { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
@@ -3036,6 +3045,56 @@ button.pstub-stub.when:active { background: color-mix(in srgb, var(--c) 70%, bla
 }
 .place-when-hint { margin-top: -6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .place-when-error { font-size: 12.5px; font-weight: 700; color: var(--c-red); }
+
+/* The place form's opening hours (8.96.0): a row a day, its switch, its
+   ranges as chips (a tap opens the time picker), "+" for a break, and
+   "לכל הימים". */
+.hours-start { display: flex; flex-wrap: wrap; gap: 8px; }
+.hours-manual, .hours-google {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+  padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.hours-google { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.hours-google:disabled { opacity: 0.6; cursor: default; }
+.hours-days { display: flex; flex-direction: column; gap: 6px; }
+.hours-day {
+  display: flex; align-items: center; gap: 8px; min-height: 40px;
+  padding: 4px 8px 4px 4px; border-radius: 12px; background: var(--surface);
+}
+.hours-day-switch {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 2px 6px; border: none; background: none; cursor: pointer;
+  font-family: var(--font-hebrew); color: var(--text);
+}
+.hours-day-name { width: 44px; text-align: start; font-size: 13px; font-weight: 800; }
+.hours-day-switch .switch { transform: scale(0.82); margin-inline: -4px; }
+.hours-day.closed .hours-day-name { color: var(--text-muted); }
+.hours-ranges { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hours-closed { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.hours-range { display: inline-flex; align-items: center; gap: 2px; }
+.hours-chip {
+  min-height: 30px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  font-family: var(--font-hebrew); font-size: 13px; font-weight: 800; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.hours-chip-x, .hours-icon {
+  display: inline-grid; place-items: center; flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  border: none; background: none; color: var(--text-muted);
+}
+.hours-icon { background: var(--surface-2); }
+.hours-status { font-size: 12.5px; font-weight: 700; color: var(--text-muted); }
+.hours-status.ok { color: var(--c-green); }
+.hours-status.bad { color: var(--c-red); }
+/* In a place's details: the week, a line for days with the same hours. */
+.hours-week { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13.5px; }
+.hours-week dt { font-weight: 800; }
+.hours-week dd { margin: 0; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.hours-week dd.today, .hours-week dt.today { color: var(--text); }
 
 /* The one control that stays on the card. A circle, not a form
    checkbox: it reports a state rather than collecting an answer. */

@@ -27,7 +27,7 @@ export const OPEN_JUST = 30;
 const EARLY = 180;
 
 // The parts of the day as minutes on the clock: [from, length).
-const PART_SPAN = { 'בוקר': [300, 420], 'צהריים': [720, 300], 'ערב': [1020, 240], 'לילה': [1260, 480] };
+export const PART_SPAN = { 'בוקר': [300, 420], 'צהריים': [720, 300], 'ערב': [1020, 240], 'לילה': [1260, 480] };
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const mins = (hhmm) => {

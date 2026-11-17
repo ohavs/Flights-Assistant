@@ -37,10 +37,13 @@ import {
   findPlaceLocation,
   fetchTravelTimes,
   findPlaceId,
+  fetchOpeningHours,
   extractCoordsFromMapsUrl,
   readShortUrlCache,
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
+import OpenHoursField from './OpenHoursField';
+import { tidyHours, weekLines } from '../lib/openHours';
 import { categoryTheme, THEMES } from '../lib/categoryTheme';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
@@ -370,6 +373,7 @@ function planFormKey(v) {
     v.title, v.category, v.description, v.address, v.price, v.links, v.newLinkLabel, v.newLinkUrl,
     v.eventStartDate, v.eventEndDate, v.eventStartTime, v.eventEndTime,
     v.originId, v.priority, v.needsReservation, v.walkMins, v.transitMins,
+    tidyHours(v.openHours),
   ]);
 }
 
@@ -472,6 +476,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   const endTimeOn = whenRange ? eventEndTime : '';
   // A time was picked with no date: saving waits for one.
   const [whenNeedsDate, setWhenNeedsDate] = useState(false);
+  // Opening hours every week (8.96.0, src/lib/openHours.js), or null.
+  const [formHours, setFormHours] = useState(null);
   // Manual travel-time overrides (edit form only, in minutes)
   const [editWalkMins, setEditWalkMins] = useState('');
   const [editTransitMins, setEditTransitMins] = useState('');
@@ -1116,6 +1122,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     setEventEndTime('');
     setWhenRange(false);
     setWhenNeedsDate(false);
+    setFormHours(null);
     setFormOriginId('hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
@@ -1161,12 +1168,12 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     title, category, description, address, price, links, newLinkLabel, newLinkUrl,
     eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn,
     originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
-    walkMins: editWalkMins, transitMins: editTransitMins,
+    walkMins: editWalkMins, transitMins: editTransitMins, openHours: formHours,
   });
   const planFormDirty = () => editingId
     ? currentPlanForm() !== editBaseline
     : !!(title.trim() || description.trim() || address.trim() || price.trim() ||
-         links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim());
+         links.length > 0 || newLinkLabel.trim() || newLinkUrl.trim() || !!formHours);
 
   const closePlanForm = () => {
     setShowAddForm(false);
@@ -1186,7 +1193,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
       eventStartDate: plan.event?.startDate || '', eventEndDate: plan.event?.endDate || '',
       eventStartTime: plan.event?.startTime || '', eventEndTime: plan.event?.endTime || '',
       originId: originKey, priority: plan.priority || null, needsReservation: !!plan.needsReservation,
-      walkMins, transitMins,
+      walkMins, transitMins, openHours: plan.openHours || null,
     }));
     setEditingId(plan.id);
     setTitle(plan.title);
@@ -1204,6 +1211,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     setEventEndTime(plan.event?.endTime || '');
     setWhenRange(!!(plan.event?.endDate || plan.event?.endTime));
     setWhenNeedsDate(false);
+    setFormHours(tidyHours(plan.openHours));
     setFormOriginId(plan.distanceOriginId || 'hotel');
     setOriginDropOpen(false);
     setShowAddOriginForm(false);
@@ -1367,15 +1375,17 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         event: whenOf(v),
         priority: v.priority || null,
         needsReservation: !!v.needsReservation,
+        openHours: tidyHours(v.openHours),
       });
       const FORM_KEYS = ['title', 'category', 'description', 'address', 'price', 'links', 'newLinkLabel', 'newLinkUrl',
         'eventStartDate', 'eventEndDate', 'eventStartTime', 'eventEndTime', 'originId', 'priority', 'needsReservation',
-        'walkMins', 'transitMins'];
+        'walkMins', 'transitMins', 'openHours'];
       const opened = editBaseline ? Object.fromEntries(JSON.parse(editBaseline).map((x, i) => [FORM_KEYS[i], x])) : null;
       const updates = changedFields(opened ? fieldsOf(opened) : {}, fieldsOf({
         title, category, description, address, price, links: formLinks,
         eventStartDate, eventEndDate: endDateOn, eventStartTime, eventEndTime: endTimeOn,
         originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
+        openHours: formHours,
       }));
       // A place whose address or links changed is found again by itself
       // (its location's fingerprint no longer matches), and its times with
@@ -1438,6 +1448,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         visited: false,
         distanceOriginId: originId,
         event: eventData,
+        ...(tidyHours(formHours) ? { openHours: tidyHours(formHours) } : {}),
         priority: formPriority || null,
         needsReservation: formNeedsReservation,
         addedBy: currentUid || null,
@@ -1458,6 +1469,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     setEventStartTime('');
     setEventEndTime('');
     setWhenRange(false);
+    setFormHours(null);
     setEditWalkMins('');
     setEditTransitMins('');
     setFormPriority(null);
@@ -2232,6 +2244,16 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                       </div>
                     );
                   })()}
+
+                  {/* Opening hours every week (8.96.0): apart from "מתי?". */}
+                  <OpenHoursField
+                    value={formHours}
+                    onChange={setFormHours}
+                    onFetch={hasGmapsKey() ? () => fetchOpeningHours({
+                      title: title.trim(), address: address.trim(), links,
+                      coords: editingId ? planById.get(editingId)?.coords : null,
+                    }, region) : null}
+                  />
 
                   <div className="form-group">
                     <label>כתובת / מיקום</label>
@@ -3430,6 +3452,27 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
               })()}
 
               {renderDistanceBlock(detailPlan)}
+
+              {/* Opening hours every week (8.96.0), today's in bold. */}
+              {(() => {
+                const lines = weekLines(detailPlan.openHours);
+                if (!lines.length) return null;
+                const today = new Date().getDay();
+                return (
+                  <div className="place-hours-view" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={sheetSectionLabel}>שעות פעילות</span>
+                    <dl className="hours-week">
+                      {lines.map(l => {
+                        const on = today >= l.from && today <= l.to;
+                        return [
+                          <dt key={`t${l.days}`} className={on ? 'today' : undefined}>{l.days}</dt>,
+                          <dd key={`d${l.days}`} className={on ? 'today' : undefined}>{l.text}</dd>,
+                        ];
+                      })}
+                    </dl>
+                  </div>
+                );
+              })()}
 
               {/* Locations & links */}
               {(() => {
