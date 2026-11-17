@@ -35,11 +35,16 @@ await ctx.route('https://routes.googleapis.com/**', (route) => route.fulfill({ j
 await ctx.route('https://places.googleapis.com/**', async (route) => {
   if (route.request().method() === 'GET') {
     calls.details++;
+    // The gallery: Google knows it, with no hours.
+    if (route.request().url().includes('/places/g2')) return route.fulfill({ json: { displayName: { text: 'Galerie' } } });
     const day = (d, from, to) => ({ open: { day: d, hour: from, minute: 0 }, close: { day: d, hour: to, minute: 0 } });
     return route.fulfill({ json: {
       displayName: { text: 'Café Central' },
       regularOpeningHours: { periods: [day(0, 10, 18), ...[1, 2, 3, 4, 5, 6].map(d => day(d, 8, 22))] },
     } });
+  }
+  if (/Graben|גלריה/.test(route.request().postData() || '')) {
+    return route.fulfill({ json: { places: [{ id: 'g2', location: { latitude: 48.2, longitude: 16.37 }, displayName: { text: 'Galerie' }, formattedAddress: 'Graben 1' }] } });
   }
   return route.fulfill({ json: { places: [{ id: 'g1', location: { latitude: 48.2104, longitude: 16.3655 }, displayName: { text: 'Café Central' }, formattedAddress: 'Herrengasse 14' }] } });
 });
@@ -235,6 +240,31 @@ await step('the flight days are marked on the calendar', async () => {
   await page.waitForTimeout(300);
   await closeTop();
   await leave();
+});
+
+await step('"מלא שעות פעילות מגוגל" fills every place with none, and leaves the rest', async () => {
+  await place('g', 'גלריה', { address: 'Graben 1, Wien' });
+  await place('b', 'בר');
+  const open = async () => {
+    await page.locator('button[aria-label="מיון ותצוגה"]').click();
+    return sheet().locator('.hours-fill-all');
+  };
+  let btn = await open();
+  // The gallery and the bar: the others have their hours from before.
+  await btn.getByText('ל־2 מקומות בלי שעות').waitFor();
+  await btn.click();
+  await sheet().locator('.hours-fill-result', { hasText: 'מולאו שעות למקום אחד. למקום אחד אין שעות בגוגל' }).waitFor();
+  await btn.getByText('אין עוד מה למלא מגוגל').waitFor();
+  if (!(await btn.isDisabled())) throw new Error('nothing left, and it can still be tapped');
+  await sheet().locator('.hours-fill-result').scrollIntoViewIfNeeded();
+  await shot('fill-all');
+  const bar = await until(async () => { const x = await getPlace('b'); return x.openHours ? x : null; }, 'the bar\'s hours');
+  if (JSON.stringify(bar.openHours[3]) !== JSON.stringify([{ from: '08:00', to: '22:00' }])) throw new Error(`bar: ${JSON.stringify(bar.openHours[3])}`);
+  if ((await getPlace('g')).openHours) throw new Error('the gallery got hours Google does not have');
+  // Hours typed by hand stay.
+  if (JSON.stringify((await getPlace('r')).openHours[6]) !== '[]') throw new Error('the restaurant\'s own hours changed');
+  if (JSON.stringify((await getPlace('m')).openHours[5]) !== JSON.stringify([{ from: '09:00', to: '13:00' }])) throw new Error('the museum\'s own hours changed');
+  await closeTop();
 });
 
 if (errors.length) { console.log('  page errors:', errors); failed++; }

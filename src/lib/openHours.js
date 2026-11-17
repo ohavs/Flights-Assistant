@@ -231,3 +231,51 @@ export function tidyHours(oh) {
       .slice(0, MAX_RANGES)
       .map(r => ({ from: fmt(mins(r.from)), to: fmt(mins(r.to)) }))]));
 }
+
+/* ── Right now (8.98.0, the owner's ask) ──────────────────────────────
+   What a place's hours say at the phone's clock, on its card while the
+   trip is on. → null (no hours), or { state, text, sub }:
+   - 'open'    'פתוח עד 20:00' / 'פתוח 24 שעות'.
+   - 'closing' closes within NOW_CLOSING: 'נסגר בעוד 40 דק׳', sub 'ב־20:00'.
+   - 'opens'   closed now, opens again before the night is over (05:00,
+               as in the schedule): 'נפתח ב־16:00'.
+   - 'closed'  closed for the rest of the day: 'סגור עכשיו' (it was open
+               earlier) or 'סגור היום', sub when it opens next
+               ('נפתח מחר ב־09:00', 'נפתח ביום שני ב־09:00'). Grey.     */
+export const NOW_CLOSING = 60;
+export function nowStatus(oh, now = new Date()) {
+  const w = weekOf(oh);
+  if (!w) return null;
+  const m = now.getHours() * 60 + now.getMinutes();
+  const t = now.getDay() * 1440 + m;
+  const s = spanAt(w, t);
+  if (s) {
+    if (s.len >= 1440) return { state: 'open', text: `פתוח ${ALL_DAY}`, sub: '' };
+    const left = s.len - around(t - s.at, WEEK);
+    const closes = fmt((s.r.from + s.len) % 1440);
+    return left <= NOW_CLOSING
+      ? { state: 'closing', text: `נסגר בעוד ${left} דק׳`, sub: `ב־${closes}` }
+      : { state: 'open', text: `פתוח עד ${closes}`, sub: '' };
+  }
+  const spans = spansOf(w);
+  const next = spans.reduce((a, x) => (around(x.at - t, WEEK) < around(a.at - t, WEEK) ? x : a));
+  const wait = around(next.at - t, WEEK);
+  const opens = fmt(next.r.from);
+  // The day runs until 05:00 the next morning.
+  const sinceStart = around(m - 300, 1440);
+  if (wait < 1440 - sinceStart) return { state: 'opens', text: `נפתח ב־${opens}`, sub: '' };
+  const wasOpen = spans.some(x => around(t - (x.at + x.len), WEEK) < sinceStart);
+  const ahead = Math.floor((m + wait) / 1440);
+  const day = ahead === 0 ? '' : ahead === 1 ? 'מחר ' : `ביום ${DAY_NAMES[next.day]} `;
+  return { state: 'closed', text: wasOpen ? 'סגור עכשיו' : 'סגור היום', sub: `נפתח ${day}ב־${opens}` };
+}
+
+// The status as one line: 'נסגר בעוד 40 דק׳ (ב־21:40)',
+// 'סגור עכשיו · נפתח מחר ב־09:00'.
+export const nowLine = (h) => (!h ? '' : !h.sub ? h.text : h.state === 'closing' ? `${h.text} (${h.sub})` : `${h.text} · ${h.sub}`);
+
+// The day's hours, for a card when the trip is not on: 'היום 09:00–17:00'.
+export function todayText(oh, now = new Date()) {
+  const text = dayText(oh, now.getDay());
+  return !text ? '' : text === 'סגור' ? 'סגור היום' : `היום ${text}`;
+}

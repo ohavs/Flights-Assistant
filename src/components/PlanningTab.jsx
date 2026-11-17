@@ -4,7 +4,7 @@ import { listen } from '../lib/listen';
 import { addCategory, saveCategory, removeCategory, setCategoryIcon, setCategoryEmoji } from '../lib/categorySettings';
 import { lastEmoji } from '../lib/emoji';
 import { dayActivities } from '../lib/dayActivities';
-import { localDay } from '../lib/dates';
+import { localDay, isoDay } from '../lib/dates';
 import { legKey, isPlaceLeg } from '../lib/dayPlan';
 import {
   PLACE_ORIGIN, savedLocation, locationJob, locationFp, wayOf, travelStamp, travelFresh, travelShowable, legDocId, guessedLocation,
@@ -43,7 +43,8 @@ import {
 } from '../services/distanceApi';
 import { CustomDropdown, CustomDatePicker, CustomTimePicker, CustomDateRangePicker, CustomTimeRangePicker } from './CustomDatePicker';
 import OpenHoursField from './OpenHoursField';
-import { tidyHours, weekLines } from '../lib/openHours';
+import { tidyHours, weekLines, fromGoogle, hasHours, nowStatus, nowLine, todayText } from '../lib/openHours';
+import { tripRange } from '../lib/morningAlerts';
 import { categoryTheme, THEMES } from '../lib/categoryTheme';
 import Skeleton from './Skeleton';
 import Fab from './Fab';
@@ -113,6 +114,7 @@ import {
   CalendarClock,
   Copy,
   Bell,
+  Hourglass,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -166,6 +168,8 @@ const EVENTS_CATEGORY = 'אירועים';
 const PROXIMITY_THRESHOLD_M = 800;
 // Background location/time jobs run at once (nextLocationJob).
 const WORKER_JOBS = 4;
+// A place's hours now, as a pill's tone (8.98.0).
+const HOURS_TONE = { open: 'mint', closing: 'warn', opens: 'neutral', closed: 'muted', today: 'neutral' };
 
 // The details sheet can show travel times from another place on the list
 // (`travelFrom: 'place_<id>'` on the place, PLACE_ORIGIN). The times are
@@ -380,7 +384,7 @@ function planFormKey(v) {
 export default function PlanningTab({ tripId, tripName = '', sharedPlace = null, onSharedPlaceHandled, openPlaceId = null, onOpenPlaceHandled }) {
   // "הוספה" (canAdd without canEdit) adds places and activities, ticks
   // visited, and changes only what they added (src/lib/roles.js).
-  const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles } = useTrip();
+  const { canEdit, canAdd, mayChange, currentUid, currentUserProfile, memberProfiles, trip } = useTrip();
   const confirm = useConfirm();
 
   // The clock the dates' dots read: a tick a minute while the app is in
@@ -568,6 +572,11 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   // Places being located and their times measured, in the background
   // (8.88.0): { done, total } while it runs.
   const [locWork, setLocWork] = useState(null);
+  // Opening hours for the whole list from Google (8.97.0): the run's
+  // { done, total, filled, none, busy, cut } (fillAllHours).
+  const [hoursRun, setHoursRun] = useState(null);
+  // Places Google had no hours for in this session: id → their locationFp.
+  const [hoursNone, setHoursNone] = useState({});
   // A location found on this phone and not on the place: a viewer's (who
   // can't save it), or a write that failed. planId → as `coords` is saved.
   const [locCache, setLocCache] = useState({});
@@ -721,6 +730,20 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   }, [tripId]);
 
   const planById = useMemo(() => new Map(plans.map(p => [p.id, p])), [plans]);
+
+  /* Opening hours right now (8.98.0, the owner's ask): while the trip is
+     on (a day between its flights, or a day of the schedule), each card
+     says how its place stands at the phone's clock, and a place closed for
+     the rest of the day is grey. Otherwise the day's hours. Visited: none. */
+  const todayIso = isoDay(now);
+  const tripOn = useMemo(() => tripRange(trip).includes(todayIso) || days.some(d => d.date === todayIso),
+    [trip, days, todayIso]);
+  const hoursNow = (plan) => {
+    if (plan.visited || !hasHours(plan.openHours)) return null;
+    if (tripOn) return nowStatus(plan.openHours, now);
+    const text = todayText(plan.openHours, now);
+    return text ? { state: 'today', text, sub: '' } : null;
+  };
   const locOf = (plan) => (plan ? savedLocation(plan, locCache[plan.id]) : null);
   const hotelFp = (originId) =>
     originFingerprint(hotelDetails, distanceOrigins.find(o => o.id === originId) || null, tripDestination);
@@ -1990,7 +2013,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
      one; the ref is refreshed after every render, not during it. */
   const latestFns = useRef({});
   useEffect(() => {
-    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule, nextLocationJob };
+    latestFns.current = { measureLeg, openPlanDetail, addCategoryFromSchedule, nextLocationJob, planById };
   });
 
   // Runs the background work while there is any (nextLocationJob), one
@@ -2042,6 +2065,46 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     w.gone = false;
     return () => { w.gone = true; };
   }, []);
+
+  /* Opening hours for the whole list (8.97.0, the owner's ask): every place
+     with none, from Google, a few at a time, each saved as it comes. What
+     already has hours stays as it is, and so does one given hours while
+     this runs. A place Google had nothing for is not asked again in this
+     session (until it changes). Cut short offline; a second tap goes on. */
+  const hoursTargets = plans.filter(p => mayChange(p) && !tidyHours(p.openHours)
+    && hoursNone[p.id] !== locationFp(p));
+  const fillAllHours = async () => {
+    if (hoursRun?.busy || !tripId) return;
+    const queue = [...hoursTargets];
+    if (!queue.length) return;
+    const st = { done: 0, total: queue.length, filled: 0, none: 0, busy: true, cut: false };
+    setHoursRun({ ...st });
+    const one = async (plan) => {
+      try {
+        const got = await fetchOpeningHours(plan, region);
+        const hours = got && !got.notFound ? fromGoogle(got.periods) : null;
+        if (!hours) {
+          st.none++;
+          setHoursNone(m => ({ ...m, [plan.id]: locationFp(plan) }));
+        } else if ((now => now && !tidyHours(now.openHours))(latestFns.current.planById?.get(plan.id))) {
+          // Not awaited: offline it waits for the server, saved meanwhile.
+          updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { openHours: hours })
+            .catch(err => console.error('Opening hours save error:', err));
+          st.filled++;
+        }
+      } catch (err) {
+        if (err?.network) { st.cut = true; return; }
+        st.none++;
+      }
+      st.done++;
+      if (!worker.current.gone) setHoursRun({ ...st });
+    };
+    const lane = async () => {
+      while (queue.length && !st.cut && !worker.current.gone) await one(queue.shift());
+    };
+    await Promise.all(Array.from({ length: WORKER_JOBS }, lane));
+    if (!worker.current.gone) setHoursRun({ ...st, busy: false });
+  };
   const stable = useMemo(() => {
     // eslint-disable-next-line react-hooks/refs -- read when called, never while rendering
     const call = (name) => (...args) => latestFns.current[name](...args);
@@ -2745,6 +2808,46 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                           );
                         })()}
 
+                        {/* Opening hours for every place at once (8.97.0). */}
+                        {hasGmapsKey() && canAdd && plans.length > 0 && (() => {
+                          const r = hoursRun;
+                          const count = hoursTargets.length;
+                          const places = (k) => (k === 1 ? 'למקום אחד' : `ל־${k} מקומות`);
+                          const result = r && !r.busy ? [
+                            r.filled ? `מולאו שעות ${places(r.filled)}` : 'לא מולאו שעות',
+                            r.none ? `${places(r.none)} אין שעות בגוגל` : '',
+                            r.cut ? 'החיבור לגוגל נקטע, אפשר להמשיך' : '',
+                          ].filter(Boolean).join('. ') : '';
+                          const label = r?.busy ? `ממלא שעות פעילות… ${r.done}/${r.total}`
+                            : 'מלא שעות פעילות מגוגל';
+                          const sub = r?.busy ? null
+                            : !online ? 'יעבוד כשיחזור החיבור'
+                            : count ? `${places(count)} בלי שעות`
+                            : plans.some(p => mayChange(p) && !tidyHours(p.openHours)) ? 'אין עוד מה למלא מגוגל'
+                            : 'לכל המקומות כבר יש שעות';
+                          return (
+                            <SheetSection label="שעות פעילות">
+                              <div className="list-group">
+                                <button type="button" className="list-row hours-fill-all" onClick={fillAllHours}
+                                  disabled={!r?.busy && (!online || !count)}
+                                  aria-disabled={r?.busy || undefined} aria-busy={r?.busy || undefined}>
+                                  {r?.busy ? <Loader2 size={16} className="spinning list-row-icon" /> : <Clock size={16} className="list-row-icon" />}
+                                  <span className="list-row-label">
+                                    {label}
+                                    {sub && <span className="list-row-hint">{sub}</span>}
+                                  </span>
+                                </button>
+                                {result && (
+                                  <div className="list-row hours-fill-result" role="status" style={{ cursor: 'default' }}>
+                                    <Check size={16} className="list-row-icon" />
+                                    <span className="list-row-label">{result}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </SheetSection>
+                          );
+                        })()}
+
                         {canEdit && (
                           <SheetSection label="קטגוריות">
                             <div className="list-group">
@@ -2938,7 +3041,21 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                 const whenLine = when && when.line;
                 const whenSay = when && `${when.line}, ${WHEN_STATE_LABEL[when.state]}`;
 
-                const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}`;
+                // Its opening hours now (8.98.0): one small pill on every
+                // layout; closed for the rest of the day, the card is grey.
+                const hours = hoursNow(plan);
+                const closedNow = hours?.state === 'closed';
+                // A tile is narrow: only the status, when it opens in the title.
+                const hoursPill = hours && (
+                  <Pill key="hours" size="sm" tone={HOURS_TONE[hours.state]} title={nowLine(hours)}
+                    icon={hours.state === 'closing' ? <Hourglass size={11} aria-hidden="true" /> : <Clock size={11} aria-hidden="true" />}>
+                    <span className="plan-hours" data-state={hours.state}>
+                      {hours.text}{hours.state === 'closed' && !isTile && <span className="plan-hours-sub"> · {hours.sub}</span>}
+                    </span>
+                  </Pill>
+                );
+
+                const cardClass = `glass-card plan-card${plan.visited ? ' visited' : ''}${isTodayEvent && !plan.visited ? ' event-today' : ''}${closedNow ? ' closed-now' : ''}`;
                 // The category's theme; a visited card gives up its surface.
                 const theme = plan.visited ? null : getCategoryTheme(plan.category);
                 const ornament = theme && THEMES[theme].ornament
@@ -3007,6 +3124,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                       }}>
                         {plan.title}
                       </h3>
+
+                      {hoursPill}
 
                       {when && (
                         <span className={`plan-when-chip${when.daily ? ' daily' : ''}${when.past || plan.visited ? ' past' : ''}`} style={{ '--c': getCategoryColor(plan.category) }}>
@@ -3081,6 +3200,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                       : { key: 'book', cls: 'book', text: 'להזמין', icon: <CalendarCheck size={11} />, title: 'צריך לסגור / להזמין מראש' });
                   }
                   const tags = [];
+                  if (hours) tags.push({ key: 'hours', pill: hoursPill });
                   if (when?.until) tags.push({ key: 'until', tone: 'sky', text: when.until, icon: <Calendar size={11} aria-hidden="true" /> });
                   if (onDays.length) {
                     const d = onDays[0];
@@ -3122,7 +3242,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                   );
                   const stubClass = `pstub-stub${when ? ' when' : ''}${when && (when.past || plan.visited) ? ' past' : ''}`;
                   return (
-                    <div key={plan.id} ref={cardRef} className={`pstub-wrap${plan.visited ? ' visited' : ''}`}>
+                    <div key={plan.id} ref={cardRef} className={`pstub-wrap${plan.visited ? ' visited' : ''}${closedNow ? ' closed-now' : ''}`}>
                       {ornament}
                       <div
                         className={`${cardClass} pstub`}
@@ -3168,7 +3288,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                           {plan.description && <p className="pstub-desc">{plan.description}</p>}
                           {tags.length > 0 && (
                             <div className="pstub-tags">
-                              {tags.map(t => (
+                              {tags.map(t => t.pill || (
                                 <Pill key={t.key} size="sm" tone={t.tone} icon={t.icon} title={t.title}>{t.text}</Pill>
                               ))}
                             </div>
@@ -3276,9 +3396,10 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                         // tag beside the status one instead of competing for it.
                         const booked = bookedPlaceIds.has(plan.id);
                         const bookingTag = !plan.visited && (booked || plan.needsReservation);
-                        if (!pill && !bookingTag && !dup) return null;
+                        if (!pill && !bookingTag && !dup && !hours) return null;
                         return (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
+                            {hoursPill}
                             {dup && (
                               <Pill size="sm" tone="lavender" title={dup.title} icon={<Copy size={11} aria-hidden="true" />}>
                                 {dup.text}
@@ -3457,10 +3578,19 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
               {(() => {
                 const lines = weekLines(detailPlan.openHours);
                 if (!lines.length) return null;
-                const today = new Date().getDay();
+                const today = now.getDay();
                 return (
                   <div className="place-hours-view" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <span style={sheetSectionLabel}>שעות פעילות</span>
+                    {(() => {
+                      const h = tripOn && !detailPlan.visited ? nowStatus(detailPlan.openHours, now) : null;
+                      return h && (
+                        <span className="hours-now" data-state={h.state}>
+                          {h.state === 'closing' ? <Hourglass size={14} aria-hidden="true" /> : <Clock size={14} aria-hidden="true" />}
+                          {nowLine(h)}
+                        </span>
+                      );
+                    })()}
                     <dl className="hours-week">
                       {lines.map(l => {
                         const on = today >= l.from && today <= l.to;
