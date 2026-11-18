@@ -135,7 +135,9 @@ await step('group by category', async () => {
 
 await step('place details sheet', async () => {
   await page.getByText('מבצר הדייגים').first().click();
-  await modal().getByText('סמן שביקרנו').waitFor();
+  await modal().getByText('עריכה', { exact: true }).waitFor();
+  // No "visited" button in the sheet (8.101.0): the tick on the card does it.
+  if (await modal().getByText('סמן שביקרנו').count()) throw new Error('visited button still in the sheet');
   await shot('place-details');
   await closeModal();
 });

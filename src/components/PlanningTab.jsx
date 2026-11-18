@@ -3875,17 +3875,9 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                 );
               })()}
 
-              {canAdd && (
-                <button
-                  type="button"
-                  onClick={() => handleToggleVisited(detailPlan)}
-                  className={detailPlan.visited ? 'btn-secondary' : 'btn-primary'}
-                  style={{ flex: 'none', width: '100%', minHeight: 50, gap: 8, fontSize: 15 }}
-                >
-                  <Check size={17} />
-                  <span>{detailPlan.visited ? 'בטל סימון ביקור' : 'סמן שביקרנו'}</span>
-                </button>
-              )}
+              {/* No "visited" button here (the owner's ask, 8.101.0): it read
+                  like "save" and got pressed by mistake. The tick on the card
+                  is the one way to mark a place visited. */}
             </div>
           </>)}
         </Sheet>

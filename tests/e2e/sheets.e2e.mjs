@@ -213,7 +213,7 @@ await dragClose('category settings', openCategorySettings);
 
 await dragClose('place details', async () => {
   await page.getByText('מקום עם הרבה קישורים').first().click();
-  await page.locator('.modal-overlay').getByText('סמן שביקרנו').waitFor();
+  await page.locator('.modal-overlay').getByText('עריכה', { exact: true }).waitFor();
 });
 
 await page.locator('[role="tab"]', { hasText: 'לוח זמנים' }).click();
