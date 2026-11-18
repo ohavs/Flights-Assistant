@@ -92,15 +92,15 @@ await step('a place: they add one; someone else\'s they tick but cannot edit or 
   await page.locator('.modal-overlay').first().waitFor({ state: 'detached' });
   const mine = await until(async () => (await list('planning')).find(d => d.fields.title.stringValue === 'בית הקפה סלביה'), 'place saved');
   if (mine.fields.createdBy?.stringValue !== adder) throw new Error('not saved as theirs');
-  // Someone else's: the sheet offers "visited", not edit or delete.
+  // Someone else's: no edit or delete in the sheet; they tick it on the card.
   await card('גשר קארל').click();
-  await sheet().getByText('סמן שביקרנו').waitFor();
+  await sheet().getByText('גשר קארל').first().waitFor();
   if (await sheet().getByRole('button', { name: 'עריכה' }).count()) throw new Error('edit offered on someone else\'s place');
   if (await sheet().getByRole('button', { name: 'מחיקה' }).count()) throw new Error('delete offered on someone else\'s place');
   await shot('2-theirs');
-  await sheet().getByText('סמן שביקרנו').click();
-  await until(async () => (await read('trips/rl/planning/p1')).fields?.visited?.booleanValue === true, 'ticked');
   await closeModal();
+  await card('גשר קארל').locator('button.check-circle').click();
+  await until(async () => (await read('trips/rl/planning/p1')).fields?.visited?.booleanValue === true, 'ticked');
   // Their own: edit and delete.
   await card('בית הקפה סלביה').click();
   await sheet().getByRole('button', { name: 'עריכה' }).waitFor();
