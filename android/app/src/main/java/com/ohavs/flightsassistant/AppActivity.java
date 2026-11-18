@@ -13,6 +13,7 @@ public class AppActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ApkUpdaterPlugin.class);
         registerPlugin(AppToolsPlugin.class);
+        registerPlugin(NearPlacesPlugin.class);
         registerPlugin(com.ohavs.flightsassistant.widget.TripWidgetPlugin.class);
         super.onCreate(savedInstanceState);
     }

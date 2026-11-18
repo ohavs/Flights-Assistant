@@ -1236,6 +1236,8 @@ function AppInner() {
   useEffect(() => {
     if (!isNative || !signedInUid) return;
     import('./lib/native/placeAlarms').then(p => p.syncPlaceAlarms()).catch(() => {});
+    // And the alerts near places (Android's geofences, nearPlaces.js).
+    import('./lib/native/nearPlaces').then(p => p.syncNear()).catch(() => {});
   }, [signedInUid, notifyVersion]);
 
   // Reminders with a time (Android app): listen to every trip's reminders

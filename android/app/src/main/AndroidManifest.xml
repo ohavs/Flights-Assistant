@@ -60,6 +60,17 @@
             android:targetActivity=".AppActivity"
             android:exported="true" />
 
+        <!-- Alerts near places (NearPlaces.java): Android's geofences wake it,
+             and so do a reboot and an update, to register them again. -->
+        <receiver
+            android:name=".NearReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- The home screen widgets (widget/). TripWidget keeps its name: a
              widget already on a home screen is tied to it. -->
         <receiver
@@ -222,4 +233,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- In-app updates: install the APK downloaded from GitHub Releases. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Alerts near places: the phone's own position, also with the app closed. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

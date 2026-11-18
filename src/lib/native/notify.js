@@ -17,6 +17,8 @@ export const NOTIFY_KINDS = [
   { key: 'reminder', label: 'תזכורות', hint: 'בשעה שקבעתם לתזכורת שלכם', default: true },
   { key: 'booking', label: 'הזמנות', hint: 'לפני כל הזמנה: השעה ומספר האישור', default: true },
   { key: 'place', label: 'מקומות עם תאריך', hint: 'ההתראות שקבעתם למקומות בתכנון', default: true },
+  // Sent by Android when near a place (geofences, nearPlaces.js), not scheduled.
+  { key: 'near', label: 'קרבה למקומות', hint: 'כשמתקרבים למקום שהדלקתם לו התראה בקרבת מקום', default: true },
   { key: 'morning', label: 'סיכום בוקר', hint: 'בכל בוקר בטיול: התוכנית של היום ומזג האוויר', default: true },
   // Sent by the server, not scheduled here: see push.js.
   { key: 'partners', label: 'שינויים של שותפים', hint: 'הוצאה, מקום או פעילות חדשים, הצטרפות לטיול, ושינוי בטיסה או במלון', default: true },
