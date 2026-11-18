@@ -108,6 +108,8 @@ public class TripWidgetPlugin extends Plugin {
         JSObject data = new JSObject();
         data.put("tripId", intent.getStringExtra("tripId"));
         data.put("tab", intent.getStringExtra("tab"));
+        // An alert near a place opens that place (NearPlaces).
+        if (intent.hasExtra("placeId")) data.put("placeId", intent.getStringExtra("placeId"));
         // Handled once: the activity keeps its intent, and a recreated
         // activity must not open the trip again.
         intent.setAction(Intent.ACTION_MAIN);

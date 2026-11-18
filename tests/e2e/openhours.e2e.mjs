@@ -267,6 +267,35 @@ await step('"מלא שעות פעילות מגוגל" fills every place with non
   await closeTop();
 });
 
+await step('hours taken off by hand are not filled again for the whole list', async () => {
+  await page.waitForTimeout(400);
+  await plan('בר').click();
+  await topModal().getByText('עריכה', { exact: true }).click();
+  await topModal().getByText('עריכת פריט תכנון').waitFor();
+  await topModal().locator('.place-hours').getByRole('button', { name: 'בלי שעות פעילות' }).click();
+  await topModal().locator('.sheet-footer button[type="submit"]').click();
+  const off = await until(async () => { const x = await getPlace('b'); return x.hoursOff ? x : null; }, 'the bar marked hoursOff');
+  if (off.openHours) throw new Error(`the bar still has hours: ${JSON.stringify(off.openHours)}`);
+  await page.waitForTimeout(400);
+  if (await page.locator('.modal-overlay').count()) await closeTop();
+  await page.locator('button[aria-label="מיון ותצוגה"]').click();
+  const btn = sheet().locator('.hours-fill-all');
+  await btn.getByText('מקום אחד שהסרתם ממנו שעות לא ימולא').waitFor();
+  if (!(await btn.isDisabled())) throw new Error('the bar would be filled again');
+  await btn.evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await shot('fill-all-skips-removed');
+  await closeTop();
+  // Hours put back by hand lift the mark.
+  await plan('בר').click();
+  await topModal().getByText('עריכה', { exact: true }).click();
+  await topModal().locator('.place-hours').getByRole('button', { name: 'מלא מגוגל' }).click();
+  await topModal().locator('.place-hours').getByText(/מולא מגוגל/).waitFor();
+  await topModal().locator('.sheet-footer button[type="submit"]').click();
+  await until(async () => { const x = await getPlace('b'); return x.openHours && !x.hoursOff; }, 'hoursOff lifted');
+  await page.waitForTimeout(400);
+  if (await page.locator('.modal-overlay').count()) await closeTop();
+});
+
 if (errors.length) { console.log('  page errors:', errors); failed++; }
 await browser.close();
 if (failed) { console.log(`${failed} failed`); process.exit(1); }

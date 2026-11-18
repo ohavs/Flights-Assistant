@@ -57,10 +57,18 @@ import { isNative } from '../lib/platform';
 import { formatAlert } from '../lib/placeAlerts';
 import PlaceAlarmSheet from './PlaceAlarmSheet';
 import { readPlaceAlarms, setPlaceAlarm, removePlaceAlarm, tidyPlaceAlarms, EVENT as ALARMS_EVENT } from '../lib/native/placeAlarms';
+import { NEAR_RADII, NEAR_DEFAULT, radiusLabel, nearOf as nearEntryOf, nearWhyNot } from '../lib/nearPlaces';
+import {
+  nearSupported, readNear, setNear, removeNear, tidyNearOf, syncNear, nearStatus, askNearLocation, askNearBackground,
+  openNearSettings, EVENT as NEAR_EVENT,
+} from '../lib/native/nearPlaces';
 
 // Alerts on places with a date are the phone's own notifications, so the
 // app only (src/lib/native/placeAlarms.js); the e2e test turns them on.
 const ALARMS_ON = isNative || (typeof window !== 'undefined' && !!window.__e2eAlarms);
+// Alerts near a place (8.100.0): Android's geofences, so the app only
+// (src/lib/native/nearPlaces.js); the e2e test stands in for Android.
+const NEAR_ON = nearSupported();
 import { whenState } from '../lib/whenState';
 import {
   Search,
@@ -115,6 +123,7 @@ import {
   Copy,
   Bell,
   Hourglass,
+  Radar,
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -503,6 +512,17 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
   const alarmOf = (id) => alarms[`${tripId}/${id}`] || null;
   const [alarmFor, setAlarmFor] = useState(null);     // the place whose alert is being set
   const [alarmPerm, setAlarmPerm] = useState(null);   // 'denied' once the phone said no
+  // Alerts near places on this phone (8.100.0), and what Android allows:
+  // { location, background, notify } (nearStatus), null until asked.
+  const [near, setNearStore] = useState(() => (NEAR_ON ? readNear() : {}));
+  useEffect(() => {
+    if (!NEAR_ON) return undefined;
+    const sync = () => setNearStore(readNear());
+    window.addEventListener(NEAR_EVENT, sync);
+    return () => window.removeEventListener(NEAR_EVENT, sync);
+  }, []);
+  const nearFor = (id) => near[`${tripId}/${id}`] || null;
+  const [nearPerm, setNearPerm] = useState(null);
   // The "from where" picker over the details sheet: the place it measures to.
   const [originPickerFor, setOriginPickerFor] = useState(null);
   const [originQuery, setOriginQuery] = useState('');
@@ -745,6 +765,59 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
     return text ? { state: 'today', text, sub: '' } : null;
   };
   const locOf = (plan) => (plan ? savedLocation(plan, locCache[plan.id]) : null);
+  // The trip's last day: an alert near a place ends the day after it.
+  const nearLastDay = useMemo(() => [tripRange(trip).slice(-1)[0], ...days.map(d => d.date)]
+    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || '')).sort().slice(-1)[0] || null, [trip, days]);
+  // Alerts near places follow their places: title, spot, hours, visited.
+  const nearCount = Object.values(near).filter(e => e.tripId === tripId).length;
+  useEffect(() => {
+    if (!NEAR_ON || loading || !nearCount) return;
+    tidyNearOf(tripId, plans, (p) => savedLocation(p, locCache[p.id]), nearLastDay);
+  }, [tripId, plans, locCache, nearLastDay, loading, nearCount]);
+  // Back from the phone's settings (location "all the time"): what it allows now.
+  useEffect(() => {
+    if (!NEAR_ON || !nearCount) return undefined;
+    const look = async () => {
+      const st = await nearStatus();
+      if (st) setNearPerm(p => ({ ...p, ...st }));
+      syncNear();
+    };
+    look();
+    if (!isNative) return undefined;
+    let sub;
+    let gone = false;
+    import('@capacitor/app').then(({ App: CapApp }) => CapApp.addListener('resume', look))
+      .then(x => { if (gone) x?.remove?.(); else sub = x; }).catch(() => {});
+    return () => { gone = true; sub?.remove?.(); };
+  }, [nearCount]);
+  const toggleNear = async (plan) => {
+    if (nearFor(plan.id)) { removeNear(tripId, plan.id); return; }
+    const spot = locOf(plan);
+    if (!spot) return;
+    setNear({ tripId, placeId: plan.id, radius: NEAR_DEFAULT, ...nearEntryOf(plan, spot), lastDay: nearLastDay });
+    // Android asks for the location here; "all the time" waits for its
+    // explanation under the switch.
+    let st = await nearStatus();
+    if (st?.location === 'prompt') st = await askNearLocation();
+    let notify = null;
+    try { notify = await (await import('../lib/native/notify')).notifyPermission({ ask: true }); } catch { /* the web */ }
+    setNearPerm({ ...st, notify });
+    syncNear();
+  };
+  const setNearRadius = (plan, radius) => {
+    const e = nearFor(plan.id);
+    if (e && e.radius !== radius) setNear({ ...e, radius });
+  };
+  const allowNear = async () => {
+    const st = nearPerm || await nearStatus();
+    let next = st;
+    if (st?.location === 'prompt') next = await askNearLocation();
+    else if (st?.location !== 'granted') { openNearSettings(); return; }
+    else if (st?.background === 'denied') { openNearSettings(); return; }
+    else next = await askNearBackground();
+    if (next) setNearPerm(p => ({ ...p, ...next }));
+    syncNear();
+  };
   const hotelFp = (originId) =>
     originFingerprint(hotelDetails, distanceOrigins.find(o => o.id === originId) || null, tripDestination);
   const stampOf = (plan, originId) =>
@@ -1410,6 +1483,13 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
         openHours: formHours,
       }));
+      // Hours taken off by hand stay off: "fill from Google for the whole
+      // list" skips this place (`hoursOff`, the owner's ask). Hours put
+      // back, by hand or from Google here, lift it.
+      if ('openHours' in updates) {
+        if (!updates.openHours && tidyHours(opened?.openHours)) updates.hoursOff = true;
+        else if (updates.openHours && plans.find(p => p.id === editingId)?.hoursOff) updates.hoursOff = deleteField();
+      }
       // A place whose address or links changed is found again by itself
       // (its location's fingerprint no longer matches), and its times with
       // it (8.88.0). Only what can't tell it moved goes: times typed in by
@@ -2070,9 +2150,11 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
      with none, from Google, a few at a time, each saved as it comes. What
      already has hours stays as it is, and so does one given hours while
      this runs. A place Google had nothing for is not asked again in this
-     session (until it changes). Cut short offline; a second tap goes on. */
+     session (until it changes). Cut short offline; a second tap goes on.
+     A place whose hours were taken off by hand (`hoursOff`) is left out. */
   const hoursTargets = plans.filter(p => mayChange(p) && !tidyHours(p.openHours)
-    && hoursNone[p.id] !== locationFp(p));
+    && !p.hoursOff && hoursNone[p.id] !== locationFp(p));
+  const hoursOffCount = plans.filter(p => mayChange(p) && !tidyHours(p.openHours) && p.hoursOff).length;
   const fillAllHours = async () => {
     if (hoursRun?.busy || !tripId) return;
     const queue = [...hoursTargets];
@@ -2086,7 +2168,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         if (!hours) {
           st.none++;
           setHoursNone(m => ({ ...m, [plan.id]: locationFp(plan) }));
-        } else if ((now => now && !tidyHours(now.openHours))(latestFns.current.planById?.get(plan.id))) {
+        } else if ((now => now && !tidyHours(now.openHours) && !now.hoursOff)(latestFns.current.planById?.get(plan.id))) {
           // Not awaited: offline it waits for the server, saved meanwhile.
           updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { openHours: hours })
             .catch(err => console.error('Opening hours save error:', err));
@@ -2820,11 +2902,13 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                           ].filter(Boolean).join('. ') : '';
                           const label = r?.busy ? `ממלא שעות פעילות… ${r.done}/${r.total}`
                             : 'מלא שעות פעילות מגוגל';
+                          const off = hoursOffCount === 1 ? 'מקום אחד שהסרתם ממנו שעות לא ימולא'
+                            : hoursOffCount ? `${hoursOffCount} מקומות שהסרתם מהם שעות לא ימולאו` : '';
                           const sub = r?.busy ? null
-                            : !online ? 'יעבוד כשיחזור החיבור'
-                            : count ? `${places(count)} בלי שעות`
-                            : plans.some(p => mayChange(p) && !tidyHours(p.openHours)) ? 'אין עוד מה למלא מגוגל'
-                            : 'לכל המקומות כבר יש שעות';
+                            : [!online ? 'יעבוד כשיחזור החיבור'
+                              : count ? `${places(count)} בלי שעות`
+                              : plans.some(p => mayChange(p) && !tidyHours(p.openHours) && !p.hoursOff) ? 'אין עוד מה למלא מגוגל'
+                              : off ? '' : 'לכל המקומות כבר יש שעות', off].filter(Boolean).join(' · ');
                           return (
                             <SheetSection label="שעות פעילות">
                               <div className="list-group">
@@ -3212,6 +3296,8 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                   }
                   const alarm = ALARMS_ON && alarmOf(plan.id);
                   if (alarm && !plan.visited) tags.push({ key: 'alarm', tone: 'lavender', text: formatAlert(alarm.at).slice(3), icon: <Bell size={11} aria-hidden="true" />, title: 'התראה' });
+                  const nearOn = NEAR_ON && nearFor(plan.id);
+                  if (nearOn && !plan.visited) tags.push({ key: 'near', tone: 'lavender', text: radiusLabel(nearOn.radius || NEAR_DEFAULT), icon: <Radar size={11} aria-hidden="true" />, title: 'התראה בקרבת מקום' });
                   if (plan.priority === 'optional' && !plan.visited) tags.push({ key: 'opt', tone: 'muted', text: 'אם יישאר זמן', icon: <Clock size={11} aria-hidden="true" /> });
                   if (price && price !== 'חינם') tags.push({ key: 'price', tone: 'neutral', text: price, icon: <Wallet size={11} aria-hidden="true" /> });
                   if (linkCount > 0) tags.push({ key: 'links', tone: 'neutral', text: String(linkCount), icon: <Link2 size={11} aria-hidden="true" />, title: `${linkCount} קישורים` });
@@ -3570,6 +3656,56 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                     <p className="place-alarm-warn" role="alert">ההתראות של האפליקציה חסומות בהגדרות הטלפון, ולכן ההתראה לא תגיע.</p>
                   )}
                 </>);
+              })()}
+
+              {/* An alert near the place (8.100.0): a switch, then how near. */}
+              {NEAR_ON && (() => {
+                const entry = nearFor(detailPlan.id);
+                const spot = locOf(detailPlan);
+                const radius = entry?.radius || NEAR_DEFAULT;
+                const why = entry ? nearWhyNot(entry) : '';
+                const sub = !entry ? (spot ? 'הודעה כשתתקרבו למקום' : 'אפשר אחרי שיימצא מיקום למקום')
+                  : why === 'nospot' ? 'מחכה למיקום של המקום'
+                  : why === 'visited' ? 'מושהית: סימנתם שביקרתם כאן'
+                  : why === 'over' ? 'הטיול הסתיים, ההתראה לא פעילה'
+                  : `כשתהיו במרחק ${radiusLabel(radius)} ממנו`;
+                const p = nearPerm;
+                const block = entry && p && (
+                  p.location === 'approximate' ? { text: 'צריך מיקום מדויק כדי לדעת שהגעתם.', act: 'הגדרות מיקום', bad: true }
+                  : p.location && p.location !== 'granted' ? { text: 'לאפליקציה אין גישה למיקום, ולכן ההתראה לא תגיע.', act: p.location === 'prompt' ? 'אפשר גישה למיקום' : 'הגדרות מיקום', bad: true }
+                  : p.background && p.background !== 'granted' ? { text: 'כדי שההתראה תגיע גם כשהאפליקציה סגורה, בחרו "אפשר כל הזמן" במיקום.', act: 'אפשר מיקום כל הזמן' }
+                  : null);
+                return (
+                  <div className={`place-near${entry ? ' on' : ''}`}>
+                    <button type="button" role="switch" aria-checked={!!entry} className="place-near-row"
+                      disabled={!entry && !spot} onClick={() => toggleNear(detailPlan)}>
+                      <span className="place-alarm-icon"><Radar size={17} aria-hidden="true" /></span>
+                      <span className="place-alarm-text">
+                        <span className="place-alarm-title">התראה בקרבת מקום</span>
+                        <span className="place-alarm-sub">{sub}</span>
+                      </span>
+                      <span className={`switch${entry ? ' on' : ''}`} aria-hidden="true"><i /></span>
+                    </button>
+                    {entry && (
+                      <div className="place-near-radius chip-wrap" role="radiogroup" aria-label="מרחק ההתראה">
+                        {NEAR_RADII.map(r => (
+                          <button key={r} type="button" role="radio" aria-checked={radius === r} className="chip"
+                            aria-pressed={radius === r} onClick={() => setNearRadius(detailPlan, r)}>{radiusLabel(r)}</button>
+                        ))}
+                      </div>
+                    )}
+                    {block ? (
+                      <div className={`place-near-warn${block.bad ? ' bad' : ''}`} role="alert">
+                        <span>{block.text}</span>
+                        <button type="button" className="place-near-allow" onClick={allowNear}>{block.act}</button>
+                      </div>
+                    ) : entry && p?.notify === 'denied' ? (
+                      <p className="place-alarm-warn" role="alert">ההתראות של האפליקציה חסומות בהגדרות הטלפון, ולכן ההתראה לא תגיע.</p>
+                    ) : entry && !why && (
+                      <p className="place-near-note">הטלפון בודק לבד לפי GPS, גם כשהאפליקציה סגורה ובלי אינטרנט.</p>
+                    )}
+                  </div>
+                );
               })()}
 
               {renderDistanceBlock(detailPlan)}

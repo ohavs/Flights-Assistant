@@ -2,11 +2,14 @@
 // call is a no-op). The release format is in release.js.
 import { registerPlugin } from '@capacitor/core';
 import { appVersion, isNative } from './platform.js';
-import { parseRelease } from './release.js';
+import { parseRelease, updatePromptDue } from './release.js';
 
 const ApkUpdater = registerPlugin('ApkUpdater');
 const REPO = 'ohavs/Flights-Assistant';
 const LAST_CHECK_KEY = 'update-last-check';
+const PROMPTED_KEY = 'update-prompted';
+// The quiet check: on launch and on coming back to the app, at most hourly.
+const QUIET_EVERY_MS = 3600 * 1000;
 
 // → { current, latest, available } ; throws on network errors.
 export async function checkForUpdate() {
@@ -26,14 +29,26 @@ export async function checkForUpdate() {
   return { current, latest, available: !!latest && latest.versionCode > current.code };
 }
 
-// Background check on launch, at most every 6 hours. Never throws.
+// Background check on launch and on resume, at most hourly. Never throws.
 export async function checkForUpdateQuietly() {
-  if (!isNative) return null;
+  // The e2e test (tests/e2e/updates.e2e.mjs) hands the web app a release.
+  if (!isNative) return (typeof window !== 'undefined' && window.__e2eUpdate) || null;
   try {
     const last = Number(localStorage.getItem(LAST_CHECK_KEY) || 0);
-    if (Date.now() - last < 6 * 3600 * 1000) return null;
+    if (Date.now() - last < QUIET_EVERY_MS) return null;
   } catch { /* storage unavailable */ }
   try { return await checkForUpdate(); } catch { return null; }
+}
+
+// The popup for a version found: due once for it, and a day later again
+// (release.js). Showing it marks it.
+export function updatePromptShouldShow(latest) {
+  let seen = null;
+  try { seen = JSON.parse(localStorage.getItem(PROMPTED_KEY) || 'null'); } catch { /* storage unavailable */ }
+  return updatePromptDue(seen, latest?.versionCode);
+}
+export function markUpdatePrompted(latest) {
+  try { localStorage.setItem(PROMPTED_KEY, JSON.stringify({ code: latest.versionCode, at: Date.now() })); } catch { /* storage unavailable */ }
 }
 
 export const canInstallUpdates = async () => (await ApkUpdater.canInstall()).allowed;

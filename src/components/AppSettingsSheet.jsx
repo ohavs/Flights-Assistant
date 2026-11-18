@@ -497,6 +497,15 @@ function UpdateSettings({ initial }) {
     }
   };
 
+  // "עדכן עכשיו" in the popup (UpdatePrompt): the download starts here at once.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!initial?.start || !initial.available || started.current) return;
+    started.current = true;
+    update();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
+  }, []);
+
   const latest = info?.latest;
   const showLatest = latest && ['available', 'permission', 'downloading', 'installing'].includes(state);
 
