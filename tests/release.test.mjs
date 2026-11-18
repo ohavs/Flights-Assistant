@@ -31,3 +31,14 @@ test('the APK named in the marker must be attached', () => {
   assert.equal(parseRelease(rel(body, [])), null);
   assert.equal(parseRelease(rel(body, [{ name: 'other.apk', browser_download_url: 'x', size: 1 }])), null);
 });
+
+test('the update popup: once a version, again a day later', async () => {
+  const { updatePromptDue, PROMPT_AGAIN_MS } = await import('../src/lib/release.js');
+  const now = 1_800_000_000_000;
+  assert.equal(updatePromptDue(null, 230, now), true);
+  assert.equal(updatePromptDue({ code: 230, at: now - 1000 }, 230, now), false);
+  assert.equal(updatePromptDue({ code: 230, at: now - PROMPT_AGAIN_MS }, 230, now), true);
+  // A newer version than the one shown: at once.
+  assert.equal(updatePromptDue({ code: 230, at: now - 1000 }, 232, now), true);
+  assert.equal(updatePromptDue(null, undefined, now), false);
+});

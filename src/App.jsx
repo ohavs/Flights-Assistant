@@ -40,6 +40,7 @@ const ExpensesTab  = lazy(() => import('./components/ExpensesTab'));
 const AppSettingsSheet = lazy(() => import('./components/AppSettingsSheet'));
 import ShareTargetScreen from './components/ShareTargetScreen';
 import ErrorBoundary from './components/ErrorBoundary';
+import UpdatePrompt from './components/UpdatePrompt';
 import EmptyState from './components/EmptyState';
 import Sheet from './ui/Sheet';
 import Notice from './ui/Notice';
@@ -1210,6 +1211,7 @@ function AppInner() {
   // found by the quiet check on launch.
   const [showAppSettings, setShowAppSettings] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
+  const [updatePrompt, setUpdatePrompt] = useState(false);
 
   const signedInUid = user?.uid;
 
@@ -1478,12 +1480,23 @@ function AppInner() {
     }).catch(() => {});
   }, [signedInUid, notifyVersion]);
 
-  // Quietly look for a newer APK once signed in (at most every 6 hours).
+  // Quietly look for a newer APK once signed in and on every return to the
+  // app (at most hourly). A version found pops up (UpdatePrompt): once, and
+  // a day later again while not installed; the banner stays meanwhile.
   useEffect(() => {
-    if (!isNative || !signedInUid) return;
-    import('./lib/updater').then(m => m.checkForUpdateQuietly())
-      .then(r => { if (r?.available) setUpdateInfo(r); })
-      .catch(() => {});
+    if (!signedInUid || (!isNative && !(typeof window !== 'undefined' && window.__e2eUpdate))) return undefined;
+    const look = () => import('./lib/updater').then(m => m.checkForUpdateQuietly().then(r => {
+      if (!r?.available) return;
+      setUpdateInfo(r);
+      if (m.updatePromptShouldShow(r.latest)) { m.markUpdatePrompted(r.latest); setUpdatePrompt(true); }
+    })).catch(() => {});
+    look();
+    if (!isNative) return undefined;
+    let sub;
+    let gone = false;
+    import('@capacitor/app').then(({ App: CapApp }) => CapApp.addListener('resume', look))
+      .then(s => { if (gone) s?.remove?.(); else sub = s; }).catch(() => {});
+    return () => { gone = true; sub?.remove?.(); };
   }, [signedInUid]);
 
   /* The back gesture is the app's own: it unwinds sheets and screens
@@ -2038,6 +2051,12 @@ function AppInner() {
       />
     </Suspense>
     </ErrorBoundary>
+  ) : updatePrompt && updateInfo?.available ? (
+    <UpdatePrompt
+      latest={updateInfo.latest}
+      onLater={() => setUpdatePrompt(false)}
+      onUpdate={() => { setUpdatePrompt(false); setUpdateInfo(u => ({ ...u, start: true })); setShowAppSettings(true); }}
+    />
   ) : null;
 
   if (screen === 'home') {

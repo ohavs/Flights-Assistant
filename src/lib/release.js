@@ -22,3 +22,13 @@ export function parseRelease(rel) {
     publishedAt: rel.published_at,
   };
 }
+
+// The update popup (the owner's ask): once for each new version, and again
+// a day later while it is still not installed. `seen` is what was kept the
+// last time it showed ({ code, at }), or null.
+export const PROMPT_AGAIN_MS = 24 * 3600 * 1000;
+export function updatePromptDue(seen, versionCode, now = Date.now()) {
+  if (!Number.isInteger(versionCode)) return false;
+  if (!seen || seen.code !== versionCode) return true;
+  return !(now - Number(seen.at || 0) < PROMPT_AGAIN_MS);
+}
