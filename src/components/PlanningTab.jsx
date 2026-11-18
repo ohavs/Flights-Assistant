@@ -1410,6 +1410,13 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         originId: formOriginId, priority: formPriority, needsReservation: formNeedsReservation,
         openHours: formHours,
       }));
+      // Hours taken off by hand stay off: "fill from Google for the whole
+      // list" skips this place (`hoursOff`, the owner's ask). Hours put
+      // back, by hand or from Google here, lift it.
+      if ('openHours' in updates) {
+        if (!updates.openHours && tidyHours(opened?.openHours)) updates.hoursOff = true;
+        else if (updates.openHours && plans.find(p => p.id === editingId)?.hoursOff) updates.hoursOff = deleteField();
+      }
       // A place whose address or links changed is found again by itself
       // (its location's fingerprint no longer matches), and its times with
       // it (8.88.0). Only what can't tell it moved goes: times typed in by
@@ -2070,9 +2077,11 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
      with none, from Google, a few at a time, each saved as it comes. What
      already has hours stays as it is, and so does one given hours while
      this runs. A place Google had nothing for is not asked again in this
-     session (until it changes). Cut short offline; a second tap goes on. */
+     session (until it changes). Cut short offline; a second tap goes on.
+     A place whose hours were taken off by hand (`hoursOff`) is left out. */
   const hoursTargets = plans.filter(p => mayChange(p) && !tidyHours(p.openHours)
-    && hoursNone[p.id] !== locationFp(p));
+    && !p.hoursOff && hoursNone[p.id] !== locationFp(p));
+  const hoursOffCount = plans.filter(p => mayChange(p) && !tidyHours(p.openHours) && p.hoursOff).length;
   const fillAllHours = async () => {
     if (hoursRun?.busy || !tripId) return;
     const queue = [...hoursTargets];
@@ -2086,7 +2095,7 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
         if (!hours) {
           st.none++;
           setHoursNone(m => ({ ...m, [plan.id]: locationFp(plan) }));
-        } else if ((now => now && !tidyHours(now.openHours))(latestFns.current.planById?.get(plan.id))) {
+        } else if ((now => now && !tidyHours(now.openHours) && !now.hoursOff)(latestFns.current.planById?.get(plan.id))) {
           // Not awaited: offline it waits for the server, saved meanwhile.
           updateDoc(doc(db, 'trips', tripId, 'planning', plan.id), { openHours: hours })
             .catch(err => console.error('Opening hours save error:', err));
@@ -2820,11 +2829,13 @@ export default function PlanningTab({ tripId, tripName = '', sharedPlace = null,
                           ].filter(Boolean).join('. ') : '';
                           const label = r?.busy ? `ממלא שעות פעילות… ${r.done}/${r.total}`
                             : 'מלא שעות פעילות מגוגל';
+                          const off = hoursOffCount === 1 ? 'מקום אחד שהסרתם ממנו שעות לא ימולא'
+                            : hoursOffCount ? `${hoursOffCount} מקומות שהסרתם מהם שעות לא ימולאו` : '';
                           const sub = r?.busy ? null
-                            : !online ? 'יעבוד כשיחזור החיבור'
-                            : count ? `${places(count)} בלי שעות`
-                            : plans.some(p => mayChange(p) && !tidyHours(p.openHours)) ? 'אין עוד מה למלא מגוגל'
-                            : 'לכל המקומות כבר יש שעות';
+                            : [!online ? 'יעבוד כשיחזור החיבור'
+                              : count ? `${places(count)} בלי שעות`
+                              : plans.some(p => mayChange(p) && !tidyHours(p.openHours) && !p.hoursOff) ? 'אין עוד מה למלא מגוגל'
+                              : off ? '' : 'לכל המקומות כבר יש שעות', off].filter(Boolean).join(' · ');
                           return (
                             <SheetSection label="שעות פעילות">
                               <div className="list-group">
