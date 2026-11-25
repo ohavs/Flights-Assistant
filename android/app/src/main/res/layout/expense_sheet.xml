@@ -75,6 +75,20 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- The middle scrolls when the sheet is taller than the room above
+             the keyboard: the amount, the place typed and "שמירה" stay in sight. -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/body"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fadingEdgeLength="16dp"
+            android:requiresFadingEdge="vertical"
+            android:scrollbars="none">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
         <TextView
             style="@style/ExpenseSheet.Label"
             android:layout_width="match_parent"
@@ -93,7 +107,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="מקום" />
-        <ScrollView
+        <androidx.core.widget.NestedScrollView
             android:id="@+id/places_scroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -105,7 +119,7 @@
                 android:id="@+id/places"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
-        </ScrollView>
+        </androidx.core.widget.NestedScrollView>
         <EditText
             android:id="@+id/custom_place"
             android:layout_width="match_parent"
@@ -123,6 +137,8 @@
             android:textColor="@color/w_text"
             android:textColorHint="@color/w_muted"
             android:textSize="15sp" />
+        </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
 
         <TextView
             android:id="@+id/error"
