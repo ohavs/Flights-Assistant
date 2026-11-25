@@ -212,6 +212,45 @@ for t in "exp-" "paris" "pl-louvre" "172.13" "EUR" "אוכל ושתייה" "42.5
   grep -qF -- "$t" <<<"$queue" || { echo "the queued expense has no \"$t\":"; echo "$queue"; exit 1; }
 done
 echo "widget: the expense waits for the app, as the expenses tab writes it"
+# A place typed: the keyboard comes up under the field and "שמירה", not over
+# them (8.102.0). 8 categories and 7 places are taller than the room above it.
+adb shell settings put secure show_ime_with_hard_keyboard 1
+open_widget plan 360 300 ExpenseWidget
+tap_text 6; tap_text המשך; sleep 1; adb logcat -c
+texts >/dev/null
+xy=$(python3 - <<'PY'
+import re
+s = open('w.xml', encoding='utf8').read()
+m = re.search(r'resource-id="com\.ohavs\.flightsassistant:id/custom_place"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', s)
+x1, y1, x2, y2 = map(int, m.groups())
+print((x1 + x2) // 2, (y1 + y2) // 2)
+PY
+)
+adb shell input tap $xy; sleep 2
+adb shell input text "Cafe%sCentral"; sleep 2
+kb=$(adb logcat -d -s ExpenseWidget:* | tr -d '\r' | sed -n 's/.*keyboard: \([0-9]*\).*/\1/p' | tail -1)
+[ -n "$kb" ] && [ "$kb" -gt 0 ] || { echo "the keyboard did not come up over the expense sheet"; adb exec-out screencap -p > widget-37-expense-keyboard-FAILED.png; exit 1; }
+texts >/dev/null
+screen_h=$(adb shell wm size | tr -d '\r' | sed -n 's/.*x\([0-9]*\)$/\1/p' | tail -1)
+python3 - "$kb" "$screen_h" <<'PY' || { adb exec-out screencap -p > widget-37-expense-keyboard-FAILED.png; exit 1; }
+import re, sys
+kb, h = int(sys.argv[1]), int(sys.argv[2])
+s = open('w.xml', encoding='utf8').read()
+def box(rid):
+    m = re.search(r'resource-id="com\.ohavs\.flightsassistant:id/%s"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"' % rid, s)
+    return tuple(map(int, m.groups())) if m else None
+for rid in ('amount', 'custom_place', 'save'):
+    b = box(rid)
+    if not b or b[3] - b[1] < 20 or b[3] > h - kb:
+        sys.exit(f'expense sheet with the keyboard ({kb}px of {h}px): {rid} is not in sight, {b}')
+print(f'expense sheet: the field and "שמירה" above the keyboard ({kb}px of {h}px)')
+PY
+expect 37-expense-keyboard "Cafe Central" "שמירה"
+tap_text שמירה; sleep 2
+expect 38-expense-typed-place "יישמר כשתפתחו את האפליקציה ✓"
+queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
+grep -qF "Cafe Central" <<<"$queue" || { echo "the typed place is not in the queued expense:"; echo "$queue"; exit 1; }
+echo "widget: a place typed over the keyboard is saved"
 # Signed in (a sign-in Google refuses): the widget reaches Google with the
 # app's key, and is told the sign-in is no good, not that the app is blocked.
 KEY=$(node -e "const s=require('fs').readFileSync('src/firebase.js','utf8');const m=s.match(/apiKey:\s*((?:\"[^\"]*\"\s*\+?\s*)+)/);process.stdout.write(m[1].match(/\"([^\"]*)\"/g).map(x=>x.slice(1,-1)).join(''))")

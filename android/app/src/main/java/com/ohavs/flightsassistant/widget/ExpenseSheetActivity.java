@@ -14,6 +14,7 @@ import android.text.TextWatcher;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -25,6 +26,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.widget.NestedScrollView;
 
 import com.ohavs.flightsassistant.R;
 
@@ -88,12 +90,25 @@ public class ExpenseSheetActivity extends AppCompatActivity {
         setContentView(R.layout.expense_sheet);
         View scrim = findViewById(R.id.scrim), sheet = findViewById(R.id.sheet);
         scrim.setOnClickListener(v -> { if (!saving) finish(); });
-        // Edge to edge: the sheet sits above the navigation bar, and above the keyboard.
-        int bottom = sheet.getPaddingBottom();
+        // Edge to edge: the sheet sits above the navigation bar, and above the keyboard,
+        // and below the status bar. What does not fit scrolls in the body.
+        int bottom = sheet.getPaddingBottom(), gap = Math.round(dp(24));
+        NestedScrollView body = findViewById(R.id.body);
         ViewCompat.setOnApplyWindowInsetsListener(sheet, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
             v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottom + bars.bottom);
+            ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+            if (lp.topMargin != bars.top + gap) { lp.topMargin = bars.top + gap; v.setLayoutParams(lp); }
+            if (insets.isVisible(WindowInsetsCompat.Type.ime())) {
+                Log.i("ExpenseWidget", "keyboard: " + insets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+            }
             return WindowInsetsCompat.CONSUMED;
+        });
+        // The keyboard is up for the place typed: the body shrinks, and scrolls to the field.
+        body.addOnLayoutChangeListener((v, l, t, r2, b, ol, ot, or, ob) -> {
+            if (b - t < ob - ot && custom.hasFocus()) {
+                body.post(() -> body.smoothScrollTo(0, body.getChildAt(0).getHeight()));
+            }
         });
 
         float r = dp(28);
