@@ -31,7 +31,7 @@ function offsetFor(el, box) {
   top = Math.max(top, b.top);
   bottom = Math.min(bottom, b.bottom);
   // A field before the bar (in the page's order) belongs above it, even
-  // when the keyboard brought the bar up over the field (8.101.1).
+  // when the keyboard brought the bar up over the field (8.101.2).
   for (const foot of box.querySelectorAll('.sheet-footer')) {
     if (foot.contains(el) || getComputedStyle(foot).position !== 'sticky') continue;
     if (!(foot.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING)) continue;
