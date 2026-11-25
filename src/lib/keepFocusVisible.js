@@ -30,10 +30,12 @@ function offsetFor(el, box) {
   const b = box.getBoundingClientRect();
   top = Math.max(top, b.top);
   bottom = Math.min(bottom, b.bottom);
+  // A field before the bar (in the page's order) belongs above it, even
+  // when the keyboard brought the bar up over the field (8.101.1).
   for (const foot of box.querySelectorAll('.sheet-footer')) {
     if (foot.contains(el) || getComputedStyle(foot).position !== 'sticky') continue;
-    const f = foot.getBoundingClientRect();
-    if (f.top > r.top) bottom = Math.min(bottom, f.top);
+    if (!(foot.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING)) continue;
+    bottom = Math.min(bottom, foot.getBoundingClientRect().top);
   }
   // Too tall for the room (a long textarea): its top.
   if (r.bottom > bottom - GAP) return Math.min(r.bottom - bottom + GAP, r.top - top - GAP);
