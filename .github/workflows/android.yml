@@ -154,6 +154,7 @@ jobs:
             android-smoke.png
             android-signin.png
             android-share.png
+            android-share-unseen.png
             ui.xml
             widget-*.png
 

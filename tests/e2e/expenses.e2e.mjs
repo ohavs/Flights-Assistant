@@ -387,6 +387,29 @@ await step('the form: amount and currency in one field; a split with Dana and a 
   });
   if (seen.label !== 'מיקום' || seen.bottom > seen.foot || seen.bottom > seen.h) throw new Error(`under the keyboard: ${JSON.stringify(seen)}`);
   console.log(`  (keyboard: scrolled ${Math.round(seen.scrolled)}px)`);
+  // A field just above the save bar when the keyboard opens (the owner's
+  // report, 8.101.1): the bar comes up over it, and the sheet still scrolls
+  // it above the bar, not just above the keyboard.
+  await page.setViewportSize({ width: 400, height: 860 });
+  await page.waitForTimeout(400);
+  const what = form.getByPlaceholder('למשל: ארוחת ערב, כרטיסי כניסה...');
+  await what.focus();
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const el = document.activeElement, box = el.closest('.modal-content');
+    box.scrollTop += el.getBoundingClientRect().bottom - (box.querySelector('.sheet-footer').getBoundingClientRect().top - 4);
+  });
+  await page.waitForTimeout(300);
+  await page.setViewportSize({ width: 400, height: 470 });
+  await page.waitForTimeout(700);
+  const low = await page.evaluate(() => {
+    const el = document.activeElement;
+    const box = el.closest('.modal-content');
+    return { what: el.getAttribute('placeholder'), top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom,
+      foot: box.querySelector('.sheet-footer').getBoundingClientRect().top, h: innerHeight };
+  });
+  if (!low.what?.startsWith('למשל') || low.bottom > low.foot || low.top < 0) throw new Error(`behind the save bar: ${JSON.stringify(low)}`);
+  await shot('dark-9b-keyboard-low-field');
   await page.setViewportSize({ width: 400, height: 860 });
   await page.waitForTimeout(300);
   await page.locator('.sheet-footer button[type="submit"]').first().click();

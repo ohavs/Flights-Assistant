@@ -128,18 +128,33 @@ echo "back on the first screen leaves the app"
 targets=$(adb shell cmd package query-activities --components -a android.intent.action.SEND -t text/plain | tr -d '\r' | grep "$PKG/" || true)
 echo "share targets: $targets"
 [ -n "$targets" ] || { echo "the app is not in the share sheet"; exit 1; }
-adb shell "am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Louvre Museum https://maps.app.goo.gl/smoke123' -n $PKG/.AppActivity" | grep -E "Status|Activity:" || true
-for i in $(seq 1 15); do
-  sleep 2
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
-  adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
-  if dismiss_anr; then continue; fi
-  if grep -q "לאיזה טיול להוסיף" ui.xml && grep -q "Louvre Museum" ui.xml; then
-    echo "a shared place opens the trip picker after $((i * 2))s"
-    adb exec-out screencap -p > android-share.png
-    shared=1; break
+share_place() {   # <how>: shares a place into the app and waits for the trip picker
+  adb shell "am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Louvre Museum https://maps.app.goo.gl/smoke123' -n $PKG/.AppActivity" | grep -E "Status|Activity:" || true
+  for i in $(seq 1 15); do
+    sleep 2
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || continue
+    adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || continue
+    if dismiss_anr; then continue; fi
+    if grep -q "לאיזה טיול להוסיף" ui.xml && grep -q "Louvre Museum" ui.xml; then
+      echo "a shared place opens the trip picker after $((i * 2))s ($1)"
+      adb exec-out screencap -p > android-share.png
+      shared=1; return 0
+    fi
+  done
+  return 1
+}
+# Now and then the app, back from the background, shows the picker but its
+# WebView gives uiautomator an empty tree (only the page's title, 2026-11-25:
+# the screenshot had the picker). Then the share is tried again from a
+# fresh start; a screen with anything else on it fails at once.
+if ! share_place "app in the background"; then
+  if [ "$(grep -o 'text="[^"]\+"' ui.xml | grep -vc 'Flights Assistant' || true)" = 0 ] && ! grep -q 'content-desc="[^"]\+"' ui.xml; then
+    echo "the WebView gave uiautomator an empty tree; sharing again from a fresh start"
+    adb exec-out screencap -p > android-share-unseen.png || true
+    adb shell am force-stop "$PKG"; sleep 2
+    share_place "fresh start" || true
   fi
-done
+fi
 if [ -z "${shared:-}" ]; then
   echo "sharing a place did not open the trip picker"
   grep -o 'text="[^"]*"' ui.xml | head -20
