@@ -5,6 +5,7 @@
 - אתר חי: https://listify-84018.web.app
 - גרסת ווב: 8.102.0 (`changelog.md`)
 - תוכנית: `docs/PLAN.md`. יישור הקו בין הטאבים: `docs/PLAN-consistency.md` (עדיפות עליונה).
+- **מיזוג:** PR ירוק ממוזג מיד, בלי לשאול (הוראת הבעלים 2026-11-27, גם ב־CLAUDE.md).
 - **בתחילת השיחה הבאה:**
   - **8.102.0 (בקשת הבעלים 2026-11-27): "שילם/ה" בחלונית ווידג'ט ההוצאות.** בורר (`ListPopupWindow`) של משתתפי הטיול מ־`spend.payers` (widgetData.js), רק עם 2+ משתתפים; נשמר כ־`paidBy`. e2e: שלבים 27b–27c ב־`widget-shots.sh`.
   - **8.101.2 (בקשת הבעלים 2026-11-25): שדה נמוך לא נשאר מאחורי "שמור" כשהמקלדת עולה.** `offsetFor` ב־`keepFocusVisible.js` התעלם מ־`.sheet-footer` שכבר מעל השדה (`f.top > r.top`), ולכן גלל את השדה רק אל מעל המקלדת, אל מאחורי השורה. עכשיו כל footer שבא אחרי השדה בסדר הדף (`compareDocumentPosition`) קובע את הגבול. e2e: שלב "dark-9b-keyboard-low-field" ב־`expenses.e2e.mjs`. נכנס ל־PR #148 יחד עם PROGRESS, והמיזוג שלו גם מוציא את ה־Release של 8.101.1 שנתקע. באותו PR: `android-smoke.sh`, שיתוף מקום: אם ה־WebView מחזיר ל־uiautomator עץ ריק (רק הכותרת; קרה 2 מ־5 ריצות ב־2026-11-25, בצילום הבוחר נפתח), משתפים שוב אחרי `force-stop` (`share_place`), וצילום `android-share-unseen.png`.
