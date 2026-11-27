@@ -108,6 +108,10 @@ test('the expense widget: the destination\'s currencies, categories, places, and
   assert.ok(p.spend.categories.includes('כללי'));
   // Places not visited first, then by name; nameless ones left out.
   assert.deepEqual(p.spend.places.map(x => x.id), ['p3', 'p2', 'p1']);
+  // Who paid: the user first, as "אני", then the members by name.
+  const [m] = widgetSnapshot({ trips: [{ ...paris, members: { a: 'owner', me: 'edit', c: 'view' } }], uid: 'me',
+    profiles: { a: { displayName: 'דנה' } }, now }).trips;
+  assert.deepEqual(m.spend.payers, [{ uid: 'me', name: 'אני', me: true }, { uid: 'a', name: 'דנה' }, { uid: 'c', name: 'משתתף' }]);
   // Rome, no flight yet: known by its name.
   assert.equal(r.spend.currency, 'EUR');
   assert.deepEqual(r.spend.currencies.map(c => c.code), ['ILS', 'EUR']);

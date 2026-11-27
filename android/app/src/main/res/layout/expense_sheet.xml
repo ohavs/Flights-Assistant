@@ -89,6 +89,52 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
+        <!-- Who paid: a dropdown, shown when the trip has two or more members. -->
+        <LinearLayout
+            android:id="@+id/payer_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <TextView
+                style="@style/ExpenseSheet.Label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="שילם/ה" />
+            <LinearLayout
+                android:id="@+id/payer"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp">
+                <TextView
+                    android:id="@+id/payer_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/rubik_semibold"
+                    android:maxLines="1"
+                    android:textAlignment="viewStart"
+                    android:textColor="@color/w_text"
+                    android:textSize="15sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:importantForAccessibility="no"
+                    android:text="▾"
+                    android:textColor="@color/w_muted"
+                    android:textSize="18sp" />
+            </LinearLayout>
+        </LinearLayout>
+
         <TextView
             style="@style/ExpenseSheet.Label"
             android:layout_width="match_parent"

@@ -1341,6 +1341,8 @@ function AppInner() {
   const { palette, mode: themeMode } = useTheme();
   const widgetKey = widgetTrips(trips).map(t => t.id).join(',');
   const widgetSync = useRef(null);
+  const profilesRef = useRef(memberProfiles);
+  profilesRef.current = memberProfiles;
   useEffect(() => {
     if (!isNative || loading) return undefined;
     if (!signedInUid) { import('./lib/native/widget').then(w => w.saveWidget(null)).catch(() => {}); return undefined; }
@@ -1360,7 +1362,7 @@ function AppInner() {
           trips: tripsRef.current,
           daysByTrip: data.days, personalByTrip: data.personal, checklistByTrip: data.checklist, remindersByTrip: data.reminders,
           expensesByTrip: data.expenses, plansByTrip: data.planning, bookingsByTrip: data.bookings, rates,
-          palette: current, theme,
+          palette: current, theme, uid: signedInUid, profiles: profilesRef.current,
         }))).catch(() => {});
       }, 600);
     };
@@ -1382,7 +1384,7 @@ function AppInner() {
     return () => { offs.forEach(off => off()); clearTimeout(timer); widgetSync.current = null; };
   }, [widgetKey, signedInUid, loading]);
   // A renamed trip, a moved flight, another palette or theme: the same data, saved again.
-  useEffect(() => { widgetSync.current?.(); }, [trips, palette, themeMode]);
+  useEffect(() => { widgetSync.current?.(); }, [trips, palette, themeMode, memberProfiles]);
 
   // Everything of the coming and current trips stays on the phone, web and
   // app alike: a trip not opened lately is all there offline too, not just

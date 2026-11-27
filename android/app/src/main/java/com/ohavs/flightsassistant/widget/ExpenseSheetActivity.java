@@ -58,6 +58,7 @@ public class ExpenseSheetActivity extends AppCompatActivity {
     private String currency, symbol;
     private Double ils;
     private String category, placeId, placeName;
+    private String payer;   // who paid: a member's uid, null for the user
     private boolean saving;
     private int[] colors;   // accent, brand, card, tile, soft
     private ChipFlow categories, places;
@@ -119,6 +120,8 @@ public class ExpenseSheetActivity extends AppCompatActivity {
         String sub = trip.optString("name");
         if (ils != null) sub = String.format(Locale.US, "≈ %,.2f ₪ · %s", ils, sub);
         ((TextView) findViewById(R.id.trip)).setText(sub);
+
+        payers(ExpenseWidget.spend(trip).optJSONArray("payers"));
 
         categories = findViewById(R.id.categories);
         JSONArray cats = ExpenseWidget.spend(trip).optJSONArray("categories");
@@ -195,7 +198,7 @@ public class ExpenseSheetActivity extends AppCompatActivity {
         String typedPlace = custom.getText().toString().trim();
         JSONObject e;
         try {
-            e = ExpenseStore.expense(uid == null ? "" : uid, trip.optString("id"), amount, currency, category,
+            e = ExpenseStore.expense(uid == null ? "" : uid, payer, trip.optString("id"), amount, currency, category,
                 placeId, placeId != null ? null : (typedPlace.isEmpty() ? placeName : typedPlace), ils,
                 System.currentTimeMillis());
         } catch (Exception x) {
@@ -235,6 +238,62 @@ public class ExpenseSheetActivity extends AppCompatActivity {
                 return;
         }
         finish();
+    }
+
+    // ── Who paid ─────────────────────────────────────────────────────────
+
+    /** The trip's members ({ uid, name }, the user first): a dropdown when there are two or more. */
+    private void payers(JSONArray list) {
+        // The user: as signed in here, else as the app marked them (me).
+        String me = ExpenseStore.uid(this);
+        java.util.List<String> uids = new java.util.ArrayList<>(), names = new java.util.ArrayList<>();
+        for (int i = 0; list != null && i < list.length(); i++) {
+            JSONObject p = list.optJSONObject(i);
+            if (p == null || p.optString("uid").isEmpty()) continue;
+            if (me == null && p.optBoolean("me")) me = p.optString("uid");
+            uids.add(p.optString("uid"));
+        }
+        for (int i = 0; list != null && i < list.length(); i++) {
+            JSONObject p = list.optJSONObject(i);
+            if (p == null || p.optString("uid").isEmpty()) continue;
+            names.add(p.optString("uid").equals(me) ? "אני" : p.optString("name", "משתתף"));
+        }
+        if (uids.size() < 2) return;
+        final String self = me;
+        findViewById(R.id.payer_row).setVisibility(View.VISIBLE);
+        View box = findViewById(R.id.payer);
+        TextView name = findViewById(R.id.payer_name);
+        box.setBackground(round(colors[3], dp(16)));
+        int start = Math.max(0, uids.indexOf(self));
+        name.setText(names.get(start));
+        payer = uids.get(start).equals(self) ? null : uids.get(start);
+        box.setContentDescription("שילם/ה: " + names.get(start));
+        box.setOnClickListener(v -> {
+            android.widget.ListPopupWindow pop = new android.widget.ListPopupWindow(this);
+            pop.setAnchorView(box);
+            pop.setModal(true);
+            pop.setBackgroundDrawable(round(colors[2], dp(16)));
+            pop.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, names) {
+                @Override public View getView(int pos, View convert, ViewGroup parent) {
+                    TextView t = (TextView) super.getView(pos, convert, parent);
+                    t.setTypeface(ResourcesCompat.getFont(ExpenseSheetActivity.this, R.font.rubik_semibold));
+                    t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                    t.setTextColor(getColor(R.color.w_text));
+                    t.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+                    t.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+                    return t;
+                }
+            });
+            pop.setOnItemClickListener((parent, item, pos, id) -> {
+                String uid = uids.get(pos);
+                payer = uid.equals(self) ? null : uid;
+                name.setText(names.get(pos));
+                box.setContentDescription("שילם/ה: " + names.get(pos));
+                Log.i("ExpenseWidget", "payer: " + (payer == null ? "me" : "member " + pos));
+                pop.dismiss();
+            });
+            pop.show();
+        });
     }
 
     // ── Chips ────────────────────────────────────────────────────────────
