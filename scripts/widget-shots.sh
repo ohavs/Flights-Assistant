@@ -203,12 +203,17 @@ tap_text ILS; expect 25-expense-eur "42.5 €" "EUR"
 tap_text המשך; sleep 1
 expect 26-expense-sheet "42.5 €" "≈ 172.13 ₪ · פריז עם הילדים" "קטגוריה" "אוכל ושתייה" "מוזיאונים" "מקום" "הלובר" "גני טווילרי" "מוזיאון אורסיי" "מגדל אייפל" "שמירה"
 tap_text "אוכל ושתייה"; tap_text הלובר
-expect 27-expense-picked "אוכל ושתייה" "הלובר"
+expect 27-expense-picked "אוכל ושתייה" "הלובר" "שילם/ה" "אני"
+# Who paid: a dropdown of the trip's members (8.102.0).
+tap_text אני; sleep 1
+expect 27b-expense-payers "אני" "דנה"
+tap_text דנה; sleep 1
+expect 27c-expense-payer "שילם/ה" "דנה"
 adb logcat -c
 tap_text שמירה; sleep 2
 expect 28-expense-queued "יישמר כשתפתחו את האפליקציה ✓" "0 €"
 queue=$(adb shell cat "/data/data/$PKG/shared_prefs/expense_queue.xml")
-for t in "exp-" "paris" "pl-louvre" "172.13" "EUR" "אוכל ושתייה" "42.5"; do
+for t in "exp-" "paris" "pl-louvre" "172.13" "EUR" "אוכל ושתייה" "42.5" "ci-dana"; do
   grep -qF -- "$t" <<<"$queue" || { echo "the queued expense has no \"$t\":"; echo "$queue"; exit 1; }
 done
 echo "widget: the expense waits for the app, as the expenses tab writes it"

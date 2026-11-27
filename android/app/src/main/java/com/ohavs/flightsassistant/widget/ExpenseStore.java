@@ -115,9 +115,10 @@ final class ExpenseStore {
      * A queued expense: { id, tripId, uid, doc }, doc as ExpensesTab writes
      * it. placeId: a place in the planning tab; else place is typed (or a
      * plan item with no place) and goes in customPlace. ils: the amount in
-     * shekels at today's rate, or null.
+     * shekels at today's rate, or null. paidBy: the member who paid, null
+     * or empty for the user.
      */
-    static JSONObject expense(String uid, String tripId, double amount, String currency, String category,
+    static JSONObject expense(String uid, String paidBy, String tripId, double amount, String currency, String category,
                               String placeId, String place, Double ils, long now) throws JSONException {
         SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
         iso.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -130,7 +131,7 @@ final class ExpenseStore {
             .put("customPlace", (placeId == null || placeId.isEmpty()) && place != null && !place.trim().isEmpty()
                 ? place.trim() : JSONObject.NULL)
             .put("ilsSnapshot", "ILS".equals(currency) || ils == null ? JSONObject.NULL : ils)
-            .put("paidBy", uid)
+            .put("paidBy", paidBy == null || paidBy.isEmpty() ? uid : paidBy)
             .put("createdBy", uid)   // who added it: a "הוספה" member must say so (firestore.rules)
             .put("createdAt", iso.format(new Date(now)));
         return new JSONObject().put("id", "exp-" + now).put("tripId", tripId).put("uid", uid).put("doc", doc);

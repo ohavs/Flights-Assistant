@@ -6,6 +6,8 @@ import { widgetSnapshot } from '../src/lib/widgetData.js';
 
 const trip = {
   id: 'paris', name: 'פריז עם הילדים',
+  // Who paid (the expense sheet's dropdown): the user and one more.
+  members: { 'ci-user': 'owner', 'ci-dana': 'edit' },
   outboundFlightDetails: {
     date: '2026-11-03', scheduledDep: '07:30', scheduledArr: '10:45', flightNumber: 'LY 323', gate: 'B12', status: 'בזמן',
     depAirport: { code: 'TLV', timezone: 'UTC +00:00' }, arrAirport: { code: 'CDG', city: 'פריז', timezone: 'UTC +00:00' },
@@ -74,6 +76,6 @@ const cases = [
   ['ended', at('2027-01-05T09:00:00Z'), { palette: 'green' }],
 ];
 for (const [name, now, opts] of cases) {
-  const s = widgetSnapshot({ trips: [trip, rome], ...data, now, ...opts });
+  const s = widgetSnapshot({ trips: [trip, rome], ...data, now, uid: 'ci-user', profiles: { 'ci-dana': { displayName: 'דנה' } }, ...opts });
   console.log(`${name} ${now.getTime()} ${Buffer.from(JSON.stringify(s)).toString('base64')}`);
 }

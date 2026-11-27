@@ -211,9 +211,17 @@ function bookingsOf(list, today) {
 // expense offers on this trip (shekels, euros or dollars, the destination's
 // own, then any used), the one the keypad starts on (the destination's,
 // else the latest expense's), the tab's categories, and the trip's places
-// to link an expense to.
+// to link an expense to, and who may have paid it (the trip's members,
+// the user first as "אני"; the sheet shows the choice only with two or more).
 const PLACES = 40;
-function spendOf(trip, list, plans) {
+function payersOf(trip, uid, profiles) {
+  const uids = Object.keys(trip?.members || {});
+  if (uid && !uids.includes(uid)) uids.unshift(uid);
+  return uids
+    .sort((a, b) => (b === uid) - (a === uid))
+    .map(id => ({ uid: id, name: id === uid ? 'אני' : (profiles?.[id]?.displayName || profiles?.[id]?.email || 'משתתף'), ...(id === uid ? { me: true } : {}) }));
+}
+function spendOf(trip, list, plans, uid, profiles) {
   const latest = [...(list || [])].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
   const codes = [...new Set([...tripCurrencies(trip, DEFAULT_CURRENCIES), ...latest.map(e => e.currency).filter(Boolean)])];
   return {
@@ -225,6 +233,7 @@ function spendOf(trip, list, plans) {
       .sort((a, b) => (!!a.visited - !!b.visited) || String(a.title).localeCompare(String(b.title), 'he'))
       .slice(0, PLACES)
       .map(p => ({ id: p.id, title: p.title })),
+    payers: payersOf(trip, uid, profiles),
   };
 }
 
@@ -235,10 +244,12 @@ function spendOf(trip, list, plans) {
 // 'light' or 'dark' whatever the phone is, else 'system' (the phone's).
 // rates: the expenses tab's (per euro), for the shekel value of an expense
 // the widget saves.
+// uid / profiles: the signed-in user and the members' profiles (uid →
+// { displayName, email }), for who paid an expense the widget saves.
 // currencies: every one the app knows, for the expense widget's settings
 // (WidgetTripActivity), where its keypad's currencies are set.
-export function widgetSnapshot({ trips, daysByTrip = {}, personalByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, bookingsByTrip = {}, rates = null, palette = 'green', theme = 'system', now = new Date() }) {
-  const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(trip, expensesByTrip[trip.id], plansByTrip[trip.id]) }));
+export function widgetSnapshot({ trips, daysByTrip = {}, personalByTrip = {}, checklistByTrip = {}, remindersByTrip = {}, expensesByTrip = {}, plansByTrip = {}, bookingsByTrip = {}, rates = null, palette = 'green', theme = 'system', uid = null, profiles = {}, now = new Date() }) {
+  const shown = widgetTrips(trips, now).map(trip => ({ trip, spend: spendOf(trip, expensesByTrip[trip.id], plansByTrip[trip.id], uid, profiles) }));
   const codes = new Set(['ILS', ...Object.keys(CURRENCY_META), ...shown.flatMap(s => s.spend.currencies.map(c => c.code))]);
   return {
     v: 1,
